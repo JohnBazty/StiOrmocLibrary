@@ -14,7 +14,9 @@ import { dashboardForRole, ROLES, STAFF_ROLES, USER_ROLES, webDashboardForRole }
 import { requireAuth, requireCsrfForStateChanges, requireRoles, sessionCookie } from './modules/auth/auth.middleware.js'
 import { authRouter, logoutRouter, registrationRouter } from './modules/auth/auth.routes.js'
 import { jwtAuthRouter, jwtProtectedRouter } from './modules/auth/jwt-auth.routes.ts'
+import { authenticateJwt, requireJwtRoles } from './modules/auth/jwt-auth.middleware.ts'
 import { inventoryPreviewRouter } from './modules/inventory/inventory-preview.routes.ts'
+import { thesisInventoryV1AdminRouter } from './modules/inventory/thesis-inventory.routes.ts'
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
 const publicDirectory = path.resolve(currentDirectory, '../public')
@@ -65,6 +67,7 @@ export function createApp() {
   })
   app.use('/api/auth', authRouter)
   app.use('/api/v1/auth', jwtAuthRouter)
+  app.use('/api/v1/admin', authenticateJwt, requireJwtRoles('Admin', 'Librarian'), thesisInventoryV1AdminRouter)
   app.use('/api/v1', jwtProtectedRouter)
   app.use('/auth/register', registrationRouter)
   app.use('/auth/logout', logoutRouter)

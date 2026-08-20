@@ -109,19 +109,40 @@ export async function findActiveLoan(connection: PoolConnection, materialId: num
   return rows[0] ?? null
 }
 
-export async function findActiveReservation(connection: PoolConnection, materialId: number) {
+export async function findActiveReservation(connection: PoolConnection, physicalCopyId: number) {
   const [rows] = await connection.execute<RowDataPacket[]>(`
     SELECT reservation_id, reservation_status, pickup_deadline
       FROM reservations
      WHERE accession_id = ? AND reservation_status IN ('pending', 'approved', 'ready_for_pickup')
-     ORDER BY reservation_id DESC LIMIT 1 FOR UPDATE`, [materialId])
+     ORDER BY reservation_id DESC LIMIT 1 FOR UPDATE`, [physicalCopyId])
   return rows[0] ?? null
+}
+
+export async function synchronizeLegacyAvailability(
+  connection: PoolConnection,
+  materialId: number | null,
+  availabilityStatus: 'Available' | 'Unavailable',
+) {
+  if (materialId === null) return
+  await connection.execute(
+    'UPDATE materials SET availability_status = ?, updated_at = NOW() WHERE material_id = ?',
+    [availabilityStatus, materialId],
+  )
+}
+
+export async function releaseLostCopyReservations(connection: PoolConnection, physicalCopyId: number) {
+  const [result] = await connection.execute(`
+    UPDATE reservations
+       SET accession_id = NULL, reservation_status = 'pending', pickup_deadline = NULL, updated_at = NOW()
+     WHERE accession_id = ?
+       AND reservation_status IN ('pending', 'approved', 'ready_for_pickup')`, [physicalCopyId])
+  return Number((result as { affectedRows?: number }).affectedRows ?? 0)
 }
 
 export async function recordInventoryAudit(
   connection: PoolConnection,
   copy: LockedInventoryCopy,
-  eventType: 'Verified' | 'Condition Changed',
+  eventType: 'Verified' | 'Condition Changed' | 'Availability Changed' | 'Lost Override',
   actor: InventoryActor,
   nextCondition = copy.condition_status,
   nextAvailability = copy.availability_status,

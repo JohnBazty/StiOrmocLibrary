@@ -7,16 +7,22 @@ import {
   ensureCategoryExists,
   findBookTitleByIsbnForUpdate,
   findDuplicatePhysicalCopyForUpdate,
+  findDuplicateResearchInventoryForUpdate,
   findResearchCodeForUpdate,
   insertAuthors,
   insertPhysicalCopy,
   insertResearchRecord,
+  insertResearchInventory,
   insertTitle,
 } from './catalog.repository.ts'
-import { validateBookEntry, validateThesisMetadata } from './catalog.validation.ts'
+import { validateBookEntry, validateThesisEntry } from './catalog.validation.ts'
 
 function validationError(errors: Record<string, string>) {
   return new HttpError(422, 'CATALOG_VALIDATION_FAILED', 'The catalog entry contains invalid fields.', { errors })
+}
+
+function isDuplicateEntry(error: unknown) {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ER_DUP_ENTRY'
 }
 
 export function createCatalogService(database: Pool = db) {
@@ -65,6 +71,9 @@ export function createCatalogService(database: Pool = db) {
         return { titleId, physicalCopyId, createdTitle, addedCopyToExistingTitle: !createdTitle }
       } catch (error) {
         await connection.rollback()
+        if (isDuplicateEntry(error)) {
+          throw new HttpError(409, 'PHYSICAL_COPY_ALREADY_EXISTS', 'The ISBN, barcode, or accession number was registered by another request.')
+        }
         throw error
       } finally {
         connection.release()
@@ -72,7 +81,7 @@ export function createCatalogService(database: Pool = db) {
     },
 
     async createThesisEntry(body: unknown) {
-      const validation = validateThesisMetadata(body)
+      const validation = validateThesisEntry(body)
       if (!validation.isValid) throw validationError(validation.errors)
       const input = validation.data
       const connection = await database.getConnection()
@@ -94,13 +103,15 @@ export function createCatalogService(database: Pool = db) {
           })
         }
 
-        if (input.copy) {
-          const duplicateCopy = await findDuplicatePhysicalCopyForUpdate(connection, input.copy)
-          if (duplicateCopy) {
-            throw new HttpError(409, 'PHYSICAL_COPY_ALREADY_EXISTS', 'The barcode or accession number is already assigned to another copy.', {
-              physicalCopyId: duplicateCopy.physical_copy_id,
-            })
-          }
+        const duplicateCopy = await findDuplicatePhysicalCopyForUpdate(connection, input.copy)
+        const duplicateResearchCopy = await findDuplicateResearchInventoryForUpdate(connection, input.copy)
+        if (duplicateCopy || duplicateResearchCopy) {
+          throw new HttpError(409, 'ACCESSION_ALREADY_EXISTS', 'The barcode or accession number is already assigned to another physical asset.', {
+            physicalCopyId: duplicateCopy?.physical_copy_id ?? null,
+            researchInventoryId: duplicateResearchCopy?.research_inventory_id ?? null,
+            barcode: duplicateCopy?.barcode ?? duplicateResearchCopy?.barcode,
+            accessionNumber: duplicateCopy?.accession_number ?? duplicateResearchCopy?.accession_number,
+          })
         }
 
         const titleId = await insertTitle(connection, {
@@ -115,14 +126,18 @@ export function createCatalogService(database: Pool = db) {
         })
         await insertAuthors(connection, titleId, input.authors)
         const researchRecordId = await insertResearchRecord(connection, titleId, input)
-        const physicalCopyId = input.copy
-          ? await insertPhysicalCopy(connection, titleId, input.copy)
-          : null
+        const researchInventoryId = await insertResearchInventory(connection, {
+          ...input,
+          copy: input.copy,
+        })
 
         await connection.commit()
-        return { titleId, researchRecordId, physicalCopyId }
+        return { titleId, researchRecordId, researchInventoryId }
       } catch (error) {
         await connection.rollback()
+        if (isDuplicateEntry(error)) {
+          throw new HttpError(409, 'ACCESSION_ALREADY_EXISTS', 'The research code, barcode, or accession number was registered by another request.')
+        }
         throw error
       } finally {
         connection.release()
@@ -132,4 +147,3 @@ export function createCatalogService(database: Pool = db) {
 }
 
 export const catalogService = createCatalogService()
-

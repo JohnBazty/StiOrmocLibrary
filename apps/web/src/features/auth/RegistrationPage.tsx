@@ -76,12 +76,12 @@ export function RegistrationPage() {
         <section className="relative overflow-hidden bg-[#003399] p-8 text-[#FFFFFF] lg:p-10">
           <div className="absolute -bottom-24 -left-24 h-72 w-72 rounded-full border-[55px] border-[#FFF200]/10" />
           <div className="relative flex items-center gap-3"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FFF200] text-[#003399]"><LibraryBig /></span><div><p className="font-display text-lg font-black">STI ORMOC</p><p className="text-xs font-bold uppercase tracking-[.18em] text-[#FFFFFF]/70">Smart Library</p></div></div>
-          <div className="relative mt-14"><p className="text-xs font-black uppercase tracking-[.2em] text-[#FFF200]">Student access</p><h1 className="mt-4 font-display text-4xl font-black leading-tight">Create your library account.</h1><p className="mt-5 leading-7 text-[#FFFFFF]/75">Register once using the details attached to your STI Student ID. Your password is securely hashed before storage.</p></div>
+          <div className="relative mt-14"><p className="text-xs font-black uppercase tracking-[.2em] text-[#FFF200]">Student access</p><h1 className="mt-4 font-display text-4xl font-black leading-tight">Create your library account.</h1></div>
           <div className="relative mt-10 rounded-2xl border border-[#FFF200]/35 bg-[#FFF200]/10 p-5 text-sm leading-6 text-[#FFFFFF]/80"><strong className="block text-[#FFF200]">Already registered?</strong><Link to="/login" className="mt-1 inline-flex font-bold text-[#FFFFFF] underline underline-offset-4">Return to Login</Link></div>
         </section>
 
         <section className="p-6 sm:p-10">
-          <p className="text-xs font-black uppercase tracking-[.18em] text-[#003399]/55">New student</p><h2 className="mt-2 font-display text-3xl font-black text-[#003399]">Student Registration</h2><p className="mt-2 text-sm text-[#003399]/65">Complete every field to create your SmartLib account.</p>
+          <p className="text-xs font-black uppercase tracking-[.18em] text-[#003399]/55">New student</p><h2 className="mt-2 font-display text-3xl font-black text-[#003399]">Student Registration</h2>
           {message ? <div role="alert" className="mt-5 rounded-xl border border-[#003399] bg-[#FFF200] px-4 py-3 text-sm font-bold text-[#003399]">{message}</div> : null}
           <form className="mt-6 grid gap-4 sm:grid-cols-2" onSubmit={submit} noValidate>
             <Field label="First Name" error={errors.first_name}><span className="relative block"><UserRound className="absolute left-4 top-1/2 -translate-y-1/2 text-[#003399]/45" size={17} /><input autoFocus autoComplete="given-name" value={form.first_name} onChange={(event) => update('first_name', event.target.value)} placeholder="First name" className={`${fieldClass} pl-11`} /></span></Field>

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { isValidIsbn, normalizeIsbn, validateBookEntry, validateThesisMetadata } from './catalog.validation.ts'
+import { isValidIsbn, normalizeIsbn, validateBookEntry, validateThesisEntry, validateThesisMetadata } from './catalog.validation.ts'
 
 test('validates and normalizes a complete thesis metadata entry', () => {
   const result = validateThesisMetadata({
@@ -40,6 +40,29 @@ test('returns field-specific thesis errors for Title, Author, Adviser, Year, and
   assert.ok(result.errors.abstract)
 })
 
+test('requires and normalizes physical ledger fields when publishing a thesis', () => {
+  const result = validateThesisEntry({
+    title: 'Smart Library Research', author: 'Maria Santos', adviser: 'Dr. Ana Cruz',
+    year: new Date().getFullYear(), abstract: 'This complete abstract describes the research inventory workflow.',
+    researchCode: 'TH-2026-010', department: 'BSIT',
+    copy: { barcode: ' th-bc-010 ', accessionNumber: ' th-acc-010 ', shelfLocation: 'Research A-2', conditionStatus: 'For Repair' },
+  })
+  assert.equal(result.isValid, true)
+  assert.equal(result.data.copy.barcode, 'TH-BC-010')
+  assert.equal(result.data.copy.accessionNumber, 'TH-ACC-010')
+  assert.equal(result.data.copy.conditionStatus, 'For Repair')
+
+  const missingCopy = validateThesisEntry({
+    title: 'Smart Library Research', author: 'Maria Santos', adviser: 'Dr. Ana Cruz',
+    year: new Date().getFullYear(), abstract: 'This complete abstract describes the research inventory workflow.',
+    researchCode: 'TH-2026-011', department: 'BSIT',
+  })
+  assert.equal(missingCopy.isValid, false)
+  assert.ok(missingCopy.errors.barcode)
+  assert.ok(missingCopy.errors.accessionNumber)
+  assert.ok(missingCopy.errors.shelfLocation)
+})
+
 test('validates ISBN checksums and physical-copy fields for books', () => {
   assert.equal(normalizeIsbn('978-0-13-235088-4'), '9780132350884')
   assert.equal(isValidIsbn('9780132350884'), true)
@@ -61,4 +84,3 @@ test('validates ISBN checksums and physical-copy fields for books', () => {
   assert.equal(result.data.copy.barcode, 'BC-00128')
   assert.equal(result.data.copy.accessionNumber, 'ACC-00128')
 })
-

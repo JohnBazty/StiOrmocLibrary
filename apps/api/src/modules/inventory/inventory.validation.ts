@@ -1,3 +1,4 @@
+import type { NextFunction, Request, Response } from 'express'
 import { HttpError } from '../../core/http-error.ts'
 
 export type InventoryListFilters = {
@@ -8,8 +9,18 @@ export type InventoryListFilters = {
   availabilityStatus: string | null
 }
 
-const CONDITIONS = new Set(['New', 'Good', 'Fair', 'Damaged', 'For Repair', 'Lost'])
+export type InventoryCondition = 'Good' | 'Fair' | 'For Repair' | 'Damaged' | 'Lost'
+export type ManualAvailability = 'Available' | 'Unavailable'
+
+const CONDITIONS = new Set<InventoryCondition>(['Good', 'Fair', 'For Repair', 'Damaged', 'Lost'])
 const AVAILABILITY = new Set(['Available', 'Borrowed', 'Reserved', 'Unavailable', 'Archived'])
+const CONDITION_INPUTS: Record<string, InventoryCondition> = {
+  good: 'Good',
+  fair: 'Fair',
+  for_repair: 'For Repair',
+  damaged: 'Damaged',
+  lost: 'Lost',
+}
 
 function first(value: unknown) {
   return Array.isArray(value) ? String(value[0] ?? '') : typeof value === 'string' ? value : ''
@@ -40,7 +51,7 @@ export function normalizeBarcode(value: unknown) {
 export function parseInventoryListFilters(query: Record<string, unknown>): InventoryListFilters {
   const conditionState = first(query.condition_state ?? query.conditionState).trim() || null
   const availabilityStatus = first(query.availability_status ?? query.availabilityStatus).trim() || null
-  if (conditionState && !CONDITIONS.has(conditionState)) {
+  if (conditionState && !CONDITIONS.has(conditionState as InventoryCondition)) {
     throw new HttpError(422, 'INVENTORY_VALIDATION_FAILED', 'condition_state is not supported.', {
       errors: { condition_state: 'Select a supported physical-copy condition.' },
     })
@@ -67,10 +78,39 @@ export function parseScanBody(body: unknown) {
 export function parseConditionBody(body: unknown) {
   const value = body && typeof body === 'object' ? body as Record<string, unknown> : {}
   const raw = typeof value.condition_state === 'string' ? value.condition_state.trim().toLowerCase() : ''
-  if (raw !== 'damaged' && raw !== 'lost') {
-    throw new HttpError(422, 'INVENTORY_VALIDATION_FAILED', 'condition_state must be damaged or lost.', {
-      errors: { condition_state: 'Select damaged or lost.' },
+  const conditionState = CONDITION_INPUTS[raw]
+  if (!conditionState) {
+    throw new HttpError(422, 'INVENTORY_VALIDATION_FAILED', 'condition_state is not supported.', {
+      errors: { condition_state: 'Select good, fair, for_repair, damaged, or lost.' },
     })
   }
-  return { barcode: normalizeBarcode(value.barcode), conditionState: raw === 'damaged' ? 'Damaged' as const : 'Lost' as const }
+  return { barcode: normalizeBarcode(value.barcode), conditionState }
+}
+
+export function parseAvailabilityBody(body: unknown) {
+  const value = body && typeof body === 'object' ? body as Record<string, unknown> : {}
+  const raw = typeof value.availability_status === 'string' ? value.availability_status.trim().toLowerCase() : ''
+  if (raw !== 'available' && raw !== 'unavailable') {
+    throw new HttpError(422, 'INVENTORY_VALIDATION_FAILED', 'availability_status must be available or unavailable.', {
+      errors: { availability_status: 'Select available or unavailable.' },
+    })
+  }
+  return {
+    barcode: normalizeBarcode(value.barcode),
+    availabilityStatus: (raw === 'available' ? 'Available' : 'Unavailable') as ManualAvailability,
+  }
+}
+
+export function validateConditionMutation(request: Request, response: Response, next: NextFunction) {
+  try {
+    response.locals.inventoryConditionMutation = parseConditionBody(request.body)
+    next()
+  } catch (error) { next(error) }
+}
+
+export function validateAvailabilityMutation(request: Request, response: Response, next: NextFunction) {
+  try {
+    response.locals.inventoryAvailabilityMutation = parseAvailabilityBody(request.body)
+    next()
+  } catch (error) { next(error) }
 }

@@ -1,8 +1,8 @@
 import type { NextFunction, Request, Response } from 'express'
 import { parseCatalogSearchFilters } from '../catalog/catalog-search.repository.ts'
 import { createCsvStream, createInventoryPdf, inventoryRows } from '../reports/catalog-export.service.ts'
-import { inventoryCopies, inventorySummary, overrideInventoryCondition, verifyInventoryBarcode } from './inventory.service.ts'
-import { parseConditionBody, parseInventoryListFilters, parseScanBody } from './inventory.validation.ts'
+import { inventoryCopies, inventorySummary, overrideInventoryCondition, setInventoryAvailability, verifyInventoryBarcode } from './inventory.service.ts'
+import { parseInventoryListFilters, parseScanBody, type InventoryCondition, type ManualAvailability } from './inventory.validation.ts'
 
 function actor(request: Request, response: Response) {
   const authenticated = response.locals.authenticatedUser as { userId?: number; id?: number; fullName?: string; email?: string } | undefined
@@ -36,11 +36,28 @@ export async function scanBarcode(request: Request, response: Response, next: Ne
 
 export async function changeCondition(request: Request, response: Response, next: NextFunction) {
   try {
-    const { barcode, conditionState } = parseConditionBody(request.body)
+    const { barcode, conditionState } = response.locals.inventoryConditionMutation as { barcode: string; conditionState: InventoryCondition }
+    const lost = conditionState === 'Lost'
     response.json({
       success: true,
-      message: 'Condition updated. This copy is unavailable and blocked from student reservations.',
+      message: lost
+        ? 'Condition updated to Lost. Availability was forced to Unavailable and the copy was removed from reservation allocation.'
+        : 'Condition updated. Availability was preserved and remains under librarian control.',
       data: await overrideInventoryCondition(barcode, conditionState, actor(request, response)),
+    })
+  } catch (error) { next(error) }
+}
+
+export async function changeAvailability(request: Request, response: Response, next: NextFunction) {
+  try {
+    const { barcode, availabilityStatus } = response.locals.inventoryAvailabilityMutation as {
+      barcode: string
+      availabilityStatus: ManualAvailability
+    }
+    response.json({
+      success: true,
+      message: `Availability updated to ${availabilityStatus}.`,
+      data: await setInventoryAvailability(barcode, availabilityStatus, actor(request, response)),
     })
   } catch (error) { next(error) }
 }

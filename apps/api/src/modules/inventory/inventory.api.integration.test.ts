@@ -31,8 +31,14 @@ test('Student and Faculty roles cannot read or mutate administrative inventory',
 })
 
 test('manager request with an invalid condition receives field-level 422 before database access', async () => {
-  const response = await request(appForRole('Librarian')).patch('/api/inventory/copies/condition').send({ barcode: 'BC-1', condition_state: 'good' })
+  const response = await request(appForRole('Librarian')).patch('/api/inventory/copies/condition').send({ barcode: 'BC-1', condition_state: 'new' })
   assert.equal(response.status, 422)
   assert.equal(response.body.code, 'INVENTORY_VALIDATION_FAILED')
   assert.ok(response.body.details.errors.condition_state)
+})
+
+test('manual availability route validates before database access', async () => {
+  const response = await request(appForRole('Librarian')).patch('/api/inventory/copies/availability').send({ barcode: 'BC-1', availability_status: 'reserved' })
+  assert.equal(response.status, 422)
+  assert.ok(response.body.details.errors.availability_status)
 })

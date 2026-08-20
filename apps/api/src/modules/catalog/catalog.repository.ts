@@ -1,9 +1,15 @@
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
-import type { BookEntryInput, PhysicalCopyInput, ThesisMetadataInput } from './catalog.validation.ts'
+import type { BookEntryInput, PhysicalCopyInput, ThesisEntryInput, ThesisMetadataInput } from './catalog.validation.ts'
 
 type IdRow = RowDataPacket & { title_id: number }
 type DuplicateCopyRow = RowDataPacket & {
   physical_copy_id: number
+  barcode: string
+  accession_number: string
+}
+
+type DuplicateResearchInventoryRow = RowDataPacket & {
+  research_inventory_id: number
   barcode: string
   accession_number: string
 }
@@ -53,6 +59,21 @@ export async function findResearchCodeForUpdate(connection: PoolConnection, rese
       LIMIT 1
       FOR UPDATE`,
     [researchCode],
+  )
+  return rows[0] ?? null
+}
+
+export async function findDuplicateResearchInventoryForUpdate(
+  connection: PoolConnection,
+  copy: PhysicalCopyInput,
+) {
+  const [rows] = await connection.execute<DuplicateResearchInventoryRow[]>(
+    `SELECT research_inventory_id, barcode, accession_number
+       FROM research_inventory
+      WHERE barcode = ? OR accession_number = ?
+      LIMIT 1
+      FOR UPDATE`,
+    [copy.barcode, copy.accessionNumber],
   )
   return rows[0] ?? null
 }
@@ -146,6 +167,30 @@ export async function insertResearchRecord(
   return result.insertId
 }
 
+export async function insertResearchInventory(
+  connection: PoolConnection,
+  input: ThesisEntryInput,
+) {
+  const condition = input.copy.conditionStatus.toLowerCase().replace(/\s+/g, '_')
+  const [result] = await connection.execute<ResultSetHeader>(
+    `INSERT INTO research_inventory
+       (title, authors, adviser, publication_year, accession_number, barcode,
+        condition_state, availability_status, shelf_location, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'available', ?, NOW())`,
+    [
+      input.title,
+      input.authors.join(', '),
+      input.adviser,
+      input.year,
+      input.copy.accessionNumber,
+      input.copy.barcode,
+      condition,
+      input.copy.shelfLocation,
+    ],
+  )
+  return result.insertId
+}
+
 export function buildBookSearchText(input: BookEntryInput) {
   return [input.title, ...input.authors, input.isbn, input.publisher, input.callNumber]
     .filter(Boolean)
@@ -162,4 +207,3 @@ export function buildThesisSearchText(input: ThesisMetadataInput) {
     input.keywords,
   ].filter(Boolean).join(' ')
 }
-

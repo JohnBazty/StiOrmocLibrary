@@ -11,6 +11,8 @@ Inventory is a feature module inside the existing Node.js and Express modular mo
 
 The React implementation lives in `apps/web/src/features/inventory`. The API implementation lives in `apps/api/src/modules/inventory`. Both clients use `/api/inventory`; no separate service, database, or duplicate application is introduced.
 
+The Research and Thesis Inventory subsystem is an isolated ledger inside the same module. `research_inventory` does not reference `titles` or `physical_copies`; it represents individually accessioned, physically bound papers. It reuses only the shared circulation barcode lookup when checking for an open loan.
+
 ## Data mapping and lifecycle
 
 ```text
@@ -47,9 +49,17 @@ All endpoints require an authenticated System Administrator/Admin or Librarian. 
 | `GET` | `/api/inventory/summary` | Active catalog/copy, damaged, and lost totals |
 | `GET` | `/api/inventory/copies` | Paginated physical-copy register |
 | `POST` | `/api/inventory/scans` | Verify a barcode and append a `Verified` event |
-| `PATCH` | `/api/inventory/copies/condition` | Set `damaged` or `lost` and make the copy unavailable |
+| `PATCH` | `/api/inventory/copies/condition` | Audit `good`, `fair`, `for_repair`, `damaged`, or `lost` |
+| `PATCH` | `/api/inventory/copies/availability` | Manually set an idle copy `available` or `unavailable` |
 | `GET` | `/api/inventory/export.csv` | Stream physical-copy CSV |
 | `GET` | `/api/inventory/export.pdf` | Stream branded physical-copy PDF |
+| `GET` | `/api/v1/admin/inventory/thesis/summary` | Independent thesis totals, damaged, and lost metrics |
+| `GET` | `/api/v1/admin/inventory/thesis` | Paginated physically bound thesis register |
+| `POST` | `/api/v1/admin/inventory/thesis/audit` | Audit a thesis condition with an open-loan lock |
+| `PATCH` | `/api/v1/admin/inventory/thesis/availability` | Manually toggle idle thesis availability |
+| `GET` | `/api/v1/admin/reports/thesis/csv` | Stream a thesis-only CSV |
+| `GET` | `/api/v1/admin/reports/thesis/pdf` | Stream a branded thesis-only PDF |
+| `GET` | `/api/catalog/research-inventory` | Student-safe bound-paper search; returns only `available` rows |
 
 Copy lists return `{ success, data, meta.pagination }`. `page` defaults to 1, `limit` defaults to 25, and the limit is capped at 100. Optional filters are `q`, `condition_state`, and `availability_status`.
 
@@ -65,7 +75,7 @@ Condition body:
 { "barcode": "BC-00042", "condition_state": "damaged" }
 ```
 
-The service locks the physical copy before mutation. Borrowed, Overdue, or actively reserved copies are rejected and the transaction is rolled back. A successful Damaged/Lost override writes `availability_status='Unavailable'`, updates the last verification timestamp, increments `row_version`, and records the before/after values in `inventory_audit_events`.
+The service locks the physical copy before mutation. Good, Fair, For Repair, and Damaged preserve the existing availability; only Lost forces `Unavailable`, synchronizes the compatibility material row, and releases unclaimed accession assignments. Manual availability changes reject active loans/reservations, and Lost cannot be made Available. Every transition records before/after values in `inventory_audit_events`.
 
 ## Desktop scanner workflow
 
@@ -99,5 +109,4 @@ Run all migrations in order:
 npm run db:migrate -w @sti-library/api
 ```
 
-Migration `20260820_006_inventory_audit_events.sql` is additive. It does not rewrite title, copy, material, loan, or reservation identifiers. `/api/health` reports `DATABASE_MIGRATION_REQUIRED` until the audit table and required columns are present.
-
+Migration `20260820_006_inventory_audit_events.sql` adds audit history. Migration `20260820_008_inventory_condition_availability_policy.sql` installs the five-state contract and Lost-only database enforcement. Neither migration rewrites title, copy, material, loan, or reservation identifiers. `/api/health` reports `DATABASE_MIGRATION_REQUIRED` until required structures are present.

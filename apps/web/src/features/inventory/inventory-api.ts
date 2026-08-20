@@ -1,5 +1,5 @@
 import { getAccessToken } from '../auth/auth-storage'
-import type { InventoryCopy, InventoryFilters, InventoryPagination, InventorySummary } from './types'
+import type { InventoryCopy, InventoryFilters, InventoryPagination, InventorySummary, ThesisInventoryFilters, ThesisInventoryRow, ThesisInventorySummary } from './types'
 
 export class InventoryApiError extends Error {
   constructor(message: string, public code: string, public errors: Record<string, string> = {}) { super(message) }
@@ -51,6 +51,15 @@ function filterQuery(filters: InventoryFilters) {
   return query.toString()
 }
 
+function thesisFilterQuery(filters: ThesisInventoryFilters) {
+  const query = new URLSearchParams({ page: String(filters.page), limit: String(filters.limit) })
+  if (filters.query) query.set('q', filters.query)
+  if (filters.conditionState) query.set('condition_state', filters.conditionState)
+  if (filters.availabilityStatus) query.set('availability_status', filters.availabilityStatus)
+  if (filters.publicationYear) query.set('publication_year', filters.publicationYear)
+  return query.toString()
+}
+
 async function download(format: 'csv' | 'pdf') {
   const response = await fetch(`/api/inventory/export.${format}`, {
     credentials: 'include',
@@ -76,6 +85,27 @@ async function download(format: 'csv' | 'pdf') {
   window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
 }
 
+function thesisEndpoint(v1Path: string, sessionPath: string) {
+  return getAccessToken() ? `/api/v1/admin/${v1Path}` : `/api/inventory/thesis${sessionPath}`
+}
+
+async function downloadThesis(format: 'csv' | 'pdf') {
+  const endpoint = thesisEndpoint(`reports/thesis/${format}`, `/export.${format}`)
+  const response = await fetch(endpoint, {
+    credentials: 'include', headers: headersFor('GET', format === 'csv' ? 'text/csv' : 'application/pdf'),
+  })
+  if (!response.ok) {
+    const isJson = (response.headers.get('content-type') ?? '').includes('application/json')
+    const payload = isJson ? await response.json() as { message?: string; code?: string } : null
+    throw new InventoryApiError(payload?.message ?? `Unable to generate the thesis ${format.toUpperCase()} report.`, payload?.code ?? 'THESIS_EXPORT_FAILED')
+  }
+  const expected = format === 'csv' ? 'text/csv' : 'application/pdf'
+  if (!(response.headers.get('content-type') ?? '').includes(expected)) throw new InventoryApiError('The thesis report returned an unexpected file type.', 'INVALID_THESIS_EXPORT')
+  const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = document.createElement('a')
+  link.href = url; link.download = `smartlib-thesis-inventory.${format}`; document.body.appendChild(link); link.click(); link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
+}
+
 export const inventoryApi = {
   summary: () => request<InventorySummary>('/api/inventory/summary'),
   async copies(filters: InventoryFilters) {
@@ -94,8 +124,26 @@ export const inventoryApi = {
     return { items: payload.data, pagination: payload.meta.pagination }
   },
   scan: (barcode: string) => request<InventoryCopy>('/api/inventory/scans', { method: 'POST', body: JSON.stringify({ barcode }) }),
-  changeCondition: (barcode: string, conditionState: 'damaged' | 'lost') => request<InventoryCopy>('/api/inventory/copies/condition', {
+  changeCondition: (barcode: string, conditionState: 'good' | 'fair' | 'for_repair' | 'damaged' | 'lost') => request<InventoryCopy>('/api/inventory/copies/condition', {
     method: 'PATCH', body: JSON.stringify({ barcode, condition_state: conditionState }),
   }),
+  changeAvailability: (barcode: string, availabilityStatus: 'available' | 'unavailable') => request<InventoryCopy>('/api/inventory/copies/availability', {
+    method: 'PATCH', body: JSON.stringify({ barcode, availability_status: availabilityStatus }),
+  }),
+  thesisSummary: () => request<ThesisInventorySummary>(thesisEndpoint('inventory/thesis/summary', '/summary')),
+  async thesisRows(filters: ThesisInventoryFilters) {
+    const query = thesisFilterQuery(filters)
+    const response = await fetch(thesisEndpoint(`inventory/thesis?${query}`, `?${query}`), { credentials: 'include', headers: headersFor('GET') })
+    const payload = await response.json() as { data?: ThesisInventoryRow[]; meta?: { pagination?: InventoryPagination }; message?: string; code?: string }
+    if (!response.ok || !payload.data || !payload.meta?.pagination) throw new InventoryApiError(payload.message ?? 'Unable to load thesis inventory.', payload.code ?? 'THESIS_INVENTORY_REQUEST_FAILED')
+    return { items: payload.data, pagination: payload.meta.pagination }
+  },
+  auditThesis: (barcode: string, conditionState: 'good' | 'fair' | 'for_repair' | 'damaged' | 'lost') => request<ThesisInventoryRow>(thesisEndpoint('inventory/thesis/audit', '/audit'), {
+    method: 'POST', body: JSON.stringify({ barcode, condition_state: conditionState }),
+  }),
+  changeThesisAvailability: (barcode: string, availabilityStatus: 'available' | 'unavailable') => request<ThesisInventoryRow>(thesisEndpoint('inventory/thesis/availability', '/availability'), {
+    method: 'PATCH', body: JSON.stringify({ barcode, availability_status: availabilityStatus }),
+  }),
+  downloadThesis,
   download,
 }

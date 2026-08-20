@@ -3,6 +3,8 @@ import { db } from '../../config/db.js'
 import { catalogManagementService } from './catalog-management.service.ts'
 import { parseCatalogSearchFilters, searchCatalog } from './catalog-search.repository.ts'
 import { catalogService } from './catalog.service.ts'
+import { visibleThesisInventoryRows } from '../inventory/thesis-inventory.service.ts'
+import { parseThesisInventoryFilters } from '../inventory/thesis-inventory.validation.ts'
 
 function asyncController(handler: (request: Request, response: Response) => Promise<unknown>) {
   return async (request: Request, response: Response, next: NextFunction) => {
@@ -18,6 +20,10 @@ export const catalogController = {
   search: asyncController(async (request, response) => {
     const filters = parseCatalogSearchFilters(request.query as Record<string, unknown>)
     response.json({ success: true, data: await searchCatalog(db, filters), filters })
+  }),
+  visibleResearchInventory: asyncController(async (request, response) => {
+    const filters = parseThesisInventoryFilters(request.query as Record<string, unknown>)
+    response.json({ success: true, data: await visibleThesisInventoryRows(filters) })
   }),
   categories: asyncController(async (_request, response) => {
     response.json({ success: true, data: await catalogManagementService.categories() })
@@ -59,4 +65,3 @@ export const catalogController = {
     response.json({ success: true, message: 'Research/thesis record deleted successfully.', data: await catalogManagementService.deleteTitle(request.params.titleId, 'Research/Thesis') })
   }),
 }
-

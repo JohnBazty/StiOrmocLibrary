@@ -8,6 +8,8 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   research_records: ['research_record_id', 'title_id', 'research_code', 'adviser_name'],
   physical_copies: ['physical_copy_id', 'title_id', 'barcode', 'accession_number', 'availability_status'],
   inventory_audit_events: ['inventory_audit_event_id', 'physical_copy_id', 'barcode_snapshot', 'event_type', 'created_at'],
+  research_inventory: ['research_inventory_id', 'title', 'authors', 'adviser', 'publication_year', 'accession_number', 'barcode', 'condition_state', 'availability_status', 'shelf_location'],
+  research_inventory_audit_events: ['research_inventory_audit_event_id', 'research_inventory_id', 'barcode_snapshot', 'event_type', 'created_at'],
   reservations: ['reservation_id', 'user_id', 'material_id', 'accession_id', 'reservation_status', 'reserved_at', 'pickup_deadline'],
   users: ['user_id', 'school_id', 'user_role', 'password_hash'],
   accounts: ['account_id', 'school_id', 'contact_number', 'password_hash', 'role', 'account_status'],

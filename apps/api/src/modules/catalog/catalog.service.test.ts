@@ -16,9 +16,11 @@ function fakePool() {
       if (sql.includes('SELECT physical_copy_id')) return [[]]
       if (sql.includes('SELECT title_id') && sql.includes('FROM titles')) return [[]]
       if (sql.includes('SELECT research_record_id')) return [[]]
+      if (sql.includes('SELECT research_inventory_id')) return [[]]
       if (sql.includes('INSERT INTO titles')) return [{ insertId: 101 }]
       if (sql.includes('INSERT INTO physical_copies')) return [{ insertId: 202 }]
       if (sql.includes('INSERT INTO research_records')) return [{ insertId: 303 }]
+      if (sql.includes('INSERT INTO research_inventory')) return [{ insertId: 404 }]
       return [{ insertId: 1 }]
     },
   }
@@ -39,16 +41,18 @@ test('creates a book and physical copy in one committed transaction', async () =
   assert.equal(state.released, 1)
 })
 
-test('creates a thesis title, authors, and research metadata transactionally', async () => {
+test('publishes catalog metadata and the independent thesis inventory row transactionally', async () => {
   const { state, database } = fakePool()
   const result = await createCatalogService(database).createThesisEntry({
     title: 'Smart Campus Library', author: 'Maria Santos', adviser: 'Dr. Ana Cruz', year: 2026,
     abstract: 'This research evaluates a secure smart campus library management platform.',
     researchCode: 'TH-BSIT-2026-009', department: 'BS Information Technology',
+    copy: { barcode: 'THESIS-BC-009', accessionNumber: 'THESIS-ACC-009', shelfLocation: 'Research A-1', conditionStatus: 'Good' },
   })
-  assert.deepEqual(result, { titleId: 101, researchRecordId: 303, physicalCopyId: null })
+  assert.deepEqual(result, { titleId: 101, researchRecordId: 303, researchInventoryId: 404 })
   assert.equal(state.committed, 1)
   assert.equal(state.rolledBack, 0)
+  assert.ok(state.statements.some((sql) => sql.includes('INSERT INTO research_inventory')))
 })
 
 test('returns the module 422 error before opening a transaction when mandatory fields are missing', async () => {
@@ -62,4 +66,3 @@ test('returns the module 422 error before opening a transaction when mandatory f
   })
   assert.equal(connectionRequested, false)
 })
-

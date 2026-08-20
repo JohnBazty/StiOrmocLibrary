@@ -190,7 +190,7 @@ One row represents one individually scannable book copy.
 | `barcode` | `VARCHAR(100)` | Required and globally unique |
 | `accession_number` | `VARCHAR(100) NULL` | Unique when present |
 | `shelf_location` | `VARCHAR(100)` | Required |
-| `condition_status` | `ENUM('New','Good','Fair','Damaged','For Repair','Lost')` | Required |
+| `condition_status` | `ENUM('Good','Fair','For Repair','Damaged','Lost')` | Required |
 | `availability_status` | `ENUM('Available','Borrowed','Reserved','Unavailable','Archived')` | Service-controlled state |
 | `acquired_at` | `DATE NULL` | Optional |
 | `last_scanned_at` | `DATETIME NULL` | Inventory audit tracking |
@@ -204,15 +204,15 @@ Indexes:
 - `(availability_status, condition_status)` for inventory filters/reports.
 - `shelf_location` and `last_scanned_at` indexes.
 
-`availability_status` is a synchronized cache. Its source rules are active borrowing/reservation records, lifecycle state, and condition:
+`availability_status` is independently controlled except for circulation/lifecycle locks and the Lost invariant:
 
 1. Active `Borrowed` or `Overdue` transaction -> `Borrowed`.
 2. Ready/active reservation holding the copy -> `Reserved`.
 3. Archived copy -> `Archived`.
-4. Damaged, For Repair, or Lost condition -> `Unavailable`.
-5. Otherwise -> `Available`.
+4. Lost condition -> forced `Unavailable`.
+5. Good, Fair, For Repair, or Damaged -> preserve the current manual availability.
 
-The client may not directly label an item Borrowed or Reserved. A librarian may restore `Available` or set `Unavailable` only when no active borrowing/reservation conflicts exist.
+The client may not directly label an item Borrowed or Reserved. A librarian may restore `Available` or set `Unavailable` only when no active borrowing/reservation conflicts exist. Changing a Lost copy to another condition does not automatically restore availability.
 
 ### 4.5 `research_theses`
 

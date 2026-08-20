@@ -5,6 +5,7 @@ import { requireCatalogManager } from './catalog.rbac.ts'
 export const catalogRouter = Router()
 
 catalogRouter.get('/search', catalogController.search)
+catalogRouter.get('/research-inventory', catalogController.visibleResearchInventory)
 catalogRouter.get('/admin/categories', requireCatalogManager, catalogController.categories)
 catalogRouter.get('/admin/copies', requireCatalogManager, catalogController.copies)
 catalogRouter.post('/registry/parse', requireCatalogManager, catalogController.parseRegistry)

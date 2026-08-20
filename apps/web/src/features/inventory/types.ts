@@ -34,3 +34,34 @@ export type InventoryFilters = {
   conditionState: string
   availabilityStatus: string
 }
+
+export type ThesisInventorySummary = {
+  total_thesis_materials: number
+  damaged_thesis_count: number
+  lost_thesis_count: number
+}
+
+export type ThesisInventoryFilters = {
+  page: number
+  limit: number
+  query: string
+  conditionState: string
+  availabilityStatus: string
+  publicationYear: string
+}
+
+export type ThesisInventoryRow = {
+  research_inventory_id: number
+  item_title: string
+  title: string
+  authors: string
+  adviser: string
+  publication_year: number
+  accession_number: string
+  barcode: string
+  condition_state: 'good' | 'fair' | 'for_repair' | 'damaged' | 'lost'
+  availability_status: 'available' | 'unavailable' | 'borrowed' | 'reserved'
+  shelf_location: string
+  last_audited_at: string | null
+  row_version: number
+}

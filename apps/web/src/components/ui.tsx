@@ -6,13 +6,12 @@ export function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ')
 }
 
-export function PageHeader({ eyebrow, title, description, action }: { eyebrow?: string; title: string; description: string; action?: ReactNode }) {
+export function PageHeader({ eyebrow, title, action }: { eyebrow?: string; title: string; description?: string; action?: ReactNode }) {
   return (
     <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
         {eyebrow ? <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#003399]">{eyebrow}</p> : null}
         <h1 className="font-display text-2xl font-bold tracking-tight text-[#003399] sm:text-3xl">{title}</h1>
-        <p className="mt-1 max-w-2xl text-sm leading-6 text-[#003399]/65">{description}</p>
       </div>
       {action}
     </div>
@@ -63,14 +62,13 @@ const statTones: Record<string, string> = {
   pink: 'bg-[#003399]/5 text-[#003399]', red: 'bg-[#FFF200] text-[#003399]', amber: 'bg-[#FFF200]/35 text-[#003399]',
 }
 
-export function StatCard({ label, value, note, icon: Icon, tone = 'emerald' }: { label: string; value: string | number; note?: string; icon: LucideIcon; tone?: string }) {
+export function StatCard({ label, value, icon: Icon, tone = 'emerald' }: { label: string; value: string | number; note?: string; icon: LucideIcon; tone?: string }) {
   return (
     <SectionCard className="p-4 sm:p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold text-[#003399]/65">{label}</p>
           <p className="mt-2 font-display text-2xl font-bold tracking-tight text-[#003399]">{value}</p>
-          {note ? <p className="mt-1 text-xs text-[#003399]/65">{note}</p> : null}
         </div>
         <div className={cn('rounded-xl p-2.5', statTones[tone] ?? statTones.emerald)}><Icon size={18} /></div>
       </div>
@@ -87,11 +85,11 @@ export function TableSearch({ placeholder = 'Search records...', value, onChange
   )
 }
 
-export function TableShell({ title, subtitle, controls, children }: { title: string; subtitle?: string; controls?: ReactNode; children: ReactNode }) {
+export function TableShell({ title, controls, children }: { title: string; subtitle?: string; controls?: ReactNode; children: ReactNode }) {
   return (
     <SectionCard className="overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-[#003399]/15 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <div><h2 className="font-display text-base font-bold text-[#003399]">{title}</h2>{subtitle ? <p className="mt-0.5 text-xs text-[#003399]/65">{subtitle}</p> : null}</div>
+        <h2 className="font-display text-base font-bold text-[#003399]">{title}</h2>
         {controls}
       </div>
       <div className="overflow-x-auto">{children}</div>

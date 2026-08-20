@@ -56,7 +56,7 @@ export function AdminLoginPage() {
         <section className="overflow-hidden rounded-[2rem] bg-[#FFFFFF] shadow-2xl shadow-[#003399]">
           <header className="bg-[#FFF200] px-7 py-6 text-[#003399]"><div className="flex items-center gap-3"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#003399] text-[#FFFFFF]"><LibraryBig /></span><div><p className="font-display text-lg font-black">STI ORMOC</p><p className="text-[10px] font-black uppercase tracking-[.18em]">Smart Library Administration</p></div></div></header>
           <div className="p-7 sm:p-9">
-            <p className="text-xs font-black uppercase tracking-[.2em] text-[#003399]/50">Authorized personnel only</p><h1 className="mt-2 font-display text-3xl font-black tracking-tight text-[#003399]">Administration Portal</h1><p className="mt-3 text-sm leading-6 text-[#003399]/65">Sign in with a registered System Administrator account to manage SmartLib.</p>
+            <p className="text-xs font-black uppercase tracking-[.2em] text-[#003399]/50">Authorized personnel only</p><h1 className="mt-2 font-display text-3xl font-black tracking-tight text-[#003399]">Administration Portal</h1>
             {message ? <div role="alert" className="mt-5 rounded-xl border border-[#003399] bg-[#FFF200] px-4 py-3 text-sm font-bold text-[#003399]">{message}</div> : null}
             <form onSubmit={submit} className="mt-7 space-y-5" noValidate>
               <label className="block"><span className="text-sm font-bold text-[#003399]">Administrator School ID</span><span className="relative mt-2 block"><IdCard className="absolute left-4 top-1/2 -translate-y-1/2 text-[#003399]/45" size={18} /><input autoFocus autoComplete="username" value={schoolId} onChange={(event) => setSchoolId(event.target.value)} placeholder="Enter administrator ID" className="h-13 w-full rounded-xl border border-[#003399]/20 bg-[#FFFFFF] pl-12 pr-4 text-sm uppercase text-[#003399] outline-none placeholder:normal-case placeholder:text-[#003399]/40 focus:border-[#003399] focus:ring-4 focus:ring-[#003399]/10" /></span>{errors.school_id ? <span className="mt-2 block text-xs font-bold text-[#003399]">{errors.school_id}</span> : null}</label>
@@ -64,7 +64,6 @@ export function AdminLoginPage() {
               <label className="flex cursor-pointer items-center gap-3 text-sm font-semibold text-[#003399]/65"><input type="checkbox" checked={showPassword} onChange={(event) => setShowPassword(event.target.checked)} className="h-4 w-4 accent-[#003399]" />Show password</label>
               <button disabled={busy} className="flex h-13 w-full items-center justify-center rounded-xl bg-[#003399] text-sm font-black uppercase tracking-[.12em] text-[#FFFFFF] shadow-lg shadow-[#003399]/20 transition hover:ring-4 hover:ring-[#FFF200] disabled:cursor-wait disabled:opacity-60">{busy ? 'Verifying administrator…' : 'Open Administration Portal'}</button>
             </form>
-            <p className="mt-6 border-t border-[#003399]/10 pt-5 text-center text-xs leading-5 text-[#003399]/55">Login attempts are role-checked by the server. Student, Faculty, and Librarian accounts cannot enter this portal.</p>
           </div>
         </section>
       </div>

@@ -3,7 +3,7 @@ const PERSON_NAME_MAX_LENGTH = 255
 const ABSTRACT_MAX_LENGTH = 50_000
 const CURRENT_YEAR = new Date().getFullYear()
 
-const COPY_CONDITIONS = new Set(['New', 'Good', 'Fair', 'Damaged', 'For Repair', 'Lost'])
+const COPY_CONDITIONS = new Set(['Good', 'Fair', 'For Repair', 'Damaged', 'Lost'])
 
 type ValidationErrors = Record<string, string>
 
@@ -40,6 +40,8 @@ export type ThesisMetadataInput = {
   keywords: string | null
   copy: PhysicalCopyInput | null
 }
+
+export type ThesisEntryInput = Omit<ThesisMetadataInput, 'copy'> & { copy: PhysicalCopyInput }
 
 export type ValidationResult<T> = {
   isValid: boolean
@@ -138,7 +140,7 @@ function validateCopyInput(value: unknown, required: boolean): { data: PhysicalC
   else if (shelfLocation.length > 100) errors.shelfLocation = 'Shelf location must not exceed 100 characters.'
 
   if (!COPY_CONDITIONS.has(conditionStatus)) {
-    errors.conditionStatus = 'Condition must be New, Good, Fair, Damaged, For Repair, or Lost.'
+    errors.conditionStatus = 'Condition must be Good, Fair, For Repair, Damaged, or Lost.'
   }
 
   const data = { barcode, accessionNumber, shelfLocation, conditionStatus, legacyMaterialId }
@@ -260,5 +262,23 @@ export function validateThesisMetadata(body: unknown): ValidationResult<ThesisMe
       keywords,
       copy: copyResult.data,
     },
+  }
+}
+
+/**
+ * Publishing a thesis creates both its catalog metadata and its independently
+ * accessioned research-inventory row. Metadata updates can remain copy-neutral,
+ * but a new publication must provide the physical ledger fields.
+ */
+export function validateThesisEntry(body: unknown): ValidationResult<ThesisEntryInput> {
+  const input = body && typeof body === 'object' ? body as Record<string, unknown> : {}
+  const result = validateThesisMetadata(input)
+  const copyResult = validateCopyInput(input.copy ?? input, true)
+  const errors = { ...result.errors, ...copyResult.errors }
+
+  return {
+    isValid: Object.keys(errors).length === 0,
+    errors,
+    data: { ...result.data, copy: copyResult.data as PhysicalCopyInput },
   }
 }

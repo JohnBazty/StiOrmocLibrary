@@ -9,17 +9,21 @@ import {
 } from './physical-copy-mutation.middleware.ts'
 import { archivePhysicalCopy, deletePhysicalCopy, updatePhysicalCopy } from './physical-copy.service.ts'
 import { requireCatalogManager } from '../catalog/catalog.rbac.ts'
-import { changeCondition, exportCsv, exportPdf, getCopies, getSummary, scanBarcode } from './inventory.controller.ts'
+import { changeAvailability, changeCondition, exportCsv, exportPdf, getCopies, getSummary, scanBarcode } from './inventory.controller.ts'
+import { validateAvailabilityMutation, validateConditionMutation } from './inventory.validation.ts'
+import { thesisInventoryRouter } from './thesis-inventory.routes.ts'
 
 export const inventoryRouter = Router()
 inventoryRouter.get('/', requireCatalogManager, getCopies)
 inventoryRouter.get('/summary', requireCatalogManager, getSummary)
 inventoryRouter.get('/copies', requireCatalogManager, getCopies)
 inventoryRouter.post('/scans', requireCatalogManager, scanBarcode)
-inventoryRouter.patch('/copies/condition', requireCatalogManager, changeCondition)
+inventoryRouter.patch('/copies/condition', requireCatalogManager, validateConditionMutation, changeCondition)
+inventoryRouter.patch('/copies/availability', requireCatalogManager, validateAvailabilityMutation, changeAvailability)
 inventoryRouter.get('/export.csv', requireCatalogManager, exportCsv)
 inventoryRouter.get('/export.pdf', requireCatalogManager, exportPdf)
 inventoryRouter.get('/supplies', (_request, response) => ok(response, supplies))
+inventoryRouter.use('/thesis', thesisInventoryRouter)
 
 inventoryRouter.patch('/copies/:copyId', requireCatalogManager, async (request, response, next) => {
   try {

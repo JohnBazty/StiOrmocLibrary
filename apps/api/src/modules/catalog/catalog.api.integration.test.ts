@@ -44,4 +44,6 @@ test('thesis endpoint returns 422 field validation for a Librarian request with 
   assert.equal(response.body.code, 'CATALOG_VALIDATION_FAILED')
   assert.ok(response.body.details.errors.adviser)
   assert.ok(response.body.details.errors.abstract)
+  assert.ok(response.body.details.errors.barcode)
+  assert.ok(response.body.details.errors.accessionNumber)
 })
