@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Create an STI Ormoc Smart Library account">
+    <title>Create Account | STI Ormoc Smart Library</title>
+    <link rel="stylesheet" href="/assets/auth.css">
+    <script src="/assets/register.js" defer></script>
+  </head>
+  <body class="login-page register-page">
+    <main class="login-shell register-shell">
+      <section class="brand-panel" aria-labelledby="system-name">
+        <div class="brand-mark" aria-hidden="true">STI</div>
+        <p class="eyebrow">STI College Ormoc</p>
+        <h1 id="system-name">Join the Smart<br>Library Community</h1>
+        <p class="brand-copy">Create your verified institutional account to access catalog resources, reservations, attendance, and printing services.</p>
+        <div class="security-note">
+          <span class="security-icon" aria-hidden="true">✓</span>
+          <span>Secure institutional registration</span>
+        </div>
+      </section>
+
+      <section class="form-panel register-form-panel" aria-labelledby="register-title">
+        <div class="form-heading">
+          <p class="eyebrow">New library account</p>
+          <h2 id="register-title">Create your account</h2>
+          <p>Register using your official STI school email.</p>
+        </div>
+
+        <div id="status-alert" class="alert" role="status" aria-live="polite" hidden></div>
+
+        <form id="register-form" novalidate>
+          <div class="field-group">
+            <label for="full-name">Full Name</label>
+            <input id="full-name" name="fullName" type="text" autocomplete="name" maxlength="150" placeholder="Enter your complete name" aria-describedby="full-name-error" required>
+            <p id="full-name-error" class="field-error" aria-live="polite"></p>
+          </div>
+
+          <div class="field-group">
+            <label for="email">School Email Address</label>
+            <input id="email" name="email" type="email" inputmode="email" autocomplete="email" maxlength="191" placeholder="Enter your STI institutional email" aria-describedby="email-error email-help" required>
+            <p id="email-help" class="field-help">Accepted domains: @ormoc.sti.edu.ph and @sti.edu</p>
+            <p id="email-error" class="field-error" aria-live="polite"></p>
+          </div>
+
+          <div class="field-group">
+            <label for="role">Account Role</label>
+            <select id="role" name="role" aria-describedby="role-error role-help" required>
+              <option value="">Select your role</option>
+              <option value="Student">Student</option>
+              <option value="Faculty">Faculty</option>
+              <option value="Librarian">Librarian</option>
+            </select>
+            <p id="role-help" class="field-help">Librarian registration requires System Administrator approval.</p>
+            <p id="role-error" class="field-error" aria-live="polite"></p>
+          </div>
+
+          <div class="field-group">
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="new-password" minlength="6" maxlength="72" placeholder="Create at least 6 characters" aria-describedby="password-error password-help" required>
+            <p id="password-help" class="field-help">Use 6–72 characters. A longer unique passphrase is recommended.</p>
+            <p id="password-error" class="field-error" aria-live="polite"></p>
+          </div>
+
+          <label class="password-toggle" for="show-password">
+            <input id="show-password" type="checkbox">
+            <span class="checkmark" aria-hidden="true"></span>
+            <span>Show password</span>
+          </label>
+
+          <button id="submit-button" class="primary-button" type="submit" disabled>
+            <span>Create Account</span>
+            <span aria-hidden="true">→</span>
+          </button>
+        </form>
+
+        <p class="auth-switch">Already registered? <a href="/login">Sign In Here</a></p>
+      </section>
+    </main>
+    <footer>Institutional accounts only · Passwords are securely hashed</footer>
+  </body>
+</html>
+

@@ -1,0 +1,20 @@
+{
+  "name": "sti-ormoc-smart-library",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n WEB,API -c cyan,green \"npm run dev -w @sti-library/web\" \"npm run dev -w @sti-library/api\"",
+    "dev:web": "npm run dev -w @sti-library/web",
+    "dev:api": "npm run dev -w @sti-library/api",
+    "build": "npm run build -w @sti-library/api && npm run build -w @sti-library/web",
+    "test": "npm test -w @sti-library/api && npm test -w @sti-library/web",
+    "typecheck": "npm run typecheck -w @sti-library/api && npm run typecheck -w @sti-library/web"
+  },
+  "devDependencies": {
+    "concurrently": "latest",
+    "jsdom": "^26.1.0"
+  }
+}

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Secure sign in for the STI Ormoc Smart Library Management System">
+    <title>Sign In | STI Ormoc Smart Library</title>
+    <link rel="stylesheet" href="/assets/auth.css">
+    <script src="/assets/login.js" defer></script>
+  </head>
+  <body class="login-page">
+    <main class="login-shell">
+      <section class="brand-panel" aria-labelledby="system-name">
+        <div class="brand-mark" aria-hidden="true">STI</div>
+        <p class="eyebrow">STI College Ormoc</p>
+        <h1 id="system-name">Smart Library<br>Management System</h1>
+        <p class="brand-copy">One secure campus portal for library resources, borrowing, research, attendance, and printing services.</p>
+        <div class="security-note">
+          <span class="security-icon" aria-hidden="true">✓</span>
+          <span>Institutional accounts only</span>
+        </div>
+      </section>
+
+      <section class="form-panel" aria-labelledby="login-title">
+        <div class="form-heading">
+          <p class="eyebrow">Welcome back</p>
+          <h2 id="login-title">Sign in to your library</h2>
+          <p>Use your official STI Ormoc school account.</p>
+        </div>
+
+        <div id="status-alert" class="alert" role="status" aria-live="polite" hidden></div>
+
+        <form id="login-form" novalidate>
+          <div class="field-group">
+            <label for="email">School Email Address</label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              inputmode="email"
+              autocomplete="username"
+              maxlength="191"
+              placeholder="Enter your STI institutional email"
+              aria-describedby="email-error"
+              required
+            >
+            <p id="email-error" class="field-error" aria-live="polite"></p>
+          </div>
+
+          <div class="field-group">
+            <label for="password">Password</label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              maxlength="72"
+              placeholder="Enter your password"
+              aria-describedby="password-error"
+              required
+            >
+            <p id="password-error" class="field-error" aria-live="polite"></p>
+          </div>
+
+          <label class="password-toggle" for="show-password">
+            <input id="show-password" type="checkbox">
+            <span class="checkmark" aria-hidden="true"></span>
+            <span>Show password</span>
+          </label>
+
+          <button id="submit-button" class="primary-button" type="submit" disabled>
+            <span>Secure Sign In</span>
+            <span aria-hidden="true">→</span>
+          </button>
+        </form>
+
+        <p class="auth-switch">Need an account? <a href="/register">Create Account</a></p>
+        <p class="support-copy">Account issues? Coordinate with the campus librarian.</p>
+      </section>
+    </main>
+    <footer>Authorized access only · Session protected by a 30-minute inactivity timeout</footer>
+  </body>
+</html>

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administration | STI Ormoc Smart Library</title>
+    <link rel="stylesheet" href="/assets/auth.css">
+    <script src="/assets/dashboard.js" defer></script>
+  </head>
+  <body class="dashboard-page" data-dashboard="admin">
+    <header class="dashboard-header">
+      <a class="dashboard-brand" href="/admin/dashboard"><span>STI</span> Smart Library</a>
+      <form class="logout-form" action="/auth/logout" method="post">
+        <input class="csrf-field" type="hidden" name="_csrf" value="">
+        <button type="submit">Sign out</button>
+      </form>
+    </header>
+    <main class="dashboard-main">
+      <p class="eyebrow">Administration workspace</p>
+      <h1>Welcome, <span data-user-name>Library Staff</span></h1>
+      <p class="dashboard-role" data-user-role>Authorized staff</p>
+      <section class="dashboard-card">
+        <h2>Secure session active</h2>
+        <p>Your account passed institutional email, password, active-state, and role verification.</p>
+        <p>Your administration modules can now be connected behind this protected route.</p>
+      </section>
+    </main>
+  </body>
+</html>

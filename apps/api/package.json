@@ -1,0 +1,41 @@
+{
+  "name": "@sti-library/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test src/core/*.test.ts src/modules/auth/*.test.js src/modules/auth/*.test.ts src/modules/catalog/*.test.ts src/modules/catalog/categories/*.test.ts src/modules/inventory/*.test.ts src/modules/reports/*.test.ts src/modules/reservations/*.test.ts",
+    "auth:create-user": "node scripts/create-auth-user.js",
+    "db:schema": "node scripts/run-schema.js",
+    "db:migrate": "node scripts/run-migration.js",
+    "db:migrate:auth": "node scripts/run-migration.js 20260816_005_jwt_role_authentication.sql",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cors": "latest",
+    "dotenv": "^17.4.2",
+    "express": "latest",
+    "express-rate-limit": "^8.6.2",
+    "express-session": "^1.19.0",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.23.3",
+    "pdfkit": "^0.19.1"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/cors": "latest",
+    "@types/express": "latest",
+    "@types/express-session": "^1.19.0",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "latest",
+    "@types/pdfkit": "^0.17.6",
+    "@types/supertest": "^7.2.1",
+    "supertest": "^7.2.2",
+    "typescript": "latest"
+  }
+}
