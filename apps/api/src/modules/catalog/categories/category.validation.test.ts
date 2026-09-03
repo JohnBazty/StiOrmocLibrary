@@ -8,10 +8,17 @@ test('trims valid category names and physical shelf layouts', () => {
   assert.deepEqual(result.data, { categoryName: 'Computer Science', shelfLocation: 'Shelf A-1' })
 })
 
-test('rejects non-string names and malformed shelf locations', () => {
-  const result = validateCategoryPayload({ categoryName: 123, shelfLocation: 'Room@Back' })
-  assert.equal(result.isValid, false)
-  assert.match(result.errors.categoryName, /string/i)
-  assert.match(result.errors.shelfLocation, /Shelf A-1/i)
+test('accepts versatile administrator-defined location text', () => {
+  for (const shelfLocation of ['Aisle 3', 'Cabinet 4-B', 'Room@Back', 'Research Area West']) {
+    const result = validateCategoryPayload({ categoryName: 'Computer Science', shelfLocation })
+    assert.equal(result.isValid, true)
+    assert.equal(result.data.shelfLocation, shelfLocation)
+  }
 })
 
+test('rejects non-string names and empty shelf locations', () => {
+  const result = validateCategoryPayload({ categoryName: 123, shelfLocation: '   ' })
+  assert.equal(result.isValid, false)
+  assert.match(result.errors.categoryName, /string/i)
+  assert.match(result.errors.shelfLocation, /required/i)
+})

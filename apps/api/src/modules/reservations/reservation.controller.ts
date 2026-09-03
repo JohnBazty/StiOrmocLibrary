@@ -18,11 +18,21 @@ export function createReservationController(service: Service = reservationServic
       const result = await service.create(authenticatedUser(request, response)?.id, request.body)
       response.status(201).json({ success: true, message: 'Reservation request submitted successfully.', data: result })
     }),
+    createForAccount: asyncController(async (request, response) => {
+      const result = await service.createForAccount(authenticatedUser(request, response)?.id, request.body)
+      response.status(201).json({ success: true, message: 'Reservation request submitted successfully.', data: result })
+    }),
+    listForAccount: asyncController(async (request, response) => {
+      response.json({ success: true, data: await service.listForAccount(authenticatedUser(request, response)?.id) })
+    }),
     queue: asyncController(async (request, response) => {
       response.json({ success: true, data: await service.queue(request.query as Record<string, unknown>) })
     }),
     adjustStatus: asyncController(async (request, response) => {
       response.json({ success: true, message: 'Reservation status updated successfully.', data: await service.adjustStatus(authenticatedUser(request, response)?.id, request.params.reservationId, request.body) })
+    }),
+    cancelForAccount: asyncController(async (request, response) => {
+      response.json({ success: true, message: 'Reservation cancelled and queue realigned.', data: await service.cancelForAccount(authenticatedUser(request, response)?.id, request.params.reservationId) })
     }),
   }
 }

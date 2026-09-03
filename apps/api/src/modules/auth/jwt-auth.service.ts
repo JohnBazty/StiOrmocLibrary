@@ -92,6 +92,20 @@ export function createJwtAuthService(database: Pool = db, passwordHasher = bcryp
           [validation.schoolId, validation.contactNumber, passwordHash],
         )
         const accountId = Number(accountResult.insertId)
+        const fullName = `${validation.firstName} ${validation.lastName}`.trim()
+        const [userResult] = await connection.execute<ResultSetHeader>(
+          `INSERT INTO users
+             (role_id, user_role, institutional_id, school_id, full_name, email,
+              password_hash, educational_level, course_or_strand, account_status)
+           SELECT role_id, 'Student', ?, ?, ?, ?, ?, 'College', ?, 'Active'
+             FROM roles WHERE role_name = 'Student' LIMIT 1`,
+          [validation.schoolId, validation.schoolId, fullName,
+            `account.${accountId}@ormoc.sti.edu.ph`, passwordHash, validation.programStrand],
+        )
+        await connection.execute<ResultSetHeader>(
+          'UPDATE accounts SET user_id = ?, updated_at = NOW() WHERE account_id = ?',
+          [userResult.insertId, accountId],
+        )
         await connection.execute<ResultSetHeader>(
           `INSERT INTO student_profiles
              (account_id, first_name, last_name, program_strand, year_grade_level)

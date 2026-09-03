@@ -17,15 +17,17 @@ export function buildReservationQueueQuery(filters: QueueFilters) {
     INNER JOIN users u ON u.user_id = r.user_id
     INNER JOIN roles ro ON ro.role_id = u.role_id
     INNER JOIN materials m ON m.material_id = r.material_id
+    LEFT JOIN titles t ON t.title_id = r.book_title_id
     LEFT JOIN categories c ON c.category_id = m.category_id
     LEFT JOIN materials assigned ON assigned.material_id = r.accession_id
-    LEFT JOIN physical_copies pc ON pc.material_id = r.accession_id`
+    LEFT JOIN physical_copies pc ON pc.physical_copy_id = r.assigned_physical_copy_id
+      OR (r.assigned_physical_copy_id IS NULL AND pc.material_id = r.accession_id)`
   const whereSql = `WHERE ${where.join(' AND ')}`
   const safeLimit = Math.min(Math.max(Math.trunc(filters.limit), 1), 100)
   const safeOffset = Math.max((Math.trunc(filters.page) - 1) * safeLimit, 0)
   return {
     dataSql: `SELECT r.reservation_id, r.user_id, u.full_name, u.institutional_id, u.email,
-       ro.role_name, r.material_id, m.title, m.material_type, c.category_name,
+       ro.role_name, r.material_id, r.book_title_id, COALESCE(t.title, m.title) AS title, m.material_type, c.category_name,
        r.accession_id, COALESCE(pc.accession_number, assigned.barcode) AS accession_number,
        assigned.barcode, r.queue_position, r.reservation_status, r.reserved_at,
        r.pickup_deadline, r.created_at, r.updated_at
@@ -47,7 +49,8 @@ export async function queryReservationQueue(database: Pool, filters: QueueFilter
   const items = rows.map((row) => ({
     reservationId: Number(row.reservation_id), userId: Number(row.user_id), userName: row.full_name,
     institutionalId: row.institutional_id, email: row.email, userRole: row.role_name,
-    materialId: Number(row.material_id), materialTitle: row.title, materialType: row.material_type,
+    materialId: Number(row.material_id), bookTitleId: row.book_title_id ? Number(row.book_title_id) : null,
+    materialTitle: row.title, materialType: row.material_type,
     categoryName: row.category_name, accessionId: row.accession_id ? Number(row.accession_id) : null,
     accessionNumber: row.accession_number, barcode: row.barcode, queuePosition: Number(row.queue_position),
     status: row.reservation_status, reservedAt: row.reserved_at, pickupDeadline: row.pickup_deadline,

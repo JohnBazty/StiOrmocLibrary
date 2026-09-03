@@ -11,3 +11,21 @@ export function createReservationsRouter(controller: Controller = reservationCon
   return router
 }
 export const reservationsRouter = createReservationsRouter()
+
+export function createUserReservationsV1Router(controller: Controller = reservationController) {
+  const router = Router()
+  router.get('/', controller.listForAccount)
+  router.post('/request', controller.createForAccount)
+  router.put('/:reservationId/cancel', controller.cancelForAccount)
+  return router
+}
+
+export function createAdminReservationsV1Router(controller: Controller = reservationController) {
+  const router = Router()
+  router.get('/', controller.queue)
+  router.patch('/:reservationId/status', controller.adjustStatus)
+  return router
+}
+
+export const userReservationsV1Router = createUserReservationsV1Router()
+export const adminReservationsV1Router = createAdminReservationsV1Router()

@@ -65,3 +65,11 @@ export type ThesisInventoryRow = {
   last_audited_at: string | null
   row_version: number
 }
+
+export type InventoryRemovalTarget = {
+  kind: 'book' | 'thesis'
+  id: number
+  item_title: string
+  accession_number: string
+  barcode: string
+}

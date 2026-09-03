@@ -12,7 +12,7 @@ function asyncController(handler: (request: Request, response: Response) => Prom
 export function createCategoryController(service: CategoryService = categoryService) {
   return {
     list: asyncController(async (_request, response) => {
-      response.set('Cache-Control', 'private, max-age=30')
+      response.set('Cache-Control', 'private, no-store')
       response.json({ success: true, data: await service.list() })
     }),
     create: asyncController(async (request, response) => {
@@ -31,4 +31,3 @@ export function createCategoryController(service: CategoryService = categoryServ
 }
 
 export const categoryController = createCategoryController()
-

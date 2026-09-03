@@ -12,6 +12,7 @@ export type LockedThesisInventory = RowDataPacket & {
   barcode: string
   condition_state: ThesisCondition
   availability_status: 'available' | 'unavailable' | 'borrowed' | 'reserved'
+  lifecycle_status: 'Active' | 'Archived'
   shelf_location: string
 }
 
@@ -38,7 +39,8 @@ export async function getThesisInventorySummary(database: Pool) {
     SELECT COUNT(DISTINCT title) AS total_thesis_materials,
            COALESCE(SUM(CASE WHEN condition_state = 'damaged' THEN 1 ELSE 0 END), 0) AS damaged_thesis_count,
            COALESCE(SUM(CASE WHEN condition_state = 'lost' THEN 1 ELSE 0 END), 0) AS lost_thesis_count
-      FROM research_inventory`)
+      FROM research_inventory
+     WHERE lifecycle_status = 'Active'`)
   const row = rows[0] ?? {}
   return {
     total_thesis_materials: Number(row.total_thesis_materials ?? 0),
@@ -48,7 +50,7 @@ export async function getThesisInventorySummary(database: Pool) {
 }
 
 function thesisWhere(filters: ThesisInventoryFilters) {
-  const where: string[] = []
+  const where: string[] = ["lifecycle_status = 'Active'"]
   const parameters: Array<string | number> = []
   if (filters.conditionState) { where.push('condition_state = ?'); parameters.push(filters.conditionState) }
   if (filters.availabilityStatus) { where.push('availability_status = ?'); parameters.push(filters.availabilityStatus) }
@@ -67,7 +69,7 @@ export async function listThesisInventory(database: Pool, filters: ThesisInvento
   const [[rows], [countRows]] = await Promise.all([
     database.execute<RowDataPacket[]>(`
       SELECT research_inventory_id, title, authors, adviser, publication_year, accession_number,
-             barcode, condition_state, availability_status, shelf_location, last_audited_at, row_version
+             barcode, condition_state, availability_status, lifecycle_status, shelf_location, last_audited_at, row_version
         FROM research_inventory ${where.sql}
        ORDER BY title ASC, research_inventory_id ASC
        LIMIT ${filters.limit} OFFSET ${offset}`, where.parameters),
@@ -83,8 +85,16 @@ export async function listThesisInventory(database: Pool, filters: ThesisInvento
 export async function lockThesisInventory(connection: PoolConnection, barcode: string) {
   const [rows] = await connection.execute<LockedThesisInventory[]>(`
     SELECT research_inventory_id, title, authors, adviser, publication_year, accession_number,
-           barcode, condition_state, availability_status, shelf_location
+           barcode, condition_state, availability_status, lifecycle_status, shelf_location
       FROM research_inventory WHERE barcode = ? LIMIT 1 FOR UPDATE`, [barcode])
+  return rows[0] ?? null
+}
+
+export async function lockThesisInventoryById(connection: PoolConnection, researchInventoryId: number) {
+  const [rows] = await connection.execute<LockedThesisInventory[]>(`
+    SELECT research_inventory_id, title, authors, adviser, publication_year, accession_number,
+           barcode, condition_state, availability_status, lifecycle_status, shelf_location
+      FROM research_inventory WHERE research_inventory_id = ? LIMIT 1 FOR UPDATE`, [researchInventoryId])
   return rows[0] ?? null
 }
 
@@ -139,18 +149,19 @@ export async function findActiveThesisReservation(connection: PoolConnection, ma
 export async function recordThesisInventoryAudit(
   connection: PoolConnection,
   thesis: LockedThesisInventory,
-  eventType: 'verified' | 'condition_changed' | 'availability_changed' | 'lost_override',
+  eventType: 'verified' | 'condition_changed' | 'availability_changed' | 'lost_override' | 'archived' | 'deleted',
   actor: InventoryActor,
   nextCondition: ThesisCondition = thesis.condition_state,
   nextAvailability: ThesisAvailability | 'borrowed' | 'reserved' = thesis.availability_status,
+  actionReason: string | null = null,
 ) {
   await connection.execute(`
     INSERT INTO research_inventory_audit_events
       (research_inventory_id, barcode_snapshot, event_type, previous_condition, new_condition,
-       previous_availability, new_availability, performed_by_id, performed_by_label)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+       previous_availability, new_availability, action_reason, performed_by_id, performed_by_label)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
     thesis.research_inventory_id, thesis.barcode, eventType, thesis.condition_state, nextCondition,
-    thesis.availability_status, nextAvailability, actor.userId, actor.label,
+    thesis.availability_status, nextAvailability, actionReason, actor.userId, actor.label,
   ])
 }
 
@@ -160,9 +171,9 @@ export async function* iterateThesisInventoryRows(database: Pool, batchSize = 25
   for (;;) {
     const [rows] = await database.execute<RowDataPacket[]>(`
       SELECT research_inventory_id, title, authors, adviser, publication_year, accession_number,
-             barcode, condition_state, availability_status, shelf_location, last_audited_at
+             barcode, condition_state, availability_status, lifecycle_status, shelf_location, last_audited_at
         FROM research_inventory
-       WHERE research_inventory_id > ?
+       WHERE lifecycle_status = 'Active' AND research_inventory_id > ?
        ORDER BY research_inventory_id ASC LIMIT ${safeBatchSize}`, [cursor])
     if (!rows.length) break
     for (const row of rows) yield thesisInventoryDto(row)

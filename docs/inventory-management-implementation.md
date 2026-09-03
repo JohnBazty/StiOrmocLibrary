@@ -51,12 +51,16 @@ All endpoints require an authenticated System Administrator/Admin or Librarian. 
 | `POST` | `/api/inventory/scans` | Verify a barcode and append a `Verified` event |
 | `PATCH` | `/api/inventory/copies/condition` | Audit `good`, `fair`, `for_repair`, `damaged`, or `lost` |
 | `PATCH` | `/api/inventory/copies/availability` | Manually set an idle copy `available` or `unavailable` |
+| `DELETE` | `/api/inventory/copies/:copyId` | Delete a never-used physical copy; history requires archive fallback |
+| `POST` | `/api/inventory/copies/:copyId/archive` | Archive an idle physical copy with a required reason |
 | `GET` | `/api/inventory/export.csv` | Stream physical-copy CSV |
 | `GET` | `/api/inventory/export.pdf` | Stream branded physical-copy PDF |
 | `GET` | `/api/v1/admin/inventory/thesis/summary` | Independent thesis totals, damaged, and lost metrics |
 | `GET` | `/api/v1/admin/inventory/thesis` | Paginated physically bound thesis register |
 | `POST` | `/api/v1/admin/inventory/thesis/audit` | Audit a thesis condition with an open-loan lock |
 | `PATCH` | `/api/v1/admin/inventory/thesis/availability` | Manually toggle idle thesis availability |
+| `DELETE` | `/api/v1/admin/inventory/thesis/:researchInventoryId` | Delete a never-used bound paper; history requires archive fallback |
+| `POST` | `/api/v1/admin/inventory/thesis/:researchInventoryId/archive` | Archive an idle bound paper with a required reason |
 | `GET` | `/api/v1/admin/reports/thesis/csv` | Stream a thesis-only CSV |
 | `GET` | `/api/v1/admin/reports/thesis/pdf` | Stream a branded thesis-only PDF |
 | `GET` | `/api/catalog/research-inventory` | Student-safe bound-paper search; returns only `available` rows |

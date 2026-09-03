@@ -12,6 +12,7 @@ import { requireCatalogManager } from '../catalog/catalog.rbac.ts'
 import { changeAvailability, changeCondition, exportCsv, exportPdf, getCopies, getSummary, scanBarcode } from './inventory.controller.ts'
 import { validateAvailabilityMutation, validateConditionMutation } from './inventory.validation.ts'
 import { thesisInventoryRouter } from './thesis-inventory.routes.ts'
+import { inventoryActor } from './inventory-actor.ts'
 
 export const inventoryRouter = Router()
 inventoryRouter.get('/', requireCatalogManager, getCopies)
@@ -39,7 +40,7 @@ inventoryRouter.post(
   async (request: Request, response: Response, next: NextFunction) => {
     const transaction = getPhysicalCopyMutationTransaction(response)
     try {
-      const result = await archivePhysicalCopy(transaction, request.body?.reason)
+      const result = await archivePhysicalCopy(transaction, request.body?.reason, inventoryActor(request, response))
       await commitPhysicalCopyMutation(transaction)
       return response.json({ success: true, message: 'Physical copy archived successfully.', data: result })
     } catch (error) {
@@ -56,7 +57,7 @@ inventoryRouter.delete(
   async (_request: Request, response: Response, next: NextFunction) => {
     const transaction = getPhysicalCopyMutationTransaction(response)
     try {
-      const result = await deletePhysicalCopy(transaction)
+      const result = await deletePhysicalCopy(transaction, inventoryActor(_request, response))
       await commitPhysicalCopyMutation(transaction)
       return response.json({ success: true, message: 'Physical copy deleted successfully.', data: result })
     } catch (error) {

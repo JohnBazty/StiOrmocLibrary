@@ -1,16 +1,51 @@
-import { Router } from 'express'
-import { printRequests } from '../../data/mock-data.ts'
-import { ok } from '../../core/http.ts'
+import { Router,type NextFunction,type Request,type Response } from 'express'
+import multer from 'multer'
+import { HttpError } from '../../core/http-error.ts'
+import { printingController } from './printing.controller.ts'
 
-export const printingRouter = Router()
-printingRouter.get('/', (_request, response) => ok(response, printRequests))
-printingRouter.post('/', (request, response) => {
-  const mockRequest = {
-    id: `PR-${2042 + printRequests.length}`,
-    ...request.body,
-    status: 'pending',
-    createdAt: new Date().toISOString(),
-  }
-  response.status(201)
-  return ok(response, mockRequest, 'Mock print request created')
-})
+const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:10*1024*1024,files:1},fileFilter:(_request,file,done)=>{const allowed=['application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document'];if(!allowed.includes(file.mimetype)){done(new HttpError(422,'PRINT_FILE_INVALID','Only PDF and DOCX documents are allowed.'));return}done(null,true)}})
+const documentUpload=(request:Request,response:Response,next:NextFunction)=>upload.single('document')(request,response,(error)=>{if((error as {code?:string}|undefined)?.code==='LIMIT_FILE_SIZE')return next(new HttpError(422,'PRINT_FILE_TOO_LARGE','The document must not exceed 10 MB.'));return error?next(error):next()})
+
+export const userPrintingV1Router=Router()
+userPrintingV1Router.get('/service-status',printingController.serviceStatus)
+userPrintingV1Router.get('/printers/availability',printingController.availability)
+userPrintingV1Router.get('/pricing',printingController.pricing)
+userPrintingV1Router.get('/requests',printingController.mine)
+userPrintingV1Router.post('/requests',documentUpload,printingController.submit)
+userPrintingV1Router.put('/requests/:id/cancel',printingController.cancel)
+
+export const adminPrintingV1Router=Router()
+adminPrintingV1Router.get('/summary',printingController.summary)
+adminPrintingV1Router.get('/service-status',printingController.serviceStatus)
+adminPrintingV1Router.patch('/service-status',printingController.setServiceStatus)
+adminPrintingV1Router.get('/queue',printingController.queue)
+adminPrintingV1Router.post('/requests/:id/cash-payment',printingController.cash)
+adminPrintingV1Router.patch('/requests/:id/status',printingController.status)
+adminPrintingV1Router.get('/requests/:id/document',printingController.downloadDocument)
+adminPrintingV1Router.get('/report.pdf',printingController.printReport)
+adminPrintingV1Router.get('/supplies',printingController.supplies)
+adminPrintingV1Router.get('/supplies/movements',printingController.movements)
+adminPrintingV1Router.get('/finance/summary',printingController.financeSummary)
+adminPrintingV1Router.get('/finance/entries',printingController.financeEntries)
+adminPrintingV1Router.get('/finance/report.pdf',printingController.financeReport)
+adminPrintingV1Router.get('/revenue/summary',printingController.revenueSummary)
+adminPrintingV1Router.get('/revenue/entries',printingController.revenueEntries)
+adminPrintingV1Router.get('/expenses/summary',printingController.expenseSummary)
+adminPrintingV1Router.get('/restocks',printingController.restockHistory)
+adminPrintingV1Router.get('/stock-usage',printingController.stockUsageHistory)
+adminPrintingV1Router.get('/reports/revenue.pdf',printingController.revenueReport)
+adminPrintingV1Router.get('/reports/stock-expenses.pdf',printingController.stockExpenseReport)
+adminPrintingV1Router.post('/supplies/ink/:id/movements',printingController.inkMovement)
+adminPrintingV1Router.post('/supplies/ink/:id/restock',printingController.restockInk)
+adminPrintingV1Router.post('/supplies/ink/:id/use-bottle',printingController.useInkBottle)
+adminPrintingV1Router.post('/supplies/ink',printingController.createInk)
+adminPrintingV1Router.post('/supplies/paper/:id/movements',printingController.paperMovement)
+adminPrintingV1Router.post('/supplies/paper/:id/restock',printingController.restockPaper)
+adminPrintingV1Router.post('/supplies/paper/:id/open-ream',printingController.openPaperReam)
+adminPrintingV1Router.get('/supplies/report.pdf',printingController.supplyReport)
+
+export const printingRouter=Router()
+printingRouter.get('/availability',printingController.availability)
+printingRouter.get('/pricing',printingController.pricing)
+printingRouter.get('/requests',printingController.mine)
+printingRouter.post('/requests',documentUpload,printingController.submit)

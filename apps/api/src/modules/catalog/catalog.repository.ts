@@ -51,6 +51,19 @@ export async function findDuplicatePhysicalCopyForUpdate(
   return rows[0] ?? null
 }
 
+export async function findLegacyBookMaterialForUpdate(connection: PoolConnection, copy: PhysicalCopyInput) {
+  const [rows] = await connection.execute<RowDataPacket[]>(
+    `SELECT material_id, barcode, material_type
+       FROM materials
+      WHERE material_id = ? OR barcode = ?
+      ORDER BY material_id = ? DESC
+      LIMIT 1
+      FOR UPDATE`,
+    [copy.legacyMaterialId ?? 0, copy.barcode, copy.legacyMaterialId ?? 0],
+  )
+  return rows[0] ?? null
+}
+
 export async function findResearchCodeForUpdate(connection: PoolConnection, researchCode: string) {
   const [rows] = await connection.execute<RowDataPacket[]>(
     `SELECT research_record_id, title_id
@@ -123,6 +136,26 @@ export async function insertAuthors(connection: PoolConnection, titleId: number,
   }
 }
 
+export async function insertLegacyBookMaterial(connection: PoolConnection, input: BookEntryInput) {
+  const [result] = await connection.execute<ResultSetHeader>(
+    `INSERT INTO materials
+       (category_id, barcode, title, author, isbn, publication_year, shelf_location,
+        material_type, availability_status, date_added)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'Book', ?, NOW())`,
+    [
+      input.categoryId,
+      input.copy.barcode,
+      input.title,
+      input.authors.join(', ').slice(0, 255),
+      input.isbn,
+      input.publicationYear,
+      input.copy.shelfLocation,
+      input.copy.conditionStatus === 'Lost' ? 'Unavailable' : 'Available',
+    ],
+  )
+  return result.insertId
+}
+
 export async function insertPhysicalCopy(
   connection: PoolConnection,
   titleId: number,
@@ -170,20 +203,24 @@ export async function insertResearchRecord(
 export async function insertResearchInventory(
   connection: PoolConnection,
   input: ThesisEntryInput,
+  titleId: number,
+  qrCodeData: string,
 ) {
   const condition = input.copy.conditionStatus.toLowerCase().replace(/\s+/g, '_')
   const [result] = await connection.execute<ResultSetHeader>(
     `INSERT INTO research_inventory
-       (title, authors, adviser, publication_year, accession_number, barcode,
+       (title_id, title, authors, adviser, publication_year, accession_number, barcode, qr_code_data,
         condition_state, availability_status, shelf_location, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'available', ?, NOW())`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'available', ?, NOW())`,
     [
+      titleId,
       input.title,
       input.authors.join(', '),
       input.adviser,
       input.year,
       input.copy.accessionNumber,
       input.copy.barcode,
+      qrCodeData,
       condition,
       input.copy.shelfLocation,
     ],

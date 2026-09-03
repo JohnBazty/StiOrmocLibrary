@@ -23,8 +23,8 @@ export function validateReservationRequest(body: unknown) {
 export function validateStatusAdjustment(body: unknown) {
   const input = body && typeof body === 'object' ? body as Record<string, unknown> : {}
   const status = stringValue(input.status) as ReservationStatus
-  if (!RESERVATION_STATUSES.includes(status) || status === 'pending' || status === 'expired') {
-    throw new HttpError(422, 'RESERVATION_STATUS_INVALID', 'Administrative status must be approved, ready_for_pickup, claimed, or cancelled.')
+  if (!RESERVATION_STATUSES.includes(status) || status === 'pending' || status === 'expired' || status === 'claimed') {
+    throw new HttpError(422, 'RESERVATION_STATUS_INVALID', 'Administrative status must be approved, ready_for_pickup, or cancelled. Claiming requires physical desk verification.')
   }
   let pickupDeadline: Date | null = null
   if (input.pickupDeadline) {
@@ -52,4 +52,3 @@ export function parseQueueFilters(query: Record<string, unknown>): QueueFilters 
     page, limit: Math.min(requestedLimit, 100),
   }
 }
-

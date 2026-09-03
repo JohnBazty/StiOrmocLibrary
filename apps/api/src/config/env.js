@@ -9,12 +9,16 @@ dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)), qui
 const isProduction = process.env.NODE_ENV === 'production'
 const configuredSecret = process.env.SESSION_SECRET?.trim()
 const configuredJwtSecret = process.env.JWT_SECRET?.trim()
+const configuredReportIntegritySecret = process.env.REPORT_INTEGRITY_SECRET?.trim()
 
 if (isProduction && (!configuredSecret || configuredSecret.length < 32)) {
   throw new Error('SESSION_SECRET must contain at least 32 characters in production.')
 }
 if (isProduction && (!configuredJwtSecret || configuredJwtSecret.length < 32)) {
   throw new Error('JWT_SECRET must contain at least 32 characters in production.')
+}
+if (isProduction && (!configuredReportIntegritySecret || configuredReportIntegritySecret.length < 32)) {
+  throw new Error('REPORT_INTEGRITY_SECRET must contain at least 32 characters in production.')
 }
 
 const developmentJwtSecret = configuredJwtSecret || configuredSecret || randomBytes(48).toString('hex')
@@ -42,5 +46,13 @@ export const env = Object.freeze({
     issuer: process.env.JWT_ISSUER ?? 'sti-ormoc-smart-library-api',
     audience: process.env.JWT_AUDIENCE ?? 'sti-ormoc-smart-library-web',
     expiresInSeconds: Number(process.env.JWT_EXPIRES_IN_SECONDS ?? 900),
+  },
+  reports: {
+    // A separate production key prevents JWT key rotation from invalidating old report seals.
+    integritySecret: configuredReportIntegritySecret || developmentJwtSecret,
+  },
+  isbnLookup: {
+    timeoutMs: Math.max(500, Math.min(10000, Number(process.env.ISBN_LOOKUP_TIMEOUT_MS ?? 3500))),
+    googleBooksApiKey: process.env.GOOGLE_BOOKS_API_KEY?.trim() ?? '',
   },
 })

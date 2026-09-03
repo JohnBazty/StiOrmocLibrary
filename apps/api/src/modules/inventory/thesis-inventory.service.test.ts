@@ -9,7 +9,8 @@ function fakeDatabase(options: { loan?: boolean; condition?: string; availabilit
   const thesis = {
     research_inventory_id: 8, title: 'Smart Campus Research', authors: 'STI Researchers', adviser: 'Prof. Adviser',
     publication_year: 2026, accession_number: 'TH-008', barcode: 'THESIS-008',
-    condition_state: options.condition ?? 'good', availability_status: options.availability ?? 'available', shelf_location: 'Shelf R-1',
+    condition_state: options.condition ?? 'good', availability_status: options.availability ?? 'available',
+    lifecycle_status: 'Active', shelf_location: 'Shelf R-1',
   }
   const connection = {
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() {},

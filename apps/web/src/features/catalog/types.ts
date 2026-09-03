@@ -10,7 +10,7 @@ export type CatalogItem = {
   availability: string
   totalCopies: number
   availableCopies: number
-  research: null | { researchCode: string; adviser: string; departmentOrProgram: string }
+  research: null | { researchInventoryId: number | null; researchCode: string; adviser: string; departmentOrProgram: string }
 }
 
 export type PhysicalCopy = {
@@ -25,7 +25,50 @@ export type PhysicalCopy = {
   lastScannedAt: string | null
 }
 
-export type Category = { categoryId: number; categoryName: string; shelfLocation?: string; totalBooksCount?: number; totalThesisCount?: number }
+export type AdminBookAsset = {
+  physicalCopyId?: number
+  researchInventoryId?: number
+  titleId: number
+  title: string
+  author: string
+  accessionNumber: string
+  barcode: string
+  shelfLocation: string
+  qrCodeData: string
+  barcodeImageData: string
+}
+
+export type Category = { categoryId: number; categoryName: string; shelfLocation: string; totalBooksCount?: number; totalThesisCount?: number }
+
+export type GeneratedBookLabel = {
+  physicalCopyId: number
+  materialId: number
+  titleId: number
+  title: string
+  author: string
+  isbn: string
+  shelfLocation: string
+  accessionNumber: string
+  barcode: string
+  qrCodeData: string
+  barcodeImageData: string
+}
+
+export type BulkBookResult = {
+  titleId: number
+  createdTitle: boolean
+  numberOfCopies: number
+  copies: GeneratedBookLabel[]
+}
+
+export type IsbnMetadata = {
+  isbn: string
+  title: string
+  author: string
+  publisher: string | null
+  publicationYear: number | null
+  source: 'local_catalog' | 'google_books' | 'open_library'
+}
 
 export type CatalogFilters = {
   q: string

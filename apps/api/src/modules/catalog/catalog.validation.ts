@@ -83,11 +83,17 @@ function normalizeAuthors(body: Record<string, unknown> | undefined): string[] {
 }
 
 export function normalizeIsbn(value: unknown): string {
-  return typeof value === 'string' ? value.replace(/[\s-]+/g, '').toUpperCase() : ''
+  if (typeof value !== 'string') return ''
+  return value
+    .normalize('NFKC')
+    .trim()
+    .replace(/^ISBN(?:-1[03])?\s*:?\s*/i, '')
+    .replace(/[\s\u00A0\-\u2010-\u2015\u2212]+/g, '')
+    .toUpperCase()
 }
 
 export function isValidIsbn(isbn: string): boolean {
-  if (/^\d{13}$/.test(isbn)) {
+  if (/^97[89]\d{10}$/.test(isbn)) {
     const sum = [...isbn.slice(0, 12)].reduce(
       (total, digit, index) => total + Number(digit) * (index % 2 === 0 ? 1 : 3),
       0,
@@ -104,6 +110,26 @@ export function isValidIsbn(isbn: string): boolean {
   }
 
   return false
+}
+
+export function isbnValidationMessage(value: unknown): string | null {
+  const isbn = normalizeIsbn(value)
+  if (!isbn) return 'ISBN is required.'
+  if (isbn.length !== 10 && isbn.length !== 13) return 'ISBN must contain exactly 10 or 13 characters after spaces and hyphens are removed.'
+  if (isbn.length === 13) {
+    if (!/^\d{13}$/.test(isbn)) return 'ISBN-13 must contain digits only.'
+    if (!isbn.startsWith('978') && !isbn.startsWith('979')) return 'ISBN-13 must begin with 978 or 979.'
+    const sum = [...isbn.slice(0, 12)].reduce((total, digit, index) => total + Number(digit) * (index % 2 === 0 ? 1 : 3), 0)
+    const expected = String((10 - (sum % 10)) % 10)
+    if (isbn[12] !== expected) return `ISBN-13 check digit is incorrect. For these first 12 digits, the final digit must be ${expected}.`
+    return null
+  }
+  if (!/^\d{9}[\dX]$/.test(isbn)) return 'ISBN-10 must contain 9 digits followed by a digit or X.'
+  const weighted = [...isbn.slice(0, 9)].reduce((total, digit, index) => total + Number(digit) * (10 - index), 0)
+  const remainder = (11 - (weighted % 11)) % 11
+  const expected = remainder === 10 ? 'X' : String(remainder)
+  if (isbn[9] !== expected) return `ISBN-10 check digit is incorrect. For these first 9 digits, the final character must be ${expected}.`
+  return null
 }
 
 function validateYear(value: unknown, field: string, errors: ValidationErrors, required: boolean): number | null {
@@ -217,11 +243,10 @@ export function validateThesisMetadata(body: unknown): ValidationResult<ThesisMe
   const adviser = compactText(input.adviser)
   const year = validateYear(input.year ?? input.publicationYear, 'year', errors, true)
   const abstract = multilineText(input.abstract ?? input.abstractText)
-  const categoryId = positiveInteger(input.categoryId)
+  const categoryId = null
   const researchCode = compactText(input.researchCode).toUpperCase()
   const departmentOrProgram = compactText(input.departmentOrProgram ?? input.department)
   const keywords = optionalText(input.keywords ?? input.keywordsText, 5_000)
-  const copyResult = validateCopyInput(input.copy, false)
 
   if (!title) errors.title = 'Title is required.'
   else if (title.length > TITLE_MAX_LENGTH) errors.title = `Title must not exceed ${TITLE_MAX_LENGTH} characters.`
@@ -244,8 +269,6 @@ export function validateThesisMetadata(body: unknown): ValidationResult<ThesisMe
   if (!departmentOrProgram) errors.departmentOrProgram = 'Department or program is required.'
   else if (departmentOrProgram.length > 150) errors.departmentOrProgram = 'Department or program must not exceed 150 characters.'
 
-  if (input.categoryId !== undefined && categoryId === null) errors.categoryId = 'Category ID must be a positive integer.'
-  Object.assign(errors, copyResult.errors)
 
   return {
     isValid: Object.keys(errors).length === 0,
@@ -260,7 +283,7 @@ export function validateThesisMetadata(body: unknown): ValidationResult<ThesisMe
       researchCode,
       departmentOrProgram,
       keywords,
-      copy: copyResult.data,
+      copy: null,
     },
   }
 }
@@ -273,12 +296,15 @@ export function validateThesisMetadata(body: unknown): ValidationResult<ThesisMe
 export function validateThesisEntry(body: unknown): ValidationResult<ThesisEntryInput> {
   const input = body && typeof body === 'object' ? body as Record<string, unknown> : {}
   const result = validateThesisMetadata(input)
-  const copyResult = validateCopyInput(input.copy ?? input, true)
-  const errors = { ...result.errors, ...copyResult.errors }
+  const copyBody = input.copy && typeof input.copy === 'object' ? input.copy as Record<string, unknown> : input
+  const shelfLocation = compactText(copyBody.shelfLocation ?? copyBody.shelf_location)
+  const errors = { ...result.errors }
+  if (!shelfLocation) errors.shelfLocation = 'Shelf location is required.'
+  else if (shelfLocation.length > 100) errors.shelfLocation = 'Shelf location must not exceed 100 characters.'
 
   return {
     isValid: Object.keys(errors).length === 0,
     errors,
-    data: { ...result.data, copy: copyResult.data as PhysicalCopyInput },
+    data: { ...result.data, categoryId: null, copy: { barcode: '', accessionNumber: '', shelfLocation, conditionStatus: 'Good', legacyMaterialId: null } },
   }
 }

@@ -22,6 +22,7 @@ export function createReportsRouter(dependencies: ExportDependencies = { rows: i
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': 'attachment; filename="sti-library-inventory.csv"',
       'Cache-Control': 'private, no-store',
+      'X-SmartLib-CSV-Integrity': 'HMAC-SHA256; version=v1',
     })
     dependencies.csv(dependencies.rows(filters)).on('error', next).pipe(response)
   } catch (error) { next(error) }

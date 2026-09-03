@@ -17,6 +17,18 @@ import { jwtAuthRouter, jwtProtectedRouter } from './modules/auth/jwt-auth.route
 import { authenticateJwt, requireJwtRoles } from './modules/auth/jwt-auth.middleware.ts'
 import { inventoryPreviewRouter } from './modules/inventory/inventory-preview.routes.ts'
 import { thesisInventoryV1AdminRouter } from './modules/inventory/thesis-inventory.routes.ts'
+import { bookCatalogRouter } from './modules/catalog/book-catalog.routes.ts'
+import { researchCatalogRouter } from './modules/catalog/research-catalog.routes.ts'
+import { bulkBookRouter, bulkCatalogEntryRouter } from './modules/catalog/bulk-book.routes.ts'
+import { researchAssetRouter } from './modules/catalog/research-asset.routes.ts'
+import { adminCirculationRouter, borrowCartRouter, circulationRequestRouter, userCirculationRouter } from './modules/circulation/circulation.routes.ts'
+import { adminReservationsV1Router, userReservationsV1Router } from './modules/reservations/reservations.routes.ts'
+import { adminAttendanceV1Router } from './modules/attendance/attendance.routes.ts'
+import { adminUsersV1Router } from './modules/users/users.routes.ts'
+import { adminPrintingV1Router, userPrintingV1Router } from './modules/printing/printing.routes.ts'
+import { adminClearanceV1Router, userClearanceV1Router } from './modules/clearance/clearance.routes.ts'
+import { adminAnnouncementsV1Router, userNotificationsV1Router } from './modules/notifications/notifications.routes.ts'
+import { adminFinesV1Router, userFinesV1Router } from './modules/fines/fines.routes.ts'
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
 const publicDirectory = path.resolve(currentDirectory, '../public')
@@ -40,7 +52,7 @@ export function createApp() {
     },
   }))
   app.use(cors({ origin: env.webOrigin, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }))
-  app.use(express.json({ limit: '32kb' }))
+  app.use(express.json({ limit: '3mb' }))
   app.use(express.urlencoded({ extended: false, limit: '32kb' }))
   app.use(session({
     name: env.session.name,
@@ -53,6 +65,7 @@ export function createApp() {
   }))
 
   app.use('/assets', express.static(path.join(publicDirectory, 'assets'), { index: false, maxAge: env.isProduction ? '1d' : 0 }))
+  app.use('/api/assets', express.static(path.join(publicDirectory, 'assets'), { index: false, maxAge: env.isProduction ? '1d' : 0 }))
 
   app.get('/api/health', async (_request, response, next) => {
     try {
@@ -67,6 +80,27 @@ export function createApp() {
   })
   app.use('/api/auth', authRouter)
   app.use('/api/v1/auth', jwtAuthRouter)
+  app.use('/api/v1/catalog', authenticateJwt, bookCatalogRouter)
+  app.use('/api/v1/catalog', authenticateJwt, researchCatalogRouter)
+  app.use('/api/v1/admin/books', authenticateJwt, requireJwtRoles('Admin', 'Librarian'), bulkBookRouter)
+  app.use('/api/v1/admin/research', authenticateJwt, requireJwtRoles('Admin', 'Librarian'), researchAssetRouter)
+  app.use('/api/v1/admin/catalog', authenticateJwt, requireJwtRoles('Admin', 'Librarian'), bulkCatalogEntryRouter)
+  app.use('/api/v1/reservations', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userReservationsV1Router)
+  app.use('/api/v1/borrowing', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userCirculationRouter)
+  app.use('/api/v1/borrow', authenticateJwt, requireJwtRoles('Student', 'Faculty'), borrowCartRouter)
+  app.use('/api/v1/circulation', authenticateJwt, circulationRequestRouter)
+  app.use('/api/v1/admin/reservations', authenticateJwt, requireJwtRoles('Admin', 'Librarian'), adminReservationsV1Router)
+  app.use('/api/v1/admin/attendance', authenticateJwt, requireJwtRoles('Admin', 'Librarian'), adminAttendanceV1Router)
+  app.use('/api/v1/admin/users', authenticateJwt, requireJwtRoles('Admin', 'Librarian'), adminUsersV1Router)
+  app.use('/api/v1/printing', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userPrintingV1Router)
+  app.use('/api/v1/clearance', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userClearanceV1Router)
+  app.use('/api/v1/fines', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userFinesV1Router)
+  app.use('/api/v1/notifications', authenticateJwt, userNotificationsV1Router)
+  app.use('/api/v1/admin/printing', authenticateJwt, requireJwtRoles('Admin', 'Librarian'), adminPrintingV1Router)
+  app.use('/api/v1/admin/clearance', authenticateJwt, requireJwtRoles('Admin', 'Librarian'), adminClearanceV1Router)
+  app.use('/api/v1/admin/fines', authenticateJwt, requireJwtRoles('Admin', 'Librarian'), adminFinesV1Router)
+  app.use('/api/v1/admin/announcements', authenticateJwt, requireJwtRoles('Admin'), adminAnnouncementsV1Router)
+  app.use('/api/v1/admin', authenticateJwt, requireJwtRoles('Admin', 'Librarian'), adminCirculationRouter)
   app.use('/api/v1/admin', authenticateJwt, requireJwtRoles('Admin', 'Librarian'), thesisInventoryV1AdminRouter)
   app.use('/api/v1', jwtProtectedRouter)
   app.use('/auth/register', registrationRouter)

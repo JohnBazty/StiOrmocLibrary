@@ -2,7 +2,12 @@ import { getAccessToken } from '../auth/auth-storage'
 import type { InventoryCopy, InventoryFilters, InventoryPagination, InventorySummary, ThesisInventoryFilters, ThesisInventoryRow, ThesisInventorySummary } from './types'
 
 export class InventoryApiError extends Error {
-  constructor(message: string, public code: string, public errors: Record<string, string> = {}) { super(message) }
+  constructor(
+    message: string,
+    public code: string,
+    public errors: Record<string, string> = {},
+    public details: Record<string, unknown> = {},
+  ) { super(message) }
 }
 
 let csrfToken: string | null = null
@@ -34,11 +39,16 @@ async function request<T>(url: string, options: RequestInit = {}) {
     data?: T
     message?: string
     code?: string
-    details?: { errors?: Record<string, string> }
+    details?: Record<string, unknown> & { errors?: Record<string, string> }
   } : null
   if (!response.ok || !payload) {
     if (payload?.code === 'INVALID_CSRF_TOKEN') csrfToken = null
-    throw new InventoryApiError(payload?.message ?? 'The inventory request could not be completed.', payload?.code ?? 'INVENTORY_REQUEST_FAILED', payload?.details?.errors)
+    throw new InventoryApiError(
+      payload?.message ?? 'The inventory request could not be completed.',
+      payload?.code ?? 'INVENTORY_REQUEST_FAILED',
+      payload?.details?.errors,
+      payload?.details ?? {},
+    )
   }
   return payload.data as T
 }
@@ -130,6 +140,12 @@ export const inventoryApi = {
   changeAvailability: (barcode: string, availabilityStatus: 'available' | 'unavailable') => request<InventoryCopy>('/api/inventory/copies/availability', {
     method: 'PATCH', body: JSON.stringify({ barcode, availability_status: availabilityStatus }),
   }),
+  deleteBookCopy: (physicalCopyId: number) => request<{ physicalCopyId: number; deleted: true }>(`/api/inventory/copies/${physicalCopyId}`, {
+    method: 'DELETE',
+  }),
+  archiveBookCopy: (physicalCopyId: number, reason: string) => request<{ physicalCopyId: number; lifecycleStatus: 'Archived' }>(`/api/inventory/copies/${physicalCopyId}/archive`, {
+    method: 'POST', body: JSON.stringify({ reason }),
+  }),
   thesisSummary: () => request<ThesisInventorySummary>(thesisEndpoint('inventory/thesis/summary', '/summary')),
   async thesisRows(filters: ThesisInventoryFilters) {
     const query = thesisFilterQuery(filters)
@@ -144,6 +160,14 @@ export const inventoryApi = {
   changeThesisAvailability: (barcode: string, availabilityStatus: 'available' | 'unavailable') => request<ThesisInventoryRow>(thesisEndpoint('inventory/thesis/availability', '/availability'), {
     method: 'PATCH', body: JSON.stringify({ barcode, availability_status: availabilityStatus }),
   }),
+  deleteThesisCopy: (researchInventoryId: number) => request<{ research_inventory_id: number; deleted: true }>(
+    thesisEndpoint(`inventory/thesis/${researchInventoryId}`, `/${researchInventoryId}`), { method: 'DELETE' },
+  ),
+  archiveThesisCopy: (researchInventoryId: number, reason: string) => request<{ research_inventory_id: number; lifecycle_status: 'Archived' }>(
+    thesisEndpoint(`inventory/thesis/${researchInventoryId}/archive`, `/${researchInventoryId}/archive`), {
+      method: 'POST', body: JSON.stringify({ reason }),
+    },
+  ),
   downloadThesis,
   download,
 }

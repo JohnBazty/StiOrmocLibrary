@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { isValidIsbn, normalizeIsbn, validateBookEntry, validateThesisEntry, validateThesisMetadata } from './catalog.validation.ts'
+import { isbnValidationMessage, isValidIsbn, normalizeIsbn, validateBookEntry, validateThesisEntry, validateThesisMetadata } from './catalog.validation.ts'
 
 test('validates and normalizes a complete thesis metadata entry', () => {
   const result = validateThesisMetadata({
@@ -40,17 +40,17 @@ test('returns field-specific thesis errors for Title, Author, Adviser, Year, and
   assert.ok(result.errors.abstract)
 })
 
-test('requires and normalizes physical ledger fields when publishing a thesis', () => {
+test('requires only a shelf and defaults generated thesis identity fields', () => {
   const result = validateThesisEntry({
     title: 'Smart Library Research', author: 'Maria Santos', adviser: 'Dr. Ana Cruz',
     year: new Date().getFullYear(), abstract: 'This complete abstract describes the research inventory workflow.',
     researchCode: 'TH-2026-010', department: 'BSIT',
-    copy: { barcode: ' th-bc-010 ', accessionNumber: ' th-acc-010 ', shelfLocation: 'Research A-2', conditionStatus: 'For Repair' },
+    copy: { shelfLocation: 'Research A-2' },
   })
   assert.equal(result.isValid, true)
-  assert.equal(result.data.copy.barcode, 'TH-BC-010')
-  assert.equal(result.data.copy.accessionNumber, 'TH-ACC-010')
-  assert.equal(result.data.copy.conditionStatus, 'For Repair')
+  assert.equal(result.data.copy.barcode, '')
+  assert.equal(result.data.copy.accessionNumber, '')
+  assert.equal(result.data.copy.conditionStatus, 'Good')
 
   const missingCopy = validateThesisEntry({
     title: 'Smart Library Research', author: 'Maria Santos', adviser: 'Dr. Ana Cruz',
@@ -58,8 +58,6 @@ test('requires and normalizes physical ledger fields when publishing a thesis', 
     researchCode: 'TH-2026-011', department: 'BSIT',
   })
   assert.equal(missingCopy.isValid, false)
-  assert.ok(missingCopy.errors.barcode)
-  assert.ok(missingCopy.errors.accessionNumber)
   assert.ok(missingCopy.errors.shelfLocation)
 })
 
@@ -83,4 +81,18 @@ test('validates ISBN checksums and physical-copy fields for books', () => {
   assert.equal(result.data.isbn, '9780132350884')
   assert.equal(result.data.copy.barcode, 'BC-00128')
   assert.equal(result.data.copy.accessionNumber, 'ACC-00128')
+})
+
+test('normalizes common ISBN-10 and ISBN-13 labels and Unicode separators', () => {
+  assert.equal(normalizeIsbn('ISBN-13: 978‑0‑13‑235088‑4'), '9780132350884')
+  assert.equal(normalizeIsbn('ISBN-10: 0-13-235088-2'), '0132350882')
+  assert.equal(isValidIsbn(normalizeIsbn('ISBN-10: 0-13-235088-2')), true)
+  assert.equal(isValidIsbn(normalizeIsbn('ISBN-10: 0-8044-2957-X')), true)
+})
+
+test('reports the expected ISBN check digit instead of a generic validation error', () => {
+  assert.equal(isbnValidationMessage('9780062638500'), 'ISBN-13 check digit is incorrect. For these first 12 digits, the final digit must be 2.')
+  assert.equal(isbnValidationMessage('0132350881'), 'ISBN-10 check digit is incorrect. For these first 9 digits, the final character must be 2.')
+  assert.equal(isbnValidationMessage('9780132350884'), null)
+  assert.equal(isbnValidationMessage('0132350882'), null)
 })

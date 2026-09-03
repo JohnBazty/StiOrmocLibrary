@@ -11,6 +11,10 @@ type PhysicalCopyRow = RowDataPacket & {
   accession_number: string
   barcode: string
   circulation_material_id: number
+  title: string
+  lifecycle_status: string
+  condition_status: string
+  availability_status: string
 }
 
 type ActiveLoanRow = RowDataPacket & {
@@ -66,10 +70,12 @@ export function createPhysicalCopyMutationGuard(database: Pool = db) {
       await connection.beginTransaction()
 
       const [copyRows] = await connection.execute<PhysicalCopyRow[]>(
-        `SELECT physical_copy_id, material_id, accession_number, barcode,
-                COALESCE(material_id, physical_copy_id) AS circulation_material_id
-           FROM physical_copies
-          WHERE physical_copy_id = ?
+        `SELECT pc.physical_copy_id, pc.material_id, pc.accession_number, pc.barcode,
+                pc.lifecycle_status, pc.condition_status, pc.availability_status, t.title,
+                COALESCE(pc.material_id, pc.physical_copy_id) AS circulation_material_id
+           FROM physical_copies pc
+           JOIN titles t ON t.title_id = pc.title_id
+          WHERE pc.physical_copy_id = ?
           LIMIT 1
           FOR UPDATE`,
         [copyId],
@@ -79,6 +85,9 @@ export function createPhysicalCopyMutationGuard(database: Pool = db) {
         throw new HttpError(404, 'PHYSICAL_COPY_NOT_FOUND', 'The requested physical copy does not exist.', {
           physicalCopyId: copyId,
         })
+      }
+      if (copy.lifecycle_status !== 'Active') {
+        throw new HttpError(422, 'PHYSICAL_COPY_ARCHIVED', 'This physical copy is already archived.')
       }
 
       const [loanRows] = await connection.execute<ActiveLoanRow[]>(
@@ -107,6 +116,31 @@ export function createPhysicalCopyMutationGuard(database: Pool = db) {
             transactionStatus: activeLoan.transaction_status,
             borrowedAt: activeLoan.borrowed_at,
             dueAt: activeLoan.due_at,
+          },
+        )
+      }
+
+      const [reservationRows] = await connection.execute<RowDataPacket[]>(
+        `SELECT reservation_id, reservation_status, pickup_deadline
+           FROM reservations
+          WHERE (accession_id = ? OR material_id = ?)
+            AND reservation_status IN ('pending', 'approved', 'ready_for_pickup')
+          ORDER BY reservation_id DESC
+          LIMIT 1
+          FOR UPDATE`,
+        [copy.circulation_material_id, copy.circulation_material_id],
+      )
+      const activeReservation = reservationRows[0]
+      if (activeReservation) {
+        throw new HttpError(
+          422,
+          'PHYSICAL_COPY_HAS_ACTIVE_RESERVATION',
+          `Cannot ${action} copy ${copy.accession_number} because it has an active reservation. Cancel or reassign it first.`,
+          {
+            physicalCopyId: copy.physical_copy_id,
+            accessionNumber: copy.accession_number,
+            reservationId: activeReservation.reservation_id,
+            reservationStatus: activeReservation.reservation_status,
           },
         )
       }

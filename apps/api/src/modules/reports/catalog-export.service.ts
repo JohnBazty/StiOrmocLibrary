@@ -1,8 +1,8 @@
-import PDFDocument from 'pdfkit'
-import { Readable } from 'node:stream'
 import type { Pool, RowDataPacket } from 'mysql2/promise'
 import { db } from '../../config/db.js'
 import type { CatalogSearchFilters } from '../catalog/catalog-search.repository.ts'
+import { createIntegrityProtectedCsvStream } from './csv-integrity.ts'
+import { createBrandedTablePdf, type PdfTableColumn } from './branded-table-pdf.ts'
 
 export type InventoryExportRow = {
   recordType: string
@@ -133,51 +133,31 @@ export function createCsvStream(rows: AsyncIterable<InventoryExportRow>) {
     yield '\uFEFF' + CSV_COLUMNS.map(([, label]) => csvCell(label)).join(',') + '\r\n'
     for await (const row of rows) yield CSV_COLUMNS.map(([key]) => csvCell(row[key])).join(',') + '\r\n'
   }
-  return Readable.from(content())
+  return createIntegrityProtectedCsvStream(content(), 'catalog_inventory', CSV_COLUMNS.length)
 }
 
 export function createInventoryPdf(rows: AsyncIterable<InventoryExportRow>) {
-  const document = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 32, bufferPages: false })
-  const blue = '#003399'
-  const yellow = '#FFF200'
-  const white = '#FFFFFF'
-  const columns = [
-    { key: 'recordType' as const, label: 'TYPE', x: 32, width: 65 },
-    { key: 'title' as const, label: 'TITLE', x: 100, width: 190 },
-    { key: 'authors' as const, label: 'AUTHOR(S)', x: 293, width: 135 },
-    { key: 'accessionNumber' as const, label: 'ACCESSION', x: 431, width: 90 },
-    { key: 'shelfLocation' as const, label: 'SHELF', x: 524, width: 70 },
-    { key: 'condition' as const, label: 'CONDITION', x: 597, width: 75 },
-    { key: 'availability' as const, label: 'STATUS', x: 675, width: 95 },
+  const columns: Array<PdfTableColumn<InventoryExportRow>> = [
+    { key: 'recordType', label: 'TYPE', width: 55 },
+    { key: 'title', label: 'TITLE', width: 160 },
+    { key: 'authors', label: 'AUTHOR(S)', width: 125 },
+    { key: 'isbn', label: 'ISBN', width: 90 },
+    { key: 'category', label: 'CATEGORY', width: 85 },
+    { key: 'publicationYear', label: 'YEAR', width: 45 },
+    { key: 'accessionNumber', label: 'ACCESSION', width: 85 },
+    { key: 'barcode', label: 'BARCODE', width: 85 },
+    { key: 'shelfLocation', label: 'SHELF', width: 75 },
+    { key: 'condition', label: 'CONDITION', width: 70 },
+    { key: 'availability', label: 'AVAILABILITY', width: 80 },
+    { key: 'researchCode', label: 'RESEARCH CODE', width: 75 },
+    { key: 'adviser', label: 'ADVISER', width: 96 },
   ]
-
-  function header() {
-    document.rect(0, 0, document.page.width, 66).fill(blue)
-    document.fillColor(white).fontSize(17).font('Helvetica-Bold').text('STI ORMOC SMART LIBRARY', 32, 19)
-    document.fillColor(yellow).fontSize(10).text('BOOK & RESEARCH/THESIS INVENTORY REPORT', 32, 43)
-    document.rect(32, 80, document.page.width - 64, 23).fill(yellow)
-    document.fillColor(blue).fontSize(7).font('Helvetica-Bold')
-    for (const column of columns) document.text(column.label, column.x + 3, 88, { width: column.width - 6 })
-  }
-
-  async function render() {
-    header()
-    let y = 109
-    let index = 0
-    for await (const row of rows) {
-      if (y > document.page.height - 48) { document.addPage(); header(); y = 109 }
-      if (index % 2 === 0) document.rect(32, y - 3, document.page.width - 64, 25).fill('#FFFFFF')
-      document.fillColor(blue).font('Helvetica').fontSize(7)
-      for (const column of columns) document.text(row[column.key], column.x + 3, y, { width: column.width - 6, height: 18, ellipsis: true })
-      document.moveTo(32, y + 22).lineTo(document.page.width - 32, y + 22).strokeColor(blue).opacity(0.15).stroke().opacity(1)
-      y += 25
-      index += 1
-    }
-    if (index === 0) document.fillColor(blue).fontSize(10).text('No inventory records matched the selected filters.', 32, 122)
-    document.end()
-  }
-  void render().catch((error) => document.destroy(error))
-  return document
+  return createBrandedTablePdf(rows, {
+    title: 'COMPLETE INVENTORY REPORT',
+    subtitle: 'All active book and research inventory data',
+    emptyMessage: 'No inventory records matched the selected filters.',
+    columns,
+  })
 }
 
 export function inventoryRows(filters: CatalogSearchFilters) {

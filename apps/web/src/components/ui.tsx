@@ -18,13 +18,13 @@ export function PageHeader({ eyebrow, title, action }: { eyebrow?: string; title
   )
 }
 
-export function Button({ children, variant = 'primary', className, type = 'button', onClick }: { children: ReactNode; variant?: 'primary' | 'secondary' | 'ghost'; className?: string; type?: 'button' | 'submit'; onClick?: () => void }) {
+export function Button({ children, variant = 'primary', className, type = 'button', onClick, disabled = false }: { children: ReactNode; variant?: 'primary' | 'secondary' | 'ghost'; className?: string; type?: 'button' | 'submit'; onClick?: () => void; disabled?: boolean }) {
   const variants = {
     primary: 'bg-[#003399] text-white shadow-sm hover:bg-[#003399]',
     secondary: 'border border-[#003399]/15 bg-white text-[#003399] hover:border-[#003399]/15 hover:text-[#003399]',
     ghost: 'text-[#003399]/65 hover:bg-[#003399]/5 hover:text-[#003399]',
   }
-  return <button type={type} onClick={onClick} className={cn('inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition', variants[variant], className)}>{children}</button>
+  return <button type={type} onClick={onClick} disabled={disabled} className={cn('inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-45', variants[variant], className)}>{children}</button>
 }
 
 export function SectionCard({ children, className }: { children: ReactNode; className?: string }) {
@@ -62,7 +62,7 @@ const statTones: Record<string, string> = {
   pink: 'bg-[#003399]/5 text-[#003399]', red: 'bg-[#FFF200] text-[#003399]', amber: 'bg-[#FFF200]/35 text-[#003399]',
 }
 
-export function StatCard({ label, value, icon: Icon, tone = 'emerald' }: { label: string; value: string | number; note?: string; icon: LucideIcon; tone?: string }) {
+export function StatCard({ label, value, icon: Icon, tone = 'emerald' }: { label: string; value: string | number; note?: string; icon?: LucideIcon; tone?: string }) {
   return (
     <SectionCard className="p-4 sm:p-5">
       <div className="flex items-start justify-between gap-3">
@@ -70,7 +70,7 @@ export function StatCard({ label, value, icon: Icon, tone = 'emerald' }: { label
           <p className="text-xs font-semibold text-[#003399]/65">{label}</p>
           <p className="mt-2 font-display text-2xl font-bold tracking-tight text-[#003399]">{value}</p>
         </div>
-        <div className={cn('rounded-xl p-2.5', statTones[tone] ?? statTones.emerald)}><Icon size={18} /></div>
+        {Icon && <div className={cn('rounded-xl p-2.5', statTones[tone] ?? statTones.emerald)}><Icon size={18} /></div>}
       </div>
     </SectionCard>
   )

@@ -24,8 +24,10 @@ test('Student and Faculty roles cannot read or mutate administrative inventory',
   for (const role of ['Student', 'Faculty']) {
     const read = await request(appForRole(role)).get('/api/inventory/summary')
     const mutation = await request(appForRole(role)).patch('/api/inventory/copies/condition').send({ barcode: 'BC-1', condition_state: 'lost' })
+    const deletion = await request(appForRole(role)).delete('/api/inventory/copies/7')
     assert.equal(read.status, 403)
     assert.equal(mutation.status, 403)
+    assert.equal(deletion.status, 403)
     assert.equal(mutation.body.code, 'CATALOG_ADMIN_FORBIDDEN')
   }
 })

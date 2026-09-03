@@ -1,7 +1,7 @@
-import PDFDocument from 'pdfkit'
-import { Readable } from 'node:stream'
 import { db } from '../../config/db.js'
 import { iterateThesisInventoryRows } from '../inventory/thesis-inventory.repository.ts'
+import { createIntegrityProtectedCsvStream } from './csv-integrity.ts'
+import { createBrandedTablePdf, type PdfTableColumn } from './branded-table-pdf.ts'
 
 export type ThesisInventoryExportRow = Awaited<ReturnType<typeof import('../inventory/thesis-inventory.repository.ts').thesisInventoryDto>>
 
@@ -24,45 +24,33 @@ export function createThesisCsvStream(rows: AsyncIterable<ThesisInventoryExportR
     yield '\uFEFF' + COLUMNS.map(([, label]) => csvCell(label)).join(',') + '\r\n'
     for await (const row of rows) yield COLUMNS.map(([key]) => csvCell(row[key])).join(',') + '\r\n'
   }
-  return Readable.from(content())
+  return createIntegrityProtectedCsvStream(content(), 'thesis_inventory', COLUMNS.length)
 }
 
 export function createThesisInventoryPdf(rows: AsyncIterable<ThesisInventoryExportRow>) {
-  const document = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 32, bufferPages: false })
-  const blue = '#003399'; const yellow = '#FFF200'; const white = '#FFFFFF'
-  const columns = [
-    { key: 'title' as const, label: 'TITLE', x: 32, width: 170 },
-    { key: 'authors' as const, label: 'AUTHORS', x: 205, width: 130 },
-    { key: 'adviser' as const, label: 'ADVISER', x: 338, width: 105 },
-    { key: 'publication_year' as const, label: 'YEAR', x: 446, width: 45 },
-    { key: 'accession_number' as const, label: 'ACCESSION', x: 494, width: 85 },
-    { key: 'condition_state' as const, label: 'CONDITION', x: 582, width: 75 },
-    { key: 'availability_status' as const, label: 'STATUS', x: 660, width: 92 },
+  const columns: Array<PdfTableColumn<ThesisInventoryExportRow>> = [
+    { key: 'title', label: 'TITLE', width: 190 },
+    { key: 'authors', label: 'AUTHORS', width: 145 },
+    { key: 'adviser', label: 'ADVISER', width: 130 },
+    { key: 'publication_year', label: 'YEAR', width: 50 },
+    { key: 'accession_number', label: 'ACCESSION', width: 100 },
+    { key: 'barcode', label: 'BARCODE', width: 100 },
+    { key: 'condition_state', label: 'CONDITION', width: 80 },
+    { key: 'availability_status', label: 'AVAILABILITY', width: 90 },
+    { key: 'shelf_location', label: 'SHELF', width: 85 },
+    {
+      key: 'last_audited_at', label: 'LAST AUDITED', width: 156,
+      format: (value) => value ? new Intl.DateTimeFormat('en-PH', {
+        dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Manila',
+      }).format(new Date(String(value))) : 'Never audited',
+    },
   ]
-
-  function header() {
-    document.rect(0, 0, document.page.width, 66).fill(blue)
-    document.fillColor(white).font('Helvetica-Bold').fontSize(17).text('STI ORMOC SMART LIBRARY', 32, 19)
-    document.fillColor(yellow).fontSize(10).text('RESEARCH AND THESIS INVENTORY REPORT', 32, 43)
-    document.rect(32, 80, document.page.width - 64, 23).fill(yellow)
-    document.fillColor(blue).fontSize(7).font('Helvetica-Bold')
-    for (const column of columns) document.text(column.label, column.x + 3, 88, { width: column.width - 6 })
-  }
-
-  async function render() {
-    header(); let y = 109; let index = 0
-    for await (const row of rows) {
-      if (y > document.page.height - 48) { document.addPage(); header(); y = 109 }
-      document.fillColor(blue).font('Helvetica').fontSize(7)
-      for (const column of columns) document.text(String(row[column.key] ?? ''), column.x + 3, y, { width: column.width - 6, height: 18, ellipsis: true })
-      document.moveTo(32, y + 22).lineTo(document.page.width - 32, y + 22).strokeColor(blue).opacity(0.15).stroke().opacity(1)
-      y += 25; index += 1
-    }
-    if (index === 0) document.fillColor(blue).fontSize(10).text('No research or thesis inventory records are available.', 32, 122)
-    document.end()
-  }
-  void render().catch((error) => document.destroy(error))
-  return document
+  return createBrandedTablePdf(rows, {
+    title: 'COMPLETE RESEARCH AND THESIS INVENTORY REPORT',
+    subtitle: 'All active bound research inventory data',
+    emptyMessage: 'No research or thesis inventory records are available.',
+    columns,
+  })
 }
 
 export function thesisReportRows() { return iterateThesisInventoryRows(db) }

@@ -1,17 +1,11 @@
 import type { NextFunction, Request, Response } from 'express'
 import { createThesisCsvStream, createThesisInventoryPdf, thesisReportRows } from '../reports/thesis-inventory-export.service.ts'
-import { auditThesisCondition, setThesisAvailability, thesisInventoryRows, thesisInventorySummary } from './thesis-inventory.service.ts'
+import {
+  archiveThesisInventory, auditThesisCondition, deleteThesisInventory, setThesisAvailability,
+  thesisInventoryRows, thesisInventorySummary,
+} from './thesis-inventory.service.ts'
 import { parseThesisInventoryFilters, type ThesisAvailability, type ThesisCondition } from './thesis-inventory.validation.ts'
-
-function actor(request: Request, response: Response) {
-  const authenticated = response.locals.authenticatedUser as { id?: number; userId?: number; fullName?: string; schoolId?: string } | undefined
-  const sessionUser = request.session?.user as { id?: number; fullName?: string; email?: string } | undefined
-  const rawId = authenticated?.id ?? authenticated?.userId ?? sessionUser?.id
-  return {
-    userId: Number.isSafeInteger(Number(rawId)) && Number(rawId) > 0 ? Number(rawId) : null,
-    label: authenticated?.fullName ?? authenticated?.schoolId ?? sessionUser?.fullName ?? sessionUser?.email ?? 'admin_authenticated',
-  }
-}
+import { inventoryActor } from './inventory-actor.ts'
 
 export async function getThesisSummary(_request: Request, response: Response, next: NextFunction) {
   try { response.json({ success: true, data: await thesisInventorySummary() }) }
@@ -33,7 +27,7 @@ export async function auditThesis(request: Request, response: Response, next: Ne
       message: conditionState === 'lost'
         ? 'Thesis marked lost and forced unavailable.'
         : 'Thesis condition updated without changing availability.',
-      data: await auditThesisCondition(barcode, conditionState, actor(request, response)),
+      data: await auditThesisCondition(barcode, conditionState, inventoryActor(request, response)),
     })
   } catch (error) { next(error) }
 }
@@ -44,7 +38,31 @@ export async function changeThesisAvailability(request: Request, response: Respo
     response.json({
       success: true,
       message: `Thesis availability updated to ${availabilityStatus}.`,
-      data: await setThesisAvailability(barcode, availabilityStatus, actor(request, response)),
+      data: await setThesisAvailability(barcode, availabilityStatus, inventoryActor(request, response)),
+    })
+  } catch (error) { next(error) }
+}
+
+export async function archiveThesis(request: Request, response: Response, next: NextFunction) {
+  try {
+    response.json({
+      success: true,
+      message: 'Research/thesis inventory copy archived successfully.',
+      data: await archiveThesisInventory(
+        request.params.researchInventoryId,
+        request.body?.reason,
+        inventoryActor(request, response),
+      ),
+    })
+  } catch (error) { next(error) }
+}
+
+export async function deleteThesis(request: Request, response: Response, next: NextFunction) {
+  try {
+    response.json({
+      success: true,
+      message: 'Research/thesis inventory copy deleted successfully.',
+      data: await deleteThesisInventory(request.params.researchInventoryId, inventoryActor(request, response)),
     })
   } catch (error) { next(error) }
 }
@@ -55,6 +73,7 @@ export function exportThesisCsv(_request: Request, response: Response, next: Nex
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': 'attachment; filename="smartlib-thesis-inventory.csv"',
       'Cache-Control': 'private, no-store',
+      'X-SmartLib-CSV-Integrity': 'HMAC-SHA256; version=v1',
     })
     createThesisCsvStream(thesisReportRows()).on('error', next).pipe(response)
   } catch (error) { next(error) }

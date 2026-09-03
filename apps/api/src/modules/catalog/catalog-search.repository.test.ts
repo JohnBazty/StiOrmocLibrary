@@ -24,3 +24,9 @@ test('rejects malformed search filters with 422 semantics', () => {
     return typeof error === 'object' && error !== null && 'status' in error && error.status === 422
   })
 })
+
+test('catalog results include the active research inventory identifier needed by the code viewer', () => {
+  const query = buildCatalogSearchQuery(parseCatalogSearchFilters({ scope: 'research' }))
+  assert.match(query.dataSql, /MIN\(research_inventory_id\) AS research_inventory_id/)
+  assert.match(query.dataSql, /ri_lookup\.research_inventory_id/)
+})

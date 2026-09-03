@@ -7,15 +7,18 @@ import {
   ensureCategoryExists,
   findBookTitleByIsbnForUpdate,
   findDuplicatePhysicalCopyForUpdate,
-  findDuplicateResearchInventoryForUpdate,
+  findLegacyBookMaterialForUpdate,
   findResearchCodeForUpdate,
   insertAuthors,
+  insertLegacyBookMaterial,
   insertPhysicalCopy,
   insertResearchRecord,
   insertResearchInventory,
   insertTitle,
 } from './catalog.repository.ts'
 import { validateBookEntry, validateThesisEntry } from './catalog.validation.ts'
+import { ensureBookLocationExists, reserveBarcodeSequence } from './bulk-book.repository.ts'
+import { renderBookLabel } from './book-label.renderer.ts'
 
 function validationError(errors: Record<string, string>) {
   return new HttpError(422, 'CATALOG_VALIDATION_FAILED', 'The catalog entry contains invalid fields.', { errors })
@@ -65,7 +68,12 @@ export function createCatalogService(database: Pool = db) {
         })
 
         if (createdTitle) await insertAuthors(connection, titleId, input.authors)
-        const physicalCopyId = await insertPhysicalCopy(connection, titleId, input.copy)
+        const existingMaterial = await findLegacyBookMaterialForUpdate(connection, input.copy)
+        if (existingMaterial && existingMaterial.material_type !== 'Book') {
+          throw new HttpError(409, 'BARCODE_ASSIGNED_TO_RESEARCH', 'The barcode is already assigned to a research or thesis material.')
+        }
+        const materialId = existingMaterial?.material_id ?? await insertLegacyBookMaterial(connection, input)
+        const physicalCopyId = await insertPhysicalCopy(connection, titleId, { ...input.copy, legacyMaterialId: Number(materialId) })
 
         await connection.commit()
         return { titleId, physicalCopyId, createdTitle, addedCopyToExistingTitle: !createdTitle }
@@ -89,9 +97,9 @@ export function createCatalogService(database: Pool = db) {
       try {
         await connection.beginTransaction()
 
-        if (!await ensureCategoryExists(connection, input.categoryId)) {
-          throw new HttpError(422, 'CATEGORY_NOT_FOUND', 'The selected category does not exist.', {
-            categoryId: input.categoryId,
+        if (!await ensureBookLocationExists(connection, input.copy.shelfLocation)) {
+          throw new HttpError(422, 'RESEARCH_LOCATION_NOT_FOUND', 'Shelf location must match an existing managed location.', {
+            errors: { shelfLocation: 'Select an existing shelf location.' },
           })
         }
 
@@ -103,19 +111,8 @@ export function createCatalogService(database: Pool = db) {
           })
         }
 
-        const duplicateCopy = await findDuplicatePhysicalCopyForUpdate(connection, input.copy)
-        const duplicateResearchCopy = await findDuplicateResearchInventoryForUpdate(connection, input.copy)
-        if (duplicateCopy || duplicateResearchCopy) {
-          throw new HttpError(409, 'ACCESSION_ALREADY_EXISTS', 'The barcode or accession number is already assigned to another physical asset.', {
-            physicalCopyId: duplicateCopy?.physical_copy_id ?? null,
-            researchInventoryId: duplicateResearchCopy?.research_inventory_id ?? null,
-            barcode: duplicateCopy?.barcode ?? duplicateResearchCopy?.barcode,
-            accessionNumber: duplicateCopy?.accession_number ?? duplicateResearchCopy?.accession_number,
-          })
-        }
-
         const titleId = await insertTitle(connection, {
-          categoryId: input.categoryId,
+          categoryId: null,
           recordType: 'Research/Thesis',
           title: input.title,
           isbn: null,
@@ -126,13 +123,27 @@ export function createCatalogService(database: Pool = db) {
         })
         await insertAuthors(connection, titleId, input.authors)
         const researchRecordId = await insertResearchRecord(connection, titleId, input)
+        const year = new Date().getFullYear()
+        const sequence = await reserveBarcodeSequence(connection, year, 1)
+        const serial = String(sequence).padStart(6, '0')
+        input.copy.barcode = `STIORMOC${year}${serial}`
+        input.copy.accessionNumber = `STI-RES-${year}-${serial}`
+        input.copy.conditionStatus = 'Good'
+        const label = await renderBookLabel({ title_id: titleId, barcode: input.copy.barcode, accession_number: input.copy.accessionNumber })
         const researchInventoryId = await insertResearchInventory(connection, {
           ...input,
           copy: input.copy,
-        })
+        }, titleId, label.qrCodeData)
 
         await connection.commit()
-        return { titleId, researchRecordId, researchInventoryId }
+        return {
+          titleId, researchRecordId, researchInventoryId,
+          createdTitle: true, numberOfCopies: 1,
+          copies: [{ physicalCopyId: researchInventoryId, materialId: 0, titleId, title: input.title,
+            author: input.authors.join(', '), isbn: '', shelfLocation: input.copy.shelfLocation,
+            accessionNumber: input.copy.accessionNumber, barcode: input.copy.barcode,
+            qrCodeData: label.qrCodeData, barcodeImageData: label.barcodeImageData }],
+        }
       } catch (error) {
         await connection.rollback()
         if (isDuplicateEntry(error)) {

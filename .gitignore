@@ -5,3 +5,7 @@ dist/
 *.log
 *.tsbuildinfo
 .DS_Store
+
+# Runtime uploads and generated assets
+apps/storage/
+apps/api/public/assets/covers/

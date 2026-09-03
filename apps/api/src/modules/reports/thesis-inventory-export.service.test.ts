@@ -3,6 +3,7 @@ import test from 'node:test'
 import type { Pool } from 'mysql2/promise'
 import { iterateThesisInventoryRows } from '../inventory/thesis-inventory.repository.ts'
 import { createThesisCsvStream, createThesisInventoryPdf, type ThesisInventoryExportRow } from './thesis-inventory-export.service.ts'
+import { CSV_INTEGRITY_MARKER, verifyIntegrityProtectedCsv } from './csv-integrity.ts'
 
 const thesis: ThesisInventoryExportRow = {
   research_inventory_id: 1, item_title: 'SmartLib Research', title: 'SmartLib Research', authors: 'Student Authors',
@@ -18,11 +19,14 @@ async function streamBuffer(stream: NodeJS.ReadableStream) {
 
 test('thesis CSV contains research metadata and neutralizes spreadsheet formulas', async () => {
   async function* rows() { yield { ...thesis, title: '=unsafe' } }
-  const content = (await streamBuffer(createThesisCsvStream(rows()))).toString('utf8')
+  const report = await streamBuffer(createThesisCsvStream(rows()))
+  const content = report.toString('utf8')
   assert.match(content, /Authors,?"/)
   assert.match(content, /Faculty Adviser/)
   assert.match(content, /'=unsafe/)
   assert.doesNotMatch(content, /Record Type|ISBN/)
+  assert.match(content, new RegExp(CSV_INTEGRITY_MARKER))
+  assert.deepEqual(verifyIntegrityProtectedCsv(report), { valid: true, dataset: 'thesis_inventory' })
 })
 
 test('thesis PDF is valid and compiles only thesis metadata rows', async () => {

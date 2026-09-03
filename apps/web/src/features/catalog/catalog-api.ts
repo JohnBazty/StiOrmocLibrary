@@ -1,4 +1,4 @@
-import type { CatalogFilters, CatalogItem, Category, PhysicalCopy } from './types'
+import type { AdminBookAsset, BulkBookResult, CatalogFilters, CatalogItem, Category, IsbnMetadata, PhysicalCopy } from './types'
 import { getAccessToken } from '../auth/auth-storage'
 
 export class ApiError extends Error {
@@ -49,7 +49,29 @@ export const catalogApi = {
   categories: () => request<Category[]>('/api/categories'),
   copies: () => request<PhysicalCopy[]>('/api/catalog/admin/copies?limit=150'),
   createBook: (body: unknown) => request('/api/catalog/books', { method: 'POST', body: JSON.stringify(body) }),
-  createThesis: (body: unknown) => request('/api/catalog/research', { method: 'POST', body: JSON.stringify(body) }),
+  createBulkBook: (body: unknown) => request<BulkBookResult>('/api/v1/admin/catalog/bulk-entry', { method: 'POST', body: JSON.stringify(body) }),
+  lookupIsbn: (isbn: string, signal?: AbortSignal) => request<IsbnMetadata>(`/api/v1/admin/books/isbn/${encodeURIComponent(isbn)}`, { signal }),
+  asset: (physicalCopyId: number, signal?: AbortSignal) => request<AdminBookAsset>(`/api/v1/admin/books/assets/${physicalCopyId}`, { signal }),
+  researchAsset: (researchInventoryId: number, signal?: AbortSignal) => request<AdminBookAsset>(`/api/v1/admin/research/assets/${researchInventoryId}`, { signal }),
+  async downloadAssetPng(assetId: number, kind: 'barcode' | 'qr', assetType: 'book' | 'research' = 'book') {
+    const accessToken = getAccessToken()
+    const headers = new Headers({ Accept: 'image/png' })
+    if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
+    const response = await fetch(`/api/v1/admin/${assetType === 'research' ? 'research' : 'books'}/assets/${assetId}/${kind}.png`, { headers, credentials: 'include' })
+    if (!response.ok) {
+      const isJson = (response.headers.get('content-type') ?? '').includes('application/json')
+      const payload = isJson ? await response.json() as { message?: string; code?: string } : null
+      throw new ApiError(payload?.message ?? 'The asset image could not be downloaded.', payload?.code ?? 'ASSET_DOWNLOAD_FAILED')
+    }
+    if (!(response.headers.get('content-type') ?? '').includes('image/png')) throw new ApiError('The server returned an unexpected asset file type.', 'INVALID_ASSET_IMAGE')
+    const disposition = response.headers.get('content-disposition') ?? ''
+    const filename = disposition.match(/filename="([^"]+)"/i)?.[1] ?? `smartlib-${kind}.png`
+    const url = URL.createObjectURL(await response.blob())
+    const link = document.createElement('a'); link.href = url; link.download = filename
+    document.body.appendChild(link); link.click(); link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
+  },
+  createThesis: (body: unknown) => request<BulkBookResult>('/api/catalog/research', { method: 'POST', body: JSON.stringify(body) }),
   parseRegistry: (value: string) => request<{ kind: string; normalizedValue: string; match: null | Record<string, unknown> }>('/api/catalog/registry/parse', {
     method: 'POST', body: JSON.stringify({ value, mode: 'auto' }),
   }),

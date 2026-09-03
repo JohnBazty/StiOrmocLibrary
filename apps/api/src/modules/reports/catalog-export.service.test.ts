@@ -3,6 +3,7 @@ import test from 'node:test'
 import { once } from 'node:events'
 import type { InventoryExportRow } from './catalog-export.service.ts'
 import { createCsvStream, createInventoryPdf } from './catalog-export.service.ts'
+import { CSV_INTEGRITY_MARKER, verifyIntegrityProtectedCsv } from './csv-integrity.ts'
 
 async function* rows(): AsyncGenerator<InventoryExportRow> {
   yield {
@@ -20,10 +21,22 @@ async function collect(stream: NodeJS.ReadableStream) {
 }
 
 test('streams escaped CSV and neutralizes spreadsheet formulas', async () => {
-  const output = (await collect(createCsvStream(rows()))).toString('utf8')
+  const buffer = await collect(createCsvStream(rows()))
+  const output = buffer.toString('utf8')
   assert.match(output, /^\uFEFF"Record Type"/)
   assert.match(output, /"'=DANGEROUS\(\)"/)
   assert.match(output, /"A ""Quoted"" Author"/)
+  assert.match(output, new RegExp(CSV_INTEGRITY_MARKER))
+  assert.deepEqual(verifyIntegrityProtectedCsv(buffer), { valid: true, dataset: 'catalog_inventory' })
+})
+
+test('detects any manipulation of a downloaded inventory CSV', async () => {
+  const original = await collect(createCsvStream(rows()))
+  const changed = Buffer.from(original.toString('utf8').replace('BC-1', 'BC-9'), 'utf8')
+  const result = verifyIntegrityProtectedCsv(changed)
+  assert.equal(result.valid, false)
+  assert.equal(result.dataset, 'catalog_inventory')
+  assert.match(result.reason ?? '', /changed after export/i)
 })
 
 test('creates a valid PDF stream with the STI inventory header', async () => {
@@ -31,4 +44,3 @@ test('creates a valid PDF stream with the STI inventory header', async () => {
   assert.equal(output.subarray(0, 4).toString(), '%PDF')
   assert.ok(output.length > 500)
 })
-

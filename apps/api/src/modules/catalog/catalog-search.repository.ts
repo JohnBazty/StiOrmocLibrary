@@ -118,7 +118,13 @@ export function buildCatalogSearchQuery(filters: CatalogSearchFilters) {
   const whereSql = `WHERE ${where.join('\n AND ')}`
   const fromSql = `FROM titles t
     LEFT JOIN categories c ON c.category_id = t.category_id
-    LEFT JOIN research_records rr ON rr.title_id = t.title_id`
+    LEFT JOIN research_records rr ON rr.title_id = t.title_id
+    LEFT JOIN (
+      SELECT title_id, MIN(research_inventory_id) AS research_inventory_id
+        FROM research_inventory
+       WHERE lifecycle_status = 'Active'
+       GROUP BY title_id
+    ) ri_lookup ON ri_lookup.title_id = t.title_id`
 
   const safeLimit = Math.min(Math.max(Math.trunc(filters.limit), 1), 100)
   const safeOffset = Math.max((Math.trunc(filters.page) - 1) * safeLimit, 0)
@@ -127,6 +133,7 @@ export function buildCatalogSearchQuery(filters: CatalogSearchFilters) {
       t.publisher, t.call_number, t.category_id, c.category_name,
       rr.research_record_id, rr.research_code, rr.adviser_name,
       rr.department_or_program, rr.abstract_text, rr.keywords_text, rr.viewing_status,
+      ri_lookup.research_inventory_id,
       GROUP_CONCAT(DISTINCT a.author_name ORDER BY a.author_order SEPARATOR ', ') AS authors,
       COUNT(DISTINCT CASE WHEN pc.lifecycle_status = 'Active' THEN pc.physical_copy_id END) AS total_copies,
       COUNT(DISTINCT CASE WHEN pc.lifecycle_status = 'Active' AND pc.availability_status = 'Available' THEN pc.physical_copy_id END) AS available_copies,
@@ -144,7 +151,8 @@ export function buildCatalogSearchQuery(filters: CatalogSearchFilters) {
     GROUP BY t.title_id, t.record_type, t.title, t.isbn, t.publication_year,
       t.publisher, t.call_number, t.category_id, c.category_name,
       rr.research_record_id, rr.research_code, rr.adviser_name,
-      rr.department_or_program, rr.abstract_text, rr.keywords_text, rr.viewing_status
+      rr.department_or_program, rr.abstract_text, rr.keywords_text, rr.viewing_status,
+      ri_lookup.research_inventory_id
     ORDER BY t.title ASC, t.title_id ASC
     LIMIT ${safeLimit} OFFSET ${safeOffset}`
 
@@ -174,6 +182,7 @@ function toCatalogItem(row: RowDataPacket) {
     availableCopies: Number(row.available_copies ?? 0),
     research: row.research_record_id ? {
       researchRecordId: row.research_record_id,
+      researchInventoryId: row.research_inventory_id === null ? null : Number(row.research_inventory_id),
       researchCode: row.research_code,
       adviser: row.adviser_name,
       departmentOrProgram: row.department_or_program,

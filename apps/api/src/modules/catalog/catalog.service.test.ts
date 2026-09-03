@@ -17,6 +17,8 @@ function fakePool() {
       if (sql.includes('SELECT title_id') && sql.includes('FROM titles')) return [[]]
       if (sql.includes('SELECT research_record_id')) return [[]]
       if (sql.includes('SELECT research_inventory_id')) return [[]]
+      if (sql.includes('SELECT category_id FROM categories WHERE shelf_location')) return [[{ category_id: 1 }]]
+      if (sql.includes('SELECT `last_value` FROM barcode_sequences')) return [[{ last_value: 40 }]]
       if (sql.includes('INSERT INTO titles')) return [{ insertId: 101 }]
       if (sql.includes('INSERT INTO physical_copies')) return [{ insertId: 202 }]
       if (sql.includes('INSERT INTO research_records')) return [{ insertId: 303 }]
@@ -39,6 +41,10 @@ test('creates a book and physical copy in one committed transaction', async () =
   assert.equal(state.committed, 1)
   assert.equal(state.rolledBack, 0)
   assert.equal(state.released, 1)
+  const materialInsert = state.statements.findIndex((sql) => sql.includes('INSERT INTO materials'))
+  const copyInsert = state.statements.findIndex((sql) => sql.includes('INSERT INTO physical_copies'))
+  assert.ok(materialInsert >= 0)
+  assert.ok(copyInsert > materialInsert)
 })
 
 test('publishes catalog metadata and the independent thesis inventory row transactionally', async () => {
@@ -47,9 +53,13 @@ test('publishes catalog metadata and the independent thesis inventory row transa
     title: 'Smart Campus Library', author: 'Maria Santos', adviser: 'Dr. Ana Cruz', year: 2026,
     abstract: 'This research evaluates a secure smart campus library management platform.',
     researchCode: 'TH-BSIT-2026-009', department: 'BS Information Technology',
-    copy: { barcode: 'THESIS-BC-009', accessionNumber: 'THESIS-ACC-009', shelfLocation: 'Research A-1', conditionStatus: 'Good' },
+    copy: { shelfLocation: 'Research A-1' },
   })
-  assert.deepEqual(result, { titleId: 101, researchRecordId: 303, researchInventoryId: 404 })
+  assert.equal(result.titleId, 101)
+  assert.equal(result.researchRecordId, 303)
+  assert.equal(result.researchInventoryId, 404)
+  assert.equal(result.copies[0].accessionNumber, `STI-RES-${new Date().getFullYear()}-000041`)
+  assert.equal(result.copies[0].barcode, `STIORMOC${new Date().getFullYear()}000041`)
   assert.equal(state.committed, 1)
   assert.equal(state.rolledBack, 0)
   assert.ok(state.statements.some((sql) => sql.includes('INSERT INTO research_inventory')))

@@ -1,0 +1,14 @@
+import type { Pool,RowDataPacket } from 'mysql2/promise'
+import { db } from '../../config/db.js'
+export type ActiveUserFilters={q:string;role:string;program:string;clearance:string;page:number;limit:number}
+export function parseActiveUserFilters(q:Record<string,unknown>):ActiveUserFilters{return{q:String(q.q??'').trim().slice(0,150),role:String(q.role??''),program:String(q.program??'').trim().slice(0,150),clearance:String(q.clearance??''),page:Math.max(1,Number(q.page)||1),limit:Math.min(100,Math.max(1,Number(q.limit)||25))}}
+export class UsersRepository{
+ private readonly pool:Pool
+ constructor(pool:Pool=db){this.pool=pool}
+ private base(){return"FROM accounts a LEFT JOIN users u ON u.user_id=a.user_id LEFT JOIN student_profiles sp ON sp.account_id=a.account_id LEFT JOIN clearance_statuses cs ON cs.user_id=u.user_id"}
+ private where(f:ActiveUserFilters){const c=["a.account_status='Active'"];const v:Array<string|number>=[];if(f.q){const q=`%${f.q}%`;c.push("(a.school_id LIKE ? OR CONCAT_WS(' ',sp.first_name,sp.last_name) LIKE ? OR u.full_name LIKE ? OR u.email LIKE ?)");v.push(q,q,q,q)}if(f.role){c.push('a.role=?');v.push(f.role)}if(f.program){c.push("COALESCE(sp.program_strand,u.course_or_strand,'')=?");v.push(f.program)}if(f.clearance){c.push("COALESCE(cs.standing_status,'Cleared')=?");v.push(f.clearance)}return{sql:c.join(' AND '),values:v}}
+ async summary(){const[rows]=await this.pool.execute<RowDataPacket[]>("SELECT COUNT(*) active_accounts,SUM(role='Student') student_accounts,SUM(role='Faculty') faculty_accounts,SUM(role IN ('Admin','Librarian')) staff_accounts FROM accounts WHERE account_status='Active'");return rows[0]}
+ async programs(){const[rows]=await this.pool.execute<RowDataPacket[]>(`SELECT DISTINCT COALESCE(sp.program_strand,u.course_or_strand) program ${this.base()} WHERE a.account_status='Active' AND COALESCE(sp.program_strand,u.course_or_strand) IS NOT NULL ORDER BY program`);return rows.map(row=>row.program)}
+ async active(f:ActiveUserFilters){const w=this.where(f),base=this.base();const[counts]=await this.pool.execute<RowDataPacket[]>(`SELECT COUNT(*) total ${base} WHERE ${w.sql}`,w.values),offset=(f.page-1)*f.limit;const[rows]=await this.pool.execute<RowDataPacket[]>(`SELECT a.account_id id,a.school_id,a.role,COALESCE(NULLIF(CONCAT_WS(' ',sp.first_name,sp.last_name),''),u.full_name,a.school_id) full_name,COALESCE(u.email,'—') email,COALESCE(sp.program_strand,u.course_or_strand,'—') program,COALESCE(sp.year_grade_level,u.section,'—') year_or_unit,COALESCE(cs.standing_status,'Cleared') clearance_status ${base} WHERE ${w.sql} ORDER BY full_name,a.school_id LIMIT ${f.limit} OFFSET ${offset}`,w.values);const total=Number(counts[0]?.total??0);return{rows,pagination:{page:f.page,limit:f.limit,total,total_pages:Math.ceil(total/f.limit)}}}
+}
+export const usersRepository=new UsersRepository()

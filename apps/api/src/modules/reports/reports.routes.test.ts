@@ -25,6 +25,7 @@ test('authorized Admin streams a CSV attachment with inventory rows', async () =
   assert.equal(response.status, 200)
   assert.match(response.headers['content-type'], /text\/csv/)
   assert.match(response.headers['content-disposition'], /sti-library-inventory\.csv/)
+  assert.equal(response.headers['x-smartlib-csv-integrity'], 'HMAC-SHA256; version=v1')
   assert.match(response.text, /Database Systems/)
 })
 

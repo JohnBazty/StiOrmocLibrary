@@ -34,6 +34,8 @@ function query(filters: ReservationFilters) {
   return parameters.toString()
 }
 export const reservationApi = {
-  queue: (filters: ReservationFilters) => request<{ items: ReservationQueueItem[]; pagination: { total: number } }>(`/api/reservations/admin/queue?${query(filters)}`),
-  adjustStatus: (reservationId: number, status: ReservationStatus) => request(`/api/reservations/${reservationId}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  queue: (filters: ReservationFilters) => request<{ items: ReservationQueueItem[]; pagination: { total: number } }>(`/api/v1/admin/reservations?${query(filters)}`),
+  adjustStatus: (reservationId: number, status: ReservationStatus) => request(`/api/v1/admin/reservations/${reservationId}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  mine: () => request<Array<{ reservationId: number; title: string; coverImagePath: string | null; queuePosition: number; status: ReservationStatus; reservedAt: string; pickupDeadline: string | null; accessionNumber: string | null; barcode: string | null; conditionStatus: string | null }>>('/api/v1/reservations'),
+  cancelMine: (reservationId: number) => request(`/api/v1/reservations/${reservationId}/cancel`, { method: 'PUT' }),
 }

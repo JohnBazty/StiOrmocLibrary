@@ -2,6 +2,7 @@ import { HttpError } from '../../core/http-error.ts'
 import type { PhysicalCopyMutationTransaction } from './physical-copy-mutation.middleware.ts'
 import type { Pool, RowDataPacket } from 'mysql2/promise'
 import { db } from '../../config/db.js'
+import type { InventoryRequestActor } from './inventory-actor.ts'
 
 function archiveReason(value: unknown) {
   const reason = typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : ''
@@ -17,6 +18,7 @@ function archiveReason(value: unknown) {
 export async function archivePhysicalCopy(
   transaction: PhysicalCopyMutationTransaction,
   reasonValue: unknown,
+  actor: InventoryRequestActor,
 ) {
   const reason = archiveReason(reasonValue)
   const { copy, connection } = transaction
@@ -33,6 +35,20 @@ export async function archivePhysicalCopy(
     [reason, copy.physical_copy_id],
   )
 
+  if (copy.material_id !== null) {
+    await connection.execute(
+      "UPDATE materials SET availability_status = 'Unavailable', updated_at = NOW() WHERE material_id = ?",
+      [copy.material_id],
+    )
+  }
+  await connection.execute(
+    `INSERT INTO inventory_audit_events
+      (physical_copy_id, barcode_snapshot, event_type, previous_availability, new_availability,
+       action_reason, verified_by_user_id, verified_by_label)
+     VALUES (?, ?, 'Archived', ?, 'Archived', ?, ?, ?)`,
+    [copy.physical_copy_id, copy.barcode, copy.availability_status, reason, actor.userId, actor.label],
+  )
+
   return {
     physicalCopyId: copy.physical_copy_id,
     accessionNumber: copy.accession_number,
@@ -41,8 +57,24 @@ export async function archivePhysicalCopy(
   }
 }
 
-export async function deletePhysicalCopy(transaction: PhysicalCopyMutationTransaction) {
+export async function deletePhysicalCopy(
+  transaction: PhysicalCopyMutationTransaction,
+  actor: InventoryRequestActor,
+) {
   const { copy, connection } = transaction
+
+  if (copy.condition_status !== 'Lost') {
+    throw new HttpError(
+      422,
+      'PHYSICAL_COPY_NOT_LOST',
+      `Copy ${copy.accession_number} must be marked Lost before it can be removed from inventory.`,
+      {
+        physicalCopyId: copy.physical_copy_id,
+        accessionNumber: copy.accession_number,
+        conditionStatus: copy.condition_status,
+      },
+    )
+  }
 
   const [historyRows] = await connection.execute(
     `SELECT transaction_id
@@ -53,23 +85,50 @@ export async function deletePhysicalCopy(transaction: PhysicalCopyMutationTransa
     [copy.circulation_material_id],
   )
 
-  if (Array.isArray(historyRows) && historyRows.length > 0) {
+  const [reservationRows] = await connection.execute(
+    `SELECT reservation_id FROM reservations
+      WHERE accession_id = ? OR material_id = ? LIMIT 1 FOR UPDATE`,
+    [copy.circulation_material_id, copy.circulation_material_id],
+  )
+  const [auditRows] = await connection.execute(
+    `SELECT inventory_audit_event_id FROM inventory_audit_events
+      WHERE physical_copy_id = ? LIMIT 1 FOR UPDATE`,
+    [copy.physical_copy_id],
+  )
+
+  if (
+    (Array.isArray(historyRows) && historyRows.length > 0)
+    || (Array.isArray(reservationRows) && reservationRows.length > 0)
+    || (Array.isArray(auditRows) && auditRows.length > 0)
+  ) {
     throw new HttpError(
       422,
-      'PHYSICAL_COPY_HAS_BORROWING_HISTORY',
-      `Copy ${copy.accession_number} has borrowing history and must be archived instead of deleted.`,
+      'PHYSICAL_COPY_REQUIRES_ARCHIVE',
+      `Copy ${copy.accession_number} has inventory or circulation history and must be archived instead of deleted.`,
       {
         physicalCopyId: copy.physical_copy_id,
         materialId: copy.material_id,
         accessionNumber: copy.accession_number,
+        canArchive: true,
       },
     )
   }
 
   await connection.execute(
+    `INSERT INTO inventory_audit_events
+      (physical_copy_id, barcode_snapshot, event_type, previous_availability, new_availability,
+       action_reason, verified_by_user_id, verified_by_label)
+     VALUES (?, ?, 'Deleted', ?, NULL, 'Permanent deletion of never-used inventory row', ?, ?)`,
+    [copy.physical_copy_id, copy.barcode, copy.availability_status, actor.userId, actor.label],
+  )
+
+  await connection.execute(
     'DELETE FROM physical_copies WHERE physical_copy_id = ?',
     [copy.physical_copy_id],
   )
+  if (copy.material_id !== null) {
+    await connection.execute('DELETE FROM materials WHERE material_id = ?', [copy.material_id])
+  }
 
   return {
     physicalCopyId: copy.physical_copy_id,
