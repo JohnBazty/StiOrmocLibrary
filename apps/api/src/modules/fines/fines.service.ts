@@ -1,6 +1,7 @@
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
+import { receiptVerificationCode } from './fine-receipt-verification.ts'
 import { fineId, parseFineFilters, receiptId, validateAdjustment, validateCashPayment, validateInfraction, validateReversal, type FineFilters } from './fines.validation.ts'
 
 export type FineActor = { accountId?: number; role?: string }
@@ -82,6 +83,7 @@ type Obligation = {
   id: string; fineId: number | null; lostBookReportId: number | null; userId: number; schoolId: string; userName: string
   type: 'Overdue' | 'Infraction' | 'Lost Book'; title: string; reason: string; assessed: number; paid: number
   adjusted: number; balance: number; status: string; occurredAt: unknown; updatedAt: unknown; paymentAllowed: boolean
+  receipts: Array<{ receiptId: number; receiptNumber: string; verificationCode: string; status: string }>
 }
 
 function number(value: unknown) { return Number(value ?? 0) }
@@ -144,6 +146,7 @@ async function queryObligations(database: Pool, filters: FineFilters, onlyUserId
       type: String(row.fine_type) as 'Overdue' | 'Infraction', title: String(row.source_title), reason, assessed, paid, adjusted, balance,
       status, occurredAt: row.incident_at ?? row.applied_date, updatedAt: row.updated_at ?? row.applied_date,
       paymentAllowed: !accruing && balance > 0 && !['Waived', 'Voided'].includes(status),
+      receipts: [],
     }
   })
   obligations.push(...lostRows.map((row) => {
@@ -153,13 +156,39 @@ async function queryObligations(database: Pool, filters: FineFilters, onlyUserId
       type: 'Lost Book' as const, title: String(row.source_title), reason: 'Confirmed lost-book replacement charge', assessed, paid, adjusted: 0, balance,
       status: String(row.payment_status), occurredAt: row.verified_at ?? row.reported_at, updatedAt: row.updated_at ?? row.verified_at ?? row.reported_at,
       paymentAllowed: row.payment_status !== 'Paid' && balance > 0,
+      receipts: [],
     }
   }))
+  const fineIds = obligations.flatMap((item) => item.fineId ? [item.fineId] : [])
+  const lostBookReportIds = obligations.flatMap((item) => item.lostBookReportId ? [item.lostBookReportId] : [])
+  if (fineIds.length || lostBookReportIds.length) {
+    const clauses: string[] = []; const receiptParameters: number[] = []
+    if (fineIds.length) { clauses.push(`a.fine_id IN (${fineIds.map(() => '?').join(',')})`); receiptParameters.push(...fineIds) }
+    if (lostBookReportIds.length) { clauses.push(`a.lost_book_report_id IN (${lostBookReportIds.map(() => '?').join(',')})`); receiptParameters.push(...lostBookReportIds) }
+    const [receiptRows] = await database.execute<RowDataPacket[]>(
+      `SELECT a.fine_id,a.lost_book_report_id,r.fine_payment_receipt_id,r.receipt_number,r.amount_received,r.received_at,r.receipt_status,u.school_id
+         FROM fine_payment_allocations a
+         INNER JOIN fine_payment_receipts r ON r.fine_payment_receipt_id=a.fine_payment_receipt_id
+         INNER JOIN users u ON u.user_id=r.user_id
+        WHERE ${clauses.map((clause) => `(${clause})`).join(' OR ')}
+        ORDER BY r.received_at DESC,r.fine_payment_receipt_id DESC`, receiptParameters,
+    )
+    const byTarget = new Map(obligations.map((item) => [item.fineId ? `F-${item.fineId}` : `L-${item.lostBookReportId}`, item]))
+    for (const row of receiptRows) {
+      const target = byTarget.get(row.fine_id ? `F-${row.fine_id}` : `L-${row.lost_book_report_id}`)
+      if (!target) continue
+      const receiptIdValue = Number(row.fine_payment_receipt_id); const receiptNumber = String(row.receipt_number)
+      target.receipts.push({
+        receiptId: receiptIdValue, receiptNumber, status: String(row.receipt_status),
+        verificationCode: receiptVerificationCode({ receiptId: receiptIdValue, receiptNumber, amountReceived: number(row.amount_received), receivedAt: row.received_at, student: { schoolId: String(row.school_id) } }),
+      })
+    }
+  }
   const needle = filters.search.toLocaleLowerCase('en-US')
   const filtered = obligations.filter((item) => {
     if (filters.type !== 'all' && item.type !== filters.type) return false
     if (filters.status !== 'all' && item.status !== filters.status) return false
-    return !needle || [item.id,item.userName,item.schoolId,item.title,item.reason].some((value) => value.toLocaleLowerCase('en-US').includes(needle))
+    return !needle || [item.id,item.userName,item.schoolId,item.title,item.reason,...item.receipts.flatMap((receipt) => [receipt.receiptNumber,receipt.verificationCode])].some((value) => value.toLocaleLowerCase('en-US').includes(needle))
   }).sort((left, right) => new Date(String(right.occurredAt)).getTime() - new Date(String(left.occurredAt)).getTime())
   return { range, items: filtered }
 }
@@ -231,8 +260,10 @@ export function createFinesService(database: Pool = db) {
          LEFT JOIN titles lt ON lt.title_id=lpc.title_id
         WHERE a.fine_payment_receipt_id=? ORDER BY a.fine_payment_allocation_id`, [targetReceiptId],
     )
+    const verificationCode = receiptVerificationCode({ receiptId: Number(receipt.fine_payment_receipt_id), receiptNumber: String(receipt.receipt_number), amountReceived: number(receipt.amount_received), receivedAt: receipt.received_at, student: { schoolId: String(receipt.school_id) } })
     return {
       receiptId: Number(receipt.fine_payment_receipt_id), receiptNumber: String(receipt.receipt_number), requestKey: String(receipt.request_key),
+      verificationCode,
       student: { userId: Number(receipt.user_id), schoolId: String(receipt.school_id), name: String(receipt.full_name) },
       amountReceived: number(receipt.amount_received), paymentMethod: 'Cash' as const, receivedBy: String(receipt.received_by), receivedAt: receipt.received_at,
       status: String(receipt.receipt_status), reversedBy: receipt.reversed_by ? String(receipt.reversed_by) : null, reversedAt: receipt.reversed_at, reversalReason: receipt.reversal_reason,

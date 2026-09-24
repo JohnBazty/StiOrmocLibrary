@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "html5-qrcode": "^2.3.8",
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",
@@ -22,10 +23,10 @@
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@vitejs/plugin-react": "latest",
+    "jsdom": "^26.1.0",
     "tailwindcss": "latest",
     "typescript": "latest",
     "vite": "latest",
-    "vitest": "latest",
-    "jsdom": "^26.1.0"
+    "vitest": "latest"
   }
 }

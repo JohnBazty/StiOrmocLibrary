@@ -1,6 +1,8 @@
 import { HttpError } from '../../core/http-error.ts'
 export type AttendancePeriod = 'daily' | 'weekly' | 'monthly' | 'semester'
 export type AttendanceFilters = { period: AttendancePeriod; date?: string; weekStart?: string; year?: number; month?: number; academicTermId?: number; q: string; role: string; purpose: string; presence: string; page: number; limit: number }
+export const attendancePurposes = ['Library Visit','Study','Research','Book Borrowing','Printing','Photocopy'] as const
+export type AttendancePurpose = typeof attendancePurposes[number]
 const isoDate = /^\d{4}-\d{2}-\d{2}$/
 export function parseAttendanceFilters(query: Record<string, unknown>): AttendanceFilters {
   const period = String(query.period ?? 'daily') as AttendancePeriod
@@ -16,4 +18,32 @@ export function parseAttendanceFilters(query: Record<string, unknown>): Attendan
   if(role&&!['Admin','Librarian','Student','Faculty'].includes(role)) throw new HttpError(422,'INVALID_ATTENDANCE_ROLE','Choose a valid account role.')
   if(presence&&!['inside','exited'].includes(presence)) throw new HttpError(422,'INVALID_ATTENDANCE_PRESENCE','Choose a valid presence state.')
   return {period,date,weekStart,year,month,academicTermId,q:String(query.q??'').trim().slice(0,150),role,purpose:purpose.slice(0,50),presence,page,limit}
+}
+
+export function parseAttendanceScan(body: unknown, action: 'resolve'|'check-in'|'check-out') {
+  const input = body && typeof body === 'object' ? body as Record<string, unknown> : {}
+  const qrPayload = String(input.qr_payload ?? '').trim()
+  if (!qrPayload) throw new HttpError(422,'ATTENDANCE_QR_REQUIRED','Scan an attendance QR code first.')
+  const purpose = String(input.purpose ?? '').trim() as AttendancePurpose
+  if (action === 'check-in' && !attendancePurposes.includes(purpose)) {
+    throw new HttpError(422,'ATTENDANCE_PURPOSE_REQUIRED','Choose the visitor purpose before confirming entry.')
+  }
+  const requestId = String(input.request_id ?? '').trim()
+  if (action === 'check-in' && !/^[A-Za-z0-9_-]{16,64}$/.test(requestId)) {
+    throw new HttpError(422,'ATTENDANCE_REQUEST_ID_INVALID','A valid attendance request identifier is required.')
+  }
+  return { qrPayload, purpose: action === 'check-in' ? purpose : null, requestId: action === 'check-in' ? requestId : null }
+}
+
+export function parseCapacityUpdate(body: unknown) {
+  const input = body && typeof body === 'object' ? body as Record<string, unknown> : {}
+  const capacity = Number(input.capacity)
+  const reason = String(input.reason ?? '').trim()
+  if (!Number.isSafeInteger(capacity) || capacity < 1 || capacity > 5000) {
+    throw new HttpError(422,'LIBRARY_CAPACITY_INVALID','Capacity must be a whole number from 1 to 5000.')
+  }
+  if (reason.length < 3 || reason.length > 255) {
+    throw new HttpError(422,'LIBRARY_CAPACITY_REASON_REQUIRED','Enter a short reason for the capacity change.')
+  }
+  return { capacity, reason }
 }

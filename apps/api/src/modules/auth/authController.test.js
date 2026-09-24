@@ -109,12 +109,14 @@ test('registers an active student with a bcrypt hash and prepared values', async
 
   assert.equal(response.statusCode, 201)
   assert.equal(response.payload.message, 'Account created successfully!')
-  assert.equal(calls.length, 3)
-  assert.match(calls[2].sql, /account_status/)
-  assert.match(calls[2].sql, /'Active'/)
-  assert.equal(calls[2].values[0], 3)
-  assert.equal(calls[2].values[5], 'student.654321@ormoc.sti.edu.ph')
-  assert.equal(calls[2].values[6], 'bcrypt-hash')
+  assert.equal(calls.length, 5)
+  const userInsert = calls.find(({ sql }) => sql.includes('INSERT INTO users'))
+  assert.match(userInsert.sql, /account_status/)
+  assert.match(userInsert.sql, /'Active'/)
+  assert.equal(userInsert.values[0], 3)
+  assert.equal(userInsert.values[5], 'student.654321@ormoc.sti.edu.ph')
+  assert.equal(userInsert.values[6], 'bcrypt-hash')
+  assert.equal(calls.some(({ sql }) => sql.includes('INSERT INTO attendance_qr_credentials')), true)
 })
 
 test('rejects duplicate registration emails before hashing', async () => {

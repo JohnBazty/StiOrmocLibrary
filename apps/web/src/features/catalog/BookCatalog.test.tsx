@@ -12,7 +12,10 @@ const api = vi.hoisted(() => ({
 }))
 
 vi.mock('./book-catalog-api', () => api)
-vi.mock('../auth/auth-storage', () => ({ getCurrentClaims: () => ({ userId: 5, schoolId: 'STI-5', role: 'Student', exp: 9999999999 }) }))
+vi.mock('../auth/auth-storage', () => ({
+  getCurrentClaims: () => ({ userId: 5, schoolId: 'STI-5', role: 'Student', exp: 9999999999 }),
+  getCurrentIdentity: () => ({ userId: 5, schoolId: 'STI-5', role: 'Student', source: 'jwt' }),
+}))
 
 const baseBook: BookCatalogItem = {
   titleId: 1,

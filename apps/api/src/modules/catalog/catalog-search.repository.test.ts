@@ -30,3 +30,11 @@ test('catalog results include the active research inventory identifier needed by
   assert.match(query.dataSql, /MIN\(research_inventory_id\) AS research_inventory_id/)
   assert.match(query.dataSql, /ri_lookup\.research_inventory_id/)
 })
+
+test('catalog results expose the authoritative category shelf and actual active inventory shelves', () => {
+  const query = buildCatalogSearchQuery(parseCatalogSearchFilters({}))
+  assert.match(query.dataSql, /c\.shelf_location AS category_shelf_location/)
+  assert.match(query.dataSql, /book_shelf_locations/)
+  assert.match(query.dataSql, /active_inventory_count/)
+  assert.match(query.dataSql, /t\.row_version/)
+})

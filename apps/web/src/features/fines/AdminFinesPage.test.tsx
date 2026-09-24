@@ -4,7 +4,7 @@ import { AdminFinesPage } from './AdminFinesPage'
 
 const api = vi.hoisted(() => ({
   adminList: vi.fn(), adminTerms: vi.fn(), downloadReport: vi.fn(), issueInfraction: vi.fn(),
-  pay: vi.fn(), adjust: vi.fn(), reverse: vi.fn(), downloadReceipt: vi.fn(),
+  pay: vi.fn(), adjust: vi.fn(), reverse: vi.fn(), receipt: vi.fn(), downloadReceipt: vi.fn(),
 }))
 vi.mock('./fines-api', () => ({ finesApi: api }))
 
@@ -16,7 +16,7 @@ const fineList = {
     userName: 'Buentheo Nathaniel Noval', type: 'Overdue', title: '1984',
     reason: '14 hourly unit(s) at PHP 2.00', assessed: 28, paid: 0, adjusted: 0,
     balance: 28, status: 'Unpaid', occurredAt: '2026-08-25T13:56:25.000Z',
-    updatedAt: '2026-08-25T13:56:25.000Z', paymentAllowed: true,
+    updatedAt: '2026-08-25T13:56:25.000Z', paymentAllowed: true, receipts: [],
   }],
   pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
 }
@@ -38,6 +38,7 @@ describe('AdminFinesPage', () => {
     api.adminTerms.mockResolvedValue([])
     api.pay.mockResolvedValue({
       receiptId: 12, receiptNumber: 'OR-20260903-000012', requestKey: 'cash-reduction-12',
+      verificationCode: '8A35C0C777F102AB',
       student: { userId: 7, schoolId: '02000871654', name: 'Buentheo Nathaniel Noval' },
       amountReceived: 14, paymentMethod: 'Cash', receivedBy: 'Library Admin', receivedAt: '2026-09-03T08:00:00.000Z', status: 'Issued',
       reversedBy: null, reversedAt: null, reversalReason: null, notes: null,
@@ -68,6 +69,29 @@ describe('AdminFinesPage', () => {
 
     await waitFor(() => expect(api.adjust).toHaveBeenCalledWith(2, { type: 'Waiver', reason: 'Approved by the head librarian.' }))
     expect(api.pay).not.toHaveBeenCalled()
+  })
+
+  it('shows receipt verification data, searches it, and opens the full receipt', async () => {
+    const reference = { receiptId: 8, receiptNumber: 'OR-20260904-000008', verificationCode: '428FC7C836DCC645', status: 'Issued' }
+    const listWithReceipt = { ...fineList, items: [{ ...fineList.items[0], paid: 28, balance: 0, status: 'Paid', paymentAllowed: false, receipts: [reference] }] }
+    const detail = {
+      receiptId: 8, receiptNumber: reference.receiptNumber, verificationCode: reference.verificationCode, requestKey: 'cash-8',
+      student: { userId: 7, schoolId: '02000871654', name: 'Buentheo Nathaniel Noval' }, amountReceived: 28,
+      paymentMethod: 'Cash', receivedBy: 'Library Admin', receivedAt: '2026-09-04T14:37:00.000Z', status: 'Issued',
+      reversedBy: null, reversedAt: null, reversalReason: null, notes: null,
+      allocations: [{ fineId: 2, lostBookReportId: null, type: 'Overdue', title: '1984', assessed: 28, paid: 28, balanceBefore: 28, balanceAfter: 0 }],
+    }
+    api.adminList.mockResolvedValue(listWithReceipt);api.adminTerms.mockResolvedValue([]);api.receipt.mockResolvedValue(detail)
+    render(<AdminFinesPage />)
+
+    expect(await screen.findByText(reference.receiptNumber)).toBeTruthy()
+    expect(screen.getByText(reference.verificationCode)).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Search fines and receipts'), { target: { value: reference.verificationCode } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
+    await waitFor(() => expect(api.adminList).toHaveBeenLastCalledWith(expect.objectContaining({ search: reference.verificationCode })))
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(reference.receiptNumber) }))
+    await waitFor(() => expect(api.receipt).toHaveBeenCalledWith(8,true))
+    expect(await screen.findByText(`Digital receipt ${reference.receiptNumber}`)).toBeTruthy()
   })
 })
 

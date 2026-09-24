@@ -47,7 +47,7 @@ Browser
        - Student routes
        - Librarian/admin routes
        - Responsive navigation and shared components
-       - Mock-first interface state
+       - React interface state backed by role-scoped API modules
   |
   +-- /api requests through Vite development proxy
        |
@@ -65,8 +65,8 @@ Browser
             - Notifications
             - Reports
                  |
-                 +-- Mock data repository now
-                 +-- Prisma and MySQL repository later
+                 +-- MySQL repositories for production modules
+                 +-- Remaining prototype-only pages are migrated incrementally
 ```
 
 All backend modules share one Node.js process and one future MySQL database. Module separation is organizational and enforces ownership; it does not create distributed services.
@@ -113,7 +113,7 @@ All backend modules share one Node.js process and one future MySQL database. Mod
 - Printing progresses from `pending` to `printing`, `ready_for_pickup`, and `completed`; cancellation is allowed before completion.
 - Attendance retains the check-in time even when no check-out has been recorded.
 
-The eventual backend must calculate and enforce these rules. The client interface must never be the authority for availability, due times, fines, print totals, roles, or clearance.
+The backend calculates and enforces these rules. The client interface is never the authority for availability, due times, fines, print totals, roles, clearance, occupancy, or dashboard totals.
 
 ## Production transition
 

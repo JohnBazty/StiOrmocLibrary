@@ -181,6 +181,7 @@ JWT_ISSUER=sti-ormoc-smart-library-api
 JWT_AUDIENCE=sti-ormoc-smart-library-web
 JWT_EXPIRES_IN_SECONDS=900
 REPORT_INTEGRITY_SECRET=REPLACE_WITH_A_THIRD_RANDOM_SECRET_OF_AT_LEAST_32_CHARACTERS
+ATTENDANCE_QR_SECRET=REPLACE_WITH_A_FOURTH_RANDOM_SECRET_OF_AT_LEAST_32_CHARACTERS
 ```
 
 Generate three different secrets by running this command three times:
@@ -189,7 +190,7 @@ Generate three different secrets by running this command three times:
 node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))"
 ```
 
-Copy separate generated values into `SESSION_SECRET`, `JWT_SECRET`, and `REPORT_INTEGRITY_SECRET`.
+Copy separate generated values into `SESSION_SECRET`, `JWT_SECRET`, `REPORT_INTEGRITY_SECRET`, and `ATTENDANCE_QR_SECRET`. Keep the attendance QR secret stable because changing it invalidates downloaded passes.
 
 Important:
 

@@ -16,6 +16,12 @@ function asyncController(handler: (request: Request, response: Response) => Prom
   }
 }
 
+function actorAccountId(response: Response) {
+  const value = Number((response.locals.authenticatedUser as { accountId?: number; id?: number } | undefined)?.accountId
+    ?? (response.locals.authenticatedUser as { id?: number } | undefined)?.id)
+  return Number.isSafeInteger(value) && value > 0 ? value : null
+}
+
 export const catalogController = {
   search: asyncController(async (request, response) => {
     const filters = parseCatalogSearchFilters(request.query as Record<string, unknown>)
@@ -34,6 +40,13 @@ export const catalogController = {
   }),
   parseRegistry: asyncController(async (request, response) => {
     response.json({ success: true, data: await catalogManagementService.parseRegistry(request.body) })
+  }),
+  changeTitleCategory: asyncController(async (request, response) => {
+    response.json({
+      success: true,
+      message: 'Title, active inventory, and shelf assignment updated successfully.',
+      data: await catalogManagementService.changeTitleCategory(request.params.titleId, request.body, actorAccountId(response)),
+    })
   }),
   createBook: asyncController(async (request, response) => {
     const result = await catalogService.createBookEntry(request.body)

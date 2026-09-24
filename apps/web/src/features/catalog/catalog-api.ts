@@ -1,4 +1,4 @@
-import type { AdminBookAsset, BulkBookResult, CatalogFilters, CatalogItem, Category, IsbnMetadata, PhysicalCopy } from './types'
+import type { AdminBookAsset, BulkBookResult, CatalogFilters, CatalogItem, Category, CategoryAssignmentResult, IsbnMetadata, PhysicalCopy } from './types'
 import { getAccessToken } from '../auth/auth-storage'
 
 export class ApiError extends Error {
@@ -48,6 +48,10 @@ export const catalogApi = {
   },
   categories: () => request<Category[]>('/api/categories'),
   copies: () => request<PhysicalCopy[]>('/api/catalog/admin/copies?limit=150'),
+  changeTitleCategory: (titleId: number, targetCategoryId: number, expectedRowVersion: number) => request<CategoryAssignmentResult>(
+    `/api/v1/admin/catalog/titles/${titleId}/category`,
+    { method: 'PATCH', body: JSON.stringify({ targetCategoryId, expectedRowVersion }) },
+  ),
   createBook: (body: unknown) => request('/api/catalog/books', { method: 'POST', body: JSON.stringify(body) }),
   createBulkBook: (body: unknown) => request<BulkBookResult>('/api/v1/admin/catalog/bulk-entry', { method: 'POST', body: JSON.stringify(body) }),
   lookupIsbn: (isbn: string, signal?: AbortSignal) => request<IsbnMetadata>(`/api/v1/admin/books/isbn/${encodeURIComponent(isbn)}`, { signal }),

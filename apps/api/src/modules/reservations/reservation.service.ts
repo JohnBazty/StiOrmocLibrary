@@ -71,7 +71,7 @@ export function createReservationService(database: Pool = db) {
       if (!userId) throw new HttpError(422, 'CIRCULATION_PROFILE_NOT_LINKED', 'This login account is not linked to a circulation profile.')
       const [rows] = await database.execute<RowDataPacket[]>(
         `SELECT r.reservation_id, r.queue_position, r.reservation_status, r.reserved_at, r.pickup_deadline,
-                COALESCE(t.title, m.title) AS title, t.cover_image_path,
+                COALESCE(t.title, m.title) AS title, t.title_id, t.cover_image_path,
                 assigned_pc.accession_number, COALESCE(assigned_pc.barcode, assigned.barcode) AS barcode,
                 COALESCE(assigned_pc.condition_status, source_pc.condition_status) AS condition_status
            FROM reservations r INNER JOIN materials m ON m.material_id = r.material_id
@@ -81,7 +81,7 @@ export function createReservationService(database: Pool = db) {
            LEFT JOIN physical_copies assigned_pc ON assigned_pc.physical_copy_id = r.assigned_physical_copy_id
           WHERE r.user_id = ? ORDER BY r.reserved_at DESC, r.reservation_id DESC`, [userId],
       )
-      return rows.map((row) => ({ reservationId: Number(row.reservation_id), title: row.title,
+      return rows.map((row) => ({ reservationId: Number(row.reservation_id), title: row.title, titleId: row.title_id ? Number(row.title_id) : null,
         coverImagePath: row.cover_image_path ? String(row.cover_image_path) : null, queuePosition: Number(row.queue_position),
         status: row.reservation_status, reservedAt: row.reserved_at, pickupDeadline: row.pickup_deadline,
         accessionNumber: row.accession_number ?? null, barcode: row.barcode ?? null,

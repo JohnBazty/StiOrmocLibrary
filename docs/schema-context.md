@@ -4,7 +4,7 @@
 
 The target product requirements are the preserved PDFs indexed by [source-of-truth.md](source-of-truth.md). This file documents the **currently implemented** database baseline; it must not override newer product requirements.
 
-Known target gaps include Library Staff/Student Assistant authorization, Archived accounts, renewals, expanded reservation states, richer catalog/research data, and dynamic QR attendance. Cash fine collection, fine caps and infractions, operating-calendar calculation, print revenue/supply history, and archive/clearance audit trails now have additive schema support. Add remaining gaps through versioned, backward-safe migrations before depending on them in application code.
+Known target gaps include Library Staff/Student Assistant authorization, Archived accounts, renewals, expanded reservation states, richer catalog/research data, and the future time-synchronized dynamic QR mode. Permanent offline attendance passes, cash fine collection, fine caps and infractions, operating-calendar calculation, print revenue/supply history, and archive/clearance audit trails now have additive schema support. Add remaining gaps through versioned, backward-safe migrations before depending on them in application code.
 
 The structural catalog migration [20260816_002_book_research_management.sql](../database/migrations/20260816_002_book_research_management.sql) supplies the active four-table `titles`, `authors`, `research_records`, and `physical_copies` model used by the API. `physical_copies.material_id` is the explicit compatibility mapping to the existing `materials.material_id` value. Deployments with legacy material rows still require a separately reconciled data backfill.
 
@@ -152,10 +152,14 @@ Student clearance payloads expose the precise unreturned titles, due dates, comp
 
 ### Attendance
 
-- `attendance_logs`: attendance date, time in/out, visit reason, and optional QR reference.
+- `attendance_logs`: attendance date, legacy time in/out fields, exact check-in/check-out timestamps, visit reason, scan method, credential reference, responsible staff, and an idempotent entry request ID.
+- `attendance_qr_credentials`: one revocable, versioned, permanent credential per library user. The QR contains an opaque public ID and an HMAC-derived secret; personal data and passwords are never embedded.
+- `library_capacity_changes`: append-only before/after capacity changes with the staff actor, time, and required reason.
 - `academic_terms`: administrator-configured academic-year and semester date ranges used by semester attendance filters and reports.
 
 Migration `20260828_024_admin_attendance_reporting.sql` expands attendance purposes and adds date/presence and purpose/date indexes. Attendance reporting remains read-only and treats `attendance_logs` as immutable operational history. Daily, weekly, monthly, and semester views share the same filter contract; semester ranges are resolved from `academic_terms` instead of hard-coded calendar assumptions. The Admin Active Users directory is derived from normalized `accounts` rows whose `account_status` is exactly `Active` and never exposes password hashes, tokens, or QR secrets.
+
+Migration `20260923_039_static_attendance_qr_and_capacity.sql` adds permanent downloadable QR passes, exact timestamp analytics, audited live capacity changes, and scan provenance without removing legacy attendance fields. New registrations issue the credential inside account creation, existing users are backfilled by `db:backfill:attendance-passes`, and the pass is reconstructed only with the stable `ATTENDANCE_QR_SECRET`. Check-in locks the singleton capacity setting, rejects duplicate open visits and full-capacity entry, inserts an idempotent log, then returns the role-specific confirmation. The saved user image works offline; the staff scanning device still requires an HTTPS connection to the API.
 
 ### Printing
 
@@ -164,6 +168,7 @@ Migration `20260828_024_admin_attendance_reporting.sql` expands attendance purpo
 - `print_pricing_rules`: active server-side price per page by print type and paper size.
 - `print_status_history`: append-only request-state audit history.
 - `print_cash_payments`: one counter-cash receipt record per print request. Online payment and GCash are not part of the current printing implementation.
+- `print_payment_receipts`: an immutable digital receipt snapshot generated with each printing cash payment. It stores its own `PR-...` receipt number and verification code and is deliberately separate from `fine_payment_receipts`; printing receipts do not affect fines or clearance.
 - `ink_repository`: per-printer cartridge/color definitions whose authoritative stock is the whole-number `available_bottles` value. Legacy percentage columns remain only for backward compatibility.
 - `ink_stock_movements`: append-only bottle restock, issue, adjustment, and reversal records.
 - `bond_paper_stocks`: current paper quantities by Short, A4, and Long size. `unopened_reams` is authoritative for the manual physical-stock workflow; `remaining_reams` remains a legacy compatibility field.
@@ -178,14 +183,25 @@ Migration `20260828_028_printing_financial_overview.sql` records required `unit_
 
 Migration `20260828_029_printing_stock_audit_separation.sql` separates cash revenue from stock expenses and makes physical consumption explicit. Loading ink deducts exactly one unopened bottle; opening paper deducts exactly one unopened ream. Both actions use row locks and append the responsible staff account, timestamp, activity code, and before/after balance. Starting a print job no longer deducts fractional paper, preventing a manual ream-opening action from double-counting the same supply. Revenue reports use `print_cash_payments` and include paid requests, sheets, copies, and total revenue. Stock-expense reports use restock movements only and contain no revenue, net result, or profit-margin fields.
 
+Migration `20260923_040_printing_digital_receipts.sql` creates one printing-only digital receipt for every successful cash printing transaction and backfills receipts for existing print cash payments. The receipt snapshots the user, document configuration, amount, receiver, and payment time so later profile changes cannot rewrite the historical receipt. Users view and download these receipts inside Printing Service; administrators view them from the printing queue and can search by receipt number or verification code.
+
 ### Notifications
 
-- `notifications`: per-user in-app delivery for due reminders, overdue penalties, reservation lifecycle changes, printing updates, library closures, announcements, and lost-book decisions. `dedupe_key` is unique per user so repeat worker executions cannot duplicate a milestone.
+- `notifications`: per-user in-app delivery for due reminders, overdue penalties, reservation lifecycle changes, printing updates, library closures, announcements, and lost-book decisions. `dedupe_key` is unique per user so repeat worker executions cannot duplicate a milestone. User deletion sets `deleted_at`; the row stays hidden while preserving the deduplication record so the same milestone is not recreated.
 - `announcements`: Admin-authored immediate or scheduled campus posts. Only the JWT `Admin` role may create them; all active operational users receive the published notification.
 - `announcement_revisions`: immutable initial publication snapshots and future recorded revisions.
 - `library_operating_schedule`: Asia/Manila weekly opening hours; `library_closed_days` remains the dated exception ledger.
 
 The notification worker runs within the modular monolith and uses database uniqueness rather than a message broker. It creates 12-hour and 1-hour due reminders, overdue alerts, one notification per reservation/print status, seven-day closure notices, and scheduled announcement fan-out. Read state is owned by the recipient and does not delete the notification.
+
+### Live dashboards
+
+- `library_profile_settings`: the single configurable library name, physical seat capacity, information text, and optional map asset path used by both dashboards.
+- `library_operating_schedule` and `library_closed_days`: authoritative weekly hours and dated closure exceptions shown to users.
+- Admin dashboard totals are read-only aggregates from `physical_copies`, `borrow_transactions`, `accounts`, `attendance_logs`, `reservations`, fine/payment ledgers, and `admin_notifications`.
+- Student/Faculty dashboard data is scoped through the authenticated `accounts.user_id` bridge. It reads active loans, reservations, print requests, notifications, announcements, clearance, and recommendations without persisting derived dashboard totals.
+
+Migration `20260904_033_dashboard_library_profile.sql` adds only the configurable library profile row. Occupancy is computed from today's attendance rows whose `time_out` is null; active users means active Student/Faculty accounts, not currently connected browser sessions. Student recommendations require an available active copy, exclude the user's current loans/reservations, and prioritize recent borrowing by the same program before falling back to overall demand.
 
 ## Referential-action policy
 
@@ -245,3 +261,20 @@ Migration `20260824_023_research_asset_qr.sql` adds `research_inventory.qr_code_
 Physical book and research/thesis removal requires the copy condition to be `Lost`. Borrowed/Overdue transactions and active reservations remain stronger locks and must be resolved first. A Lost copy with circulation or inventory audit history is archived rather than hard-deleted so its historical references remain intact; the student catalog and active inventory queries exclude the archived row. Student-safe catalog, cart/history detail, and reservation payloads expose condition text without exposing administrative QR data. Reservation condition follows the specifically assigned physical copy when available and otherwise reports the source copy condition while assignment is pending.
 
 Book title covers remain file-backed metadata through `titles.cover_image_path`. Administrative bulk entry accepts a validated JPEG, PNG, or WebP image up to 2 MB, writes it beneath the controlled API assets directory, and student catalog responses expose only its public path.
+
+Migration `20260906_035_floor_plans.sql` adds the editable library floor-plan contract:
+
+- `floor_plan_shelves` gives every managed shelf a stable numeric identity while retaining its human-readable label. Existing nonblank locations from physical books, categories, and research inventory are imported without changing their current assignments.
+- `floor_plan_state` stores one private administrative draft, one separately published student-facing layout, and an optimistic revision number. A saved draft never changes the published map.
+- `floor_plan_versions` stores an immutable snapshot for each publication. Restoring a version creates a new draft and retains current shelf labels and book assignments.
+- `floor_plan_events` records the staff actor and event details for draft saves, publications, shelf creation, restores, category shelf synchronization, and permitted copy transfers.
+
+The visual layout is validated application-side and stored as bounded JSON text because the supported MySQL 5.6 baseline has no native JSON type. Areas contain dimensions and an optional controlled image path; objects contain type, position, size, rotation, label, note, and an optional stable shelf ID. Physical-copy location remains backward-compatible through `physical_copies.shelf_location`. Publishing a renamed managed shelf updates that label in `floor_plan_shelves`, `physical_copies`, `materials`, `research_inventory`, and category defaults in one transaction. A populated shelf cannot be removed from a published layout until its assigned items are transferred.
+
+Migration `20260906_036_reconcile_category_floor_plan_shelves.sql` safely imports category locations created after the first floor-plan migration as managed, unplaced shelves. Category creation and editing now require an existing managed shelf; they never create arbitrary location strings.
+
+Migration `20260907_037_category_shelf_authority.sql` makes a category's selected managed shelf the authoritative home location for its active physical books and linked research inventory. It reconciles existing copy locations and their compatibility `materials` rows without rewriting historical audit snapshots. Every later category save repeats this synchronization transactionally, including when its shelf label did not change. Category reassignment moves the combined inventory to the target category shelf, and new book creation ignores a client-provided alternate location in favor of the locked current category shelf.
+
+Administrators can also reassign one normalized `titles` row from the Unified catalog results table. The service locks the title and target category, verifies optimistic `row_version`, updates `titles.category_id`, synchronizes all active `physical_copies` plus their compatibility `materials` rows (or active linked `research_inventory` rows), and appends a `floor_plan_events` audit entry in one transaction. It does not update borrowing, reservation, condition, or availability fields.
+
+Migration `20260907_038_shelf_grid_locations.sql` adds the first detailed shelf-position contract. Every managed shelf has a configurable `column_count` and `row_count` (default 3 by 5, bounded to 1–12 by the API). Categories store a default `shelf_column` and `shelf_row`; active physical books and research inventory inherit that compartment whenever the category is saved or a title is reassigned. Existing records are backfilled to Column 1 / Row 1 without changing their shelf labels. Reducing a shelf grid is rejected while a category or active inventory record occupies a compartment that would be removed. The published floor plan renders these dimensions, and student location links may highlight the exact shelf compartment while preserving availability, circulation, and condition state.

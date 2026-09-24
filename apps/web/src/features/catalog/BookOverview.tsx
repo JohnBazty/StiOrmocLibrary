@@ -1,3 +1,4 @@
+import { ViewLocationButton } from '../floor-plan/ViewLocationButton'
 import { Check, Clipboard, MapPin, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { AuthRole } from '../auth/auth-storage'
@@ -84,6 +85,7 @@ export function BookOverview({ titleId, role, activeBookCount, selectedBookCount
             </section>
 
             <dl aria-label="Book catalog details" className="mt-6 grid gap-3 sm:grid-cols-2">
+              <div className="sm:col-span-2"><ViewLocationButton titleId={book.titleId}/></div>
               <Metadata label="ISBN" value={book.isbn} />
               <Metadata label="Category" value={book.categoryName} />
               <Metadata label="Publication year" value={book.publicationYear} />

@@ -1,4 +1,5 @@
 import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import { randomBytes } from 'node:crypto'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { removePrintDocument, resolvePrintDocument, storePrintDocument } from './printing.storage.ts'
@@ -7,6 +8,8 @@ import { PrintingRepository, printingRepository } from './printing.repository.ts
 
 type Actor = { schoolId?: string; role?: string }
 const transitions: Record<string, string[]> = { Pending:['Printing','Cancelled'],Printing:['Ready for Pickup'], 'Ready for Pickup':['Completed'],Completed:[],Cancelled:[] }
+function receiptDateKey(value: Date) { return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(value).replaceAll('-','') }
+function receiptId(value: unknown) { const id=Number(value);if(!Number.isSafeInteger(id)||id<1)throw new HttpError(422,'PRINT_RECEIPT_INVALID','The printing receipt ID is invalid.');return id }
 
 export function createPrintingService(pool: Pool = db, repository: PrintingRepository = printingRepository) {
   async function actorUserId(schoolId?: string) {
@@ -19,6 +22,9 @@ export function createPrintingService(pool: Pool = db, repository: PrintingRepos
   return {
     serviceStatus:()=>repository.serviceStatus(), availability:()=>repository.serviceStatus(), pricing:()=>repository.pricing(),
     ownRequests:async(actor:Actor)=>{await actorUserId(actor.schoolId);return repository.ownRequests(actor.schoolId!)},
+    ownReceipts:async(actor:Actor)=>{await actorUserId(actor.schoolId);return repository.ownReceipts(actor.schoolId!)},
+    ownReceipt:async(actor:Actor,receiptIdValue:unknown)=>{await actorUserId(actor.schoolId);const row=await repository.receiptById(receiptId(receiptIdValue),actor.schoolId);if(!row)throw new HttpError(404,'PRINT_RECEIPT_NOT_FOUND','The printing receipt was not found.');return row},
+    adminReceipt:async(actor:Actor,receiptIdValue:unknown)=>{await actorUserId(actor.schoolId);const row=await repository.receiptById(receiptId(receiptIdValue));if(!row)throw new HttpError(404,'PRINT_RECEIPT_NOT_FOUND','The printing receipt was not found.');return row},
     queue:(query:Record<string,unknown>)=>repository.queue(parseQueueFilters(query)), summary:()=>repository.summary(), supplies:()=>repository.supplies(), movements:(limit:unknown)=>repository.movements(Number(limit)||100),
     financeSummary:(query:Record<string,unknown>)=>repository.financeSummary(parseFinanceFilters(query)),
     financeEntries:(query:Record<string,unknown>)=>repository.financeEntries(parseFinanceFilters(query)),
@@ -48,7 +54,36 @@ export function createPrintingService(pool: Pool = db, repository: PrintingRepos
 
     async cancelOwn(actor:Actor,requestIdValue:unknown){const userId=await actorUserId(actor.schoolId),requestId=Number(requestIdValue);if(!Number.isSafeInteger(requestId)||requestId<1)throw new HttpError(422,'PRINT_REQUEST_INVALID','The print request ID is invalid.');const connection=await pool.getConnection();try{await connection.beginTransaction();const[rows]=await connection.execute<RowDataPacket[]>(`SELECT request_id,job_status FROM print_requests WHERE request_id=? AND user_id=? FOR UPDATE`,[requestId,userId]);const row=rows[0];if(!row)throw new HttpError(404,'PRINT_REQUEST_NOT_FOUND','The print request was not found.');if(row.job_status!=='Pending')throw new HttpError(422,'PRINT_CANCELLATION_BLOCKED','Only pending print requests can be cancelled.');await connection.execute(`UPDATE print_requests SET job_status='Cancelled',cancelled_at=NOW(),cancelled_reason='Cancelled by requester',updated_at=NOW(),row_version=row_version+1 WHERE request_id=?`,[requestId]);await connection.execute(`INSERT INTO print_status_history(request_id,from_status,to_status,changed_by_user_id,reason) VALUES (?,'Pending','Cancelled',?,'Cancelled by requester')`,[requestId,userId]);await connection.commit();return{request_id:requestId,job_status:'Cancelled'}}catch(error){await connection.rollback();throw error}finally{connection.release()}},
 
-    async recordCash(actor:Actor,requestIdValue:unknown,body:Record<string,unknown>){const staffId=await actorUserId(actor.schoolId),requestId=Number(requestIdValue);const connection=await pool.getConnection();try{await connection.beginTransaction();const[rows]=await connection.execute<RowDataPacket[]>(`SELECT request_id,calculated_cost,payment_status,job_status FROM print_requests WHERE request_id=? FOR UPDATE`,[requestId]);const row=rows[0];if(!row)throw new HttpError(404,'PRINT_REQUEST_NOT_FOUND','The print request was not found.');if(row.job_status==='Cancelled')throw new HttpError(422,'PRINT_PAYMENT_BLOCKED','A cancelled print request cannot be paid.');if(row.payment_status==='Paid')throw new HttpError(422,'PRINT_ALREADY_PAID','This print request is already paid.');const amount=Number(body.amount_paid);if(!Number.isFinite(amount)||Math.abs(amount-Number(row.calculated_cost))>0.009)throw new HttpError(422,'PRINT_PAYMENT_AMOUNT_INVALID','The cash amount must equal the calculated print cost.');await connection.execute(`INSERT INTO print_cash_payments(request_id,amount_paid,received_by_user_id,received_at,notes) VALUES (?,?,?,NOW(),?)`,[requestId,amount,staffId,String(body.notes??'').trim().slice(0,255)||null]);await connection.execute(`UPDATE print_requests SET payment_status='Paid',paid_at=NOW(),processed_by_user_id=?,updated_at=NOW(),row_version=row_version+1 WHERE request_id=?`,[staffId,requestId]);await connection.commit();return{request_id:requestId,payment_status:'Paid',amount_paid:amount}}catch(error){await connection.rollback();throw error}finally{connection.release()}},
+    async recordCash(actor:Actor,requestIdValue:unknown,body:Record<string,unknown>){
+      const staffId=await actorUserId(actor.schoolId),requestId=Number(requestIdValue)
+      if(!Number.isSafeInteger(requestId)||requestId<1)throw new HttpError(422,'PRINT_REQUEST_INVALID','The print request ID is invalid.')
+      const connection=await pool.getConnection()
+      try{
+        await connection.beginTransaction()
+        const[rows]=await connection.execute<RowDataPacket[]>(`SELECT pr.request_id,pr.user_id,pr.calculated_cost,pr.payment_status,pr.job_status,pr.file_name,pr.page_count,pr.number_of_copies,pr.total_sheets,pr.print_type,pr.paper_size,u.full_name student_name,u.school_id,u.user_role
+          FROM print_requests pr INNER JOIN users u ON u.user_id=pr.user_id WHERE pr.request_id=? FOR UPDATE`,[requestId])
+        const row=rows[0]
+        if(!row)throw new HttpError(404,'PRINT_REQUEST_NOT_FOUND','The print request was not found.')
+        if(row.job_status==='Cancelled')throw new HttpError(422,'PRINT_PAYMENT_BLOCKED','A cancelled print request cannot be paid.')
+        if(row.payment_status==='Paid')throw new HttpError(422,'PRINT_ALREADY_PAID','This print request is already paid. Its digital receipt is available in Printing Service.')
+        const amount=Number(body.amount_paid)
+        if(!Number.isFinite(amount)||Math.abs(amount-Number(row.calculated_cost))>0.009)throw new HttpError(422,'PRINT_PAYMENT_AMOUNT_INVALID','The cash amount must equal the calculated print cost.')
+        const[staffRows]=await connection.execute<RowDataPacket[]>('SELECT full_name FROM users WHERE user_id=? LIMIT 1',[staffId])
+        const receivedBy=String(staffRows[0]?.full_name??'Authorized library personnel'),receivedAt=new Date()
+        const[payment]=await connection.execute<ResultSetHeader>(`INSERT INTO print_cash_payments(request_id,amount_paid,received_by_user_id,received_at,notes) VALUES (?,?,?,?,?)`,[requestId,amount,staffId,receivedAt,String(body.notes??'').trim().slice(0,255)||null])
+        const receiptNumber=`PR-${receiptDateKey(receivedAt)}-${String(payment.insertId).padStart(6,'0')}`,verificationCode=randomBytes(8).toString('hex').toUpperCase()
+        const[receipt]=await connection.execute<ResultSetHeader>(`INSERT INTO print_payment_receipts
+          (print_cash_payment_id,request_id,user_id,receipt_number,verification_code,student_name_snapshot,school_id_snapshot,file_name_snapshot,page_count_snapshot,copies_snapshot,total_sheets_snapshot,print_type_snapshot,paper_size_snapshot,amount_received,payment_method,received_by_user_id,received_by_name_snapshot,received_at)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Cash',?,?,?)`,[payment.insertId,requestId,row.user_id,receiptNumber,verificationCode,row.student_name,row.school_id,row.file_name,row.page_count,row.number_of_copies,row.total_sheets,row.print_type,row.paper_size,amount,staffId,receivedBy,receivedAt])
+        await connection.execute(`UPDATE print_requests SET payment_status='Paid',paid_at=?,processed_by_user_id=?,updated_at=NOW(),row_version=row_version+1 WHERE request_id=?`,[receivedAt,staffId,requestId])
+        const actionPath=row.user_role==='Faculty'?'/faculty/printing':'/student/printing'
+        await connection.execute(`INSERT IGNORE INTO notifications
+          (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,delivered_at)
+          VALUES (?,'Printing receipt available',?,'Printing Update','Printing Receipt',?,?,'Normal',?,NOW())`,[row.user_id,`Your printing payment was recorded. Digital receipt ${receiptNumber} is now available.`,receipt.insertId,actionPath,`printing-receipt:${receipt.insertId}`])
+        await connection.commit()
+        return{request_id:requestId,payment_status:'Paid',amount_paid:amount,receipt:{print_receipt_id:Number(receipt.insertId),request_id:requestId,receipt_number:receiptNumber,verification_code:verificationCode,receipt_status:'Issued',student_name:String(row.student_name),school_id:String(row.school_id),file_name:String(row.file_name),page_count:Number(row.page_count),number_of_copies:Number(row.number_of_copies),total_sheets:Number(row.total_sheets),print_type:String(row.print_type),paper_size:String(row.paper_size),amount_received:amount,payment_method:'Cash',received_by:receivedBy,received_at:receivedAt}}
+      }catch(error){await connection.rollback();throw error}finally{connection.release()}
+    },
 
     async updateStatus(actor:Actor,requestIdValue:unknown,body:Record<string,unknown>){const staffId=await actorUserId(actor.schoolId),requestId=Number(requestIdValue),input=parseStatusUpdate(body);const connection=await pool.getConnection();try{await connection.beginTransaction();const[rows]=await connection.execute<RowDataPacket[]>(`SELECT * FROM print_requests WHERE request_id=? FOR UPDATE`,[requestId]);const row=rows[0];if(!row)throw new HttpError(404,'PRINT_REQUEST_NOT_FOUND','The print request was not found.');if(!transitions[String(row.job_status)]?.includes(input.status))throw new HttpError(422,'PRINT_STATUS_TRANSITION_INVALID',`A ${row.job_status} job cannot move to ${input.status}.`)
       if(input.status==='Printing'&&row.payment_status!=='Paid')throw new HttpError(422,'PRINT_PAYMENT_REQUIRED','Record the cash payment before starting this print job.')

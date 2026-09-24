@@ -1,4 +1,4 @@
-export type CategoryInput = { categoryName: string; shelfLocation: string }
+export type CategoryInput = { categoryName: string; shelfLocation: string; shelfColumn: number; shelfRow: number }
 export type CategoryValidationResult = { isValid: boolean; data: CategoryInput; errors: Record<string, string> }
 
 const CATEGORY_NAME_MAX = 100
@@ -13,6 +13,8 @@ export function validateCategoryPayload(body: unknown): CategoryValidationResult
   const errors: Record<string, string> = {}
   const categoryName = normalizedString(input.categoryName ?? input.category_name)
   const shelfLocation = normalizedString(input.shelfLocation ?? input.shelf_location)
+  const shelfColumn = Number(input.shelfColumn ?? input.shelf_column ?? 1)
+  const shelfRow = Number(input.shelfRow ?? input.shelf_row ?? 1)
 
   if (typeof (input.categoryName ?? input.category_name) !== 'string') errors.categoryName = 'Category name must be a string.'
   else if (!categoryName) errors.categoryName = 'Category name is required.'
@@ -22,7 +24,10 @@ export function validateCategoryPayload(body: unknown): CategoryValidationResult
   else if (!shelfLocation) errors.shelfLocation = 'Shelf location is required.'
   else if (shelfLocation.length > SHELF_LOCATION_MAX) errors.shelfLocation = `Shelf location must not exceed ${SHELF_LOCATION_MAX} characters.`
 
-  return { isValid: Object.keys(errors).length === 0, data: { categoryName, shelfLocation }, errors }
+  if (!Number.isSafeInteger(shelfColumn) || shelfColumn < 1 || shelfColumn > 12) errors.shelfColumn = 'Shelf column must be between 1 and 12.'
+  if (!Number.isSafeInteger(shelfRow) || shelfRow < 1 || shelfRow > 12) errors.shelfRow = 'Shelf row must be between 1 and 12.'
+
+  return { isValid: Object.keys(errors).length === 0, data: { categoryName, shelfLocation, shelfColumn, shelfRow }, errors }
 }
 
 export function parseCategoryId(value: unknown, field = 'categoryId') {

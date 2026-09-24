@@ -30,7 +30,6 @@ export function AddMultipleCopiesModal({ categories, onCreated, onClose }: {
   const lookupAbort = useRef<AbortController | null>(null)
   const lastLookup = useRef('')
   const liveIsbnError = useMemo(() => isbnInputError(isbn), [isbn])
-  const locations = useMemo(() => Array.from(new Set(categories.flatMap((category) => category.shelfLocation ? [category.shelfLocation] : []))), [categories])
 
   const lookupIsbn = useCallback(async (value: string, force = false) => {
     const normalized = normalizeIsbnInput(value)
@@ -129,8 +128,8 @@ export function AddMultipleCopiesModal({ categories, onCreated, onClose }: {
         <label><span className={labelClass}>Purchase price *</span><input name="purchasePrice" required type="number" min="0.01" step="0.01" placeholder="0.00" className={fieldClass} /><span className="mt-1.5 block text-xs text-[#003399]/65">Used automatically as the replacement charge if a copy is confirmed lost.</span></label>
         <Field label="Call number" name="callNumber" />
         <label><span className={labelClass}>Cover page</span><span className="flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-[#003399]/20 bg-[#FFFFFF] px-3 text-sm font-bold text-[#003399]"><ImagePlus size={17} />{coverImageData ? 'Cover selected' : 'Upload cover image'}<input aria-label="Upload cover page" type="file" accept="image/jpeg,image/png,image/webp" onChange={selectCover} className="sr-only" /></span></label>
-        <label><span className={labelClass}>Book location *</span><select name="bookLocation" required value={bookLocation} onChange={(event) => setBookLocation(event.target.value)} className={fieldClass}><option value="">Select book location</option>{locations.map((location) => <option key={location} value={location}>{location}</option>)}</select></label>
         <label><span className={labelClass}>Category *</span><select name="categoryId" required value={categoryId} onChange={(event) => changeCategory(event.target.value)} className={fieldClass}><option value="">Select category</option>{categories.map((category) => <option key={category.categoryId} value={category.categoryId}>{category.categoryName}</option>)}</select></label>
+        <label><span className={labelClass}>Book location *</span><input name="bookLocation" required readOnly value={bookLocation} placeholder="Select a category first" className={`${fieldClass} bg-[#003399]/5`} /><span className="mt-1.5 block text-xs text-[#003399]/65">Automatically follows the selected category shelf.</span></label>
         {!categories.length ? <p role="alert" className="text-sm font-semibold text-[#003399] sm:col-span-2">Create a category and book location before adding physical copies.</p> : null}
         <div className="flex flex-wrap items-center justify-end gap-2 pt-2 sm:col-span-2">
           {!batch ? <><button type="button" disabled={saving} onClick={onClose} className="h-11 rounded-xl border border-[#003399] bg-[#FFFFFF] px-5 font-bold text-[#003399] disabled:opacity-40">Cancel</button><button type="submit" disabled={saving || !categories.length || Boolean(liveIsbnError)} className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#003399] px-5 font-bold text-[#FFFFFF] disabled:opacity-50"><QrCode size={17} />{saving ? 'Saving copy and generating codes…' : 'Create copy and generate codes'}</button></> : <button type="button" onClick={onClose} className="h-11 rounded-xl bg-[#003399] px-5 font-bold text-[#FFFFFF]">Close and view inventory</button>}

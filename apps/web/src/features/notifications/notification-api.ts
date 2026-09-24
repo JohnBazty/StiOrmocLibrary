@@ -16,6 +16,8 @@ export const notificationApi = {
   schedule: () => request<LibrarySchedule>('/api/v1/notifications/schedule'),
   markRead: (id: number) => request(`/api/v1/notifications/${id}/read`, { method: 'PATCH' }),
   markAllRead: () => request('/api/v1/notifications/read-all', { method: 'PATCH' }),
+  remove: (id: number) => request(`/api/v1/notifications/${id}`, { method: 'DELETE' }),
+  removeAll: () => request('/api/v1/notifications', { method: 'DELETE' }),
   announcements: () => request<Announcement[]>('/api/v1/admin/announcements'),
   createAnnouncement: (input: { title: string; body: string; priority: string; publishAt?: string | null; expiresAt?: string | null }) => request('/api/v1/admin/announcements', { method: 'POST', body: JSON.stringify(input) }),
 }

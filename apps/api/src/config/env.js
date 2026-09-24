@@ -10,6 +10,7 @@ const isProduction = process.env.NODE_ENV === 'production'
 const configuredSecret = process.env.SESSION_SECRET?.trim()
 const configuredJwtSecret = process.env.JWT_SECRET?.trim()
 const configuredReportIntegritySecret = process.env.REPORT_INTEGRITY_SECRET?.trim()
+const configuredAttendanceQrSecret = process.env.ATTENDANCE_QR_SECRET?.trim()
 
 if (isProduction && (!configuredSecret || configuredSecret.length < 32)) {
   throw new Error('SESSION_SECRET must contain at least 32 characters in production.')
@@ -19,6 +20,9 @@ if (isProduction && (!configuredJwtSecret || configuredJwtSecret.length < 32)) {
 }
 if (isProduction && (!configuredReportIntegritySecret || configuredReportIntegritySecret.length < 32)) {
   throw new Error('REPORT_INTEGRITY_SECRET must contain at least 32 characters in production.')
+}
+if (isProduction && (!configuredAttendanceQrSecret || configuredAttendanceQrSecret.length < 32)) {
+  throw new Error('ATTENDANCE_QR_SECRET must contain at least 32 characters in production.')
 }
 
 const developmentJwtSecret = configuredJwtSecret || configuredSecret || randomBytes(48).toString('hex')
@@ -50,6 +54,10 @@ export const env = Object.freeze({
   reports: {
     // A separate production key prevents JWT key rotation from invalidating old report seals.
     integritySecret: configuredReportIntegritySecret || developmentJwtSecret,
+  },
+  attendanceQr: {
+    // Keep this key stable. Rotating it invalidates downloaded attendance passes.
+    secret: configuredAttendanceQrSecret || configuredReportIntegritySecret || developmentJwtSecret,
   },
   isbnLookup: {
     timeoutMs: Math.max(500, Math.min(10000, Number(process.env.ISBN_LOOKUP_TIMEOUT_MS ?? 3500))),

@@ -26,6 +26,9 @@ function copyDto(row: RowDataPacket) {
     accession_number: String(row.accession_number ?? ''),
     barcode: String(row.barcode ?? ''),
     shelf_location: String(row.shelf_location ?? ''),
+    shelf_column: Number(row.shelf_column ?? 1),
+    shelf_row: Number(row.shelf_row ?? 1),
+    call_number: row.call_number ? String(row.call_number) : null,
     condition_status: String(row.condition_status ?? ''),
     availability_status: String(row.availability_status ?? ''),
     last_verified_at: row.last_scanned_at ?? null,
@@ -67,7 +70,7 @@ export async function listInventoryCopies(database: Pool, filters: InventoryList
       SELECT pc.physical_copy_id, pc.title_id, t.title AS item_title,
              (SELECT GROUP_CONCAT(a.author_name ORDER BY a.author_order SEPARATOR ', ')
                 FROM authors a WHERE a.title_id = t.title_id) AS authors,
-             c.category_name, pc.accession_number, pc.barcode, pc.shelf_location,
+             c.category_name, pc.accession_number, pc.barcode, pc.shelf_location, pc.shelf_column, pc.shelf_row, t.call_number,
              pc.condition_status, pc.availability_status, pc.last_scanned_at, pc.row_version
         FROM physical_copies pc
         JOIN titles t ON t.title_id = pc.title_id

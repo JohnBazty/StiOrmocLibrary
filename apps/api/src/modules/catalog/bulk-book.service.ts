@@ -1,9 +1,8 @@
 import type { Pool } from 'mysql2/promise'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
-import { ensureCategoryExists } from './catalog.repository.ts'
 import { renderBookLabel } from './book-label.renderer.ts'
-import { createBulkBookTitle, ensureBookLocationExists, insertGeneratedBookCopy, lockBookTitleByIsbn, reserveBarcodeSequence, updateBookCover, updateBookPurchasePrice } from './bulk-book.repository.ts'
+import { createBulkBookTitle, insertGeneratedBookCopy, lockBookTitleByIsbn, lockCategoryShelf, reserveBarcodeSequence, updateBookCover, updateBookPurchasePrice } from './bulk-book.repository.ts'
 import { validateBulkBookInput } from './bulk-book.validation.ts'
 import { removeStoredCover, storeCoverImage } from './cover-image.storage.ts'
 
@@ -20,17 +19,16 @@ function identity(value: string) {
 export function createBulkBookService(database: Pool = db, clock: () => Date = () => new Date(), labelRenderer = renderBookLabel) {
   return {
     async addBulk(body: unknown) {
-      const input = validateBulkBookInput(body)
+      const validated = validateBulkBookInput(body)
       const connection = await database.getConnection()
       let storedCoverPath: string | null = null
       try {
         await connection.beginTransaction()
-        if (!await ensureCategoryExists(connection, input.categoryId)) {
-          throw new HttpError(422, 'CATEGORY_NOT_FOUND', 'The selected category does not exist.', { category_id: input.categoryId })
-        }
-        if (!await ensureBookLocationExists(connection, input.shelfLocation)) {
-          throw new HttpError(422, 'BOOK_LOCATION_NOT_FOUND', 'Book location must match a location currently saved in Category Management.', { shelf_location: input.shelfLocation })
-        }
+        const category = await lockCategoryShelf(connection, validated.categoryId)
+        if (!category) throw new HttpError(422, 'CATEGORY_NOT_FOUND', 'The selected category does not exist.', { category_id: validated.categoryId })
+        if (!category.shelfId) throw new HttpError(422, 'CATEGORY_SHELF_NOT_MANAGED', 'Assign this category to a shelf created in Floor Plan before adding books.')
+        if (category.shelfColumn > category.columnCount || category.shelfRow > category.rowCount) throw new HttpError(422, 'CATEGORY_SHELF_POSITION_INVALID', 'The category position is outside its shelf grid. Update the category before adding books.')
+        const input = { ...validated, shelfLocation: category.shelfLocation, shelfColumn: category.shelfColumn, shelfRow: category.shelfRow }
         const existingTitle = await lockBookTitleByIsbn(connection, input.isbn)
         if (existingTitle && (
           identity(existingTitle.title) !== identity(input.title)

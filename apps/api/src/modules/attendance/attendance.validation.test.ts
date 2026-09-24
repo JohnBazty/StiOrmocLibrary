@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { HttpError } from '../../core/http-error.ts'
-import { parseAttendanceFilters } from './attendance.validation.ts'
+import fs from 'node:fs'
+import { parseAttendanceFilters, parseAttendanceScan, parseCapacityUpdate } from './attendance.validation.ts'
 test('attendance filters accept all report periods',()=>{assert.equal(parseAttendanceFilters({period:'daily',date:'2026-08-28'}).period,'daily');assert.equal(parseAttendanceFilters({period:'weekly',week_start:'2026-08-24'}).period,'weekly');assert.equal(parseAttendanceFilters({period:'monthly',year:'2026',month:'8'}).month,8);assert.equal(parseAttendanceFilters({period:'semester',academic_term_id:'2'}).academicTermId,2)})
 test('semester reports require a configured term identifier',()=>{assert.throws(()=>parseAttendanceFilters({period:'semester'}),(error:unknown)=>error instanceof HttpError&&error.status===422&&error.code==='ACADEMIC_TERM_REQUIRED')})
 test('pagination is bounded for concurrent dashboard readers',()=>{const filters=parseAttendanceFilters({limit:'500',page:'0'});assert.equal(filters.limit,100);assert.equal(filters.page,1)})
+test('check-in requires an approved purpose and idempotency key',()=>{assert.equal(parseAttendanceScan({qr_payload:'value',purpose:'Research',request_id:'request_1234567890'},'check-in').purpose,'Research');assert.throws(()=>parseAttendanceScan({qr_payload:'value',purpose:'Other',request_id:'request_1234567890'},'check-in'),(error:unknown)=>error instanceof HttpError&&error.code==='ATTENDANCE_PURPOSE_REQUIRED')})
+test('capacity updates require a safe whole number and audit reason',()=>{assert.deepEqual(parseCapacityUpdate({capacity:120,reason:'Expanded reading room'}),{capacity:120,reason:'Expanded reading room'});assert.throws(()=>parseCapacityUpdate({capacity:0,reason:'No'}),(error:unknown)=>error instanceof HttpError&&error.code==='LIBRARY_CAPACITY_INVALID')})
+test('static QR migration preserves legacy logs and adds capacity auditing',()=>{const sql=fs.readFileSync(new URL('../../../../../database/migrations/20260923_039_static_attendance_qr_and_capacity.sql',import.meta.url),'utf8');assert.match(sql,/CREATE TABLE IF NOT EXISTS `attendance_qr_credentials`/);assert.match(sql,/ADD COLUMN `checked_in_at`/);assert.match(sql,/CREATE TABLE IF NOT EXISTS `library_capacity_changes`/);assert.doesNotMatch(sql,/DROP TABLE|DROP COLUMN/i)})

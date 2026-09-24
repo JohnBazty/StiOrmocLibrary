@@ -5,7 +5,7 @@ import { validateCategoryPayload } from './category.validation.ts'
 test('trims valid category names and physical shelf layouts', () => {
   const result = validateCategoryPayload({ categoryName: '  Computer Science  ', shelfLocation: ' Shelf A-1 ' })
   assert.equal(result.isValid, true)
-  assert.deepEqual(result.data, { categoryName: 'Computer Science', shelfLocation: 'Shelf A-1' })
+  assert.deepEqual(result.data, { categoryName: 'Computer Science', shelfLocation: 'Shelf A-1', shelfColumn: 1, shelfRow: 1 })
 })
 
 test('accepts versatile administrator-defined location text', () => {

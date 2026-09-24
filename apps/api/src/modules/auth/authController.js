@@ -1,4 +1,5 @@
 import bcrypt from 'bcrypt'
+import { issueAttendanceCredential } from '../attendance/attendance-credential.service.ts'
 import { createHash } from 'node:crypto'
 import { db } from '../../config/db.js'
 import { env } from '../../config/env.js'
@@ -106,7 +107,7 @@ export function createRegisterController({ database = db, passwordHasher = bcryp
 
       const passwordHash = await passwordHasher.hash(validation.password, 12)
       try {
-        await database.execute(
+        const [userResult] = await database.execute(
           `INSERT INTO users
             (role_id, user_role, institutional_id, school_id, full_name, email, password_hash, account_status)
            VALUES (?, ?, ?, ?, ?, ?, ?, 'Active')`,
@@ -120,6 +121,7 @@ export function createRegisterController({ database = db, passwordHasher = bcryp
             passwordHash,
           ],
         )
+        await issueAttendanceCredential(database, Number(userResult.insertId))
       } catch (error) {
         if (error?.code === 'ER_DUP_ENTRY') {
           return response.status(409).json({ success: false, code: 'EMAIL_ALREADY_REGISTERED', message: 'An account with this school email already exists.' })

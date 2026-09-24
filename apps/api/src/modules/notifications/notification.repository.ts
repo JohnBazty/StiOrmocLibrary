@@ -52,6 +52,7 @@ export function createNotificationRepository(database: Pool = db) {
                   n.notification_timestamp, n.read_at, n.expires_at
              FROM notifications n
             WHERE n.user_id = ?${unreadSql}
+              AND n.deleted_at IS NULL
               AND (n.scheduled_for IS NULL OR n.scheduled_for <= NOW())
               AND (n.expires_at IS NULL OR n.expires_at > NOW())
             ORDER BY n.notification_timestamp DESC, n.notification_id DESC
@@ -61,7 +62,7 @@ export function createNotificationRepository(database: Pool = db) {
           `SELECT COUNT(*) AS total,
                   SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) AS unread
              FROM notifications
-            WHERE user_id = ? AND (scheduled_for IS NULL OR scheduled_for <= NOW())
+            WHERE user_id = ? AND deleted_at IS NULL AND (scheduled_for IS NULL OR scheduled_for <= NOW())
               AND (expires_at IS NULL OR expires_at > NOW())${countUnreadSql}`, [userId],
         ),
       ])
@@ -82,7 +83,7 @@ export function createNotificationRepository(database: Pool = db) {
     async markRead(actor: NotificationActor, notificationId: number) {
       const userId = await linkedUserId(database, actorAccountId(actor))
       const [result] = await database.execute<ResultSetHeader>(
-        'UPDATE notifications SET is_read = 1, read_at = COALESCE(read_at, NOW()) WHERE notification_id = ? AND user_id = ?',
+        'UPDATE notifications SET is_read = 1, read_at = COALESCE(read_at, NOW()) WHERE notification_id = ? AND user_id = ? AND deleted_at IS NULL',
         [notificationId, userId],
       )
       if (!result.affectedRows) throw new HttpError(404, 'NOTIFICATION_NOT_FOUND', 'The notification was not found.')
@@ -93,9 +94,30 @@ export function createNotificationRepository(database: Pool = db) {
       const userId = await linkedUserId(database, actorAccountId(actor))
       const [result] = await database.execute<ResultSetHeader>(
         `UPDATE notifications SET is_read = 1, read_at = COALESCE(read_at, NOW())
-          WHERE user_id = ? AND is_read = 0 AND (scheduled_for IS NULL OR scheduled_for <= NOW())`, [userId],
+          WHERE user_id = ? AND deleted_at IS NULL AND is_read = 0 AND (scheduled_for IS NULL OR scheduled_for <= NOW())`, [userId],
       )
       return { updatedCount: result.affectedRows }
+    },
+
+    async remove(actor: NotificationActor, notificationId: number) {
+      const userId = await linkedUserId(database, actorAccountId(actor))
+      const [result] = await database.execute<ResultSetHeader>(
+        'UPDATE notifications SET deleted_at = NOW() WHERE notification_id = ? AND user_id = ? AND deleted_at IS NULL',
+        [notificationId, userId],
+      )
+      if (!result.affectedRows) throw new HttpError(404, 'NOTIFICATION_NOT_FOUND', 'The notification was not found.')
+      return { notificationId, deleted: true }
+    },
+
+    async removeAll(actor: NotificationActor) {
+      const userId = await linkedUserId(database, actorAccountId(actor))
+      const [result] = await database.execute<ResultSetHeader>(
+        `UPDATE notifications SET deleted_at = NOW()
+          WHERE user_id = ? AND deleted_at IS NULL
+            AND (scheduled_for IS NULL OR scheduled_for <= NOW())`,
+        [userId],
+      )
+      return { deletedCount: result.affectedRows }
     },
 
     async schedule() {

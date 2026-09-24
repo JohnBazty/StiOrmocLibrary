@@ -120,7 +120,10 @@ export function buildCatalogSearchQuery(filters: CatalogSearchFilters) {
     LEFT JOIN categories c ON c.category_id = t.category_id
     LEFT JOIN research_records rr ON rr.title_id = t.title_id
     LEFT JOIN (
-      SELECT title_id, MIN(research_inventory_id) AS research_inventory_id
+      SELECT title_id, MIN(research_inventory_id) AS research_inventory_id,
+             COUNT(*) AS active_inventory_count,
+             COUNT(DISTINCT shelf_location) AS shelf_count,
+             GROUP_CONCAT(DISTINCT shelf_location ORDER BY shelf_location SEPARATOR ', ') AS shelf_locations
         FROM research_inventory
        WHERE lifecycle_status = 'Active'
        GROUP BY title_id
@@ -130,13 +133,16 @@ export function buildCatalogSearchQuery(filters: CatalogSearchFilters) {
   const safeOffset = Math.max((Math.trunc(filters.page) - 1) * safeLimit, 0)
   const dataSql = `SELECT
       t.title_id, t.record_type, t.title, t.isbn, t.publication_year,
-      t.publisher, t.call_number, t.category_id, c.category_name,
+      t.publisher, t.call_number, t.category_id, t.row_version, c.category_name,
+      c.shelf_location AS category_shelf_location,
       rr.research_record_id, rr.research_code, rr.adviser_name,
       rr.department_or_program, rr.abstract_text, rr.keywords_text, rr.viewing_status,
       ri_lookup.research_inventory_id,
       GROUP_CONCAT(DISTINCT a.author_name ORDER BY a.author_order SEPARATOR ', ') AS authors,
       COUNT(DISTINCT CASE WHEN pc.lifecycle_status = 'Active' THEN pc.physical_copy_id END) AS total_copies,
       COUNT(DISTINCT CASE WHEN pc.lifecycle_status = 'Active' AND pc.availability_status = 'Available' THEN pc.physical_copy_id END) AS available_copies,
+      COUNT(DISTINCT CASE WHEN pc.lifecycle_status = 'Active' THEN pc.shelf_location END) AS book_shelf_count,
+      GROUP_CONCAT(DISTINCT CASE WHEN pc.lifecycle_status = 'Active' THEN pc.shelf_location END ORDER BY pc.shelf_location SEPARATOR ', ') AS book_shelf_locations,
       CASE
         WHEN t.record_type = 'Research/Thesis' THEN rr.viewing_status
         WHEN COUNT(DISTINCT CASE WHEN pc.lifecycle_status = 'Active' AND pc.availability_status = 'Available' THEN pc.physical_copy_id END) > 0 THEN 'Available'
@@ -149,10 +155,11 @@ export function buildCatalogSearchQuery(filters: CatalogSearchFilters) {
     LEFT JOIN physical_copies pc ON pc.title_id = t.title_id
     ${whereSql}
     GROUP BY t.title_id, t.record_type, t.title, t.isbn, t.publication_year,
-      t.publisher, t.call_number, t.category_id, c.category_name,
+      t.publisher, t.call_number, t.category_id, t.row_version, c.category_name, c.shelf_location,
       rr.research_record_id, rr.research_code, rr.adviser_name,
       rr.department_or_program, rr.abstract_text, rr.keywords_text, rr.viewing_status,
-      ri_lookup.research_inventory_id
+      ri_lookup.research_inventory_id, ri_lookup.active_inventory_count,
+      ri_lookup.shelf_count, ri_lookup.shelf_locations
     ORDER BY t.title ASC, t.title_id ASC
     LIMIT ${safeLimit} OFFSET ${safeOffset}`
 
@@ -166,6 +173,12 @@ export function buildCatalogSearchQuery(filters: CatalogSearchFilters) {
 }
 
 function toCatalogItem(row: RowDataPacket) {
+  const shelfLocationsValue = row.record_type === 'Research/Thesis' ? row.shelf_locations : row.book_shelf_locations
+  const shelfLocations = shelfLocationsValue ? String(shelfLocationsValue).split(', ') : []
+  const activeInventoryCount = row.record_type === 'Research/Thesis'
+    ? Number(row.active_inventory_count ?? 0)
+    : Number(row.total_copies ?? 0)
+  const categoryShelfLocation = row.category_shelf_location ? String(row.category_shelf_location) : null
   return {
     titleId: row.title_id,
     recordType: row.record_type,
@@ -177,6 +190,13 @@ function toCatalogItem(row: RowDataPacket) {
     callNumber: row.call_number,
     categoryId: row.category_id,
     categoryName: row.category_name,
+    rowVersion: Number(row.row_version),
+    shelfLocation: categoryShelfLocation,
+    actualShelfLocations: shelfLocations,
+    activeInventoryCount,
+    shelfStatus: activeInventoryCount === 0
+      ? 'No active copies'
+      : shelfLocations.length === 1 && shelfLocations[0] === categoryShelfLocation ? 'Mapped' : 'Mismatch',
     availability: row.availability,
     totalCopies: Number(row.total_copies ?? 0),
     availableCopies: Number(row.available_copies ?? 0),

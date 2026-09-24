@@ -1,5 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
-import { BookOpen, Download, Eye, FileText, Plus, ScanBarcode, Search, X } from 'lucide-react'
+import { ArrowRightLeft, BookOpen, Download, Eye, FileText, MapPin, Plus, ScanBarcode, Search, X } from 'lucide-react'
 import { PageHeader, SectionCard, StatusBadge } from '../../components/ui'
 import { ApiError, catalogApi } from './catalog-api'
 import type { CatalogFilters, CatalogItem, Category, PhysicalCopy } from './types'
@@ -8,6 +8,7 @@ import { BookOverview } from './BookOverview'
 import { AssetCodeModal } from './AssetCodeModal'
 import { AddMultipleCopiesModal } from './AddMultipleCopiesModal'
 import { AddResearchModal } from './AddResearchModal'
+import { ChangeTitleCategoryModal } from './ChangeTitleCategoryModal'
 
 const fieldClass = 'h-11 w-full rounded-xl border border-[#003399]/20 bg-white px-3 text-sm text-[#003399] outline-none focus:border-[#003399] focus:ring-4 focus:ring-[#003399]/10'
 const labelClass = 'mb-1.5 block text-xs font-bold uppercase tracking-wide text-[#003399]'
@@ -32,6 +33,9 @@ export function CatalogManagementPage() {
   const [overviewTitleId, setOverviewTitleId] = useState<number | null>(null)
   const [assetCopyId, setAssetCopyId] = useState<number | null>(null)
   const [researchAssetId, setResearchAssetId] = useState<number | null>(null)
+  const [categoryItem, setCategoryItem] = useState<CatalogItem | null>(null)
+  const [changingCategory, setChangingCategory] = useState(false)
+  const [categoryError, setCategoryError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -100,6 +104,20 @@ export function CatalogManagementPage() {
     } finally { setExportingPdf(false) }
   }
 
+  async function changeCategory(targetCategoryId: number) {
+    if (!categoryItem) return
+    setChangingCategory(true); setCategoryError(null)
+    try {
+      const result = await catalogApi.changeTitleCategory(categoryItem.titleId, targetCategoryId, categoryItem.rowVersion)
+      setCategoryItem(null)
+      await refresh()
+      const count = result.bookCopies + result.researchCopies
+      setNotice({ tone: 'success', text: `${categoryItem.title} moved to ${result.categoryName} and ${result.shelfLocation}. ${count} active ${count === 1 ? 'copy was' : 'copies were'} updated.` })
+    } catch (error) {
+      setCategoryError(error instanceof Error ? error.message : 'The category could not be changed.')
+    } finally { setChangingCategory(false) }
+  }
+
   const totals = useMemo(() => ({ books: items.filter((item) => item.recordType === 'Book').length, research: items.filter((item) => item.recordType === 'Research/Thesis').length }), [items])
   return <>
     <PageHeader eyebrow="Catalog administration" title="Books and research management" description="Register, search, update, archive, scan, and export the campus collection." action={<div className="flex flex-wrap gap-2"><button onClick={() => { setFieldErrors({}); setForm('thesis') }} className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#003399] bg-white px-4 text-sm font-bold text-[#003399]"><FileText size={16} /> Add thesis</button><button onClick={() => { setFieldErrors({}); setForm('book') }} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#003399] px-4 text-sm font-bold text-white"><Plus size={16} /> Add book</button></div>} />
@@ -112,7 +130,22 @@ export function CatalogManagementPage() {
 
     <SectionCard className="mb-5 p-5"><div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6"><label className="relative md:col-span-2"><Search className="absolute left-3 top-3.5 text-[#003399]/50" size={16} /><input value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} placeholder="Title, ISBN, author, code..." className={`${fieldClass} pl-9`} /></label><select value={filters.scope} onChange={(e) => setFilters({ ...filters, scope: e.target.value as CatalogFilters['scope'] })} className={fieldClass}><option value="all">Books + research</option><option value="books">Books only</option><option value="research">Research only</option></select><select value={filters.categoryId} onChange={(e) => setFilters({ ...filters, categoryId: e.target.value })} className={fieldClass}><option value="">All categories</option>{categories.map((category) => <option key={category.categoryId} value={category.categoryId}>{category.categoryName}</option>)}</select><input value={filters.author} onChange={(e) => setFilters({ ...filters, author: e.target.value })} placeholder="Author" className={fieldClass} /><input value={filters.publicationYear} onChange={(e) => setFilters({ ...filters, publicationYear: e.target.value })} placeholder="Year" inputMode="numeric" className={fieldClass} /><select value={filters.availability} onChange={(e) => setFilters({ ...filters, availability: e.target.value })} className={fieldClass}><option value="">Any availability</option><option>Available</option><option>Borrowed</option><option>Reserved</option><option>Unavailable</option><option>Available for Viewing</option></select></div><div className="mt-4 flex flex-wrap gap-2"><button disabled={exportingPdf} onClick={() => void downloadPdf()} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#FFF200] px-4 text-sm font-bold text-[#003399] disabled:opacity-50"><Download size={15} /> {exportingPdf ? 'Preparing PDF…' : 'Download PDF'}</button><button onClick={() => setFilters(emptyFilters)} className="h-10 rounded-xl border border-[#003399]/20 bg-white px-4 text-sm font-bold text-[#003399]">Clear filters</button></div></SectionCard>
 
-    <SectionCard className="mb-5 overflow-hidden"><div className="border-b border-[#003399]/15 px-5 py-4"><h2 className="font-bold text-[#003399]">Unified catalog results</h2></div><div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-[#003399] text-white"><tr><th className="px-4 py-3">Title</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Category</th><th className="px-4 py-3">Year</th><th className="px-4 py-3">ISBN / code</th><th className="px-4 py-3">Availability</th><th className="px-4 py-3">Details</th></tr></thead><tbody>{loading ? <tr><td colSpan={7} className="px-4 py-8 text-center text-[#003399]">Loading catalog…</td></tr> : items.length ? items.map((item) => <tr key={item.titleId} className="border-b border-[#003399]/10"><td className="px-4 py-3"><p className="font-bold text-[#003399]">{item.title}</p><p className="text-xs text-[#003399]/60">{item.authors.join(', ')}</p></td><td className="px-4 py-3 text-[#003399]">{item.recordType}</td><td className="px-4 py-3 text-[#003399]">{item.categoryName ?? 'Uncategorized'}</td><td className="px-4 py-3 text-[#003399]">{item.publicationYear ?? '—'}</td><td className="px-4 py-3 font-mono text-xs text-[#003399]">{item.isbn ?? item.research?.researchCode ?? '—'}</td><td className="px-4 py-3"><StatusBadge status={item.availability} /></td><td className="px-4 py-3">{item.recordType === 'Book' ? <button onClick={() => setOverviewTitleId(item.titleId)} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#003399]"><Eye size={15} /> View details</button> : item.research?.researchInventoryId ? <button type="button" onClick={() => setResearchAssetId(item.research!.researchInventoryId)} className="inline-flex h-9 items-center gap-2 rounded-xl bg-[#003399] px-3 text-xs font-bold text-[#FFFFFF]"><Eye size={15} /> View Codes</button> : <span className="text-xs text-[#003399]/50">Codes unavailable</span>}</td></tr>) : <tr><td colSpan={7} className="px-4 py-8 text-center text-[#003399]">No records match these filters.</td></tr>}</tbody></table></div></SectionCard>
+    <SectionCard className="mb-5 overflow-hidden">
+      <div className="border-b border-[#003399]/15 px-5 py-4"><h2 className="font-bold text-[#003399]">Unified catalog results</h2></div>
+      <div className="overflow-x-auto"><table className="w-full min-w-[1180px] text-left text-sm">
+        <thead className="bg-[#003399] text-white"><tr><th className="px-4 py-3">Title</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Category</th><th className="px-4 py-3">Shelf</th><th className="px-4 py-3">Year</th><th className="px-4 py-3">ISBN / code</th><th className="px-4 py-3">Availability</th><th className="px-4 py-3">Actions</th></tr></thead>
+        <tbody>{loading ? <tr><td colSpan={8} className="px-4 py-8 text-center text-[#003399]">Loading catalog…</td></tr> : items.length ? items.map((item) => <tr key={item.titleId} className="border-b border-[#003399]/10 align-top">
+          <td className="px-4 py-3"><p className="font-bold text-[#003399]">{item.title}</p><p className="text-xs text-[#003399]/60">{item.authors.join(', ')}</p></td>
+          <td className="px-4 py-3 text-[#003399]">{item.recordType}</td>
+          <td className="px-4 py-3 text-[#003399]">{item.categoryName ?? 'Uncategorized'}</td>
+          <td className="px-4 py-3 text-[#003399]"><span className="inline-flex items-center gap-1.5 font-semibold"><MapPin size={14} />{item.shelfLocation ?? 'Not mapped'}</span><p className={`mt-1 text-[11px] ${item.shelfStatus === 'Mismatch' ? 'font-bold text-red-700' : 'text-[#003399]/55'}`}>{item.shelfStatus === 'Mapped' ? `${item.activeInventoryCount} active ${item.activeInventoryCount === 1 ? 'copy' : 'copies'}` : item.shelfStatus}</p></td>
+          <td className="px-4 py-3 text-[#003399]">{item.publicationYear ?? '—'}</td>
+          <td className="px-4 py-3 font-mono text-xs text-[#003399]">{item.isbn ?? item.research?.researchCode ?? '—'}</td>
+          <td className="px-4 py-3"><StatusBadge status={item.availability} /></td>
+          <td className="px-4 py-3"><div className="flex min-w-[130px] flex-col items-start gap-2">{item.recordType === 'Book' ? <button onClick={() => setOverviewTitleId(item.titleId)} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#003399]"><Eye size={15} /> View details</button> : item.research?.researchInventoryId ? <button type="button" onClick={() => setResearchAssetId(item.research!.researchInventoryId)} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#003399]"><Eye size={15} /> View codes</button> : <span className="text-xs text-[#003399]/50">Codes unavailable</span>}<button type="button" onClick={() => { setCategoryError(null); setCategoryItem(item) }} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#003399]"><ArrowRightLeft size={15} /> Change category</button></div></td>
+        </tr>) : <tr><td colSpan={8} className="px-4 py-8 text-center text-[#003399]">No records match these filters.</td></tr>}</tbody>
+      </table></div>
+    </SectionCard>
 
     <SectionCard className="overflow-hidden"><div className="border-b border-[#003399]/15 px-5 py-4"><h2 className="font-bold text-[#003399]">Physical copy register</h2></div><div className="overflow-x-auto"><table className="w-full min-w-[1040px] text-left text-sm"><thead className="bg-[#FFF200] text-[#003399]"><tr><th className="px-4 py-3">Accession</th><th className="px-4 py-3">Title</th><th className="px-4 py-3">Barcode</th><th className="px-4 py-3">Shelf</th><th className="px-4 py-3">Condition</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Last scanned</th><th className="px-4 py-3">Asset Codes</th></tr></thead><tbody>{copies.map((copy) => <tr key={copy.physicalCopyId} className="border-b border-[#003399]/10"><td className="px-4 py-3 font-mono font-bold text-[#003399]">{copy.accessionNumber}</td><td className="px-4 py-3 text-[#003399]">{copy.title}</td><td className="px-4 py-3 font-mono text-xs text-[#003399]">{copy.barcode}</td><td className="px-4 py-3 text-[#003399]">{copy.shelfLocation}</td><td className="px-4 py-3 text-[#003399]">{copy.conditionStatus}</td><td className="px-4 py-3"><StatusBadge status={copy.availabilityStatus} /></td><td className="px-4 py-3 text-xs text-[#003399]/65">{copy.lastScannedAt ? new Date(copy.lastScannedAt).toLocaleString() : 'Never'}</td><td className="px-4 py-3"><button type="button" onClick={() => setAssetCopyId(copy.physicalCopyId)} className="inline-flex h-9 items-center gap-2 rounded-xl bg-[#003399] px-3 text-xs font-bold text-[#FFFFFF]"><Eye size={15} /> View Codes</button></td></tr>)}</tbody></table></div></SectionCard>
 
@@ -121,5 +154,6 @@ export function CatalogManagementPage() {
     {overviewTitleId !== null ? <BookOverview titleId={overviewTitleId} role="Admin" activeBookCount={0} selectedBookCount={0} alreadySelected={false} onAddToCart={() => undefined} onClose={() => setOverviewTitleId(null)} /> : null}
     {assetCopyId !== null ? <AssetCodeModal physicalCopyId={assetCopyId} onClose={() => setAssetCopyId(null)} /> : null}
     {researchAssetId !== null ? <AssetCodeModal assetType="research" researchInventoryId={researchAssetId} onClose={() => setResearchAssetId(null)} /> : null}
+    {categoryItem ? <ChangeTitleCategoryModal item={categoryItem} categories={categories} saving={changingCategory} error={categoryError} onClose={() => { if (!changingCategory) setCategoryItem(null) }} onConfirm={(categoryId) => void changeCategory(categoryId)} /> : null}
   </>
 }

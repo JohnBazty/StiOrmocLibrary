@@ -1,6 +1,6 @@
 import { BookOpen, ChevronLeft, ChevronRight, Eye, RefreshCw, ShoppingBag } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { PageHeader, SectionCard } from '../../components/ui'
 import { getCurrentClaims } from '../auth/auth-storage'
 import { BookOverview } from './BookOverview'
@@ -23,6 +23,7 @@ function AvailabilityBadge({ status }: { status: string }) {
 }
 
 export function BookCatalog() {
+  const [searchParams,setSearchParams]=useSearchParams()
   const claims = getCurrentClaims()
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
@@ -37,6 +38,8 @@ export function BookCatalog() {
   const [reserving, setReserving] = useState<number | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+
+  useEffect(()=>{const requested=Number(searchParams.get('titleId'));if(Number.isSafeInteger(requested)&&requested>0)setSelectedTitleId(requested)},[searchParams])
 
   useEffect(() => {
     const timer = window.setTimeout(() => { setDebouncedQuery(query.trim()); setPage(1) }, 250)
@@ -124,7 +127,7 @@ export function BookCatalog() {
 
       {pagination.totalPages > 1 ? <nav className="mt-5 flex items-center justify-center gap-3" aria-label="Catalog pages"><button disabled={page <= 1} onClick={() => setPage((value) => value - 1)} className="rounded-xl border border-[#003399]/15 p-2 text-[#003399] disabled:opacity-40"><ChevronLeft size={18} /></button><span className="text-xs font-bold text-[#003399]">Page {page} of {pagination.totalPages}</span><button disabled={page >= pagination.totalPages} onClick={() => setPage((value) => value + 1)} className="rounded-xl border border-[#003399]/15 p-2 text-[#003399] disabled:opacity-40"><ChevronRight size={18} /></button></nav> : null}
 
-      {selectedTitleId !== null ? <BookOverview titleId={selectedTitleId} role={viewer.role} activeBookCount={viewer.activeBookCount} selectedBookCount={cart.length} alreadySelected={cartBooks.has(selectedTitleId)} onAddToCart={addToCart} onClose={() => setSelectedTitleId(null)} /> : null}
+      {selectedTitleId !== null ? <BookOverview titleId={selectedTitleId} role={viewer.role} activeBookCount={viewer.activeBookCount} selectedBookCount={cart.length} alreadySelected={cartBooks.has(selectedTitleId)} onAddToCart={addToCart} onClose={() => {setSelectedTitleId(null);if(searchParams.has('titleId'))setSearchParams({})}} /> : null}
     </>
   )
 }

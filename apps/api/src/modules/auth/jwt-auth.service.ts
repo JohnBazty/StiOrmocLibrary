@@ -6,6 +6,7 @@ import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
 import { validateLoginInput } from './auth.validation.js'
 import { validateAccountRegistration, validateRoleLogin } from './account-auth.validation.ts'
+import { issueAttendanceCredential } from '../attendance/attendance-credential.service.ts'
 
 export type JwtRole = 'Admin' | 'Librarian' | 'Student' | 'Faculty'
 const JWT_ROLES = new Set<JwtRole>(['Admin', 'Librarian', 'Student', 'Faculty'])
@@ -112,6 +113,7 @@ export function createJwtAuthService(database: Pool = db, passwordHasher = bcryp
            VALUES (?, ?, ?, ?, ?)`,
           [accountId, validation.firstName, validation.lastName, validation.programStrand, validation.yearGradeLevel],
         )
+        await issueAttendanceCredential(connection, Number(userResult.insertId))
         await connection.commit()
         return {
           account: {

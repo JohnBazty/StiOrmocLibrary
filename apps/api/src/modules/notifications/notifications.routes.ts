@@ -6,6 +6,8 @@ userNotificationsV1Router.get('/', notificationController.list)
 userNotificationsV1Router.get('/schedule', notificationController.schedule)
 userNotificationsV1Router.patch('/read-all', notificationController.readAll)
 userNotificationsV1Router.patch('/:id/read', notificationController.read)
+userNotificationsV1Router.delete('/', notificationController.removeAll)
+userNotificationsV1Router.delete('/:id', notificationController.remove)
 
 export const adminAnnouncementsV1Router = Router()
 adminAnnouncementsV1Router.get('/', notificationController.announcements)

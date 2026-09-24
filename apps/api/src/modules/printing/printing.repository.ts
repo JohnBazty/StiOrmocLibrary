@@ -22,15 +22,44 @@ export class PrintingRepository {
   }
 
   async ownRequests(schoolId: string) {
-    const [rows] = await this.pool.execute<RowDataPacket[]>(`SELECT pr.request_id,pr.file_name,pr.number_of_copies,pr.print_type,pr.paper_size,pr.page_count,pr.total_sheets,pr.calculated_cost,pr.payment_status,pr.job_status,pr.created_at,pr.started_at,pr.ready_at,pr.completed_at,pr.cancelled_at,pr.cancelled_reason
+    const [rows] = await this.pool.execute<RowDataPacket[]>(`SELECT pr.request_id,pr.file_name,pr.number_of_copies,pr.print_type,pr.paper_size,pr.page_count,pr.total_sheets,pr.calculated_cost,pr.payment_status,pr.job_status,pr.created_at,pr.started_at,pr.ready_at,pr.completed_at,pr.cancelled_at,pr.cancelled_reason,
+        r.print_receipt_id,r.receipt_number,r.verification_code,r.receipt_status,r.received_at receipt_issued_at
       FROM print_requests pr JOIN users u ON u.user_id=pr.user_id
+      LEFT JOIN print_payment_receipts r ON r.request_id=pr.request_id
       WHERE u.school_id=? ORDER BY pr.created_at DESC,pr.request_id DESC`, [schoolId])
     return rows
   }
 
+  async ownReceipts(schoolId: string) {
+    const [rows] = await this.pool.execute<RowDataPacket[]>(`SELECT r.print_receipt_id,r.request_id,r.receipt_number,r.verification_code,r.receipt_status,
+        r.student_name_snapshot student_name,r.school_id_snapshot school_id,r.file_name_snapshot file_name,
+        r.page_count_snapshot page_count,r.copies_snapshot number_of_copies,r.total_sheets_snapshot total_sheets,
+        r.print_type_snapshot print_type,r.paper_size_snapshot paper_size,r.amount_received,r.payment_method,
+        r.received_by_name_snapshot received_by,r.received_at
+      FROM print_payment_receipts r
+      INNER JOIN users u ON u.user_id=r.user_id
+      WHERE u.school_id=?
+      ORDER BY r.received_at DESC,r.print_receipt_id DESC`,[schoolId])
+    return rows
+  }
+
+  async receiptById(receiptId: number, schoolId?: string) {
+    const values:Array<string|number>=[receiptId]
+    const ownership=schoolId?' AND u.school_id=?':''
+    if(schoolId)values.push(schoolId)
+    const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT r.print_receipt_id,r.request_id,r.receipt_number,r.verification_code,r.receipt_status,
+        r.student_name_snapshot student_name,r.school_id_snapshot school_id,r.file_name_snapshot file_name,
+        r.page_count_snapshot page_count,r.copies_snapshot number_of_copies,r.total_sheets_snapshot total_sheets,
+        r.print_type_snapshot print_type,r.paper_size_snapshot paper_size,r.amount_received,r.payment_method,
+        r.received_by_name_snapshot received_by,r.received_at
+      FROM print_payment_receipts r INNER JOIN users u ON u.user_id=r.user_id
+      WHERE r.print_receipt_id=?${ownership} LIMIT 1`,values)
+    return rows[0]??null
+  }
+
   private queueWhere(filters: QueueFilters) {
     const clauses = ['1=1']; const values: Array<string|number> = []
-    if (filters.q) { const q=`%${filters.q}%`; clauses.push('(u.full_name LIKE ? OR u.school_id LIKE ? OR pr.file_name LIKE ? OR CAST(pr.request_id AS CHAR) LIKE ?)'); values.push(q,q,q,q) }
+    if (filters.q) { const q=`%${filters.q}%`; clauses.push('(u.full_name LIKE ? OR u.school_id LIKE ? OR pr.file_name LIKE ? OR CAST(pr.request_id AS CHAR) LIKE ? OR r.receipt_number LIKE ? OR r.verification_code LIKE ?)'); values.push(q,q,q,q,q,q) }
     if (filters.status) { clauses.push('pr.job_status=?'); values.push(filters.status) }
     if (filters.payment) { clauses.push('pr.payment_status=?'); values.push(filters.payment) }
     return { sql: clauses.join(' AND '), values }
@@ -38,9 +67,11 @@ export class PrintingRepository {
 
   async queue(filters: QueueFilters) {
     const where=this.queueWhere(filters),offset=(filters.page-1)*filters.limit
-    const [count]=await this.pool.execute<RowDataPacket[]>(`SELECT COUNT(*) total FROM print_requests pr JOIN users u ON u.user_id=pr.user_id WHERE ${where.sql}`,where.values)
-    const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT pr.request_id,u.full_name,u.school_id,u.user_role,pr.file_name,pr.number_of_copies,pr.print_type,pr.paper_size,pr.page_count,pr.total_sheets,pr.calculated_cost,pr.payment_status,pr.job_status,pr.created_at
+    const [count]=await this.pool.execute<RowDataPacket[]>(`SELECT COUNT(*) total FROM print_requests pr JOIN users u ON u.user_id=pr.user_id LEFT JOIN print_payment_receipts r ON r.request_id=pr.request_id WHERE ${where.sql}`,where.values)
+    const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT pr.request_id,u.full_name,u.school_id,u.user_role,pr.file_name,pr.number_of_copies,pr.print_type,pr.paper_size,pr.page_count,pr.total_sheets,pr.calculated_cost,pr.payment_status,pr.job_status,pr.created_at,
+        r.print_receipt_id,r.receipt_number,r.verification_code,r.receipt_status,r.received_at receipt_issued_at
       FROM print_requests pr JOIN users u ON u.user_id=pr.user_id
+      LEFT JOIN print_payment_receipts r ON r.request_id=pr.request_id
       WHERE ${where.sql} ORDER BY FIELD(pr.job_status,'Pending','Printing','Ready for Pickup','Completed','Cancelled'),pr.created_at ASC LIMIT ${filters.limit} OFFSET ${offset}`,where.values)
     const total=Number(count[0]?.total??0)
     return { rows, pagination:{page:filters.page,limit:filters.limit,total,total_pages:Math.ceil(total/filters.limit)} }

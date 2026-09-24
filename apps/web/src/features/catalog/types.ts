@@ -7,6 +7,11 @@ export type CatalogItem = {
   publicationYear: number | null
   categoryId: number | null
   categoryName: string | null
+  rowVersion: number
+  shelfLocation: string | null
+  actualShelfLocations: string[]
+  activeInventoryCount: number
+  shelfStatus: 'Mapped' | 'Mismatch' | 'No active copies'
   availability: string
   totalCopies: number
   availableCopies: number
@@ -38,7 +43,7 @@ export type AdminBookAsset = {
   barcodeImageData: string
 }
 
-export type Category = { categoryId: number; categoryName: string; shelfLocation: string; totalBooksCount?: number; totalThesisCount?: number }
+export type Category = { categoryId: number; categoryName: string; shelfLocation: string; shelfColumn?: number; shelfRow?: number; totalBooksCount?: number; totalThesisCount?: number }
 
 export type GeneratedBookLabel = {
   physicalCopyId: number
@@ -48,6 +53,8 @@ export type GeneratedBookLabel = {
   author: string
   isbn: string
   shelfLocation: string
+  shelfColumn?: number
+  shelfRow?: number
   accessionNumber: string
   barcode: string
   qrCodeData: string
@@ -59,6 +66,20 @@ export type BulkBookResult = {
   createdTitle: boolean
   numberOfCopies: number
   copies: GeneratedBookLabel[]
+}
+
+export type CategoryAssignmentResult = {
+  titleId: number
+  recordType: CatalogItem['recordType']
+  categoryId: number
+  categoryName: string
+  shelfLocation: string
+  shelfColumn: number
+  shelfRow: number
+  rowVersion: number
+  bookCopies: number
+  researchCopies: number
+  previousShelves: Array<{ shelf: string; count: number }>
 }
 
 export type IsbnMetadata = {

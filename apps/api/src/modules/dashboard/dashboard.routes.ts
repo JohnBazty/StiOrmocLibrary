@@ -1,8 +1,14 @@
 import { Router } from 'express'
-import { adminDashboard, studentDashboard } from '../../data/mock-data.ts'
-import { ok } from '../../core/http.ts'
+import { dashboardController } from './dashboard.controller.ts'
+
+export const userDashboardV1Router = Router()
+userDashboardV1Router.get('/', dashboardController.user)
+
+export const adminDashboardV1Router = Router()
+adminDashboardV1Router.get('/', dashboardController.admin)
+adminDashboardV1Router.get('/summary.pdf', dashboardController.adminPdf)
 
 export const dashboardRouter = Router()
 
-dashboardRouter.get('/student', (_request, response) => ok(response, studentDashboard))
-dashboardRouter.get('/admin', (_request, response) => ok(response, adminDashboard))
+dashboardRouter.get('/student', dashboardController.user)
+dashboardRouter.get('/admin', dashboardController.admin)

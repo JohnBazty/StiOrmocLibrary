@@ -1,4 +1,4 @@
-import type { Category, CategoryPayload } from './types'
+import type { Category, CategoryPayload, CategorySaveResult, CategoryShelfSync } from './types'
 import { getAccessToken } from '../auth/auth-storage'
 
 export class CategoryApiError extends Error {
@@ -41,10 +41,11 @@ async function request<T>(url: string, options: RequestInit = {}) {
 
 export const categoryApi = {
   list: () => request<Category[]>('/api/categories'),
-  create: (payload: CategoryPayload) => request<Category>('/api/categories', { method: 'POST', body: JSON.stringify(payload) }),
-  update: (categoryId: number, payload: CategoryPayload) => request<Category>(`/api/categories/${categoryId}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  listShelves: async () => (await request<{ shelves: Array<{ id: number; label: string; columnCount: number; rowCount: number }> }>('/api/v1/floor-plan')).shelves,
+  create: (payload: CategoryPayload) => request<CategorySaveResult>('/api/categories', { method: 'POST', body: JSON.stringify(payload) }),
+  update: (categoryId: number, payload: CategoryPayload) => request<CategorySaveResult>(`/api/categories/${categoryId}`, { method: 'PUT', body: JSON.stringify(payload) }),
   remove: (categoryId: number) => request(`/api/categories/${categoryId}`, { method: 'DELETE' }),
-  reassign: (oldCategoryId: number, targetCategoryId: number) => request('/api/categories/reassign', {
+  reassign: (oldCategoryId: number, targetCategoryId: number) => request<CategoryShelfSync>('/api/categories/reassign', {
     method: 'POST', body: JSON.stringify({ oldCategoryId, targetCategoryId }),
   }),
 }

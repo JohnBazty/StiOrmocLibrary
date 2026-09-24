@@ -1,10 +1,12 @@
 import { Route, Routes } from 'react-router-dom'
 import { PortalLayout } from './layouts/PortalLayout'
-import { StudentAttendancePage, StudentDashboard } from './pages/student/StudentPages'
+import { UserAttendancePage } from './features/attendance/UserAttendancePage'
 import {
-  AdminDashboard,
   ReportsPage,
 } from './pages/admin/AdminPages'
+import { AdminDashboardPage } from './features/dashboard/AdminDashboardPage'
+import { UserDashboardPage } from './features/dashboard/UserDashboardPage'
+import { FloorPlanPage } from './features/floor-plan/FloorPlanPage'
 import { AdminAttendancePage } from './features/attendance/AdminAttendancePage'
 import { AdminUsersPage } from './features/users/AdminUsersPage'
 import { CatalogManagementPage } from './features/catalog/CatalogManagementPage'
@@ -46,14 +48,15 @@ export default function App() {
 
       <Route element={<ProtectedRoute roles={['Student']} />}>
         <Route element={<PortalLayout role="student" />}>
-          <Route path="/student/dashboard" element={<StudentDashboard />} />
+          <Route path="/student/dashboard" element={<UserDashboardPage />} />
           <Route path="/student/catalog" element={<BookCatalog />} />
+          <Route path="/student/floor-plan" element={<FloorPlanPage />} />
           <Route path="/student/cart" element={<BookCart />} />
           <Route path="/student/research" element={<ResearchCatalog />} />
           <Route path="/student/borrowing" element={<BorrowingHistory />} />
           <Route path="/student/reservations" element={<StudentReservations />} />
           <Route path="/student/printing" element={<StudentPrintingPage />} />
-          <Route path="/student/attendance" element={<StudentAttendancePage />} />
+          <Route path="/student/attendance" element={<UserAttendancePage />} />
           <Route path="/student/notifications" element={<NotificationCenterPage />} />
           <Route path="/student/fines" element={<StudentFinesPage />} />
           <Route path="/student/clearance" element={<StudentClearancePage />} />
@@ -62,13 +65,14 @@ export default function App() {
 
       <Route element={<ProtectedRoute roles={['Admin']} />}>
         <Route element={<PortalLayout role="admin" />}>
-          <Route path="/admin/dashboard" element={<AdminDashboard />} />
+          <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
           <Route path="/admin/catalog" element={<CatalogManagementPage />} />
           <Route path="/admin/categories" element={<CategoryManagementPage />} />
           <Route path="/admin/circulation" element={<AdminCirculationMonitor />} />
           <Route path="/admin/reservations" element={<AdminReservationQueuePage />} />
           <Route path="/admin/fines" element={<AdminFinesPage />} />
           <Route path="/admin/inventory" element={<InventoryDashboard />} />
+          <Route path="/admin/floor-plan" element={<FloorPlanPage editor />} />
           <Route path="/admin/printing" element={<AdminPrintingQueuePage />} />
           <Route path="/admin/supplies" element={<AdminPrintSuppliesPage />} />
           <Route path="/admin/attendance" element={<AdminAttendancePage />} />
@@ -81,15 +85,18 @@ export default function App() {
 
       <Route element={<ProtectedRoute roles={['Librarian']} />}>
         <Route path="/librarian/dashboard" element={<RoleDashboardPage role="Librarian" />} />
+        <Route path="/librarian/floor-plan" element={<FloorPlanPage />} />
       </Route>
       <Route element={<ProtectedRoute roles={['Faculty']} />}>
         <Route element={<PortalLayout role="faculty" />}>
-          <Route path="/faculty/dashboard" element={<RoleDashboardPage role="Faculty" />} />
+          <Route path="/faculty/dashboard" element={<UserDashboardPage />} />
           <Route path="/faculty/catalog" element={<BookCatalog />} />
+          <Route path="/faculty/floor-plan" element={<FloorPlanPage />} />
           <Route path="/faculty/cart" element={<BookCart />} />
           <Route path="/faculty/research" element={<ResearchCatalog />} />
           <Route path="/faculty/borrowing" element={<BorrowingHistory />} />
           <Route path="/faculty/reservations" element={<StudentReservations />} />
+          <Route path="/faculty/attendance" element={<UserAttendancePage />} />
           <Route path="/faculty/notifications" element={<NotificationCenterPage />} />
           <Route path="/faculty/fines" element={<StudentFinesPage />} />
           <Route path="/faculty/clearance" element={<StudentClearancePage />} />

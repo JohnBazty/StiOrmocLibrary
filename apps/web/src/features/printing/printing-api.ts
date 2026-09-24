@@ -2,7 +2,9 @@ import { getAccessToken } from '../auth/auth-storage'
 
 export type ServiceStatus={accepting_requests:number|boolean;unavailable_reason:string|null;updated_at?:string|null}
 export type PricingRule={pricing_rule_id:number;print_type:'Colored'|'Monochrome';paper_size:'Short'|'A4'|'Long';price_per_page:number|string}
-export type PrintRequest={request_id:number;full_name?:string;school_id?:string;user_role?:string;file_name:string;number_of_copies:number;print_type:string;paper_size:string;page_count:number;total_sheets:number;calculated_cost:number|string;payment_status:'Unpaid'|'Paid';job_status:'Pending'|'Printing'|'Ready for Pickup'|'Completed'|'Cancelled';created_at:string;cancelled_reason?:string|null}
+export type PrintRequest={request_id:number;full_name?:string;school_id?:string;user_role?:string;file_name:string;number_of_copies:number;print_type:string;paper_size:string;page_count:number;total_sheets:number;calculated_cost:number|string;payment_status:'Unpaid'|'Paid';job_status:'Pending'|'Printing'|'Ready for Pickup'|'Completed'|'Cancelled';created_at:string;cancelled_reason?:string|null;print_receipt_id?:number|null;receipt_number?:string|null;verification_code?:string|null;receipt_status?:'Issued'|'Reversed'|null;receipt_issued_at?:string|null}
+export type PrintingReceipt={print_receipt_id:number;request_id:number;receipt_number:string;verification_code:string;receipt_status:'Issued'|'Reversed';student_name:string;school_id:string;file_name:string;page_count:number;number_of_copies:number;total_sheets:number;print_type:string;paper_size:string;amount_received:number|string;payment_method:'Cash';received_by:string;received_at:string}
+export type PrintCashPayment={request_id:number;payment_status:'Paid';amount_paid:number;receipt:PrintingReceipt}
 export type PrintSummary={pending_jobs:number;printing_jobs:number;ready_jobs:number;completed_today:number;unpaid_jobs:number;revenue_today:number;service_status:ServiceStatus}
 export type InkStock={ink_id:number;cartridge_type:string;color_variation:string;available_bottles:number;low_stock_threshold_bottles:number;cost_per_bottle:number|string;is_low:number}
 export type PaperStock={paper_stock_id:number;paper_size_dimension:string;unopened_reams:number|string;remaining_reams:number|string;low_stock_threshold_reams:number|string;average_expense_cost:number|string;is_low:number}
@@ -28,12 +30,15 @@ export const printingApi={
   serviceStatus:async()=>(await request<ServiceStatus>('/api/v1/printing/service-status')).data,
   pricing:async()=>(await request<PricingRule[]>('/api/v1/printing/pricing')).data,
   mine:async()=>(await request<PrintRequest[]>('/api/v1/printing/requests')).data,
+  receipts:async()=>(await request<PrintingReceipt[]>('/api/v1/printing/receipts')).data,
+  receipt:async(id:number,admin=false)=>(await request<PrintingReceipt>(`/api/v1/${admin?'admin/printing':'printing'}/receipts/${id}`)).data,
+  downloadReceipt:(receipt:PrintingReceipt,admin=false)=>download(`/api/v1/${admin?'admin/printing':'printing'}/receipts/${receipt.print_receipt_id}/pdf`,`${receipt.receipt_number}.pdf`,'application/pdf','application/pdf'),
   submit:async(form:FormData)=>(await request<PrintRequest>('/api/v1/printing/requests',{method:'POST',body:form})).data,
   cancel:async(id:number)=>request(`/api/v1/printing/requests/${id}/cancel`,{method:'PUT',body:'{}'}),
   summary:async()=>(await request<PrintSummary>('/api/v1/admin/printing/summary')).data,
   setServiceStatus:async(accepting:boolean,reason?:string)=>request<ServiceStatus>('/api/v1/admin/printing/service-status',{method:'PATCH',body:JSON.stringify({accepting_requests:accepting,unavailable_reason:reason})}),
   queue:async(filters:{q:string;status:string;payment:string})=>{const q=new URLSearchParams();if(filters.q)q.set('q',filters.q);if(filters.status)q.set('status',filters.status);if(filters.payment)q.set('payment_status',filters.payment);const result=await request<PrintRequest[]>(`/api/v1/admin/printing/queue?${q}`);return{rows:result.data,pagination:result.meta?.pagination}},
-  cash:async(row:PrintRequest)=>request(`/api/v1/admin/printing/requests/${row.request_id}/cash-payment`,{method:'POST',body:JSON.stringify({amount_paid:Number(row.calculated_cost)})}),
+  cash:async(row:PrintRequest)=>(await request<PrintCashPayment>(`/api/v1/admin/printing/requests/${row.request_id}/cash-payment`,{method:'POST',body:JSON.stringify({amount_paid:Number(row.calculated_cost)})})).data,
   status:async(id:number,status:string,reason?:string)=>request(`/api/v1/admin/printing/requests/${id}/status`,{method:'PATCH',body:JSON.stringify({status,reason})}),
   downloadDocument:(row:PrintRequest)=>download(`/api/v1/admin/printing/requests/${row.request_id}/document`,row.file_name,'application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
   supplies:async()=>(await request<SupplyData>('/api/v1/admin/printing/supplies')).data,

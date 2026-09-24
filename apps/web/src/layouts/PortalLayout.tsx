@@ -13,6 +13,7 @@ import {
   LibraryBig,
   LogOut,
   Menu,
+  Map,
   Megaphone,
   PackageOpen,
   PanelLeftClose,
@@ -31,6 +32,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { cn } from '../components/ui'
 import { getAccessToken, getCurrentIdentity } from '../features/auth/auth-storage'
 import { logout } from '../features/auth/auth-api'
+import { AttendanceFab } from '../features/attendance/AttendanceFab'
 import { useMockAuth } from '../features/inventory/MockAuthContext'
 
 type Role = 'student' | 'faculty' | 'admin'
@@ -41,14 +43,13 @@ const userNav = (role: 'student' | 'faculty'): NavItem[] => {
   return [
     { label: 'Overview', to: `${prefix}/dashboard`, icon: LayoutDashboard, section: 'My library' },
     { label: 'Book catalog', to: `${prefix}/catalog`, icon: BookOpen },
+    { label: 'Library floor plan', to: `${prefix}/floor-plan`, icon: Map },
     { label: 'Book cart', to: `${prefix}/cart`, icon: ShoppingCart },
     { label: 'Research & thesis', to: `${prefix}/research`, icon: FileText },
     { label: 'Borrowing history', to: `${prefix}/borrowing`, icon: CalendarClock, section: 'My activity' },
     { label: 'Reservations', to: `${prefix}/reservations`, icon: BookMarked },
-    ...(role === 'student' ? [
-      { label: 'Printing service', to: '/student/printing', icon: Printer },
-      { label: 'QR attendance', to: '/student/attendance', icon: QrCode },
-    ] : []),
+    ...(role === 'student' ? [{ label: 'Printing service', to: '/student/printing', icon: Printer }] : []),
+    { label: 'QR attendance', to: `${prefix}/attendance`, icon: QrCode },
     { label: 'Notifications', to: `${prefix}/notifications`, icon: Bell, section: 'My account' },
     { label: 'Fines', to: `${prefix}/fines`, icon: CircleDollarSign },
     { label: 'Clearance status', to: `${prefix}/clearance`, icon: BadgeCheck },
@@ -63,6 +64,7 @@ const adminNav: NavItem[] = [
   { label: 'Reservations', to: '/admin/reservations', icon: BookMarked },
   { label: 'Fines', to: '/admin/fines', icon: CircleDollarSign },
   { label: 'Inventory', to: '/admin/inventory', icon: Archive, section: 'Resources' },
+  { label: 'Floor plan', to: '/admin/floor-plan', icon: Map },
   { label: 'Printing queue', to: '/admin/printing', icon: Printer },
   { label: 'Print supplies', to: '/admin/supplies', icon: PackageOpen },
   { label: 'Attendance', to: '/admin/attendance', icon: QrCode, section: 'People & records' },
@@ -142,6 +144,7 @@ export function PortalLayout({ role }: { role: Role }) {
           </div>
         </header>
         <main className="mx-auto max-w-[1500px] p-4 sm:p-6 lg:p-8"><Outlet /></main>
+        <AttendanceFab role={role} />
       </div>
     </div>
   )

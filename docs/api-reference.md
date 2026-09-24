@@ -28,6 +28,7 @@ All `/api/v1/catalog` routes require a valid Bearer JWT. Catalog reads allow Adm
 | `GET` | `/api/v1/catalog/research/:titleId` | Complete read-only research metadata, shelf access, and abstract. |
 | `POST` | `/api/v1/admin/books/add-bulk` | Admin/Librarian-only transactional multi-copy registration; returns one QR image and Code 128 label image per accessioned copy. |
 | `POST` | `/api/v1/admin/catalog/bulk-entry` | Canonical Admin/Librarian bulk-entry contract used by the database-driven catalog modal; preserves the older `/admin/books/add-bulk` alias. |
+| `PATCH` | `/api/v1/admin/catalog/titles/:titleId/category` | Admin-only title reassignment. Requires `targetCategoryId` and `expectedRowVersion`; atomically moves the active book copies or linked research inventory to the target category's managed shelf and records an audit event. |
 | `GET` | `/api/v1/admin/books/assets/:id` | Admin/Librarian-only physical-copy metadata with QR and barcode image data. |
 | `GET` | `/api/v1/admin/books/assets/:id/barcode.png` | Download one high-density Code 128 PNG attachment. |
 | `GET` | `/api/v1/admin/books/assets/:id/qr.png` | Download one high-density QR PNG attachment. |
@@ -53,6 +54,9 @@ The list endpoint accepts any combination of `q`, `title`, `author`, `isbn`, `ca
 | `POST` | `/auth/logout` | Authentication | Destroy the session and redirect to the login screen |
 | `GET` | `/api/dashboard/student` | Dashboard | Student summary and recommendations |
 | `GET` | `/api/dashboard/admin` | Dashboard | KPIs, attendance, demand, and recent activity |
+| `GET` | `/api/v1/dashboard` | Dashboard | Student/Faculty personalized live overview: account standing, occupancy, loans, reservations, printing, notifications, schedule, history, and recommendations |
+| `GET` | `/api/v1/admin/dashboard` | Dashboard | Admin/Librarian live operational KPIs, attendance, demand, circulation, activity, and occupancy |
+| `GET` | `/api/v1/admin/dashboard/summary.pdf` | Dashboard | Download the current admin operational summary as a branded PDF |
 | `GET` | `/api/catalog/books` | Catalog | Current mock book-title listing |
 | `POST` | `/api/catalog/books` | Catalog | Transactionally create a normalized title and physical copy; Librarian/System Administrator only |
 | `GET` | `/api/catalog/research` | Catalog | Current mock research and thesis listing |
@@ -64,25 +68,30 @@ The list endpoint accepts any combination of `q`, `title`, `author`, `isbn`, `ca
 | `GET` | `/api/v1/fines/receipts` | Fines | Student/Faculty cash receipt history |
 | `GET` | `/api/v1/fines/receipts/:receiptId` | Fines | Read an owned digital receipt and its balance allocations |
 | `GET` | `/api/v1/fines/receipts/:receiptId.pdf` | Fines | Stream an owned digital PDF cash receipt |
-| `GET` | `/api/v1/admin/fines` | Fines | Filtered fine audit list and assessed, collected, waived, and outstanding summaries |
+| `GET` | `/api/v1/admin/fines` | Fines | Filtered fine audit list with related receipt numbers and verification codes; search accepts fine/user/book data, receipt number, or verification code |
 | `GET` | `/api/v1/admin/fines/terms` | Fines | List configured semesters for fine reports |
 | `GET` | `/api/v1/admin/fines/report.pdf` | Fines | Export the active fine filters as a table-formatted PDF audit report |
 | `POST` | `/api/v1/admin/fines/infractions` | Fines | Issue a documented non-circulation fine and notify the user |
 | `POST` | `/api/v1/admin/fines/payments` | Fines | Allocate a cash payment and create one immutable digital receipt |
 | `POST` | `/api/v1/admin/fines/:fineId/adjustments` | Fines | Append a documented waiver, reduction, or void |
-| `GET` | `/api/v1/admin/fines/receipts/:receiptId` | Fines | Read any authorized receipt and its allocations |
+| `GET` | `/api/v1/admin/fines/receipts/:receiptId` | Fines | Read any authorized receipt, verification code, and its allocations |
 | `GET` | `/api/v1/admin/fines/receipts/:receiptId.pdf` | Fines | Stream an authorized digital PDF receipt |
 | `POST` | `/api/v1/admin/fines/receipts/:receiptId/reverse` | Fines | Reverse a receipt with a mandatory reason without deleting its audit record |
 | `GET` | `/api/attendance` | Attendance | QR attendance logs |
 | `GET` | `/api/v1/printing/service-status` | Printing | Service-level request acceptance state and optional pause reason |
 | `GET` | `/api/v1/printing/pricing` | Printing | Server-side price rules |
 | `GET` | `/api/v1/printing/requests` | Printing | Authenticated user's print history |
+| `GET` | `/api/v1/printing/receipts` | Printing | Authenticated user's printing-only digital receipts |
+| `GET` | `/api/v1/printing/receipts/:id` | Printing | Read one owned printing receipt |
+| `GET` | `/api/v1/printing/receipts/:id/pdf` | Printing | Download one owned printing receipt PDF |
 | `POST` | `/api/v1/printing/requests` | Printing | Validate and persist one PDF/DOCX multipart request |
 | `PUT` | `/api/v1/printing/requests/:id/cancel` | Printing | Cancel an owned pending request |
 | `GET` | `/api/v1/admin/printing/queue` | Printing | Filtered administrative queue |
 | `GET` | `/api/v1/admin/printing/service-status` | Printing | Read the service-level acceptance state |
 | `PATCH` | `/api/v1/admin/printing/service-status` | Printing | Pause or resume student print submissions |
-| `POST` | `/api/v1/admin/printing/requests/:id/cash-payment` | Printing | Record exact counter cash payment |
+| `POST` | `/api/v1/admin/printing/requests/:id/cash-payment` | Printing | Atomically record the exact counter cash payment, generate its printing receipt, and notify the user |
+| `GET` | `/api/v1/admin/printing/receipts/:id` | Printing | Read one printing receipt without accessing the fines ledger |
+| `GET` | `/api/v1/admin/printing/receipts/:id/pdf` | Printing | Download one authorized printing receipt PDF |
 | `PATCH` | `/api/v1/admin/printing/requests/:id/status` | Printing | Apply a valid queue transition |
 | `GET` | `/api/v1/admin/printing/requests/:id/document` | Printing | Securely download the protected PDF/DOCX and audit the staff action |
 | `GET` | `/api/v1/admin/printing/supplies` | Printing | Bottle and ream stock summary |
@@ -164,11 +173,38 @@ Admin/Librarian-only physical desk checkpoint. Accepts `{ "school_id": "...", "b
 |---|---|---|---|
 | `GET` | `/api/v1/admin/attendance/academic-terms` | Admin, Librarian | List configured semester date ranges. |
 | `GET` | `/api/v1/admin/attendance/summary` | Admin, Librarian | Aggregate visits, unique visitors, current presence, peak hour, and average duration. |
+| `GET` | `/api/v1/admin/attendance/analytics` | Admin, Librarian | Hourly, daily, and weekday/hour peak-utilization data using exact check-in timestamps. |
 | `GET` | `/api/v1/admin/attendance/logs` | Admin, Librarian | Paginated attendance logs filtered daily, weekly, monthly, or by academic term. |
 | `GET` | `/api/v1/admin/attendance/report.pdf` | Admin, Librarian | Stream a branded PDF using the same active filters as the dashboard. |
+| `GET` | `/api/v1/admin/attendance/capacity` | Admin, Librarian | Read live occupancy, configured capacity, available spaces, and over-capacity state. |
+| `PATCH` | `/api/v1/admin/attendance/capacity` | Admin, Librarian | Update maximum occupancy with a required audit reason. |
+| `POST` | `/api/v1/admin/attendance/scan/resolve` | Admin, Librarian | Validate a permanent QR and return safe identity/current-presence information. |
+| `POST` | `/api/v1/admin/attendance/scan/check-in` | Admin, Librarian | Atomically enforce capacity, record exact entry/purpose, and return a role-specific confirmation. |
+| `POST` | `/api/v1/admin/attendance/scan/check-out` | Admin, Librarian | Close the visitor's current open attendance record. |
+| `GET` | `/api/v1/attendance/pass` | Student, Faculty, Admin, Librarian | Return the authenticated user's pass metadata, summary, and history without exposing the raw credential. |
+| `GET` | `/api/v1/attendance/pass.png` | Student, Faculty, Admin, Librarian | Render the permanent QR PNG; `?download=1` returns a downloadable filename. |
 | `GET` | `/api/v1/admin/users/summary` | Admin, Librarian | Count active Student, Faculty, and staff accounts. |
 | `GET` | `/api/v1/admin/users/programs` | Admin, Librarian | List program/unit values for active-account filtering. |
 | `GET` | `/api/v1/admin/users/active` | Admin, Librarian | Paginated read-only directory where `accounts.account_status = 'Active'`. |
 ### ISBN metadata lookup
 
 `GET /api/v1/admin/books/isbn/:isbn` is restricted to Admin and Librarian JWTs. It validates ISBN-10/ISBN-13 checksums, searches the local `titles`/`authors` catalog first, then queries Google Books and Open Library through fixed server-side endpoints. The response supplies only `title`, `author`, `publisher`, and `publicationYear` for the bulk-entry autofill workflow. Catalog creation remains a separate explicit transaction, and cover, copies, category, call number, and shelf location are never populated by the lookup.
+
+## Library floor plan (JWT)
+
+| Method | Endpoint | Roles | Purpose |
+|---|---|---|---|
+| `GET` | `/api/v1/floor-plan` | Admin, Librarian, Student, Faculty | Read only the published layout, live categories, managed shelf totals, and each shelf's column/row dimensions. |
+| `GET` | `/api/v1/floor-plan/books` | Admin, Librarian, Student, Faculty | Search physical book copies and return the call number plus exact shelf column/row used for location highlighting. |
+| `GET` | `/api/v1/floor-plan/locations` | Admin, Librarian, Student, Faculty | List current managed and category-default shelf labels for catalog entry. |
+| `GET` | `/api/v1/floor-plan/editor` | Admin | Read the private draft plus the current published layout. |
+| `PUT` | `/api/v1/floor-plan/draft` | Admin | Save a validated draft using the current revision. |
+| `POST` | `/api/v1/floor-plan/publish` | Admin | Atomically publish a validated draft and create a version snapshot. |
+| `GET` | `/api/v1/floor-plan/versions` | Admin | List the latest 100 published versions. |
+| `POST` | `/api/v1/floor-plan/versions/:id/restore` | Admin | Restore older geometry as a new draft without reverting current item assignments. |
+| `POST` | `/api/v1/floor-plan/shelves` | Admin | Create a unique managed shelf for later placement. |
+| `PATCH` | `/api/v1/floor-plan/shelves/:id/grid` | Admin | Change a shelf to 1–12 columns and rows; shrinking is blocked when removed compartments are occupied. |
+| `POST` | `/api/v1/floor-plan/transfer` | Admin | Assign 1–100 active copies to a valid column/row on their authoritative category shelf. |
+| `POST` | `/api/v1/floor-plan/background` | Admin | Store a validated PNG, JPEG, or WebP floor image up to 2 MB. |
+
+Draft saves and publication use optimistic concurrency. If another administrator saves first, the API returns `409 FLOOR_PLAN_CONFLICT`; the client must reload rather than silently overwrite the newer layout. Public book-location responses expose catalog and availability data only—never borrower or circulation-owner details.

@@ -4,9 +4,9 @@ import { buildBookSearchText, buildThesisSearchText, insertAuthors } from './cat
 
 export async function listCategories(database: Pool) {
   const [rows] = await database.execute<RowDataPacket[]>(
-    'SELECT category_id, category_name, shelf_location FROM categories ORDER BY category_name ASC',
+    'SELECT category_id, category_name, shelf_location, shelf_column, shelf_row FROM categories ORDER BY category_name ASC',
   )
-  return rows.map((row) => ({ categoryId: row.category_id, categoryName: row.category_name, shelfLocation: row.shelf_location }))
+  return rows.map((row) => ({ categoryId: row.category_id, categoryName: row.category_name, shelfLocation: row.shelf_location, shelfColumn: Number(row.shelf_column), shelfRow: Number(row.shelf_row) }))
 }
 
 export async function listPhysicalCopies(database: Pool, limit = 100) {
@@ -70,10 +70,95 @@ export async function findRegistryMatch(database: Pool, kind: 'ISBN' | 'Barcode'
 
 export async function lockTitle(connection: PoolConnection, titleId: number) {
   const [rows] = await connection.execute<RowDataPacket[]>(
-    'SELECT title_id, record_type, lifecycle_status FROM titles WHERE title_id = ? LIMIT 1 FOR UPDATE',
+    `SELECT t.title_id, t.title, t.record_type, t.lifecycle_status, t.category_id,
+            t.row_version, c.category_name, c.shelf_location AS category_shelf_location
+       FROM titles t
+       LEFT JOIN categories c ON c.category_id = t.category_id
+      WHERE t.title_id = ? LIMIT 1 FOR UPDATE`,
     [titleId],
   )
   return rows[0] ?? null
+}
+
+export async function lockCategoryWithManagedShelf(connection: PoolConnection, categoryId: number) {
+  const [rows] = await connection.execute<RowDataPacket[]>(
+    `SELECT c.category_id, c.category_name, c.shelf_location, c.shelf_column, c.shelf_row, s.id AS shelf_id,
+            s.column_count, s.row_count
+       FROM categories c
+       LEFT JOIN floor_plan_shelves s ON s.label = c.shelf_location
+      WHERE c.category_id = ? LIMIT 1 FOR UPDATE`,
+    [categoryId],
+  )
+  return rows[0] ?? null
+}
+
+export async function moveTitleToCategory(
+  connection: PoolConnection,
+  title: RowDataPacket,
+  targetCategory: RowDataPacket,
+) {
+  const titleId = Number(title.title_id)
+  const targetCategoryId = Number(targetCategory.category_id)
+  const shelfLocation = String(targetCategory.shelf_location)
+  const shelfColumn = Number(targetCategory.shelf_column)
+  const shelfRow = Number(targetCategory.shelf_row)
+  let bookCopies = 0
+  let researchCopies = 0
+  let previousShelves: Array<{ shelf: string; count: number }> = []
+  const shelfDistribution = (rows: RowDataPacket[]) => Object.entries(rows.reduce<Record<string, number>>((result, row) => {
+    const shelf = String(row.shelf_location || 'Unassigned')
+    result[shelf] = (result[shelf] ?? 0) + 1
+    return result
+  }, {})).map(([shelf, count]) => ({ shelf, count }))
+
+  if (title.record_type === 'Book') {
+    const [copies] = await connection.execute<RowDataPacket[]>(
+      `SELECT physical_copy_id, material_id, shelf_location
+         FROM physical_copies
+        WHERE title_id = ? AND lifecycle_status = 'Active'
+        ORDER BY physical_copy_id FOR UPDATE`,
+      [titleId],
+    )
+    bookCopies = copies.length
+    previousShelves = shelfDistribution(copies)
+    await connection.execute<ResultSetHeader>(
+      `UPDATE physical_copies
+          SET shelf_location = ?, shelf_column = ?, shelf_row = ?, row_version = row_version + 1, updated_at = NOW()
+        WHERE title_id = ? AND lifecycle_status = 'Active'`,
+      [shelfLocation, shelfColumn, shelfRow, titleId],
+    )
+    await connection.execute<ResultSetHeader>(
+      `UPDATE materials m
+        JOIN physical_copies pc ON pc.material_id = m.material_id
+          SET m.category_id = ?, m.shelf_location = ?, m.updated_at = NOW()
+        WHERE pc.title_id = ? AND pc.lifecycle_status = 'Active'`,
+      [targetCategoryId, shelfLocation, titleId],
+    )
+  } else {
+    const [inventory] = await connection.execute<RowDataPacket[]>(
+      `SELECT research_inventory_id, shelf_location
+         FROM research_inventory
+        WHERE title_id = ? AND lifecycle_status = 'Active'
+        ORDER BY research_inventory_id FOR UPDATE`,
+      [titleId],
+    )
+    researchCopies = inventory.length
+    previousShelves = shelfDistribution(inventory)
+    await connection.execute<ResultSetHeader>(
+      `UPDATE research_inventory
+          SET shelf_location = ?, shelf_column = ?, shelf_row = ?, row_version = row_version + 1, updated_at = NOW()
+        WHERE title_id = ? AND lifecycle_status = 'Active'`,
+      [shelfLocation, shelfColumn, shelfRow, titleId],
+    )
+  }
+
+  await connection.execute<ResultSetHeader>(
+    `UPDATE titles
+        SET category_id = ?, row_version = row_version + 1, updated_at = NOW()
+      WHERE title_id = ?`,
+    [targetCategoryId, titleId],
+  )
+  return { bookCopies, researchCopies, previousShelves }
 }
 
 export async function hasActiveTitleLoan(connection: PoolConnection, titleId: number) {

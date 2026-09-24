@@ -29,18 +29,18 @@ describe('AddMultipleCopiesModal', () => {
     expect((screen.getByLabelText(/Number of copies/i) as HTMLInputElement).value).toBe('4')
     expect((screen.getByLabelText(/Call number/i) as HTMLInputElement).value).toBe('005.1 MAR')
     expect((screen.getByLabelText(/Category \*/i) as HTMLSelectElement).value).toBe('2')
-    expect((screen.getByLabelText(/Book location \*/i) as HTMLSelectElement).value).toBe('Aisle 3')
+    expect((screen.getByLabelText(/Book location \*/i) as HTMLInputElement).value).toBe('Aisle 3')
+    expect((screen.getByLabelText(/Book location \*/i) as HTMLInputElement).readOnly).toBe(true)
     expect(screen.getByText(/Book information found from Google Books/i)).toBeTruthy()
   })
 
-  it('uses database-managed category and book-location dropdowns and renders the inline preview', async () => {
+  it('uses the category shelf as the read-only book location and renders the inline preview', async () => {
     api.createBulkBook.mockResolvedValue({ titleId: 8, createdTitle: true, numberOfCopies: 2, copies: [] })
     const created = vi.fn()
     render(<AddMultipleCopiesModal categories={categories} onCreated={created} onClose={() => undefined} />)
     expect(screen.getByRole('option', { name: 'Programming' })).toBeTruthy()
-    expect(screen.getByRole('option', { name: 'Cabinet 4-B' })).toBeTruthy()
     fireEvent.change(screen.getByLabelText(/Category \*/i), { target: { value: '1' } })
-    expect((screen.getByLabelText(/Book location \*/i) as HTMLSelectElement).value).toBe('Cabinet 4-B')
+    expect((screen.getByLabelText(/Book location \*/i) as HTMLInputElement).value).toBe('Cabinet 4-B')
     fireEvent.change(screen.getByLabelText(/Title \*/i), { target: { value: 'Clean Code' } })
     fireEvent.change(screen.getByLabelText(/Author \*/i), { target: { value: 'Robert C. Martin' } })
     fireEvent.change(screen.getByLabelText(/Purchase price/i), { target: { value: '650.00' } })

@@ -8,7 +8,7 @@ function serviceFixture(selectedRow:Record<string,unknown>){
   const calls:Array<{sql:string;values:unknown[]}>=[]
   const connection={
     beginTransaction:async()=>undefined,commit:async()=>undefined,rollback:async()=>undefined,release:()=>undefined,
-    execute:async(sql:string,values:unknown[]=[] )=>{assert.equal((sql.match(/\?/g)??[]).length,values.length,`Prepared value count mismatch in ${sql}`);calls.push({sql,values});if(sql.startsWith('SELECT'))return[[selectedRow],[]];if(sql.includes('INSERT INTO ink_repository'))return[{insertId:9},[]];return[{},[]]},
+    execute:async(sql:string,values:unknown[]=[] )=>{assert.equal((sql.match(/\?/g)??[]).length,values.length,`Prepared value count mismatch in ${sql}`);calls.push({sql,values});if(sql.startsWith('SELECT'))return[[selectedRow],[]];if(sql.includes('INSERT INTO ink_repository'))return[{insertId:9},[]];if(sql.includes('INSERT INTO print_cash_payments'))return[{insertId:21},[]];if(sql.includes('INSERT INTO print_payment_receipts'))return[{insertId:31},[]];return[{},[]]},
   }
   const pool={getConnection:async()=>connection} as unknown as Pool
   const repository={userBySchoolId:async()=>({user_id:5,account_status:'Active'})} as unknown as PrintingRepository
@@ -57,4 +57,13 @@ test('starting a paid print job does not automatically deduct paper stock',async
   await service.updateStatus({schoolId:'ADMIN-PORTAL-001'},4,{status:'Printing'})
   assert.equal(calls.some(call=>call.sql.includes('bond_paper_stocks')),false)
   assert.equal(calls.some(call=>call.sql.includes('paper_stock_movements')),false)
+})
+
+test('recording a printing payment creates a separate digital printing receipt',async()=>{
+  const{service,calls}=serviceFixture({request_id:4,user_id:7,calculated_cost:'36.00',payment_status:'Unpaid',job_status:'Pending',file_name:'capstone.pdf',page_count:6,number_of_copies:2,total_sheets:12,print_type:'Monochrome',paper_size:'A4',student_name:'Student User',school_id:'0200000001',user_role:'Student'})
+  const result=await service.recordCash({schoolId:'ADMIN-PORTAL-001'},4,{amount_paid:36})
+  assert.equal(result.receipt.receipt_number.startsWith('PR-'),true)
+  assert.equal(result.receipt.amount_received,36)
+  assert.ok(calls.some(call=>call.sql.includes('INSERT INTO print_payment_receipts')))
+  assert.equal(calls.some(call=>call.sql.includes('fine_payment_receipts')),false)
 })

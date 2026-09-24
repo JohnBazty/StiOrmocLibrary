@@ -121,6 +121,8 @@ CREATE TABLE IF NOT EXISTS `categories` (
   `category_id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `category_name` VARCHAR(100) NOT NULL,
   `shelf_location` VARCHAR(100) NOT NULL,
+  `shelf_column` TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  `shelf_row` TINYINT UNSIGNED NOT NULL DEFAULT 1,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT NULL,
   PRIMARY KEY (`category_id`),
@@ -171,6 +173,8 @@ CREATE TABLE IF NOT EXISTS `research_inventory` (
   `availability_status` ENUM('available', 'unavailable', 'borrowed', 'reserved') NOT NULL DEFAULT 'available',
   `lifecycle_status` ENUM('Active', 'Archived') NOT NULL DEFAULT 'Active',
   `shelf_location` VARCHAR(100) NOT NULL,
+  `shelf_column` TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  `shelf_row` TINYINT UNSIGNED NOT NULL DEFAULT 1,
   `last_audited_at` DATETIME DEFAULT NULL,
   `archived_at` DATETIME DEFAULT NULL,
   `archive_reason` VARCHAR(255) DEFAULT NULL,
@@ -516,6 +520,24 @@ ALTER TABLE `fine_payment_allocations`
 -- 5. QR-BASED ATTENDANCE MONITORING
 -- ============================================================================
 
+CREATE TABLE IF NOT EXISTS `attendance_qr_credentials` (
+  `credential_id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id` BIGINT UNSIGNED NOT NULL,
+  `public_id` VARCHAR(40) NOT NULL,
+  `secret_hash` BINARY(32) NOT NULL,
+  `credential_version` SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+  `credential_status` ENUM('Active','Revoked') NOT NULL DEFAULT 'Active',
+  `issued_at` DATETIME NOT NULL,
+  `last_used_at` DATETIME DEFAULT NULL,
+  `revoked_at` DATETIME DEFAULT NULL,
+  `updated_at` DATETIME DEFAULT NULL,
+  PRIMARY KEY (`credential_id`),
+  UNIQUE KEY `uq_attendance_qr_user` (`user_id`),
+  UNIQUE KEY `uq_attendance_qr_public_id` (`public_id`),
+  KEY `idx_attendance_qr_status` (`credential_status`, `public_id`),
+  CONSTRAINT `fk_attendance_qr_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON UPDATE CASCADE ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
 CREATE TABLE IF NOT EXISTS `academic_terms` (
   `academic_term_id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `academic_year` VARCHAR(20) NOT NULL,
@@ -536,19 +558,48 @@ CREATE TABLE IF NOT EXISTS `attendance_logs` (
   `user_id` BIGINT UNSIGNED NOT NULL,
   `attendance_date` DATE NOT NULL,
   `time_in` TIME NOT NULL,
+  `checked_in_at` DATETIME DEFAULT NULL,
   `time_out` TIME DEFAULT NULL,
+  `checked_out_at` DATETIME DEFAULT NULL,
   `reason_for_visit` ENUM('Library Visit', 'Study', 'Research', 'Book Borrowing', 'Printing', 'Photocopy') NOT NULL,
   `qr_reference` VARCHAR(100) DEFAULT NULL,
+  `qr_credential_id` BIGINT UNSIGNED DEFAULT NULL,
+  `scan_method` ENUM('Permanent QR','School ID QR','Dynamic QR','Manual') NOT NULL DEFAULT 'Manual',
+  `checked_in_by_user_id` BIGINT UNSIGNED DEFAULT NULL,
+  `checked_out_by_user_id` BIGINT UNSIGNED DEFAULT NULL,
+  `entry_request_id` VARCHAR(64) DEFAULT NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`log_id`),
+  UNIQUE KEY `uq_attendance_entry_request` (`entry_request_id`),
   KEY `idx_attendance_user_date` (`user_id`, `attendance_date`),
   KEY `idx_attendance_date_time` (`attendance_date`, `time_in`),
+  KEY `idx_attendance_checked_in_at` (`checked_in_at`),
   KEY `idx_attendance_reason` (`reason_for_visit`),
   KEY `idx_attendance_presence` (`attendance_date`, `time_out`, `user_id`),
   KEY `idx_attendance_purpose_date` (`reason_for_visit`, `attendance_date`),
+  KEY `idx_attendance_open_visit` (`attendance_date`, `user_id`, `checked_out_at`),
+  KEY `idx_attendance_qr_credential` (`qr_credential_id`),
+  KEY `idx_attendance_checkin_staff` (`checked_in_by_user_id`),
+  KEY `idx_attendance_checkout_staff` (`checked_out_by_user_id`),
   CONSTRAINT `fk_attendance_user`
     FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`)
-    ON UPDATE CASCADE ON DELETE RESTRICT
+    ON UPDATE CASCADE ON DELETE RESTRICT,
+  CONSTRAINT `fk_attendance_qr_credential` FOREIGN KEY (`qr_credential_id`) REFERENCES `attendance_qr_credentials` (`credential_id`) ON UPDATE CASCADE ON DELETE SET NULL,
+  CONSTRAINT `fk_attendance_checkin_staff` FOREIGN KEY (`checked_in_by_user_id`) REFERENCES `users` (`user_id`) ON UPDATE CASCADE ON DELETE SET NULL,
+  CONSTRAINT `fk_attendance_checkout_staff` FOREIGN KEY (`checked_out_by_user_id`) REFERENCES `users` (`user_id`) ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS `library_capacity_changes` (
+  `capacity_change_id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `previous_capacity` SMALLINT UNSIGNED NOT NULL,
+  `new_capacity` SMALLINT UNSIGNED NOT NULL,
+  `change_reason` VARCHAR(255) NOT NULL,
+  `changed_by_user_id` BIGINT UNSIGNED DEFAULT NULL,
+  `changed_at` DATETIME NOT NULL,
+  PRIMARY KEY (`capacity_change_id`),
+  KEY `idx_capacity_changes_date` (`changed_at`),
+  KEY `idx_capacity_changes_actor` (`changed_by_user_id`),
+  CONSTRAINT `fk_capacity_changes_actor` FOREIGN KEY (`changed_by_user_id`) REFERENCES `users` (`user_id`) ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 -- ============================================================================
@@ -699,6 +750,45 @@ CREATE TABLE IF NOT EXISTS `print_cash_payments` (
   CONSTRAINT `fk_print_cash_receiver` FOREIGN KEY (`received_by_user_id`) REFERENCES `users` (`user_id`) ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
+CREATE TABLE IF NOT EXISTS `print_payment_receipts` (
+  `print_receipt_id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `print_cash_payment_id` BIGINT UNSIGNED NOT NULL,
+  `request_id` BIGINT UNSIGNED NOT NULL,
+  `user_id` BIGINT UNSIGNED NOT NULL,
+  `receipt_number` VARCHAR(32) NOT NULL,
+  `verification_code` VARCHAR(16) NOT NULL,
+  `receipt_status` ENUM('Issued','Reversed') NOT NULL DEFAULT 'Issued',
+  `student_name_snapshot` VARCHAR(150) NOT NULL,
+  `school_id_snapshot` VARCHAR(30) NOT NULL,
+  `file_name_snapshot` VARCHAR(255) NOT NULL,
+  `page_count_snapshot` INT UNSIGNED NOT NULL,
+  `copies_snapshot` SMALLINT UNSIGNED NOT NULL,
+  `total_sheets_snapshot` INT UNSIGNED NOT NULL,
+  `print_type_snapshot` ENUM('Colored','Monochrome') NOT NULL,
+  `paper_size_snapshot` ENUM('Short','A4','Long') NOT NULL,
+  `amount_received` DECIMAL(10,2) UNSIGNED NOT NULL,
+  `payment_method` ENUM('Cash') NOT NULL DEFAULT 'Cash',
+  `received_by_user_id` BIGINT UNSIGNED DEFAULT NULL,
+  `received_by_name_snapshot` VARCHAR(150) NOT NULL,
+  `received_at` DATETIME NOT NULL,
+  `reversed_by_user_id` BIGINT UNSIGNED DEFAULT NULL,
+  `reversed_at` DATETIME DEFAULT NULL,
+  `reversal_reason` VARCHAR(255) DEFAULT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`print_receipt_id`),
+  UNIQUE KEY `uq_print_receipt_payment` (`print_cash_payment_id`),
+  UNIQUE KEY `uq_print_receipt_request` (`request_id`),
+  UNIQUE KEY `uq_print_receipt_number` (`receipt_number`),
+  UNIQUE KEY `uq_print_receipt_verification` (`verification_code`),
+  KEY `idx_print_receipt_user_date` (`user_id`,`received_at`),
+  KEY `idx_print_receipt_status_date` (`receipt_status`,`received_at`),
+  CONSTRAINT `fk_print_receipt_payment` FOREIGN KEY (`print_cash_payment_id`) REFERENCES `print_cash_payments` (`print_cash_payment_id`) ON UPDATE CASCADE ON DELETE RESTRICT,
+  CONSTRAINT `fk_print_receipt_request` FOREIGN KEY (`request_id`) REFERENCES `print_requests` (`request_id`) ON UPDATE CASCADE ON DELETE RESTRICT,
+  CONSTRAINT `fk_print_receipt_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON UPDATE CASCADE ON DELETE RESTRICT,
+  CONSTRAINT `fk_print_receipt_receiver` FOREIGN KEY (`received_by_user_id`) REFERENCES `users` (`user_id`) ON UPDATE CASCADE ON DELETE SET NULL,
+  CONSTRAINT `fk_print_receipt_reverser` FOREIGN KEY (`reversed_by_user_id`) REFERENCES `users` (`user_id`) ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
 CREATE TABLE IF NOT EXISTS `ink_stock_movements` (
   `ink_stock_movement_id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `ink_id` INT UNSIGNED NOT NULL,
@@ -753,7 +843,7 @@ CREATE TABLE IF NOT EXISTS `notifications` (
   `user_id` BIGINT UNSIGNED NOT NULL,
   `message_title` VARCHAR(150) NOT NULL,
   `message_body` TEXT NOT NULL,
-  `trigger_type` ENUM('Due Date', 'Overdue Penalty', 'Reservation Arrival', 'Printing Update', 'Library Schedule', 'Announcement', 'Lost Book', 'Fine') NOT NULL,
+  `trigger_type` ENUM('Due Date', 'Overdue Penalty', 'Reservation Arrival', 'Printing Update', 'Library Schedule', 'Announcement', 'Lost Book', 'Fine', 'Attendance') NOT NULL,
   `source_type` VARCHAR(40) DEFAULT NULL,
   `source_id` BIGINT UNSIGNED DEFAULT NULL,
   `action_path` VARCHAR(255) DEFAULT NULL,
@@ -765,9 +855,11 @@ CREATE TABLE IF NOT EXISTS `notifications` (
   `is_read` TINYINT(1) UNSIGNED NOT NULL DEFAULT 0,
   `notification_timestamp` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `read_at` DATETIME DEFAULT NULL,
+  `deleted_at` DATETIME DEFAULT NULL,
   PRIMARY KEY (`notification_id`),
   UNIQUE KEY `uq_notification_user_dedupe` (`user_id`, `dedupe_key`),
   KEY `idx_notification_user_read` (`user_id`, `is_read`),
+  KEY `idx_notification_user_deleted` (`user_id`, `deleted_at`, `notification_timestamp`),
   KEY `idx_notification_timestamp` (`notification_timestamp`),
   KEY `idx_notification_trigger` (`trigger_type`),
   KEY `idx_notification_schedule` (`scheduled_for`, `delivered_at`),
@@ -799,6 +891,27 @@ CREATE TABLE IF NOT EXISTS `library_operating_schedule` (
   PRIMARY KEY (`day_of_week`),
   CONSTRAINT `fk_library_schedule_updater` FOREIGN KEY (`updated_by_user_id`) REFERENCES `users` (`user_id`) ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS `library_profile_settings` (
+  `settings_id` TINYINT UNSIGNED NOT NULL,
+  `library_name` VARCHAR(150) NOT NULL DEFAULT 'STI Ormoc Smart Library',
+  `seat_capacity` SMALLINT UNSIGNED NOT NULL DEFAULT 80,
+  `information_text` VARCHAR(500) DEFAULT NULL,
+  `map_asset_path` VARCHAR(255) DEFAULT NULL,
+  `updated_by_user_id` BIGINT UNSIGNED DEFAULT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT NULL,
+  PRIMARY KEY (`settings_id`),
+  KEY `idx_library_profile_updater` (`updated_by_user_id`),
+  CONSTRAINT `fk_library_profile_updater`
+    FOREIGN KEY (`updated_by_user_id`) REFERENCES `users` (`user_id`)
+    ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+INSERT IGNORE INTO `library_profile_settings`
+  (`settings_id`, `library_name`, `seat_capacity`, `information_text`)
+VALUES
+  (1, 'STI Ormoc Smart Library', 80, 'Borrow books, access research, request printing, and study in the library.');
 
 INSERT IGNORE INTO `library_operating_schedule` (`day_of_week`,`is_open`,`opens_at`,`closes_at`) VALUES
   (1,1,'07:00:00','17:00:00'),(2,1,'07:00:00','17:00:00'),(3,1,'07:00:00','17:00:00'),
@@ -1185,6 +1298,53 @@ BEGIN
 END$$
 
 DELIMITER ;
+
+CREATE TABLE IF NOT EXISTS floor_plan_shelves (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  label VARCHAR(100) NOT NULL,
+  column_count TINYINT UNSIGNED NOT NULL DEFAULT 3,
+  row_count TINYINT UNSIGNED NOT NULL DEFAULT 5,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NULL,
+  PRIMARY KEY (id), UNIQUE KEY uq_floor_shelf_label (label)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS floor_plan_state (
+  id TINYINT UNSIGNED NOT NULL,
+  revision INT UNSIGNED NOT NULL DEFAULT 0,
+  draft LONGTEXT NOT NULL,
+  published LONGTEXT NULL,
+  updated_at DATETIME NULL,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS floor_plan_versions (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  layout LONGTEXT NOT NULL,
+  published_by_account_id BIGINT UNSIGNED NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  CONSTRAINT fk_floor_version_actor FOREIGN KEY (published_by_account_id) REFERENCES accounts(account_id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS floor_plan_events (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  account_id BIGINT UNSIGNED NOT NULL,
+  event_type VARCHAR(40) NOT NULL,
+  details TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  CONSTRAINT fk_floor_event_actor FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+INSERT IGNORE INTO floor_plan_shelves (label)
+SELECT DISTINCT TRIM(shelf_location) FROM physical_copies WHERE TRIM(COALESCE(shelf_location,''))<>'';
+INSERT IGNORE INTO floor_plan_shelves (label)
+SELECT DISTINCT TRIM(shelf_location) FROM categories WHERE TRIM(COALESCE(shelf_location,''))<>'';
+INSERT IGNORE INTO floor_plan_shelves (label)
+SELECT DISTINCT TRIM(shelf_location) FROM research_inventory WHERE TRIM(COALESCE(shelf_location,''))<>'';
+INSERT IGNORE INTO floor_plan_state (id,draft)
+VALUES (1,'{"areas":[{"id":"main","name":"Main Library","width":1200,"height":800,"background":null}],"objects":[]}');
 
 -- End of schema.
 SELECT 'STI Ormoc Smart Library schema created successfully.' AS `schema_status`;

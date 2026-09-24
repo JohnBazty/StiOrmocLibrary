@@ -3,6 +3,7 @@ import { createReadStream } from 'node:fs'
 import { createBrandedTablePdf } from '../reports/branded-table-pdf.ts'
 import { printingRepository } from './printing.repository.ts'
 import { printingService } from './printing.service.ts'
+import { createPrintingReceiptPdf, type PrintingReceipt } from './printing-receipt.pdf.ts'
 import { parseFinanceFilters, parseQueueFilters } from './printing.validation.ts'
 
 function actor(request:Request,response:Response){const jwt=response.locals.authenticatedUser as {schoolId?:string;role?:string}|undefined;const session=request.session?.user as {schoolId?:string;school_id?:string;role?:string}|undefined;return{schoolId:jwt?.schoolId??session?.schoolId??session?.school_id,role:jwt?.role??session?.role}}
@@ -15,11 +16,16 @@ export const printingController={
   setServiceStatus:handle(async(request,response)=>{response.json({success:true,message:'Printing service availability updated.',data:await printingService.setServiceStatus(actor(request,response),request.body)})}),
   pricing:handle(async(_request,response)=>{response.json({success:true,data:await printingService.pricing()})}),
   mine:handle(async(request,response)=>{response.json({success:true,data:await printingService.ownRequests(actor(request,response))})}),
+  myReceipts:handle(async(request,response)=>{response.json({success:true,data:await printingService.ownReceipts(actor(request,response))})}),
+  myReceipt:handle(async(request,response)=>{response.json({success:true,data:await printingService.ownReceipt(actor(request,response),request.params.id)})}),
+  myReceiptPdf:handle(async(request,response)=>{const receipt=await printingService.ownReceipt(actor(request,response),request.params.id) as unknown as PrintingReceipt;const report=createPrintingReceiptPdf(receipt);response.status(200).set({'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="${receipt.receipt_number}.pdf"`,'Cache-Control':'no-store'});report.pipe(response)}),
   submit:handle(async(request,response)=>{const data=await printingService.submit(actor(request,response),request.body,request.file);response.status(201).json({success:true,message:'Print request submitted. Pay cash at the library counter before printing starts.',data})}),
   cancel:handle(async(request,response)=>{response.json({success:true,message:'The pending print request was cancelled.',data:await printingService.cancelOwn(actor(request,response),request.params.id)})}),
   summary:handle(async(_request,response)=>{response.json({success:true,data:await printingService.summary()})}),
   queue:handle(async(request,response)=>{const result=await printingService.queue(request.query as Record<string,unknown>);response.json({success:true,data:result.rows,meta:{pagination:result.pagination}})}),
   cash:handle(async(request,response)=>{response.json({success:true,message:'Cash payment recorded.',data:await printingService.recordCash(actor(request,response),request.params.id,request.body)})}),
+  adminReceipt:handle(async(request,response)=>{response.json({success:true,data:await printingService.adminReceipt(actor(request,response),request.params.id)})}),
+  adminReceiptPdf:handle(async(request,response)=>{const receipt=await printingService.adminReceipt(actor(request,response),request.params.id) as unknown as PrintingReceipt;const report=createPrintingReceiptPdf(receipt);response.status(200).set({'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="${receipt.receipt_number}.pdf"`,'Cache-Control':'no-store'});report.pipe(response)}),
   status:handle(async(request,response)=>{response.json({success:true,message:'Print job status updated.',data:await printingService.updateStatus(actor(request,response),request.params.id,request.body)})}),
   downloadDocument:handle(async(request,response)=>{const document=await printingService.downloadDocument(actor(request,response),request.params.id,{sourceIp:request.ip,userAgent:request.get('user-agent')});response.status(200).set({'Content-Type':document.mime,'Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(document.fileName)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});createReadStream(document.storedPath).on('error',(error)=>response.destroy(error)).pipe(response)}),
   supplies:handle(async(_request,response)=>{response.json({success:true,data:await printingService.supplies()})}),

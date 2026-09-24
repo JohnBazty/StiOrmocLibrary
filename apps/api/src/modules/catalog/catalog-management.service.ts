@@ -10,10 +10,13 @@ import {
   listCategories,
   listPhysicalCopies,
   lockTitle,
+  lockCategoryWithManagedShelf,
+  moveTitleToCategory,
   setTitleArchived,
   updateBookMetadata,
   updateThesisMetadata,
 } from './catalog-management.repository.ts'
+import { recordCategoryShelfEvent } from './categories/category.repository.ts'
 
 function positiveId(value: unknown, field = 'titleId') {
   const parsed = Number(value)
@@ -32,6 +35,20 @@ function archiveReason(value: unknown) {
 
 function validationError(errors: Record<string, string>) {
   return new HttpError(422, 'CATALOG_VALIDATION_FAILED', 'The catalog entry contains invalid fields.', { errors })
+}
+
+function categoryAssignmentInput(body: unknown) {
+  const input = body && typeof body === 'object' ? body as Record<string, unknown> : {}
+  return {
+    targetCategoryId: positiveId(input.targetCategoryId, 'targetCategoryId'),
+    expectedRowVersion: (() => {
+      const value = Number(input.expectedRowVersion)
+      if (!Number.isSafeInteger(value) || value < 1) {
+        throw new HttpError(422, 'ROW_VERSION_REQUIRED', 'Reload the catalog and try again.')
+      }
+      return value
+    })(),
+  }
 }
 
 export function createCatalogManagementService(database: Pool = db) {
@@ -53,6 +70,55 @@ export function createCatalogManagementService(database: Pool = db) {
   return {
     categories: () => listCategories(database),
     physicalCopies: (limit?: number) => listPhysicalCopies(database, limit),
+
+    async changeTitleCategory(titleIdValue: unknown, body: unknown, actorAccountId: number | null) {
+      const titleId = positiveId(titleIdValue)
+      const input = categoryAssignmentInput(body)
+      return inTransaction(async (connection) => {
+        const title = await lockTitle(connection, titleId)
+        if (!title || title.lifecycle_status !== 'Active') {
+          throw new HttpError(404, 'CATALOG_TITLE_NOT_FOUND', 'The active catalog title no longer exists.')
+        }
+        if (Number(title.row_version) !== input.expectedRowVersion) {
+          throw new HttpError(409, 'CATALOG_TITLE_CHANGED', 'This title changed after the table was loaded. Reload the catalog and try again.')
+        }
+        if (Number(title.category_id) === input.targetCategoryId) {
+          throw new HttpError(422, 'CATEGORY_UNCHANGED', 'Select a different category.')
+        }
+        const target = await lockCategoryWithManagedShelf(connection, input.targetCategoryId)
+        if (!target) throw new HttpError(404, 'CATEGORY_NOT_FOUND', 'The selected category no longer exists.')
+        if (!target.shelf_id) {
+          throw new HttpError(422, 'CATEGORY_SHELF_NOT_MANAGED', 'The selected category must use a shelf created in Floor Plan.')
+        }
+        if (Number(target.shelf_column) > Number(target.column_count) || Number(target.shelf_row) > Number(target.row_count)) {
+          throw new HttpError(422, 'CATEGORY_SHELF_POSITION_INVALID', 'The category position is outside the selected shelf grid. Edit the category location and try again.')
+        }
+        const affected = await moveTitleToCategory(connection, title, target)
+        await recordCategoryShelfEvent(connection, actorAccountId, 'Title category changed', {
+          titleId,
+          title: title.title,
+          recordType: title.record_type,
+          fromCategoryId: title.category_id,
+          fromCategoryName: title.category_name,
+          fromShelf: title.category_shelf_location,
+          toCategoryId: Number(target.category_id),
+          toCategoryName: target.category_name,
+          toShelf: target.shelf_location,
+          affected,
+        })
+        return {
+          titleId,
+          recordType: title.record_type,
+          categoryId: Number(target.category_id),
+          categoryName: String(target.category_name),
+          shelfLocation: String(target.shelf_location),
+          shelfColumn: Number(target.shelf_column),
+          shelfRow: Number(target.shelf_row),
+          rowVersion: Number(title.row_version) + 1,
+          ...affected,
+        }
+      })
+    },
 
     async parseRegistry(body: unknown) {
       const input = body && typeof body === 'object' ? body as Record<string, unknown> : {}
@@ -138,4 +204,3 @@ export function createCatalogManagementService(database: Pool = db) {
 }
 
 export const catalogManagementService = createCatalogManagementService()
-

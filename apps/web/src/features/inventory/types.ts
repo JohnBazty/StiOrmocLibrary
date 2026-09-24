@@ -14,6 +14,9 @@ export type InventoryCopy = {
   accession_number: string
   barcode: string
   shelf_location: string
+  shelf_column: number
+  shelf_row: number
+  call_number: string | null
   condition_status: string
   availability_status: string
   last_verified_at: string | null

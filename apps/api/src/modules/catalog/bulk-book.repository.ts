@@ -22,9 +22,30 @@ export async function lockBookTitleByIsbn(connection: PoolConnection, isbn: stri
 
 export async function ensureBookLocationExists(connection: PoolConnection, shelfLocation: string) {
   const [rows] = await connection.execute<RowDataPacket[]>(
-    'SELECT category_id FROM categories WHERE shelf_location = ? LIMIT 1', [shelfLocation],
+    'SELECT category_id FROM categories WHERE shelf_location = ? UNION SELECT id AS category_id FROM floor_plan_shelves WHERE label = ? LIMIT 1', [shelfLocation, shelfLocation],
   )
   return rows.length > 0
+}
+
+export async function lockCategoryShelf(connection: PoolConnection, categoryId: number) {
+  const [rows] = await connection.execute<RowDataPacket[]>(
+    `SELECT c.category_id, c.shelf_location, c.shelf_column, c.shelf_row, s.id AS shelf_id,
+            s.column_count, s.row_count
+       FROM categories c
+       LEFT JOIN floor_plan_shelves s ON s.label = c.shelf_location
+      WHERE c.category_id = ? LIMIT 1 FOR UPDATE`,
+    [categoryId],
+  )
+  if (!rows[0]) return null
+  return {
+    categoryId: Number(rows[0].category_id),
+    shelfLocation: String(rows[0].shelf_location),
+    shelfId: rows[0].shelf_id === null ? null : Number(rows[0].shelf_id),
+    shelfColumn: Number(rows[0].shelf_column),
+    shelfRow: Number(rows[0].shelf_row),
+    columnCount: Number(rows[0].column_count),
+    rowCount: Number(rows[0].row_count),
+  }
 }
 
 export async function createBulkBookTitle(connection: PoolConnection, input: BulkBookInput, coverImagePath: string | null) {
@@ -77,10 +98,10 @@ export async function insertGeneratedBookCopy(connection: PoolConnection, input:
   )
   const [physicalCopy] = await connection.execute<ResultSetHeader>(
     `INSERT INTO physical_copies
-       (title_id, material_id, barcode, qr_code_data, accession_number, shelf_location,
+       (title_id, material_id, barcode, qr_code_data, accession_number, shelf_location, shelf_column, shelf_row,
         condition_status, availability_status, lifecycle_status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'Good', 'Available', 'Active', NOW())`,
-    [titleId, material.insertId, copy.barcode, copy.qrCodeData, copy.accessionNumber, input.shelfLocation],
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Good', 'Available', 'Active', NOW())`,
+    [titleId, material.insertId, copy.barcode, copy.qrCodeData, copy.accessionNumber, input.shelfLocation, Number((input as BulkBookInput & { shelfColumn?: number }).shelfColumn ?? 1), Number((input as BulkBookInput & { shelfRow?: number }).shelfRow ?? 1)],
   )
   return { materialId: Number(material.insertId), physicalCopyId: Number(physicalCopy.insertId) }
 }

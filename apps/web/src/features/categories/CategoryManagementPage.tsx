@@ -12,6 +12,7 @@ type Editor = { mode: 'create' | 'edit'; category: Category | null }
 
 export function CategoryManagementPage() {
   const [categories, setCategories] = useState<Category[]>([])
+  const [shelves, setShelves] = useState<Array<{ id: number; label: string; columnCount: number; rowCount: number }>>([])
   const [loading, setLoading] = useState(true)
   const [editor, setEditor] = useState<Editor | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Category | null>(null)
@@ -23,7 +24,7 @@ export function CategoryManagementPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    try { setCategories(await categoryApi.list()); setNotice(null) }
+    try { const [nextCategories, nextShelves] = await Promise.all([categoryApi.list(), categoryApi.listShelves()]); setCategories(nextCategories); setShelves(nextShelves); setNotice(null) }
     catch (error) { setNotice({ error: true, message: error instanceof Error ? error.message : 'Categories could not be loaded.' }) }
     finally { setLoading(false) }
   }, [])
@@ -38,11 +39,14 @@ export function CategoryManagementPage() {
     if (!editor) return
     setSaving(true); setFieldErrors({})
     try {
-      if (editor.mode === 'create') await categoryApi.create(payload)
-      else await categoryApi.update(editor.category!.categoryId, payload)
+      const saved = editor.mode === 'create'
+        ? await categoryApi.create(payload)
+        : await categoryApi.update(editor.category!.categoryId, payload)
       setEditor(null)
       await load()
-      setNotice({ error: false, message: editor.mode === 'create' ? 'Category created successfully.' : 'Category updated successfully.' })
+      setNotice({ error: false, message: editor.mode === 'create'
+        ? 'Category created successfully.'
+        : `Category updated. ${saved.bookCopies ?? 0} book copies and ${saved.researchCopies ?? 0} theses are now assigned to ${saved.shelfLocation}, Column ${saved.shelfColumn}, Row ${saved.shelfRow}.` })
     } catch (error) {
       const apiError = error as CategoryApiError
       setFieldErrors(apiError.errors ?? {})
@@ -64,8 +68,8 @@ export function CategoryManagementPage() {
     if (!reassignTarget || !targetCategoryId) return
     setSaving(true)
     try {
-      await categoryApi.reassign(reassignTarget.categoryId, Number(targetCategoryId))
-      setReassignTarget(null); setTargetCategoryId(''); await load(); setNotice({ error: false, message: 'Materials reassigned and old category removed successfully.' })
+      const synchronized = await categoryApi.reassign(reassignTarget.categoryId, Number(targetCategoryId))
+      setReassignTarget(null); setTargetCategoryId(''); await load(); setNotice({ error: false, message: `Category reassigned. ${synchronized.bookCopies} book copies and ${synchronized.researchCopies} theses now use the target category shelf.` })
     } catch (error) { setNotice({ error: true, message: error instanceof Error ? error.message : 'Category reassignment failed.' }) }
     finally { setSaving(false) }
   }
@@ -77,9 +81,9 @@ export function CategoryManagementPage() {
 
     <div className="mb-5 grid gap-3 sm:grid-cols-3"><SectionCard className="p-5"><Tags className="text-[#003399]" /><p className="mt-3 text-xs font-bold uppercase text-[#003399]/60">Categories</p><p className="mt-1 text-3xl font-black text-[#003399]">{categories.length}</p></SectionCard><SectionCard className="p-5"><BookOpen className="text-[#003399]" /><p className="mt-3 text-xs font-bold uppercase text-[#003399]/60">Active physical books</p><p className="mt-1 text-3xl font-black text-[#003399]">{totals.books}</p></SectionCard><SectionCard className="p-5"><FileText className="text-[#003399]" /><p className="mt-3 text-xs font-bold uppercase text-[#003399]/60">Active theses</p><p className="mt-1 text-3xl font-black text-[#003399]">{totals.theses}</p></SectionCard></div>
 
-    <SectionCard className="overflow-hidden"><div className="border-b border-[#003399]/15 px-5 py-4"><h2 className="font-bold text-[#003399]">Classification directory</h2></div><div className="overflow-x-auto"><table className="w-full min-w-[800px] text-left text-sm"><thead className="bg-[#003399] text-white"><tr><th className="px-5 py-3">Category name</th><th className="px-5 py-3">Shelf location</th><th className="px-5 py-3">Active books</th><th className="px-5 py-3">Active theses</th><th className="px-5 py-3 text-right">Actions</th></tr></thead><tbody>{loading ? <tr><td colSpan={5} className="px-5 py-10 text-center text-[#003399]">Loading categories…</td></tr> : categories.length ? categories.map((category) => { const assigned = category.totalBooksCount + category.totalThesisCount > 0; return <tr key={category.categoryId} className="border-b border-[#003399]/10"><td className="px-5 py-4 font-bold text-[#003399]">{category.categoryName}</td><td className="px-5 py-4"><span className="rounded-full bg-[#FFF200] px-3 py-1 text-xs font-bold text-[#003399]">{category.shelfLocation}</span></td><td className="px-5 py-4 font-bold text-[#003399]">{category.totalBooksCount}</td><td className="px-5 py-4 font-bold text-[#003399]">{category.totalThesisCount}</td><td className="px-5 py-4"><div className="flex justify-end gap-1"><button title="Edit category" aria-label={`Edit ${category.categoryName}`} onClick={() => { setFieldErrors({}); setEditor({ mode: 'edit', category }) }} className="rounded-lg p-2 text-[#003399] hover:bg-[#003399]/10"><Pencil size={16} /></button>{assigned ? <button title="Reassign all materials" aria-label={`Reassign ${category.categoryName}`} onClick={() => { setReassignTarget(category); setTargetCategoryId('') }} className="rounded-lg p-2 text-[#003399] hover:bg-[#003399]/10"><ArrowRightLeft size={16} /></button> : null}<button title={assigned ? cannotDeleteTooltip : 'Delete category'} aria-label={assigned ? cannotDeleteTooltip : `Delete ${category.categoryName}`} disabled={assigned} onClick={() => setDeleteTarget(category)} className="rounded-lg p-2 text-[#003399] enabled:hover:bg-[#FFF200] disabled:cursor-not-allowed disabled:bg-[#003399]/5 disabled:text-[#003399]/25"><Trash2 size={16} /></button></div></td></tr> }) : <tr><td colSpan={5} className="px-5 py-10 text-center text-[#003399]">No categories have been registered.</td></tr>}</tbody></table></div></SectionCard>
+    <SectionCard className="overflow-hidden"><div className="border-b border-[#003399]/15 px-5 py-4"><h2 className="font-bold text-[#003399]">Classification directory</h2></div><div className="overflow-x-auto"><table className="w-full min-w-[800px] text-left text-sm"><thead className="bg-[#003399] text-white"><tr><th className="px-5 py-3">Category name</th><th className="px-5 py-3">Shelf location</th><th className="px-5 py-3">Active books</th><th className="px-5 py-3">Active theses</th><th className="px-5 py-3 text-right">Actions</th></tr></thead><tbody>{loading ? <tr><td colSpan={5} className="px-5 py-10 text-center text-[#003399]">Loading categories…</td></tr> : categories.length ? categories.map((category) => { const assigned = category.totalBooksCount + category.totalThesisCount > 0; return <tr key={category.categoryId} className="border-b border-[#003399]/10"><td className="px-5 py-4 font-bold text-[#003399]">{category.categoryName}</td><td className="px-5 py-4"><span className="rounded-full bg-[#FFF200] px-3 py-1 text-xs font-bold text-[#003399]">{category.shelfLocation} · C{category.shelfColumn} · R{category.shelfRow}</span></td><td className="px-5 py-4 font-bold text-[#003399]">{category.totalBooksCount}</td><td className="px-5 py-4 font-bold text-[#003399]">{category.totalThesisCount}</td><td className="px-5 py-4"><div className="flex justify-end gap-1"><button title="Edit category" aria-label={`Edit ${category.categoryName}`} onClick={() => { setFieldErrors({}); setEditor({ mode: 'edit', category }) }} className="rounded-lg p-2 text-[#003399] hover:bg-[#003399]/10"><Pencil size={16} /></button>{assigned ? <button title="Reassign all materials" aria-label={`Reassign ${category.categoryName}`} onClick={() => { setReassignTarget(category); setTargetCategoryId('') }} className="rounded-lg p-2 text-[#003399] hover:bg-[#003399]/10"><ArrowRightLeft size={16} /></button> : null}<button title={assigned ? cannotDeleteTooltip : 'Delete category'} aria-label={assigned ? cannotDeleteTooltip : `Delete ${category.categoryName}`} disabled={assigned} onClick={() => setDeleteTarget(category)} className="rounded-lg p-2 text-[#003399] enabled:hover:bg-[#FFF200] disabled:cursor-not-allowed disabled:bg-[#003399]/5 disabled:text-[#003399]/25"><Trash2 size={16} /></button></div></td></tr> }) : <tr><td colSpan={5} className="px-5 py-10 text-center text-[#003399]">No categories have been registered.</td></tr>}</tbody></table></div></SectionCard>
 
-    {editor ? <CreateCategoryModal category={editor.category} saving={saving} errors={fieldErrors} onSubmit={submitEditor} onClose={() => setEditor(null)} /> : null}
+    {editor ? <CreateCategoryModal category={editor.category} shelves={shelves} saving={saving} errors={fieldErrors} onSubmit={submitEditor} onClose={() => setEditor(null)} /> : null}
 
     {deleteTarget ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#003399]/80 p-4"><div role="alertdialog" aria-modal="true" className="w-full max-w-md rounded-2xl bg-white p-6"><Trash2 className="text-[#003399]" /><h2 className="mt-4 text-xl font-black text-[#003399]">Delete {deleteTarget.categoryName}?</h2><p className="mt-2 text-sm text-[#003399]/65">This is allowed only because no active books or theses are assigned. The server will verify again inside a transaction.</p><div className="mt-6 flex justify-end gap-2"><button onClick={() => setDeleteTarget(null)} className="h-10 rounded-xl border border-[#003399] px-4 font-bold text-[#003399]">Cancel</button><button disabled={saving} onClick={() => void confirmDelete()} className="h-10 rounded-xl bg-[#FFF200] px-4 font-bold text-[#003399]">Delete category</button></div></div></div> : null}
 
