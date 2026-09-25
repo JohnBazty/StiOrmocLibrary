@@ -1,13 +1,19 @@
 import type { Pool, RowDataPacket } from 'mysql2/promise'
-import { db } from '../../config/db.js'
+import { db, dbDriver } from '../../config/db.js'
 import { expireReadyReservations } from './reservation-expiration.service.ts'
 
 export async function startReservationExpirationWorker(database: Pool = db, intervalMs = 60_000) {
-  const [columns] = await database.execute<RowDataPacket[]>(
-    `SELECT COUNT(*) AS available_columns FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reservations'
-        AND COLUMN_NAME IN ('accession_id', 'pickup_deadline')`,
-  )
+  const [columns] = dbDriver === 'postgres'
+    ? await database.execute<RowDataPacket[]>(
+        `SELECT COUNT(*)::int AS available_columns FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'reservations'
+            AND column_name IN ('accession_id', 'pickup_deadline')`,
+      )
+    : await database.execute<RowDataPacket[]>(
+        `SELECT COUNT(*) AS available_columns FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reservations'
+            AND COLUMN_NAME IN ('accession_id', 'pickup_deadline')`,
+      )
   if (Number(columns[0]?.available_columns ?? 0) < 2) {
     console.warn('[Reservation worker] Migration 20260816_004 is not applied; expiration scanning is disabled.')
     return { run: async () => undefined, stop: () => undefined }

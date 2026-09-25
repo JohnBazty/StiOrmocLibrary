@@ -1,5 +1,15 @@
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { db } from '../../config/db.js'
+import {
+  isPostgres,
+  formatDate,
+  formatTime,
+  currentDate,
+  currentTime,
+  monthStart,
+  lastDayOfMonth,
+  sumCondition,
+} from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { issueAttendanceCredential, validateAttendanceCredential } from './attendance-credential.service.ts'
 import { parseAttendanceScan, parseCapacityUpdate } from './attendance.validation.ts'
@@ -35,15 +45,15 @@ export function createAttendanceService(pool: Pool = db) {
              FROM users WHERE user_id=? LIMIT 1`, [userId],
         ),
         pool.execute<RowDataPacket[]>(
-          `SELECT log_id,DATE_FORMAT(attendance_date,'%Y-%m-%d') attendance_date,
-                  TIME_FORMAT(time_in,'%h:%i %p') time_in,
-                  CASE WHEN time_out IS NULL THEN NULL ELSE TIME_FORMAT(time_out,'%h:%i %p') END time_out,
+          `SELECT log_id,${formatDate('attendance_date', '%Y-%m-%d', 'YYYY-MM-DD')} attendance_date,
+                  ${formatTime('time_in')} time_in,
+                  CASE WHEN time_out IS NULL THEN NULL ELSE ${formatTime('time_out')} END time_out,
                   reason_for_visit purpose,CASE WHEN time_out IS NULL THEN 'Inside' ELSE 'Exited' END presence
              FROM attendance_logs WHERE user_id=? ORDER BY attendance_date DESC,time_in DESC LIMIT 50`, [userId],
         ),
         pool.execute<RowDataPacket[]>(
-          `SELECT SUM(attendance_date BETWEEN DATE_FORMAT(CURDATE(),'%Y-%m-01') AND LAST_DAY(CURDATE())) visits_this_month,
-                  MAX(CASE WHEN attendance_date=CURDATE() THEN time_in END) today_check_in,
+          `SELECT ${sumCondition(`attendance_date BETWEEN ${monthStart()} AND ${lastDayOfMonth()}`)} visits_this_month,
+                  MAX(CASE WHEN attendance_date=${currentDate()} THEN time_in END) today_check_in,
                   (SELECT reason_for_visit FROM attendance_logs WHERE user_id=?
                     GROUP BY reason_for_visit ORDER BY COUNT(*) DESC,reason_for_visit LIMIT 1) common_purpose
              FROM attendance_logs WHERE user_id=?`, [userId,userId],
@@ -67,7 +77,7 @@ export function createAttendanceService(pool: Pool = db) {
         ),
         pool.execute<RowDataPacket[]>(
           `SELECT p.seat_capacity,
-                  (SELECT COUNT(*) FROM attendance_logs WHERE attendance_date=CURDATE() AND time_out IS NULL) current_occupancy
+                  (SELECT COUNT(*) FROM attendance_logs WHERE attendance_date=${currentDate()} AND time_out IS NULL) current_occupancy
              FROM library_profile_settings p WHERE p.settings_id=1`,
         ),
       ])
@@ -101,7 +111,7 @@ export function createAttendanceService(pool: Pool = db) {
         )
         if (openRows[0]) throw new HttpError(409,'ATTENDANCE_ALREADY_INSIDE',`${visitor.name} is already checked in.`)
         const [occupancyRows] = await connection.execute<RowDataPacket[]>(
-          'SELECT COUNT(*) current_occupancy FROM attendance_logs WHERE attendance_date=CURDATE() AND time_out IS NULL',
+          `SELECT COUNT(*) current_occupancy FROM attendance_logs WHERE attendance_date=${currentDate()} AND time_out IS NULL`,
         )
         const current = Number(occupancyRows[0]?.current_occupancy??0)
         if (current >= capacity) throw new HttpError(409,'LIBRARY_AT_CAPACITY','The library is currently at full capacity.',{current,capacity})
@@ -109,15 +119,15 @@ export function createAttendanceService(pool: Pool = db) {
           `INSERT INTO attendance_logs
              (user_id,attendance_date,time_in,checked_in_at,time_out,checked_out_at,reason_for_visit,
               qr_reference,qr_credential_id,scan_method,checked_in_by_user_id,entry_request_id)
-           VALUES (?,CURDATE(),CURTIME(),NOW(),NULL,NULL,?,?,?,'Permanent QR',?,?)`,
+           VALUES (?,${currentDate()},${currentTime()},NOW(),NULL,NULL,?,?,?,'Permanent QR',?,?)`,
           [visitor.userId,input.purpose,visitor.publicId,visitor.credentialId,staffUserId,input.requestId],
         )
         await connection.execute('UPDATE attendance_qr_credentials SET last_used_at=NOW(),updated_at=NOW() WHERE credential_id=?',[visitor.credentialId])
         const actionPath=visitor.role==='Faculty'?'/faculty/attendance':visitor.role==='Student'?'/student/attendance':'/admin/attendance'
         await connection.execute(
-          `INSERT IGNORE INTO notifications
+          `INSERT ${isPostgres ? '' : 'IGNORE '}INTO notifications
              (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,delivered_at)
-           VALUES (?,'Library check-in',?,'Attendance','Attendance',?,?,'Normal',?,NOW())`,
+           VALUES (?,'Library check-in',?,'Attendance','Attendance',?,?,'Normal',?,NOW())${isPostgres ? ' ON CONFLICT (user_id, dedupe_key) DO NOTHING' : ''}`,
           [visitor.userId,`Your library entry was recorded for ${input.purpose}.`,insert.insertId,actionPath,`attendance:checkin:${insert.insertId}`],
         )
         await connection.commit()
@@ -142,12 +152,12 @@ export function createAttendanceService(pool: Pool = db) {
         )
         if (!rows[0]) throw new HttpError(409,'ATTENDANCE_NOT_INSIDE',`${visitor.name} does not have an open library visit.`)
         await connection.execute(
-          `UPDATE attendance_logs SET time_out=CURTIME(),checked_out_at=NOW(),checked_out_by_user_id=? WHERE log_id=?`,
+          `UPDATE attendance_logs SET time_out=${currentTime()},checked_out_at=NOW(),checked_out_by_user_id=? WHERE log_id=?`,
           [staffUserId,rows[0].log_id],
         )
         const [[profile],[occupancy]] = await Promise.all([
           connection.execute<RowDataPacket[]>('SELECT seat_capacity FROM library_profile_settings WHERE settings_id=1'),
-          connection.execute<RowDataPacket[]>('SELECT COUNT(*) current_occupancy FROM attendance_logs WHERE attendance_date=CURDATE() AND time_out IS NULL'),
+          connection.execute<RowDataPacket[]>(`SELECT COUNT(*) current_occupancy FROM attendance_logs WHERE attendance_date=${currentDate()} AND time_out IS NULL`),
         ])
         await connection.commit()
         const current=Number(occupancy[0]?.current_occupancy??0),capacity=Number(profile[0]?.seat_capacity??80)
@@ -158,7 +168,7 @@ export function createAttendanceService(pool: Pool = db) {
     async capacity() {
       const [rows] = await pool.execute<RowDataPacket[]>(
         `SELECT p.seat_capacity,
-                (SELECT COUNT(*) FROM attendance_logs WHERE attendance_date=CURDATE() AND time_out IS NULL) current_occupancy
+                (SELECT COUNT(*) FROM attendance_logs WHERE attendance_date=${currentDate()} AND time_out IS NULL) current_occupancy
            FROM library_profile_settings p WHERE p.settings_id=1`,
       )
       const capacity=Number(rows[0]?.seat_capacity??80),current=Number(rows[0]?.current_occupancy??0)
@@ -177,7 +187,7 @@ export function createAttendanceService(pool: Pool = db) {
           `INSERT INTO library_capacity_changes(previous_capacity,new_capacity,change_reason,changed_by_user_id,changed_at)
            VALUES (?,?,?,?,NOW())`,[previous,input.capacity,input.reason,staffUserId],
         )
-        const [occupancy]=await connection.execute<RowDataPacket[]>('SELECT COUNT(*) current_occupancy FROM attendance_logs WHERE attendance_date=CURDATE() AND time_out IS NULL')
+        const [occupancy]=await connection.execute<RowDataPacket[]>(`SELECT COUNT(*) current_occupancy FROM attendance_logs WHERE attendance_date=${currentDate()} AND time_out IS NULL`)
         await connection.commit()
         const current=Number(occupancy[0]?.current_occupancy??0)
         return {previousCapacity:previous,current,capacity:input.capacity,available:Math.max(0,input.capacity-current),percentage:Math.round(current/input.capacity*100),overCapacity:current>input.capacity,reason:input.reason}

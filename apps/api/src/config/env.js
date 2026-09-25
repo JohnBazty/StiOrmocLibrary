@@ -28,6 +28,11 @@ if (isProduction && (!configuredAttendanceQrSecret || configuredAttendanceQrSecr
 const developmentJwtSecret = configuredJwtSecret || configuredSecret || randomBytes(48).toString('hex')
 
 function resolveDatabaseUrl() {
+  // Unit tests assert MySQL SQL shapes; force local MySQL dialect when set.
+  if (process.env.DB_FORCE_MYSQL === '1' || process.env.DB_FORCE_MYSQL === 'true') {
+    return ''
+  }
+
   const explicit = process.env.DATABASE_URL?.trim() || process.env.SUPABASE_DB_URL?.trim() || ''
   if (explicit.startsWith('postgres')) return explicit
 

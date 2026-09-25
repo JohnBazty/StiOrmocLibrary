@@ -14,6 +14,7 @@
 --   005_main_product_gapfill.sql          — MAIN 033–040 (profile, soft-delete,
 --                                           floor plans, shelf grid, attendance QR,
 --                                           printing receipts)
+--   006_print_request_timestamps.sql      — print_requests started_at/ready_at/etc.
 --
 -- MySQL tree under database/mysql56-schema.sql and database/migrations/ remains
 -- the historical contract and local rollback path (latest MySQL migration: 040).

@@ -1,5 +1,6 @@
 import type { Pool, PoolConnection, RowDataPacket, ResultSetHeader } from 'mysql2/promise'
 import { db } from '../../config/db.js'
+import { authorsAgg } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { validateLayout, type Layout } from './floor-plan.validation.ts'
 
@@ -105,7 +106,7 @@ export function createFloorPlanRepository(database: Pool = db) {
       if(query.unmapped==='true')clauses.push('s.id IS NULL')
       const joins=`FROM physical_copies pc JOIN titles t ON t.title_id=pc.title_id LEFT JOIN categories cat ON cat.category_id=t.category_id LEFT JOIN floor_plan_shelves s ON s.label=pc.shelf_location WHERE ${clauses.join(' AND ')}`
       const [[items],[matches]]=await Promise.all([
-        database.execute<RowDataPacket[]>(`SELECT pc.physical_copy_id copyId,t.title_id titleId,t.title,t.isbn,t.call_number callNumber,t.cover_image_path coverPath,cat.category_name categoryName,t.category_id categoryId,pc.barcode,pc.shelf_location shelfLabel,pc.shelf_column shelfColumn,pc.shelf_row shelfRow,s.id shelfId,s.column_count shelfColumnCount,s.row_count shelfRowCount,pc.availability_status availability,(SELECT GROUP_CONCAT(a.author_name ORDER BY a.author_order SEPARATOR ', ') FROM authors a WHERE a.title_id=t.title_id) author ${joins} ORDER BY pc.shelf_row,pc.shelf_column,t.call_number,t.title,pc.physical_copy_id LIMIT 100`,params),
+        database.execute<RowDataPacket[]>(`SELECT pc.physical_copy_id copyId,t.title_id titleId,t.title,t.isbn,t.call_number callNumber,t.cover_image_path coverPath,cat.category_name categoryName,t.category_id categoryId,pc.barcode,pc.shelf_location shelfLabel,pc.shelf_column shelfColumn,pc.shelf_row shelfRow,s.id shelfId,s.column_count shelfColumnCount,s.row_count shelfRowCount,pc.availability_status availability,(SELECT ${authorsAgg('a')} FROM authors a WHERE a.title_id=t.title_id) author ${joins} ORDER BY pc.shelf_row,pc.shelf_column,t.call_number,t.title,pc.physical_copy_id LIMIT 100`,params),
         database.execute<RowDataPacket[]>(`SELECT s.id shelfId,COUNT(*) count ${joins} GROUP BY s.id`,params)
       ])
       return {items,matches,total:matches.reduce((sum,r)=>sum+Number(r.count),0)}
