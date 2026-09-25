@@ -1,4 +1,5 @@
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import { isPostgres } from '../../config/sql-dialect.js'
 import type { BulkBookInput } from './bulk-book.validation.ts'
 
 export async function lockBookTitleByIsbn(connection: PoolConnection, isbn: string) {
@@ -75,14 +76,25 @@ export async function updateBookPurchasePrice(connection: PoolConnection, titleI
 
 export async function reserveBarcodeSequence(connection: PoolConnection, year: number, count: number) {
   await connection.execute(
-    'INSERT INTO barcode_sequences (`sequence_year`, `last_value`) VALUES (?, 0) ON DUPLICATE KEY UPDATE `last_value` = `last_value`', [year],
+    isPostgres
+      ? 'INSERT INTO barcode_sequences (sequence_year, last_value) VALUES (?, 0) ON CONFLICT (sequence_year) DO NOTHING'
+      : 'INSERT INTO barcode_sequences (`sequence_year`, `last_value`) VALUES (?, 0) ON DUPLICATE KEY UPDATE `last_value` = `last_value`',
+    [year],
   )
   const [rows] = await connection.execute<RowDataPacket[]>(
-    'SELECT `last_value` FROM barcode_sequences WHERE `sequence_year` = ? FOR UPDATE', [year],
+    isPostgres
+      ? 'SELECT last_value FROM barcode_sequences WHERE sequence_year = ? FOR UPDATE'
+      : 'SELECT `last_value` FROM barcode_sequences WHERE `sequence_year` = ? FOR UPDATE',
+    [year],
   )
   const lastValue = Number(rows[0]?.last_value ?? 0)
   if (lastValue + count > 999999) throw new Error(`The ${year} barcode sequence is exhausted.`)
-  await connection.execute('UPDATE barcode_sequences SET `last_value` = ?, `updated_at` = NOW() WHERE `sequence_year` = ?', [lastValue + count, year])
+  await connection.execute(
+    isPostgres
+      ? 'UPDATE barcode_sequences SET last_value = ?, updated_at = NOW() WHERE sequence_year = ?'
+      : 'UPDATE barcode_sequences SET `last_value` = ?, `updated_at` = NOW() WHERE `sequence_year` = ?',
+    [lastValue + count, year],
+  )
   return lastValue + 1
 }
 

@@ -1,6 +1,7 @@
 import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { randomBytes } from 'node:crypto'
 import { db } from '../../config/db.js'
+import { excluded, isPostgres } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { removePrintDocument, resolvePrintDocument, storePrintDocument } from './printing.storage.ts'
 import { parseFinanceFilters, parseNewInkStock, parsePrintRequest, parseQueueFilters, parseRestock, parseServiceStatus, parseStatusUpdate, parseStockMovement } from './printing.validation.ts'
@@ -77,9 +78,15 @@ export function createPrintingService(pool: Pool = db, repository: PrintingRepos
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Cash',?,?,?)`,[payment.insertId,requestId,row.user_id,receiptNumber,verificationCode,row.student_name,row.school_id,row.file_name,row.page_count,row.number_of_copies,row.total_sheets,row.print_type,row.paper_size,amount,staffId,receivedBy,receivedAt])
         await connection.execute(`UPDATE print_requests SET payment_status='Paid',paid_at=?,processed_by_user_id=?,updated_at=NOW(),row_version=row_version+1 WHERE request_id=?`,[receivedAt,staffId,requestId])
         const actionPath=row.user_role==='Faculty'?'/faculty/printing':'/student/printing'
-        await connection.execute(`INSERT IGNORE INTO notifications
+        const notifySql = isPostgres
+          ? `INSERT INTO notifications
           (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,delivered_at)
-          VALUES (?,'Printing receipt available',?,'Printing Update','Printing Receipt',?,?,'Normal',?,NOW())`,[row.user_id,`Your printing payment was recorded. Digital receipt ${receiptNumber} is now available.`,receipt.insertId,actionPath,`printing-receipt:${receipt.insertId}`])
+          VALUES (?,'Printing receipt available',?,'Printing Update','Printing Receipt',?,?,'Normal',?,NOW())
+          ON CONFLICT (user_id, dedupe_key) DO NOTHING`
+          : `INSERT IGNORE INTO notifications
+          (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,delivered_at)
+          VALUES (?,'Printing receipt available',?,'Printing Update','Printing Receipt',?,?,'Normal',?,NOW())`
+        await connection.execute(notifySql,[row.user_id,`Your printing payment was recorded. Digital receipt ${receiptNumber} is now available.`,receipt.insertId,actionPath,`printing-receipt:${receipt.insertId}`])
         await connection.commit()
         return{request_id:requestId,payment_status:'Paid',amount_paid:amount,receipt:{print_receipt_id:Number(receipt.insertId),request_id:requestId,receipt_number:receiptNumber,verification_code:verificationCode,receipt_status:'Issued',student_name:String(row.student_name),school_id:String(row.school_id),file_name:String(row.file_name),page_count:Number(row.page_count),number_of_copies:Number(row.number_of_copies),total_sheets:Number(row.total_sheets),print_type:String(row.print_type),paper_size:String(row.paper_size),amount_received:amount,payment_method:'Cash',received_by:receivedBy,received_at:receivedAt}}
       }catch(error){await connection.rollback();throw error}finally{connection.release()}
@@ -93,7 +100,7 @@ export function createPrintingService(pool: Pool = db, repository: PrintingRepos
       await connection.commit();return{request_id:requestId,job_status:input.status}
     }catch(error){await connection.rollback();throw error}finally{connection.release()}},
 
-    async setServiceStatus(actor:Actor,body:Record<string,unknown>){const staffId=await actorUserId(actor.schoolId),input=parseServiceStatus(body);await pool.execute(`INSERT INTO printing_service_settings(settings_id,accepting_requests,unavailable_reason,updated_by_user_id,updated_at) VALUES (1,?,?,?,NOW()) ON DUPLICATE KEY UPDATE accepting_requests=VALUES(accepting_requests),unavailable_reason=VALUES(unavailable_reason),updated_by_user_id=VALUES(updated_by_user_id),updated_at=NOW()`,[input.acceptingRequests?1:0,input.reason,staffId]);return{accepting_requests:input.acceptingRequests,unavailable_reason:input.reason}},
+    async setServiceStatus(actor:Actor,body:Record<string,unknown>){const staffId=await actorUserId(actor.schoolId),input=parseServiceStatus(body);await pool.execute(isPostgres?`INSERT INTO printing_service_settings(settings_id,accepting_requests,unavailable_reason,updated_by_user_id,updated_at) VALUES (1,?,?,?,NOW()) ON CONFLICT (settings_id) DO UPDATE SET accepting_requests=${excluded('accepting_requests')},unavailable_reason=${excluded('unavailable_reason')},updated_by_user_id=${excluded('updated_by_user_id')},updated_at=NOW()`:`INSERT INTO printing_service_settings(settings_id,accepting_requests,unavailable_reason,updated_by_user_id,updated_at) VALUES (1,?,?,?,NOW()) ON DUPLICATE KEY UPDATE accepting_requests=VALUES(accepting_requests),unavailable_reason=VALUES(unavailable_reason),updated_by_user_id=VALUES(updated_by_user_id),updated_at=NOW()`,[input.acceptingRequests?1:0,input.reason,staffId]);return{accepting_requests:input.acceptingRequests,unavailable_reason:input.reason}},
 
     async downloadDocument(actor:Actor,requestIdValue:unknown,metadata:{sourceIp?:string;userAgent?:string}){const staffId=await actorUserId(actor.schoolId),requestId=Number(requestIdValue);if(!Number.isSafeInteger(requestId)||requestId<1)throw new HttpError(422,'PRINT_REQUEST_INVALID','The print request ID is invalid.');const[rows]=await pool.execute<RowDataPacket[]>(`SELECT request_id,file_name,file_path FROM print_requests WHERE request_id=? LIMIT 1`,[requestId]);const row=rows[0];if(!row)throw new HttpError(404,'PRINT_REQUEST_NOT_FOUND','The print request was not found.');const storedPath=await resolvePrintDocument(String(row.file_path));await pool.execute(`INSERT INTO print_file_download_audit(request_id,downloaded_by_user_id,source_ip,user_agent) VALUES (?,?,?,?)`,[requestId,staffId,String(metadata.sourceIp??'').slice(0,45)||null,String(metadata.userAgent??'').slice(0,255)||null]);const fileName=String(row.file_name),mime=fileName.toLowerCase().endsWith('.pdf')?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document';return{storedPath,fileName,mime}},
 

@@ -1,4 +1,5 @@
 import type { Pool, RowDataPacket } from 'mysql2/promise'
+import { authorsAgg } from '../../config/sql-dialect.js'
 
 export type AssetCodeRecord = {
   physicalCopyId: number
@@ -40,7 +41,7 @@ function mapAsset(row: RowDataPacket, includeQr: boolean): AssetCodeRecord {
 
 const COPY_FIELDS = `pc.physical_copy_id, pc.title_id, t.title,
   COALESCE((
-    SELECT GROUP_CONCAT(a.author_name ORDER BY a.author_order SEPARATOR ', ')
+    SELECT ${authorsAgg('a')}
       FROM authors a
      WHERE a.title_id = pc.title_id
   ), 'Unknown author') AS author,
@@ -78,7 +79,7 @@ export async function findAdminResearchAssetById(database: Pool, researchInvento
        ri.research_inventory_id, ri.title_id,
        COALESCE(t.title, ri.title) AS title,
        COALESCE(NULLIF(ri.authors, ''), (
-         SELECT GROUP_CONCAT(a.author_name ORDER BY a.author_order SEPARATOR ', ')
+         SELECT ${authorsAgg('a')}
            FROM authors a
           WHERE a.title_id = ri.title_id
        ), 'Unknown author') AS author,

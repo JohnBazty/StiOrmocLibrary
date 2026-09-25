@@ -1,8 +1,14 @@
 # STI Ormoc Smart Library
 
-SmartLib is a web-based library management system for STI College Ormoc. It combines a React administration and user portal with a modular-monolith Node.js API and a MySQL relational database.
+SmartLib is a web-based library management system for STI College Ormoc. It combines a React administration and user portal with a modular-monolith Node.js API and a relational database (MySQL locally, Supabase Postgres when `DATABASE_URL` is set — see [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md)).
 
 This guide explains how to prepare a Windows development computer, configure MySQL and MySQL Workbench, initialize the database, create an administrator, run the system, test it, and prepare a production build.
+
+## AI agents — read this first
+
+1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) (start-session protocol, plan statuses, MySQL migration tracker: latest **040**, next **041**).
+2. Read [AGENTS.md](AGENTS.md) and [agent.md](agent.md).
+3. Database cutover status: [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md).
 
 ## Contents
 

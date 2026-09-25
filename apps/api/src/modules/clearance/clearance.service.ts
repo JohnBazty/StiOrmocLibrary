@@ -1,8 +1,14 @@
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { db } from '../../config/db.js'
+import { excluded, isPostgres, timestampDiffSeconds } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { createFinesService } from '../fines/fines.service.ts'
 import { positiveId, validateLostDecision, validateOverride, validateRevocation } from './clearance.validation.ts'
+
+function insertIgnoreNotification(sql: string) {
+  if (!isPostgres) return sql
+  return `${sql.replace(/^\s*INSERT\s+IGNORE\s+INTO/i, 'INSERT INTO')} ON CONFLICT (user_id, dedupe_key) DO NOTHING`
+}
 
 export type ClearanceActor = { accountId?: number; role?: string }
 
@@ -84,7 +90,7 @@ export function createClearanceService(database: Pool = db) {
         `SELECT bt.transaction_id, bt.transaction_status, bt.borrowed_at, bt.due_at,
                 COALESCE(t.title,m.title) AS title, COALESCE(pc.accession_number,m.barcode) AS accession_number,
                 CASE WHEN bt.due_at IS NULL OR bt.due_at >= NOW() THEN 0
-                     ELSE CEIL(TIMESTAMPDIFF(SECOND,bt.due_at,NOW())/3600) END AS overdue_hours,
+                     ELSE CEIL(${timestampDiffSeconds('bt.due_at', 'NOW()')}/3600) END AS overdue_hours,
                 GREATEST(COALESCE(f.fine_amount,0)-COALESCE(fp.paid,0)-COALESCE(fa.adjusted,0),0) AS current_fine
            FROM borrow_transactions bt INNER JOIN materials m ON m.material_id=bt.material_id
            LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id
@@ -154,7 +160,12 @@ export function createClearanceService(database: Pool = db) {
     ].filter(Boolean)
     const reason = activeOverride ? `Authorized override: ${activeOverride.reason}` : reasons.join('; ') || 'No library obligations'
     await database.execute(
-      `INSERT INTO clearance_statuses(user_id,standing_status,reason_block_details,reviewed_by_user_id,last_checked_at,updated_at)
+      isPostgres
+        ? `INSERT INTO clearance_statuses(user_id,standing_status,reason_block_details,reviewed_by_user_id,last_checked_at,updated_at)
+       VALUES (?,?,?,NULL,NOW(),NOW())
+       ON CONFLICT (user_id) DO UPDATE SET standing_status=${excluded('standing_status')},reason_block_details=${excluded('reason_block_details')},
+         last_checked_at=NOW(),updated_at=NOW()`
+        : `INSERT INTO clearance_statuses(user_id,standing_status,reason_block_details,reviewed_by_user_id,last_checked_at,updated_at)
        VALUES (?,?,?,NULL,NOW(),NOW())
        ON DUPLICATE KEY UPDATE standing_status=VALUES(standing_status),reason_block_details=VALUES(reason_block_details),
          last_checked_at=NOW(),updated_at=NOW()`, [userId, status, reason],
@@ -252,8 +263,8 @@ export function createClearanceService(database: Pool = db) {
            VALUES ('lost_book_reported',?,?, 'Lost book reported',?)`, [userId, transactionId, `${loan.title} was reported lost by its borrower.`],
         )
         await connection.execute(
-          `INSERT IGNORE INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
-           VALUES (?, 'Lost book report received', ?, 'Lost Book','Lost Book Report',?,'/student/clearance','Urgent',?,NOW(),NOW())`,
+          insertIgnoreNotification(`INSERT IGNORE INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
+           VALUES (?, 'Lost book report received', ?, 'Lost Book','Lost Book Report',?,'/student/clearance','Urgent',?,NOW(),NOW())`),
           [userId, `${loan.title} has been reported lost. Library staff will verify the report and replacement charge.`, insert.insertId, `lost-report:${insert.insertId}:pending`],
         )
         await connection.commit()
@@ -296,8 +307,8 @@ export function createClearanceService(database: Pool = db) {
              VALUES ('lost_book_confirmed',?,?, 'Lost book confirmed',?)`, [report.user_id, report.transaction_id, `${report.title} was confirmed lost. Replacement charge: PHP ${charge.toFixed(2)}.`],
           )
           await connection.execute(
-            `INSERT IGNORE INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
-             VALUES (?, 'Lost book charge confirmed', ?, 'Lost Book','Lost Book Report',?,'/student/clearance','Urgent',?,NOW(),NOW())`,
+            insertIgnoreNotification(`INSERT IGNORE INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
+             VALUES (?, 'Lost book charge confirmed', ?, 'Lost Book','Lost Book Report',?,'/student/clearance','Urgent',?,NOW(),NOW())`),
             [report.user_id, `${report.title} was confirmed lost. Replacement charge: PHP ${charge.toFixed(2)}.`, reportId, `lost-report:${reportId}:confirmed`],
           )
         } else {
@@ -307,8 +318,8 @@ export function createClearanceService(database: Pool = db) {
           )
           await connection.execute('UPDATE borrow_transactions SET reported_lost_at=NULL,updated_at=NOW() WHERE transaction_id=?', [report.transaction_id])
           await connection.execute(
-            `INSERT IGNORE INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
-             VALUES (?, 'Lost book report rejected', ?, 'Lost Book','Lost Book Report',?,'/student/borrowing','Important',?,NOW(),NOW())`,
+            insertIgnoreNotification(`INSERT IGNORE INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
+             VALUES (?, 'Lost book report rejected', ?, 'Lost Book','Lost Book Report',?,'/student/borrowing','Important',?,NOW(),NOW())`),
             [report.user_id, `${report.title} remains an active loan. Please coordinate with the library if this is incorrect.`, reportId, `lost-report:${reportId}:rejected`],
           )
         }

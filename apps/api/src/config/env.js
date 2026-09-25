@@ -27,12 +27,44 @@ if (isProduction && (!configuredAttendanceQrSecret || configuredAttendanceQrSecr
 
 const developmentJwtSecret = configuredJwtSecret || configuredSecret || randomBytes(48).toString('hex')
 
+function resolveDatabaseUrl() {
+  const explicit = process.env.DATABASE_URL?.trim() || process.env.SUPABASE_DB_URL?.trim() || ''
+  if (explicit.startsWith('postgres')) return explicit
+
+  // Build from Supabase project URL + DB password when DATABASE_URL is omitted.
+  const supabaseUrl = process.env.SUPABASE_URL?.trim() || ''
+  const dbPass = process.env.DB_PASS?.trim() || process.env.SUPABASE_DB_PASSWORD?.trim() || ''
+  const hostMatch = supabaseUrl.match(/^https?:\/\/([a-z0-9-]+)\.supabase\.co\/?$/i)
+  if (hostMatch && dbPass) {
+    const projectRef = hostMatch[1]
+    const encoded = encodeURIComponent(dbPass)
+    const region = process.env.SUPABASE_REGION?.trim()
+    // Prefer IPv4 session pooler when region is known (direct db.* is often IPv6-only).
+    if (region) {
+      return `postgresql://postgres.${projectRef}:${encoded}@aws-0-${region}.pooler.supabase.com:5432/postgres`
+    }
+    return `postgresql://postgres:${encoded}@db.${projectRef}.supabase.co:5432/postgres`
+  }
+  return ''
+}
+
+const databaseUrl = resolveDatabaseUrl()
+const dbDriver = databaseUrl.startsWith('postgres') ? 'postgres' : 'mysql'
+
 export const env = Object.freeze({
   isProduction,
   inventoryPreviewEnabled: !isProduction && process.env.INVENTORY_PREVIEW_ENABLED === 'true',
   port: Number(process.env.PORT ?? 4000),
   webOrigin: process.env.WEB_ORIGIN ?? 'http://localhost:5173',
+  supabase: {
+    url: process.env.SUPABASE_URL?.trim() || '',
+    publishableKey: process.env.SUPABASE_PUBLISHABLE_KEY?.trim() || '',
+    secretKey: process.env.SUPABASE_SECRET_KEY?.trim() || '',
+    jwksUrl: process.env.SUPABASE_JWKS_URL?.trim() || '',
+  },
   db: {
+    driver: dbDriver,
+    connectionString: databaseUrl,
     host: process.env.DB_HOST ?? '127.0.0.1',
     port: Number(process.env.DB_PORT ?? 3306),
     user: process.env.DB_USER ?? 'root',

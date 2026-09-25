@@ -23,25 +23,26 @@ React web admin  React Native mobile  React tablet kiosk
                         |
        Feature modules, policy, validation, RBAC
                         |
-       MySQL 5.6-compatible relational database
+       Relational DB: MySQL baseline / Supabase Postgres when DATABASE_URL is set
 ```
 
 - Keep one backend application and one primary relational database.
 - Do not introduce microservices, message brokers, event sourcing, or separate databases per feature unless the project requirements explicitly change.
 - The target product includes a responsive React administrative web interface, a dedicated React Native Student/Faculty application, and an in-library React tablet kiosk. Deliver them incrementally without duplicating backend business rules.
-- Store uploaded printing files in object/file storage. Store only their metadata and storage path in MySQL.
+- Store uploaded printing files in object/file storage. Store only their metadata and storage path in the database.
 - Use a REST API with JSON request and response bodies.
 - Preserve the implemented workspace boundary: `apps/web` owns the current browser interface and `apps/api` owns the modular-monolith API. Add mobile/kiosk workspaces through an explicit implementation plan when development reaches those clients.
-- The current prototype uses automatic demo login and mock data. Treat it as a presentation mode, not production authentication or persistence.
+- Prefer live database-backed modules. Seeded presentation mock data has been removed from active paths; treat any remaining mocks as temporary presentation only.
+- Database cutover: prefer `DATABASE_URL` (Supabase Postgres). Local MySQL via `DB_*` remains the rollback path. See [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md).
 
 ## Recommended Stack
 
 - Web frontend and kiosk: React, Vite, Tailwind CSS
 - Mobile frontend: React Native
 - Backend: Node.js, Express.js, TypeScript preferred
-- Database: MySQL with a MySQL 5.6-compatible schema baseline
-- Data access: Prisma ORM with migrations
-- Authentication: server-side `express-session` with a MySQL session store and bcrypt password hashing
+- Database: MySQL 5.6-compatible baseline kept in-repo; hosted Postgres via Supabase when `DATABASE_URL` is set
+- Data access: SQL repositories via `pg` when on Postgres; `mysql2` when `DATABASE_URL` is unset
+- Authentication: server-side `express-session` with a database session store and bcrypt password hashing; JWT account auth remains for the mobile-style boundary
 - Input validation: Zod or an equivalent server-side validation library
 - QR/barcode scanning: browser camera library such as `html5-qrcode`; accept USB barcode scanners as keyboard input
 

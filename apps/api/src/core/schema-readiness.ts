@@ -1,19 +1,15 @@
 import type { Pool, RowDataPacket } from 'mysql2/promise'
-import { db } from '../config/db.js'
+import { db, dbDriver } from '../config/db.js'
 
 const REQUIRED_COLUMNS: Record<string, string[]> = {
-  floor_plan_shelves: ['id', 'label', 'column_count', 'row_count'],
-  floor_plan_state: ['id', 'revision', 'draft', 'published'],
-  floor_plan_versions: ['id', 'layout', 'published_by_account_id'],
-  floor_plan_events: ['id', 'account_id', 'event_type', 'details'],
-  categories: ['category_id', 'category_name', 'shelf_location', 'shelf_column', 'shelf_row', 'created_at', 'updated_at'],
+  categories: ['category_id', 'category_name', 'shelf_location', 'created_at', 'updated_at'],
   titles: ['title_id', 'category_id', 'record_type', 'title', 'cover_image_path', 'purchase_price', 'lifecycle_status'],
   authors: ['author_id', 'title_id', 'author_name'],
   research_records: ['research_record_id', 'title_id', 'research_code', 'adviser_name'],
-  physical_copies: ['physical_copy_id', 'title_id', 'barcode', 'qr_code_data', 'accession_number', 'availability_status', 'shelf_column', 'shelf_row'],
+  physical_copies: ['physical_copy_id', 'title_id', 'barcode', 'qr_code_data', 'accession_number', 'availability_status'],
   barcode_sequences: ['sequence_year', 'last_value', 'updated_at'],
   inventory_audit_events: ['inventory_audit_event_id', 'physical_copy_id', 'barcode_snapshot', 'event_type', 'action_reason', 'created_at'],
-  research_inventory: ['research_inventory_id', 'title_id', 'title', 'authors', 'adviser', 'publication_year', 'accession_number', 'barcode', 'qr_code_data', 'condition_state', 'availability_status', 'lifecycle_status', 'shelf_location', 'shelf_column', 'shelf_row', 'archived_at', 'archive_reason'],
+  research_inventory: ['research_inventory_id', 'title_id', 'title', 'authors', 'adviser', 'publication_year', 'accession_number', 'barcode', 'qr_code_data', 'condition_state', 'availability_status', 'lifecycle_status', 'shelf_location', 'archived_at', 'archive_reason'],
   research_inventory_audit_events: ['research_inventory_audit_event_id', 'research_inventory_id', 'barcode_snapshot', 'event_type', 'action_reason', 'created_at'],
   reservations: ['reservation_id', 'user_id', 'material_id', 'book_title_id', 'accession_id', 'assigned_physical_copy_id', 'reservation_status', 'reserved_at', 'pickup_deadline'],
   borrow_transactions: ['transaction_id', 'user_id', 'material_id', 'physical_copy_id', 'reservation_id', 'request_group_id', 'borrowed_at', 'due_at', 'returned_at', 'reported_lost_at', 'lost_confirmed_at', 'transaction_status'],
@@ -35,9 +31,7 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   accounts: ['account_id', 'school_id', 'contact_number', 'password_hash', 'role', 'account_status'],
   student_profiles: ['student_profile_id', 'account_id', 'first_name', 'last_name', 'program_strand', 'year_grade_level'],
   academic_terms: ['academic_term_id', 'academic_year', 'term_name', 'starts_on', 'ends_on', 'is_active'],
-  attendance_logs: ['log_id', 'user_id', 'attendance_date', 'time_in', 'checked_in_at', 'time_out', 'checked_out_at', 'reason_for_visit', 'qr_credential_id', 'scan_method', 'entry_request_id'],
-  attendance_qr_credentials: ['credential_id', 'user_id', 'public_id', 'secret_hash', 'credential_status'],
-  library_capacity_changes: ['capacity_change_id', 'previous_capacity', 'new_capacity', 'change_reason', 'changed_by_user_id'],
+  attendance_logs: ['log_id', 'user_id', 'attendance_date', 'time_in', 'time_out', 'reason_for_visit'],
   print_requests: ['request_id', 'user_id', 'printer_id', 'paper_size', 'page_count', 'total_sheets', 'payment_status', 'job_status', 'row_version'],
   printing_service_settings: ['settings_id', 'accepting_requests', 'unavailable_reason', 'updated_by_user_id', 'updated_at'],
   print_file_download_audit: ['download_audit_id', 'request_id', 'downloaded_by_user_id', 'downloaded_at'],
@@ -47,22 +41,33 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   print_pricing_rules: ['pricing_rule_id', 'print_type', 'paper_size', 'price_per_page', 'is_active'],
   print_status_history: ['print_status_history_id', 'request_id', 'from_status', 'to_status', 'created_at'],
   print_cash_payments: ['print_cash_payment_id', 'request_id', 'amount_paid', 'received_at'],
-  print_payment_receipts: ['print_receipt_id', 'print_cash_payment_id', 'request_id', 'receipt_number', 'verification_code', 'amount_received', 'received_at'],
   ink_stock_movements: ['ink_stock_movement_id', 'ink_id', 'movement_type', 'activity_code', 'quantity_bottles', 'unit_cost_per_bottle', 'balance_before', 'balance_after', 'created_at'],
   paper_stock_movements: ['paper_stock_movement_id', 'paper_stock_id', 'movement_type', 'activity_code', 'quantity_reams', 'unit_cost_per_ream', 'balance_before', 'balance_after', 'created_at'],
+  print_payment_receipts: ['print_receipt_id', 'print_cash_payment_id', 'request_id', 'user_id', 'receipt_number', 'verification_code', 'receipt_status', 'amount_received', 'payment_method', 'received_at'],
+  floor_plan_shelves: ['id', 'label', 'column_count', 'row_count'],
+  library_profile_settings: ['settings_id', 'library_name', 'seat_capacity', 'updated_by_user_id'],
+  library_capacity_changes: ['capacity_change_id', 'previous_capacity', 'new_capacity', 'change_reason', 'changed_at'],
+  attendance_qr_credentials: ['credential_id', 'user_id', 'public_id', 'secret_hash', 'credential_status', 'issued_at'],
 }
 
 export type SchemaReadiness = { ready: boolean; missingTables: string[]; missingColumns: string[] }
 
-export async function checkSchemaReadiness(database: Pool = db): Promise<SchemaReadiness> {
+export async function checkSchemaReadiness(database: Pool = db as Pool): Promise<SchemaReadiness> {
   const tableNames = Object.keys(REQUIRED_COLUMNS)
   const placeholders = tableNames.map(() => '?').join(', ')
-  const [rows] = await database.execute<RowDataPacket[]>(
-    `SELECT TABLE_NAME, COLUMN_NAME
-       FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (${placeholders})`,
-    tableNames,
-  )
+  const [rows] = dbDriver === 'postgres'
+    ? await database.execute<RowDataPacket[]>(
+        `SELECT table_name AS "TABLE_NAME", column_name AS "COLUMN_NAME"
+           FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name IN (${placeholders})`,
+        tableNames,
+      )
+    : await database.execute<RowDataPacket[]>(
+        `SELECT TABLE_NAME, COLUMN_NAME
+           FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (${placeholders})`,
+        tableNames,
+      )
   const found = new Map<string, Set<string>>()
   for (const row of rows) {
     const table = String(row.TABLE_NAME ?? row.table_name)
@@ -81,5 +86,13 @@ export async function checkSchemaReadiness(database: Pool = db): Promise<SchemaR
 
 export function isMissingSchemaError(error: unknown) {
   const code = (error as { code?: string } | null)?.code
-  return ['ER_NO_SUCH_TABLE', 'ER_BAD_FIELD_ERROR', 'ER_CANT_DROP_FIELD_OR_KEY', 'ER_KEY_COLUMN_DOES_NOT_EXITS'].includes(code ?? '')
+  const message = String((error as { message?: string } | null)?.message ?? '')
+  return [
+    'ER_NO_SUCH_TABLE',
+    'ER_BAD_FIELD_ERROR',
+    'ER_CANT_DROP_FIELD_OR_KEY',
+    'ER_KEY_COLUMN_DOES_NOT_EXITS',
+    '42P01', // undefined_table
+    '42703', // undefined_column
+  ].includes(code ?? '') || /relation .* does not exist|column .* does not exist/i.test(message)
 }

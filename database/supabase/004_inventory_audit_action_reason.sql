@@ -1,0 +1,1 @@
+ALTER TABLE inventory_audit_events ADD COLUMN IF NOT EXISTS action_reason VARCHAR(255) DEFAULT NULL;

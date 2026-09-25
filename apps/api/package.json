@@ -12,6 +12,7 @@
     "db:schema": "node scripts/run-schema.js",
     "db:migrate": "node scripts/run-migration.js",
     "db:migrate:auth": "node scripts/run-migration.js 20260816_005_jwt_role_authentication.sql",
+    "db:supabase": "node scripts/run-supabase-schema.js",
     "db:backfill:book-codes": "node scripts/backfill-book-asset-codes.js",
     "db:backfill:attendance-passes": "node scripts/backfill-attendance-passes.js",
     "reports:verify-csv": "node scripts/verify-csv.js",
@@ -30,6 +31,7 @@
     "multer": "^2.2.0",
     "mysql2": "^3.23.3",
     "pdfkit": "^0.19.1",
+    "pg": "^8.23.0",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
@@ -41,6 +43,7 @@
     "@types/multer": "^2.2.0",
     "@types/node": "latest",
     "@types/pdfkit": "^0.17.6",
+    "@types/pg": "^8.23.1",
     "@types/qrcode": "^1.5.6",
     "@types/supertest": "^7.2.1",
     "supertest": "^7.2.2",

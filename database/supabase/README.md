@@ -1,0 +1,23 @@
+-- ============================================================================
+-- STI Ormoc Smart Library — Supabase / Postgres schema drafts
+-- ============================================================================
+-- Status: drafts from MySQL baseline + migrations via tools/ai/mysql_to_pg.py,
+--         plus curated MAIN product gap-fill for migrations 033–040.
+-- Apply with: npm run db:supabase -w @sti-library/api
+-- Requires DATABASE_URL=postgresql://… in apps/api/.env
+--
+-- Files:
+--   001_from_baseline.sql                 — converted mysql56-schema
+--   002_from_migrations.sql               — draft from MySQL migrations (partial)
+--   003_readiness_gapfill.sql             — curated gap-fill
+--   004_inventory_audit_action_reason.sql — readiness column
+--   005_main_product_gapfill.sql          — MAIN 033–040 (profile, soft-delete,
+--                                           floor plans, shelf grid, attendance QR,
+--                                           printing receipts)
+--
+-- MySQL tree under database/mysql56-schema.sql and database/migrations/ remains
+-- the historical contract and local rollback path (latest MySQL migration: 040).
+--
+-- Connection note: free-tier direct db.* host is often IPv6-only. Use Session
+-- pooler (port 5432) with user postgres.<project-ref> when on IPv4 networks.
+--

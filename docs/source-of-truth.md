@@ -25,7 +25,7 @@ If the current schema or application differs from the PDFs, do not silently rein
 
 ## Confirmed target architecture
 
-- Keep a Node.js + Express modular-monolith REST API and one MySQL relational database.
+- Keep a Node.js + Express modular-monolith REST API and one relational database (MySQL baseline in-repo; hosted Postgres via Supabase when `DATABASE_URL` is configured).
 - Provide three client experiences:
   - responsive React web administration for Librarian/Super Admin and restricted Library Staff;
   - a dedicated React Native mobile application for Students and Faculty;

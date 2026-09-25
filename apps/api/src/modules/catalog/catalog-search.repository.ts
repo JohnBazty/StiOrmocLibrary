@@ -1,5 +1,13 @@
 import type { Pool, RowDataPacket } from 'mysql2/promise'
+import { authorsAggDistinct, isPostgres } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
+
+function shelfLocationsAgg(expr: string, alias: string) {
+  if (isPostgres) {
+    return `string_agg(DISTINCT ${expr}, ', ' ORDER BY ${expr}) AS ${alias}`
+  }
+  return `GROUP_CONCAT(DISTINCT ${expr} ORDER BY ${expr} SEPARATOR ', ') AS ${alias}`
+}
 
 export type CatalogScope = 'all' | 'books' | 'research'
 
@@ -123,7 +131,7 @@ export function buildCatalogSearchQuery(filters: CatalogSearchFilters) {
       SELECT title_id, MIN(research_inventory_id) AS research_inventory_id,
              COUNT(*) AS active_inventory_count,
              COUNT(DISTINCT shelf_location) AS shelf_count,
-             GROUP_CONCAT(DISTINCT shelf_location ORDER BY shelf_location SEPARATOR ', ') AS shelf_locations
+             ${shelfLocationsAgg('shelf_location', 'shelf_locations')}
         FROM research_inventory
        WHERE lifecycle_status = 'Active'
        GROUP BY title_id
@@ -138,11 +146,11 @@ export function buildCatalogSearchQuery(filters: CatalogSearchFilters) {
       rr.research_record_id, rr.research_code, rr.adviser_name,
       rr.department_or_program, rr.abstract_text, rr.keywords_text, rr.viewing_status,
       ri_lookup.research_inventory_id,
-      GROUP_CONCAT(DISTINCT a.author_name ORDER BY a.author_order SEPARATOR ', ') AS authors,
+      ${authorsAggDistinct('a')} AS authors,
       COUNT(DISTINCT CASE WHEN pc.lifecycle_status = 'Active' THEN pc.physical_copy_id END) AS total_copies,
       COUNT(DISTINCT CASE WHEN pc.lifecycle_status = 'Active' AND pc.availability_status = 'Available' THEN pc.physical_copy_id END) AS available_copies,
       COUNT(DISTINCT CASE WHEN pc.lifecycle_status = 'Active' THEN pc.shelf_location END) AS book_shelf_count,
-      GROUP_CONCAT(DISTINCT CASE WHEN pc.lifecycle_status = 'Active' THEN pc.shelf_location END ORDER BY pc.shelf_location SEPARATOR ', ') AS book_shelf_locations,
+      ${shelfLocationsAgg("CASE WHEN pc.lifecycle_status = 'Active' THEN pc.shelf_location END", 'book_shelf_locations')},
       CASE
         WHEN t.record_type = 'Research/Thesis' THEN rr.viewing_status
         WHEN COUNT(DISTINCT CASE WHEN pc.lifecycle_status = 'Active' AND pc.availability_status = 'Available' THEN pc.physical_copy_id END) > 0 THEN 'Available'

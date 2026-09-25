@@ -1,6 +1,14 @@
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { randomUUID } from 'node:crypto'
 import { db } from '../../config/db.js'
+import {
+  authorsAgg,
+  caseIf,
+  currentDate,
+  excluded,
+  isPostgres,
+  sumEquals,
+} from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { calculateOperatingFine, loadFineContext } from '../fines/fine-calculator.ts'
 import { nextOperatingDueDate } from './due-date.ts'
@@ -81,7 +89,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
              LEFT JOIN physical_copies pc ON pc.physical_copy_id = bt.physical_copy_id OR (bt.physical_copy_id IS NULL AND pc.material_id = bt.material_id)
              LEFT JOIN titles t ON t.title_id = pc.title_id
              LEFT JOIN lost_book_reports lbr ON lbr.transaction_id = bt.transaction_id
-             LEFT JOIN (SELECT title_id, GROUP_CONCAT(author_name ORDER BY author_order SEPARATOR ', ') AS author FROM authors GROUP BY title_id) credits ON credits.title_id = t.title_id
+             LEFT JOIN (SELECT a.title_id, ${authorsAgg('a')} AS author FROM authors a GROUP BY a.title_id) credits ON credits.title_id = t.title_id
             WHERE bt.user_id = ? ORDER BY COALESCE(bt.borrowed_at, bt.created_at) DESC, bt.transaction_id DESC
             LIMIT ${filters.limit} OFFSET ${offset}`, [userId],
         ),
@@ -362,15 +370,24 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
           `SELECT bt.transaction_id, u.full_name, u.school_id, ro.role_name, COALESCE(t.title, m.title) AS title,
              pc.accession_number, COALESCE(pc.barcode, m.barcode) AS barcode, bt.created_at AS requested_at, bt.borrowed_at, bt.due_at, bt.returned_at,
              CASE WHEN bt.transaction_status = 'Borrowed' AND bt.due_at < NOW() THEN 'Overdue' ELSE bt.transaction_status END AS transaction_status
-           ${fromSql} ORDER BY FIELD(CASE WHEN bt.transaction_status = 'Borrowed' AND bt.due_at < NOW() THEN 'Overdue' ELSE bt.transaction_status END,
-             'Overdue','Borrowed','Pending','Returned'), bt.due_at ASC, bt.transaction_id DESC LIMIT ${filters.limit} OFFSET ${offset}`,
+           ${fromSql} ORDER BY ${isPostgres
+             ? `CASE (CASE WHEN bt.transaction_status = 'Borrowed' AND bt.due_at < NOW() THEN 'Overdue' ELSE bt.transaction_status END) WHEN 'Overdue' THEN 1 WHEN 'Borrowed' THEN 2 WHEN 'Pending' THEN 3 WHEN 'Returned' THEN 4 ELSE 5 END`
+             : `FIELD(CASE WHEN bt.transaction_status = 'Borrowed' AND bt.due_at < NOW() THEN 'Overdue' ELSE bt.transaction_status END, 'Overdue','Borrowed','Pending','Returned')`}, bt.due_at ASC, bt.transaction_id DESC LIMIT ${filters.limit} OFFSET ${offset}`,
         ),
         database.execute<RowDataPacket[]>(
-          `SELECT SUM(transaction_status = 'Pending') AS pending_claims,
-             SUM(transaction_status = 'Borrowed' AND due_at >= NOW()) AS active_loans,
-             SUM(transaction_status = 'Overdue' OR (transaction_status = 'Borrowed' AND due_at < NOW())) AS overdue_loans,
-             SUM(transaction_status = 'Returned' AND DATE(returned_at) = CURDATE()) AS returned_today,
-             SUM(transaction_status IN ('Borrowed','Overdue') AND DATE(due_at) = CURDATE()) AS due_today FROM borrow_transactions`,
+          `SELECT ${sumEquals('transaction_status', 'Pending')} AS pending_claims,
+             ${isPostgres
+    ? `COUNT(*) FILTER (WHERE transaction_status = 'Borrowed' AND due_at >= NOW())`
+    : `SUM(transaction_status = 'Borrowed' AND due_at >= NOW())`} AS active_loans,
+             ${isPostgres
+    ? `COUNT(*) FILTER (WHERE transaction_status = 'Overdue' OR (transaction_status = 'Borrowed' AND due_at < NOW()))`
+    : `SUM(transaction_status = 'Overdue' OR (transaction_status = 'Borrowed' AND due_at < NOW()))`} AS overdue_loans,
+             ${isPostgres
+    ? `COUNT(*) FILTER (WHERE transaction_status = 'Returned' AND DATE(returned_at) = ${currentDate()})`
+    : `SUM(transaction_status = 'Returned' AND DATE(returned_at) = CURDATE())`} AS returned_today,
+             ${isPostgres
+    ? `COUNT(*) FILTER (WHERE transaction_status IN ('Borrowed','Overdue') AND DATE(due_at) = ${currentDate()})`
+    : `SUM(transaction_status IN ('Borrowed','Overdue') AND DATE(due_at) = CURDATE())`} AS due_today FROM borrow_transactions`,
         ),
         database.execute<RowDataPacket[]>('SELECT COUNT(*) AS total FROM borrow_transactions'),
       ])
@@ -501,7 +518,11 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         if(loan.transaction_status==='Overdue'&&loan.due_at){
           const due=new Date(loan.due_at);const context=await loadFineContext(connection,due,returnedAt);const charge=calculateOperatingFine(due,returnedAt,context.policy,context.calendar)
           await connection.execute(
-            `INSERT INTO fines(transaction_id,user_id,fine_type,fine_amount,payment_status,calculation_basis,overdue_units,rate_applied,maximum_cap_applied,applied_date,finalized_at,notes,updated_at)
+            isPostgres
+              ? `INSERT INTO fines(transaction_id,user_id,fine_type,fine_amount,payment_status,calculation_basis,overdue_units,rate_applied,maximum_cap_applied,applied_date,finalized_at,notes,updated_at)
+             VALUES (?,?,'Overdue',?,'Unpaid',?,?,?,?,NOW(),?,'Finalized when the book was returned',NOW())
+             ON CONFLICT (transaction_id) DO UPDATE SET fine_amount=${excluded('fine_amount')},payment_status=${caseIf("fines.payment_status IN ('Paid','Waived','Voided')", 'fines.payment_status', "'Unpaid'")},calculation_basis=${excluded('calculation_basis')},overdue_units=${excluded('overdue_units')},rate_applied=${excluded('rate_applied')},maximum_cap_applied=${excluded('maximum_cap_applied')},finalized_at=${excluded('finalized_at')},notes=${excluded('notes')},updated_at=NOW()`
+              : `INSERT INTO fines(transaction_id,user_id,fine_type,fine_amount,payment_status,calculation_basis,overdue_units,rate_applied,maximum_cap_applied,applied_date,finalized_at,notes,updated_at)
              VALUES (?,?,'Overdue',?,'Unpaid',?,?,?,?,NOW(),?,'Finalized when the book was returned',NOW())
              ON DUPLICATE KEY UPDATE fine_amount=VALUES(fine_amount),payment_status=IF(payment_status IN ('Paid','Waived','Voided'),payment_status,'Unpaid'),calculation_basis=VALUES(calculation_basis),overdue_units=VALUES(overdue_units),rate_applied=VALUES(rate_applied),maximum_cap_applied=VALUES(maximum_cap_applied),finalized_at=VALUES(finalized_at),notes=VALUES(notes),updated_at=NOW()`,
             [transactionId,loan.user_id,charge.amount,charge.basis,charge.units,charge.rate,charge.capApplied?context.policy.maximumPenalty:null,returnedAt],
@@ -515,13 +536,20 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
           const pickupDeadline = new Date(returnedAt.getTime() + 24 * 60 * 60 * 1000)
           await connection.execute(`UPDATE reservations SET reservation_status = 'ready_for_pickup', accession_id = ?, assigned_physical_copy_id = ?, pickup_deadline = ?, updated_at = NOW() WHERE reservation_id = ?`, [loan.material_id, loan.physical_copy_id, pickupDeadline, nextReservation.reservation_id])
           await connection.execute(
-            `INSERT INTO borrow_transactions
+            isPostgres
+              ? `INSERT INTO borrow_transactions
                (user_id, material_id, physical_copy_id, reservation_id, request_group_id, transaction_status, created_at)
-             VALUES (?, ?, ?, ?, UUID(), 'Pending', NOW())
+             VALUES (?, ?, ?, ?, ?, 'Pending', NOW())
+             ON CONFLICT (reservation_id) DO UPDATE SET material_id = ${excluded('material_id')}, physical_copy_id = ${excluded('physical_copy_id')},
+               transaction_status = 'Pending', cancelled_at = NULL, cancelled_by_user_id = NULL,
+               cancellation_reason = NULL, updated_at = NOW()`
+              : `INSERT INTO borrow_transactions
+               (user_id, material_id, physical_copy_id, reservation_id, request_group_id, transaction_status, created_at)
+             VALUES (?, ?, ?, ?, ?, 'Pending', NOW())
              ON DUPLICATE KEY UPDATE material_id = VALUES(material_id), physical_copy_id = VALUES(physical_copy_id),
                transaction_status = 'Pending', cancelled_at = NULL, cancelled_by_user_id = NULL,
                cancellation_reason = NULL, updated_at = NOW()`,
-            [nextReservation.user_id, loan.material_id, loan.physical_copy_id, nextReservation.reservation_id],
+            [nextReservation.user_id, loan.material_id, loan.physical_copy_id, nextReservation.reservation_id, randomUUID()],
           )
           await connection.execute("UPDATE physical_copies SET availability_status = 'Reserved', row_version = row_version + 1, updated_at = NOW() WHERE physical_copy_id = ?", [loan.physical_copy_id])
           await connection.execute("UPDATE materials SET availability_status = 'Reserved', updated_at = NOW() WHERE material_id = ?", [loan.material_id])
@@ -544,7 +572,12 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         const loan = rows[0]
         if (!loan) throw new HttpError(404, 'CIRCULATION_TRANSACTION_NOT_FOUND', 'The borrowing transaction was not found.')
         const due = new Date(loan.due_at); const ended = loan.returned_at ? new Date(loan.returned_at) : clock(); const context=await loadFineContext(connection,due,ended);const charge=calculateOperatingFine(due,ended,context.policy,context.calendar);const status=loan.returned_at?'Unpaid':'Accruing'
-        await connection.execute(`INSERT INTO fines (transaction_id,user_id,fine_type,fine_amount,payment_status,calculation_basis,overdue_units,rate_applied,maximum_cap_applied,applied_date,finalized_at,notes,updated_at) VALUES (?,?,'Overdue',?,?,?,?,?,?,NOW(),?,'Calculated from the operating calendar and 8:59 AM cutoff',NOW()) ON DUPLICATE KEY UPDATE fine_amount=VALUES(fine_amount),payment_status=IF(payment_status IN ('Paid','Waived','Voided'),payment_status,VALUES(payment_status)),calculation_basis=VALUES(calculation_basis),overdue_units=VALUES(overdue_units),rate_applied=VALUES(rate_applied),maximum_cap_applied=VALUES(maximum_cap_applied),finalized_at=VALUES(finalized_at),notes=VALUES(notes),updated_at=NOW()`, [transactionId,loan.user_id,charge.amount,status,charge.basis,charge.units,charge.rate,charge.capApplied?context.policy.maximumPenalty:null,loan.returned_at??null])
+        await connection.execute(
+          isPostgres
+            ? `INSERT INTO fines (transaction_id,user_id,fine_type,fine_amount,payment_status,calculation_basis,overdue_units,rate_applied,maximum_cap_applied,applied_date,finalized_at,notes,updated_at) VALUES (?,?,'Overdue',?,?,?,?,?,?,NOW(),?,'Calculated from the operating calendar and 8:59 AM cutoff',NOW()) ON CONFLICT (transaction_id) DO UPDATE SET fine_amount=${excluded('fine_amount')},payment_status=${caseIf("fines.payment_status IN ('Paid','Waived','Voided')", 'fines.payment_status', excluded('payment_status'))},calculation_basis=${excluded('calculation_basis')},overdue_units=${excluded('overdue_units')},rate_applied=${excluded('rate_applied')},maximum_cap_applied=${excluded('maximum_cap_applied')},finalized_at=${excluded('finalized_at')},notes=${excluded('notes')},updated_at=NOW()`
+            : `INSERT INTO fines (transaction_id,user_id,fine_type,fine_amount,payment_status,calculation_basis,overdue_units,rate_applied,maximum_cap_applied,applied_date,finalized_at,notes,updated_at) VALUES (?,?,'Overdue',?,?,?,?,?,?,NOW(),?,'Calculated from the operating calendar and 8:59 AM cutoff',NOW()) ON DUPLICATE KEY UPDATE fine_amount=VALUES(fine_amount),payment_status=IF(payment_status IN ('Paid','Waived','Voided'),payment_status,VALUES(payment_status)),calculation_basis=VALUES(calculation_basis),overdue_units=VALUES(overdue_units),rate_applied=VALUES(rate_applied),maximum_cap_applied=VALUES(maximum_cap_applied),finalized_at=VALUES(finalized_at),notes=VALUES(notes),updated_at=NOW()`,
+          [transactionId,loan.user_id,charge.amount,status,charge.basis,charge.units,charge.rate,charge.capApplied?context.policy.maximumPenalty:null,loan.returned_at??null],
+        )
         await connection.commit(); return { transactionId, amount:charge.amount, currency: 'PHP', basis:charge.basis, units:charge.units, rate:charge.rate,maximumPenalty:context.policy.maximumPenalty,capApplied:charge.capApplied }
       } catch (error) { await connection.rollback(); throw error } finally { connection.release() }
     },

@@ -1,4 +1,5 @@
 import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise'
+import { authorsAgg } from '../../config/sql-dialect.js'
 import type { InventoryListFilters } from './inventory.validation.ts'
 
 export type InventoryActor = { userId: number | null; label: string }
@@ -68,7 +69,7 @@ export async function listInventoryCopies(database: Pool, filters: InventoryList
   const [[rows], [countRows]] = await Promise.all([
     database.execute<RowDataPacket[]>(`
       SELECT pc.physical_copy_id, pc.title_id, t.title AS item_title,
-             (SELECT GROUP_CONCAT(a.author_name ORDER BY a.author_order SEPARATOR ', ')
+             (SELECT ${authorsAgg('a')}
                 FROM authors a WHERE a.title_id = t.title_id) AS authors,
              c.category_name, pc.accession_number, pc.barcode, pc.shelf_location, pc.shelf_column, pc.shelf_row, t.call_number,
              pc.condition_status, pc.availability_status, pc.last_scanned_at, pc.row_version

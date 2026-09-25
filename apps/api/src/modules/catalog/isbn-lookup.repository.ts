@@ -1,5 +1,6 @@
 import type { Pool, RowDataPacket } from 'mysql2/promise'
 import { db } from '../../config/db.js'
+import { authorsAgg } from '../../config/sql-dialect.js'
 
 export type IsbnMetadata = {
   isbn: string
@@ -27,7 +28,7 @@ export class IsbnLookupRepository {
     const [rows] = await this.pool.execute<LocalBookRow[]>(
       `SELECT t.isbn,
               t.title,
-              GROUP_CONCAT(a.author_name ORDER BY a.author_order SEPARATOR '; ') AS author,
+              ${authorsAgg('a', '; ')} AS author,
               t.publisher,
               t.publication_year
          FROM titles t

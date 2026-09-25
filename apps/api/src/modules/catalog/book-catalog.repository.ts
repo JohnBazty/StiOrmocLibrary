@@ -1,19 +1,28 @@
 import type { Pool, RowDataPacket } from 'mysql2/promise'
+import { authorsAgg, isPostgres, sumEquals } from '../../config/sql-dialect.js'
 import type { BookCatalogFilters } from './book-catalog.validation.ts'
+
+const availableCopyCount = isPostgres
+  ? `COUNT(*) FILTER (WHERE pc.availability_status = 'Available' AND pc.material_id IS NOT NULL)`
+  : `SUM(pc.availability_status = 'Available' AND pc.material_id IS NOT NULL)`
+
+const currentConditionStatus = isPostgres
+  ? `(array_agg(pc.condition_status ORDER BY (pc.availability_status = 'Available') DESC, pc.physical_copy_id ASC))[1]`
+  : `SUBSTRING_INDEX(
+        GROUP_CONCAT(pc.condition_status ORDER BY (pc.availability_status = 'Available') DESC, pc.physical_copy_id ASC SEPARATOR ','),
+        ',', 1
+      )`
 
 const STOCK_JOIN = `LEFT JOIN (
     SELECT
       pc.title_id,
       COUNT(*) AS total_copies_count,
-      SUM(pc.availability_status = 'Available' AND pc.material_id IS NOT NULL) AS available_copies_count,
-      SUM(pc.availability_status = 'Borrowed') AS borrowed_copies_count,
-      SUM(pc.availability_status = 'Reserved') AS reserved_copies_count,
+      ${availableCopyCount} AS available_copies_count,
+      ${sumEquals('pc.availability_status', 'Borrowed')} AS borrowed_copies_count,
+      ${sumEquals('pc.availability_status', 'Reserved')} AS reserved_copies_count,
       MIN(CASE WHEN pc.availability_status = 'Available' AND pc.material_id IS NOT NULL THEN pc.shelf_location END) AS available_shelf_location,
       MIN(CASE WHEN pc.availability_status = 'Available' AND pc.material_id IS NOT NULL THEN pc.barcode END) AS preview_barcode,
-      SUBSTRING_INDEX(
-        GROUP_CONCAT(pc.condition_status ORDER BY (pc.availability_status = 'Available') DESC, pc.physical_copy_id ASC SEPARATOR ','),
-        ',', 1
-      ) AS current_condition_status,
+      ${currentConditionStatus} AS current_condition_status,
       MIN(pc.shelf_location) AS any_shelf_location,
       MIN(CASE WHEN pc.material_id IS NOT NULL THEN pc.material_id END) AS reservable_material_id
     FROM physical_copies pc
@@ -24,7 +33,7 @@ const STOCK_JOIN = `LEFT JOIN (
 const AUTHOR_JOIN = `LEFT JOIN (
     SELECT
       a.title_id,
-      GROUP_CONCAT(a.author_name ORDER BY a.author_order SEPARATOR ', ') AS author
+      ${authorsAgg('a')} AS author
     FROM authors a
     GROUP BY a.title_id
   ) credits ON credits.title_id = t.title_id`

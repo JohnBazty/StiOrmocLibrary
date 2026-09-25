@@ -1,5 +1,6 @@
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { db } from '../../config/db.js'
+import { currentDate, isPostgres } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import type { AnnouncementInput } from './notification.validation.ts'
 
@@ -23,13 +24,22 @@ function actorAccountId(actor: NotificationActor) {
 export function createNotificationRepository(database: Pool = db) {
   async function fanOutAnnouncement(connection: PoolConnection, announcement: RowDataPacket) {
     await connection.execute(
-      `INSERT IGNORE INTO notifications
-         (user_id, message_title, message_body, trigger_type, source_type, source_id,
-          action_path, priority, dedupe_key, scheduled_for, delivered_at, expires_at)
-       SELECT u.user_id, ?, ?, 'Announcement', 'Announcement', ?, '/student/notifications', ?,
-              CONCAT('announcement:', ?), ?, NOW(), ?
-         FROM users u
-        WHERE u.account_status = 'Active'`,
+      isPostgres
+        ? `INSERT INTO notifications
+             (user_id, message_title, message_body, trigger_type, source_type, source_id,
+              action_path, priority, dedupe_key, scheduled_for, delivered_at, expires_at)
+           SELECT u.user_id, ?, ?, 'Announcement', 'Announcement', ?, '/student/notifications', ?,
+                  CONCAT('announcement:', ?), ?, NOW(), ?
+             FROM users u
+            WHERE u.account_status = 'Active'
+           ON CONFLICT (user_id, dedupe_key) DO NOTHING`
+        : `INSERT IGNORE INTO notifications
+             (user_id, message_title, message_body, trigger_type, source_type, source_id,
+              action_path, priority, dedupe_key, scheduled_for, delivered_at, expires_at)
+           SELECT u.user_id, ?, ?, 'Announcement', 'Announcement', ?, '/student/notifications', ?,
+                  CONCAT('announcement:', ?), ?, NOW(), ?
+             FROM users u
+            WHERE u.account_status = 'Active'`,
       [announcement.title, announcement.message_body, announcement.announcement_id,
         announcement.priority, announcement.announcement_id,
         announcement.publish_at ?? new Date(), announcement.expires_at ?? null],
@@ -126,7 +136,7 @@ export function createNotificationRepository(database: Pool = db) {
           'SELECT day_of_week, is_open, opens_at, closes_at FROM library_operating_schedule ORDER BY day_of_week',
         ),
         database.execute<RowDataPacket[]>(
-          'SELECT closed_date, reason FROM library_closed_days WHERE closed_date >= CURDATE() ORDER BY closed_date LIMIT 20',
+          `SELECT closed_date, reason FROM library_closed_days WHERE closed_date >= ${currentDate()} ORDER BY closed_date LIMIT 20`,
         ),
       ])
       return {

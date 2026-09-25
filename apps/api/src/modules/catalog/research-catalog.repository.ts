@@ -1,9 +1,10 @@
 import type { Pool, RowDataPacket } from 'mysql2/promise'
+import { authorsAgg, isPostgres, sumEquals } from '../../config/sql-dialect.js'
 import type { ResearchCatalogFilters } from './research-catalog.validation.ts'
 
 const AUTHOR_JOIN = `JOIN (
     SELECT a.title_id,
-      GROUP_CONCAT(a.author_name ORDER BY a.author_order SEPARATOR ', ') AS authors
+      ${authorsAgg('a')} AS authors
     FROM authors a
     GROUP BY a.title_id
   ) credits ON credits.title_id = t.title_id`
@@ -12,8 +13,8 @@ const INVENTORY_JOIN = `LEFT JOIN (
     SELECT ri.title_id,
       MIN(ri.research_inventory_id) AS research_inventory_id,
       MIN(ri.shelf_location) AS shelf_location,
-      SUM(ri.availability_status = 'available') AS available_copies,
-      SUM(ri.availability_status = 'reserved') AS reserved_copies
+      ${sumEquals('ri.availability_status', 'available')} AS available_copies,
+      ${sumEquals('ri.availability_status', 'reserved')} AS reserved_copies
     FROM research_inventory ri
     WHERE ri.lifecycle_status = 'Active'
     GROUP BY ri.title_id
@@ -49,7 +50,7 @@ export function buildResearchCatalogQuery(filters: ResearchCatalogFilters) {
   if (filters.query) {
     const pattern = contains(filters.query)
     where.push(`(t.title LIKE ? OR credits.authors LIKE ? OR rr.adviser_name LIKE ? OR
-      rr.department_or_program LIKE ? OR rr.research_code LIKE ? OR CAST(t.publication_year AS CHAR) = ?)`)
+      rr.department_or_program LIKE ? OR rr.research_code LIKE ? OR CAST(t.publication_year AS ${isPostgres ? 'TEXT' : 'CHAR'}) = ?)`)
     parameters.push(pattern, pattern, pattern, pattern, pattern, filters.query)
   }
 
@@ -118,7 +119,7 @@ export async function queryResearchOverview(database: Pool, titleId: number) {
        JOIN research_records rr ON rr.title_id = t.title_id
        JOIN (
          SELECT a.title_id,
-           GROUP_CONCAT(a.author_name ORDER BY a.author_order SEPARATOR ', ') AS authors
+           ${authorsAgg('a')} AS authors
          FROM authors a
          GROUP BY a.title_id
        ) credits ON credits.title_id = t.title_id

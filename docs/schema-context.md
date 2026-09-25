@@ -1,5 +1,14 @@
 # Database Schema Context
 
+## Engine note (2026-09-25)
+
+The API is mid-cutover to Supabase PostgreSQL. See [supabase-migration-plan.md](supabase-migration-plan.md).
+
+- When `DATABASE_URL` (postgresql://…) is set, the runtime uses `pg` against drafts under [database/supabase/](../database/supabase/).
+- When unset, the runtime uses local MySQL via `mysql2` and the MySQL tree below (rollback / offline path).
+- The MySQL baseline and ordered migrations remain the historical product contract. Latest MySQL migration: `20260923_040_printing_digital_receipts.sql`. Next MySQL number if needed: **`041`**.
+- Additive MAIN product tables for Postgres land in `database/supabase/005_main_product_gapfill.sql` (033–040).
+
 ## Target requirements versus current baseline
 
 The target product requirements are the preserved PDFs indexed by [source-of-truth.md](source-of-truth.md). This file documents the **currently implemented** database baseline; it must not override newer product requirements.

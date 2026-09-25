@@ -1,4 +1,5 @@
 import session from 'express-session'
+import { env } from '../config/env.js'
 
 function getExpiry(sessionData) {
   const cookieExpiry = sessionData.cookie?.expires
@@ -6,10 +7,23 @@ function getExpiry(sessionData) {
   return Date.now() + Number(sessionData.cookie?.maxAge ?? 30 * 60 * 1000)
 }
 
+const upsertSql = env.db.driver === 'postgres'
+  ? `INSERT INTO auth_sessions (session_id, session_data, expires_at, updated_at)
+     VALUES (?, ?, ?, NOW())
+     ON CONFLICT (session_id) DO UPDATE SET
+       session_data = EXCLUDED.session_data,
+       expires_at = EXCLUDED.expires_at,
+       updated_at = NOW()`
+  : `INSERT INTO auth_sessions (session_id, session_data, expires_at, updated_at)
+     VALUES (?, ?, ?, NOW())
+     ON DUPLICATE KEY UPDATE
+       session_data = VALUES(session_data),
+       expires_at = VALUES(expires_at),
+       updated_at = NOW()`
+
 /**
- * Minimal server-side session store backed by mysql2 prepared statements.
- * Session payloads remain inaccessible to browser JavaScript; only the signed
- * opaque session identifier is stored in the cookie.
+ * Server-side session store backed by auth_sessions.
+ * Uses Postgres ON CONFLICT when DATABASE_URL is set; MySQL upsert otherwise.
  */
 export class MySqlSessionStore extends session.Store {
   constructor(pool) {
@@ -43,15 +57,7 @@ export class MySqlSessionStore extends session.Store {
   set(sessionId, sessionData, callback = () => {}) {
     const serialized = JSON.stringify(sessionData)
     this.pool
-      .execute(
-        `INSERT INTO auth_sessions (session_id, session_data, expires_at, updated_at)
-         VALUES (?, ?, ?, NOW())
-         ON DUPLICATE KEY UPDATE
-           session_data = VALUES(session_data),
-           expires_at = VALUES(expires_at),
-           updated_at = NOW()`,
-        [sessionId, serialized, getExpiry(sessionData)],
-      )
+      .execute(upsertSql, [sessionId, serialized, getExpiry(sessionData)])
       .then(() => callback(null))
       .catch(callback)
   }
@@ -73,4 +79,3 @@ export class MySqlSessionStore extends session.Store {
       .catch(callback)
   }
 }
-

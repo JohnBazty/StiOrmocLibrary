@@ -1,5 +1,6 @@
 import type { Pool, RowDataPacket } from 'mysql2/promise'
 import { db } from '../../config/db.js'
+import { authorsAgg } from '../../config/sql-dialect.js'
 import type { CatalogSearchFilters } from '../catalog/catalog-search.repository.ts'
 import { createIntegrityProtectedCsvStream } from './csv-integrity.ts'
 import { createBrandedTablePdf, type PdfTableColumn } from './branded-table-pdf.ts'
@@ -68,7 +69,7 @@ export async function* iterateInventoryRows(
         `SELECT pc.physical_copy_id, t.record_type, t.title, t.isbn, t.publication_year,
                 c.category_name, pc.accession_number, pc.barcode, pc.shelf_location,
                 pc.condition_status, pc.availability_status AS availability,
-                (SELECT GROUP_CONCAT(a.author_name ORDER BY a.author_order SEPARATOR ', ')
+                (SELECT ${authorsAgg('a')}
                    FROM authors a WHERE a.title_id = t.title_id) AS authors,
                 NULL AS research_code, NULL AS adviser_name
            FROM physical_copies pc
@@ -96,7 +97,7 @@ export async function* iterateInventoryRows(
         `SELECT t.title_id, t.record_type, t.title, t.isbn, t.publication_year,
                 c.category_name, '' AS accession_number, '' AS barcode, '' AS shelf_location,
                 '' AS condition_status, rr.viewing_status AS availability,
-                (SELECT GROUP_CONCAT(a.author_name ORDER BY a.author_order SEPARATOR ', ')
+                (SELECT ${authorsAgg('a')}
                    FROM authors a WHERE a.title_id = t.title_id) AS authors,
                 rr.research_code, rr.adviser_name
            FROM titles t

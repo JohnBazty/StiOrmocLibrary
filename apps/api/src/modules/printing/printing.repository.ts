@@ -1,6 +1,16 @@
 import type { Pool, RowDataPacket } from 'mysql2/promise'
 import { db } from '../../config/db.js'
+import {
+  currentDate,
+  dateAddDays,
+  formatDate,
+  isPostgres,
+  sumEquals,
+} from '../../config/sql-dialect.js'
 import type { FinanceFilters, QueueFilters } from './printing.validation.ts'
+
+const dayAfter = (placeholder = '?') => dateAddDays(placeholder, 1)
+const monthStart = formatDate(currentDate(), '%Y-%m-01', 'YYYY-MM-01')
 
 export class PrintingRepository {
   readonly pool: Pool
@@ -59,7 +69,7 @@ export class PrintingRepository {
 
   private queueWhere(filters: QueueFilters) {
     const clauses = ['1=1']; const values: Array<string|number> = []
-    if (filters.q) { const q=`%${filters.q}%`; clauses.push('(u.full_name LIKE ? OR u.school_id LIKE ? OR pr.file_name LIKE ? OR CAST(pr.request_id AS CHAR) LIKE ? OR r.receipt_number LIKE ? OR r.verification_code LIKE ?)'); values.push(q,q,q,q,q,q) }
+    if (filters.q) { const q=`%${filters.q}%`; clauses.push(`(u.full_name LIKE ? OR u.school_id LIKE ? OR pr.file_name LIKE ? OR CAST(pr.request_id AS ${isPostgres ? 'TEXT' : 'CHAR'}) LIKE ? OR r.receipt_number LIKE ? OR r.verification_code LIKE ?)`); values.push(q,q,q,q,q,q) }
     if (filters.status) { clauses.push('pr.job_status=?'); values.push(filters.status) }
     if (filters.payment) { clauses.push('pr.payment_status=?'); values.push(filters.payment) }
     return { sql: clauses.join(' AND '), values }
@@ -72,13 +82,21 @@ export class PrintingRepository {
         r.print_receipt_id,r.receipt_number,r.verification_code,r.receipt_status,r.received_at receipt_issued_at
       FROM print_requests pr JOIN users u ON u.user_id=pr.user_id
       LEFT JOIN print_payment_receipts r ON r.request_id=pr.request_id
-      WHERE ${where.sql} ORDER BY FIELD(pr.job_status,'Pending','Printing','Ready for Pickup','Completed','Cancelled'),pr.created_at ASC LIMIT ${filters.limit} OFFSET ${offset}`,where.values)
+      WHERE ${where.sql} ORDER BY ${isPostgres
+      ? `CASE pr.job_status WHEN 'Pending' THEN 1 WHEN 'Printing' THEN 2 WHEN 'Ready for Pickup' THEN 3 WHEN 'Completed' THEN 4 WHEN 'Cancelled' THEN 5 ELSE 6 END`
+      : `FIELD(pr.job_status,'Pending','Printing','Ready for Pickup','Completed','Cancelled')`},pr.created_at ASC LIMIT ${filters.limit} OFFSET ${offset}`,where.values)
     const total=Number(count[0]?.total??0)
     return { rows, pagination:{page:filters.page,limit:filters.limit,total,total_pages:Math.ceil(total/filters.limit)} }
   }
 
   async summary() {
-    const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT SUM(job_status='Pending') pending_jobs,SUM(job_status='Printing') printing_jobs,SUM(job_status='Ready for Pickup') ready_jobs,SUM(job_status='Completed' AND DATE(completed_at)=CURDATE()) completed_today,SUM(payment_status='Unpaid' AND job_status<>'Cancelled') unpaid_jobs,COALESCE(SUM(CASE WHEN payment_status='Paid' AND DATE(paid_at)=CURDATE() THEN calculated_cost ELSE 0 END),0) revenue_today FROM print_requests`)
+    const completedToday = isPostgres
+      ? `COUNT(*) FILTER (WHERE job_status='Completed' AND DATE(completed_at)=${currentDate()})`
+      : `SUM(job_status='Completed' AND DATE(completed_at)=CURDATE())`
+    const unpaidJobs = isPostgres
+      ? `COUNT(*) FILTER (WHERE payment_status='Unpaid' AND job_status<>'Cancelled')`
+      : `SUM(payment_status='Unpaid' AND job_status<>'Cancelled')`
+    const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT ${sumEquals('job_status', 'Pending')} pending_jobs,${sumEquals('job_status', 'Printing')} printing_jobs,${sumEquals('job_status', 'Ready for Pickup')} ready_jobs,${completedToday} completed_today,${unpaidJobs} unpaid_jobs,COALESCE(SUM(CASE WHEN payment_status='Paid' AND DATE(paid_at)=${currentDate()} THEN calculated_cost ELSE 0 END),0) revenue_today FROM print_requests`)
     const service_status=await this.serviceStatus()
     return { pending_jobs:Number(rows[0]?.pending_jobs??0),printing_jobs:Number(rows[0]?.printing_jobs??0),ready_jobs:Number(rows[0]?.ready_jobs??0),completed_today:Number(rows[0]?.completed_today??0),unpaid_jobs:Number(rows[0]?.unpaid_jobs??0),revenue_today:Number(rows[0]?.revenue_today??0),service_status }
   }
@@ -86,14 +104,14 @@ export class PrintingRepository {
   async supplies() {
     const [ink]=await this.pool.execute<RowDataPacket[]>(`SELECT i.ink_id,i.cartridge_type,i.color_variation,i.available_bottles,i.low_stock_threshold_bottles,i.cost_per_bottle,i.last_replenished_at,CASE WHEN i.available_bottles<=i.low_stock_threshold_bottles THEN 1 ELSE 0 END is_low FROM ink_repository i ORDER BY is_low DESC,i.color_variation,i.cartridge_type`)
     const [paper]=await this.pool.execute<RowDataPacket[]>(`SELECT paper_stock_id,paper_size_dimension,unopened_reams,unopened_reams remaining_reams,low_stock_threshold_reams,average_expense_cost,CASE WHEN unopened_reams<=low_stock_threshold_reams THEN 1 ELSE 0 END is_low FROM bond_paper_stocks ORDER BY is_low DESC,paper_size_dimension`)
-    const [totals]=await this.pool.execute<RowDataPacket[]>(`SELECT (SELECT COUNT(*) FROM ink_repository WHERE available_bottles<=low_stock_threshold_bottles) low_ink_items,(SELECT COUNT(*) FROM bond_paper_stocks WHERE unopened_reams<=low_stock_threshold_reams) low_paper_items,(SELECT COALESCE(SUM(expense_amount),0) FROM ink_stock_movements WHERE movement_type='Restock' AND created_at>=DATE_FORMAT(CURDATE(),'%Y-%m-01'))+(SELECT COALESCE(SUM(expense_amount),0) FROM paper_stock_movements WHERE movement_type='Restock' AND created_at>=DATE_FORMAT(CURDATE(),'%Y-%m-01')) monthly_expense`)
+    const [totals]=await this.pool.execute<RowDataPacket[]>(`SELECT (SELECT COUNT(*) FROM ink_repository WHERE available_bottles<=low_stock_threshold_bottles) low_ink_items,(SELECT COUNT(*) FROM bond_paper_stocks WHERE unopened_reams<=low_stock_threshold_reams) low_paper_items,(SELECT COALESCE(SUM(expense_amount),0) FROM ink_stock_movements WHERE movement_type='Restock' AND created_at>=${monthStart})+(SELECT COALESCE(SUM(expense_amount),0) FROM paper_stock_movements WHERE movement_type='Restock' AND created_at>=${monthStart}) monthly_expense`)
     return { ink, paper, summary:{low_ink_items:Number(totals[0]?.low_ink_items??0),low_paper_items:Number(totals[0]?.low_paper_items??0),monthly_expense:Number(totals[0]?.monthly_expense??0)} }
   }
 
   async revenueSummary(filters: FinanceFilters) {
     const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT COUNT(*) paid_requests,COALESCE(SUM(pr.total_sheets),0) total_sheets,COALESCE(SUM(pr.number_of_copies),0) total_copies,COALESCE(SUM(p.amount_paid),0) total_revenue
       FROM print_cash_payments p JOIN print_requests pr ON pr.request_id=p.request_id
-      WHERE p.received_at>=? AND p.received_at<DATE_ADD(?,INTERVAL 1 DAY)`,[filters.from,filters.to])
+      WHERE p.received_at>=? AND p.received_at<${dayAfter()}`,[filters.from,filters.to])
     return{period:filters.period,label:filters.label,from:filters.from,to:filters.to,paid_requests:Number(rows[0]?.paid_requests??0),total_sheets:Number(rows[0]?.total_sheets??0),total_copies:Number(rows[0]?.total_copies??0),total_revenue:Number(rows[0]?.total_revenue??0)}
   }
 
@@ -103,16 +121,16 @@ export class PrintingRepository {
       JOIN print_requests pr ON pr.request_id=p.request_id
       JOIN users u ON u.user_id=pr.user_id
       LEFT JOIN users staff ON staff.user_id=p.received_by_user_id
-      WHERE p.received_at>=? AND p.received_at<DATE_ADD(?,INTERVAL 1 DAY)
+      WHERE p.received_at>=? AND p.received_at<${dayAfter()}
       ORDER BY p.received_at DESC,p.print_cash_payment_id DESC`,[filters.from,filters.to])
     return rows
   }
 
   async expenseSummary(filters: FinanceFilters) {
     const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT
-      (SELECT COALESCE(SUM(expense_amount),0) FROM ink_stock_movements WHERE movement_type='Restock' AND created_at>=? AND created_at<DATE_ADD(?,INTERVAL 1 DAY)) ink_expenses,
-      (SELECT COALESCE(SUM(expense_amount),0) FROM paper_stock_movements WHERE movement_type='Restock' AND created_at>=? AND created_at<DATE_ADD(?,INTERVAL 1 DAY)) paper_expenses,
-      (SELECT COUNT(*) FROM ink_stock_movements WHERE movement_type='Restock' AND created_at>=? AND created_at<DATE_ADD(?,INTERVAL 1 DAY))+(SELECT COUNT(*) FROM paper_stock_movements WHERE movement_type='Restock' AND created_at>=? AND created_at<DATE_ADD(?,INTERVAL 1 DAY)) restock_entries`,[filters.from,filters.to,filters.from,filters.to,filters.from,filters.to,filters.from,filters.to])
+      (SELECT COALESCE(SUM(expense_amount),0) FROM ink_stock_movements WHERE movement_type='Restock' AND created_at>=? AND created_at<${dayAfter()}) ink_expenses,
+      (SELECT COALESCE(SUM(expense_amount),0) FROM paper_stock_movements WHERE movement_type='Restock' AND created_at>=? AND created_at<${dayAfter()}) paper_expenses,
+      (SELECT COUNT(*) FROM ink_stock_movements WHERE movement_type='Restock' AND created_at>=? AND created_at<${dayAfter()})+(SELECT COUNT(*) FROM paper_stock_movements WHERE movement_type='Restock' AND created_at>=? AND created_at<${dayAfter()}) restock_entries`,[filters.from,filters.to,filters.from,filters.to,filters.from,filters.to,filters.from,filters.to])
     const inkExpenses=Number(rows[0]?.ink_expenses??0),paperExpenses=Number(rows[0]?.paper_expenses??0)
     return{period:filters.period,label:filters.label,from:filters.from,to:filters.to,restock_entries:Number(rows[0]?.restock_entries??0),ink_expenses:inkExpenses,paper_expenses:paperExpenses,total_expenses:inkExpenses+paperExpenses}
   }
@@ -121,11 +139,11 @@ export class PrintingRepository {
     const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT * FROM (
       SELECT m.created_at,'Ink' supply_type,CONCAT(i.cartridge_type,' · ',i.color_variation) supply_name,m.quantity_bottles quantity,'bottles' unit,m.unit_cost_per_bottle unit_cost,m.expense_amount total_expense,m.balance_before,m.balance_after,u.full_name recorded_by
       FROM ink_stock_movements m JOIN ink_repository i ON i.ink_id=m.ink_id LEFT JOIN users u ON u.user_id=m.recorded_by_user_id
-      WHERE m.movement_type='Restock' AND m.created_at>=? AND m.created_at<DATE_ADD(?,INTERVAL 1 DAY)
+      WHERE m.movement_type='Restock' AND m.created_at>=? AND m.created_at<${dayAfter()}
       UNION ALL
       SELECT m.created_at,'Paper',CONCAT(p.paper_size_dimension,' bond paper'),m.quantity_reams,'reams',m.unit_cost_per_ream,m.expense_amount,m.balance_before,m.balance_after,u.full_name
       FROM paper_stock_movements m JOIN bond_paper_stocks p ON p.paper_stock_id=m.paper_stock_id LEFT JOIN users u ON u.user_id=m.recorded_by_user_id
-      WHERE m.movement_type='Restock' AND m.created_at>=? AND m.created_at<DATE_ADD(?,INTERVAL 1 DAY)
+      WHERE m.movement_type='Restock' AND m.created_at>=? AND m.created_at<${dayAfter()}
     ) restocks ORDER BY created_at DESC`,[filters.from,filters.to,filters.from,filters.to])
     return rows
   }
@@ -147,9 +165,9 @@ export class PrintingRepository {
 
   async financeSummary(filters: FinanceFilters) {
     const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT
-      (SELECT COALESCE(SUM(amount_paid),0) FROM print_cash_payments WHERE received_at>=? AND received_at<DATE_ADD(?,INTERVAL 1 DAY)) revenue,
-      (SELECT COALESCE(SUM(expense_amount),0) FROM ink_stock_movements WHERE movement_type='Restock' AND created_at>=? AND created_at<DATE_ADD(?,INTERVAL 1 DAY)) ink_expenses,
-      (SELECT COALESCE(SUM(expense_amount),0) FROM paper_stock_movements WHERE movement_type='Restock' AND created_at>=? AND created_at<DATE_ADD(?,INTERVAL 1 DAY)) paper_expenses`,
+      (SELECT COALESCE(SUM(amount_paid),0) FROM print_cash_payments WHERE received_at>=? AND received_at<${dayAfter()}) revenue,
+      (SELECT COALESCE(SUM(expense_amount),0) FROM ink_stock_movements WHERE movement_type='Restock' AND created_at>=? AND created_at<${dayAfter()}) ink_expenses,
+      (SELECT COALESCE(SUM(expense_amount),0) FROM paper_stock_movements WHERE movement_type='Restock' AND created_at>=? AND created_at<${dayAfter()}) paper_expenses`,
       [filters.from,filters.to,filters.from,filters.to,filters.from,filters.to])
     const revenue=Number(rows[0]?.revenue??0),inkExpenses=Number(rows[0]?.ink_expenses??0),paperExpenses=Number(rows[0]?.paper_expenses??0)
     const totalExpenses=inkExpenses+paperExpenses,netResult=revenue-totalExpenses
@@ -164,17 +182,17 @@ export class PrintingRepository {
         CASE WHEN pr.total_sheets>0 THEN ROUND(p.amount_paid/pr.total_sheets,2) ELSE p.amount_paid END unit_cost,
         p.amount_paid revenue,0 expense,p.amount_paid net_impact,u.full_name recorded_by
       FROM print_cash_payments p JOIN print_requests pr ON pr.request_id=p.request_id LEFT JOIN users u ON u.user_id=p.received_by_user_id
-      WHERE p.received_at>=? AND p.received_at<DATE_ADD(?,INTERVAL 1 DAY)
+      WHERE p.received_at>=? AND p.received_at<${dayAfter()}
       UNION ALL
       SELECT m.created_at,CONCAT(i.cartridge_type,' ',i.color_variation),'Ink restock',CONCAT(m.quantity_bottles,' bottles'),m.unit_cost_per_bottle,
         0,m.expense_amount,-m.expense_amount,u.full_name
       FROM ink_stock_movements m JOIN ink_repository i ON i.ink_id=m.ink_id LEFT JOIN users u ON u.user_id=m.recorded_by_user_id
-      WHERE m.movement_type='Restock' AND m.created_at>=? AND m.created_at<DATE_ADD(?,INTERVAL 1 DAY)
+      WHERE m.movement_type='Restock' AND m.created_at>=? AND m.created_at<${dayAfter()}
       UNION ALL
       SELECT m.created_at,CONCAT(p.paper_size_dimension,' bond paper'),'Paper restock',CONCAT(m.quantity_reams,' reams'),m.unit_cost_per_ream,
         0,m.expense_amount,-m.expense_amount,u.full_name
       FROM paper_stock_movements m JOIN bond_paper_stocks p ON p.paper_stock_id=m.paper_stock_id LEFT JOIN users u ON u.user_id=m.recorded_by_user_id
-      WHERE m.movement_type='Restock' AND m.created_at>=? AND m.created_at<DATE_ADD(?,INTERVAL 1 DAY)
+      WHERE m.movement_type='Restock' AND m.created_at>=? AND m.created_at<${dayAfter()}
     ) financial_entries ORDER BY entry_date DESC`,values)
     return rows
   }
