@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/server.ts",
+    "dev": "node --watch --watch-path=./src --watch-preserve-output src/server.ts",
+    "dev:stable": "node src/server.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --require ./scripts/force-mysql-env.cjs --test src/core/*.test.ts src/modules/auth/*.test.js src/modules/auth/*.test.ts src/modules/attendance/*.test.ts src/modules/catalog/*.test.ts src/modules/catalog/categories/*.test.ts src/modules/circulation/*.test.ts src/modules/clearance/*.test.ts src/modules/dashboard/*.test.ts src/modules/fines/*.test.ts src/modules/floor-plan/*.test.ts src/modules/inventory/*.test.ts src/modules/notifications/*.test.ts src/modules/printing/*.test.ts src/modules/reports/*.test.ts src/modules/reservations/*.test.ts src/modules/users/*.test.ts",
