@@ -49,7 +49,6 @@ The list endpoint accepts any combination of `q`, `title`, `author`, `isbn`, `ca
 | `POST` | `/api/auth/login` | Authentication | Validate credentials and establish a role-based session |
 | `POST` | `/api/v1/auth/register` | Authentication | Transactionally create a normalized Student account and academic profile |
 | `POST` | `/api/v1/auth/login` | Authentication | Authenticate school ID, selected role, and password; issue a signed JWT |
-| `POST` | `/auth/register` | Authentication | Create an active Student/Faculty account; Librarian requires Administrator session |
 | `GET` | `/api/auth/me` | Authentication | Return the authenticated session user |
 | `POST` | `/auth/logout` | Authentication | Destroy the session and redirect to the login screen |
 | `GET` | `/api/dashboard/student` | Dashboard | Student summary and recommendations |

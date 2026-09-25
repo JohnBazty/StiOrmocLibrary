@@ -12,7 +12,7 @@ import { checkSchemaReadiness, isMissingSchemaError } from './core/schema-readin
 import { registerModules } from './modules/index.ts'
 import { dashboardForRole, ROLES, STAFF_ROLES, USER_ROLES, webDashboardForRole } from './modules/auth/auth.constants.js'
 import { requireAuth, requireCsrfForStateChanges, requireRoles, sessionCookie } from './modules/auth/auth.middleware.js'
-import { authRouter, logoutRouter, registrationRouter } from './modules/auth/auth.routes.js'
+import { authRouter, logoutRouter } from './modules/auth/auth.routes.js'
 import { jwtAuthRouter, jwtProtectedRouter } from './modules/auth/jwt-auth.routes.ts'
 import { authenticateJwt, requireJwtRoles } from './modules/auth/jwt-auth.middleware.ts'
 import { inventoryPreviewRouter } from './modules/inventory/inventory-preview.routes.ts'
@@ -111,7 +111,6 @@ export function createApp() {
   app.use('/api/v1/admin', authenticateJwt, requireJwtRoles('Admin', 'Librarian'), adminCirculationRouter)
   app.use('/api/v1/admin', authenticateJwt, requireJwtRoles('Admin', 'Librarian'), thesisInventoryV1AdminRouter)
   app.use('/api/v1', jwtProtectedRouter)
-  app.use('/auth/register', registrationRouter)
   app.use('/auth/logout', logoutRouter)
   if (env.inventoryPreviewEnabled) app.use('/api/dev/inventory', inventoryPreviewRouter)
 
@@ -123,7 +122,7 @@ export function createApp() {
   })
   app.get('/register', (_request, response) => {
     response.set('Cache-Control', 'no-store')
-    return response.sendFile(path.join(publicDirectory, 'register.html'))
+    return response.redirect(303, new URL('/register', env.webOrigin).toString())
   })
   app.get('/admin/dashboard', requireAuth, requireRoles(...STAFF_ROLES), (request, response) => {
     response.set('Cache-Control', 'no-store')

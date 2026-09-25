@@ -5,7 +5,7 @@
 The Express application now provides a server-rendered vanilla HTML/CSS/JavaScript login at `http://localhost:4000/login`. Authentication uses the existing `roles` and `users` tables plus the new `auth_sessions` table.
 
 - Institutional email validation: `@ormoc.sti.edu.ph` and `@sti.edu`
-- Self-service Student/Faculty registration at `http://localhost:4000/register`
+- One canonical self-service Student registration page at `http://localhost:5173/register`. The API address `http://localhost:4000/register` redirects to this page.
 - bcrypt password verification with cost 12 for newly created accounts
 - MySQL prepared statements through `mysql2/promise`
 - MySQL-backed `express-session` records
