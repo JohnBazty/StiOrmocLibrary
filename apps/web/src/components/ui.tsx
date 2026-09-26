@@ -32,34 +32,40 @@ export function SectionCard({ children, className }: { children: ReactNode; clas
 }
 
 const toneClasses: Record<string, string> = {
-  active: 'bg-[#003399]/5 text-[#003399] ring-[#003399]/10',
-  available: 'bg-[#003399]/5 text-[#003399] ring-[#003399]/10',
-  ready_for_pickup: 'bg-[#003399]/5 text-[#003399] ring-[#003399]/10',
-  cleared: 'bg-[#003399]/5 text-[#003399] ring-[#003399]/10',
-  paid: 'bg-[#003399]/5 text-[#003399] ring-[#003399]/10',
-  returned: 'bg-[#003399]/5 text-[#003399]/65 ring-[#003399]/10',
-  queued: 'bg-[#FFF200]/35 text-[#003399] ring-[#003399]/10',
-  pending: 'bg-[#FFF200]/35 text-[#003399] ring-[#003399]/10',
-  partially_paid: 'bg-[#FFF200]/35 text-[#003399] ring-[#003399]/10',
-  printing: 'bg-[#FFF200]/35 text-[#003399] ring-[#003399]/10',
-  overdue: 'bg-[#FFF200] text-[#003399] ring-[#003399]/10',
-  borrowed: 'bg-[#003399]/5 text-[#003399] ring-[#003399]/10',
-  reserved: 'bg-[#FFF200]/35 text-[#003399] ring-[#003399]/10',
-  blocked: 'bg-[#FFF200] text-[#003399] ring-[#003399]/10',
-  unpaid: 'bg-[#FFF200] text-[#003399] ring-[#003399]/10',
-  unavailable: 'bg-[#003399]/5 text-[#003399]/65 ring-[#003399]/10',
-  inactive: 'bg-[#003399]/5 text-[#003399]/65 ring-[#003399]/10',
+  active: 'bg-[#003399]/5 text-[#003399] ring-[#003399]/10 dark:bg-white/10 dark:text-[#f7f9ff] dark:ring-white/15',
+  available: 'bg-[#003399]/5 text-[#003399] ring-[#003399]/10 dark:bg-white/10 dark:text-[#f7f9ff] dark:ring-white/15',
+  ready_for_pickup: 'bg-[#003399]/5 text-[#003399] ring-[#003399]/10 dark:bg-white/10 dark:text-[#f7f9ff] dark:ring-white/15',
+  cleared: 'bg-[#003399]/5 text-[#003399] ring-[#003399]/10 dark:bg-white/10 dark:text-[#f7f9ff] dark:ring-white/15',
+  paid: 'bg-[#003399]/5 text-[#003399] ring-[#003399]/10 dark:bg-white/10 dark:text-[#f7f9ff] dark:ring-white/15',
+  returned: 'bg-[#003399]/5 text-[#003399]/65 ring-[#003399]/10 dark:bg-white/10 dark:text-white/80 dark:ring-white/15',
+  queued: 'bg-[#FFF200]/35 text-[#003399] ring-[#003399]/10 dark:bg-[#FFF200]/40 dark:text-[#003399] dark:ring-[#FFF200]/50',
+  pending: 'bg-[#FFF200]/35 text-[#003399] ring-[#003399]/10 dark:bg-[#FFF200]/40 dark:text-[#003399] dark:ring-[#FFF200]/50',
+  partially_paid: 'bg-[#FFF200]/35 text-[#003399] ring-[#003399]/10 dark:bg-[#FFF200]/40 dark:text-[#003399] dark:ring-[#FFF200]/50',
+  printing: 'bg-[#FFF200]/35 text-[#003399] ring-[#003399]/10 dark:bg-[#FFF200]/40 dark:text-[#003399] dark:ring-[#FFF200]/50',
+  overdue: 'bg-[#FFF200] text-[#003399] ring-[#003399]/10 dark:bg-[#FFF200] dark:text-[#003399] dark:ring-[#FFF200]/60',
+  borrowed: 'bg-[#003399]/5 text-[#003399] ring-[#003399]/10 dark:bg-white/10 dark:text-[#f7f9ff] dark:ring-white/15',
+  reserved: 'bg-[#FFF200]/35 text-[#003399] ring-[#003399]/10 dark:bg-[#FFF200]/40 dark:text-[#003399] dark:ring-[#FFF200]/50',
+  blocked: 'bg-[#FFF200] text-[#003399] ring-[#003399]/10 dark:bg-[#FFF200] dark:text-[#003399] dark:ring-[#FFF200]/60',
+  unpaid: 'bg-[#FFF200] text-[#003399] ring-[#003399]/10 dark:bg-[#FFF200] dark:text-[#003399] dark:ring-[#FFF200]/60',
+  unavailable: 'bg-[#003399]/5 text-[#003399]/65 ring-[#003399]/10 dark:bg-white/10 dark:text-white/80 dark:ring-white/15',
+  inactive: 'bg-[#003399]/5 text-[#003399]/65 ring-[#003399]/10 dark:bg-white/10 dark:text-white/80 dark:ring-white/15',
 }
 
 export function StatusBadge({ status }: { status: string }) {
   const normalized = status.toLowerCase().replaceAll(' ', '_')
-  return <span className={cn('inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold capitalize ring-1 ring-inset', toneClasses[normalized] ?? 'bg-[#003399]/5 text-[#003399]/65 ring-[#003399]/10')}>{status.replaceAll('_', ' ')}</span>
+  return <span className={cn('inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold capitalize ring-1 ring-inset', toneClasses[normalized] ?? 'bg-[#003399]/5 text-[#003399]/65 ring-[#003399]/10 dark:bg-white/10 dark:text-white/80 dark:ring-white/15')}>{status.replaceAll('_', ' ')}</span>
 }
 
 const statTones: Record<string, string> = {
-  emerald: 'bg-[#003399]/5 text-[#003399]', blue: 'bg-[#003399]/5 text-[#003399]', teal: 'bg-[#003399]/5 text-[#003399]',
-  orange: 'bg-[#FFF200]/35 text-[#003399]', violet: 'bg-[#003399]/5 text-[#003399]', cyan: 'bg-[#003399]/5 text-[#003399]',
-  pink: 'bg-[#003399]/5 text-[#003399]', red: 'bg-[#FFF200] text-[#003399]', amber: 'bg-[#FFF200]/35 text-[#003399]',
+  emerald: 'bg-[#003399]/5 text-[#003399] dark:bg-white/10 dark:text-[#f7f9ff]',
+  blue: 'bg-[#003399]/5 text-[#003399] dark:bg-white/10 dark:text-[#f7f9ff]',
+  teal: 'bg-[#003399]/5 text-[#003399] dark:bg-white/10 dark:text-[#f7f9ff]',
+  orange: 'bg-[#FFF200]/35 text-[#003399] dark:bg-[#FFF200]/40 dark:text-[#003399]',
+  violet: 'bg-[#003399]/5 text-[#003399] dark:bg-white/10 dark:text-[#f7f9ff]',
+  cyan: 'bg-[#003399]/5 text-[#003399] dark:bg-white/10 dark:text-[#f7f9ff]',
+  pink: 'bg-[#003399]/5 text-[#003399] dark:bg-white/10 dark:text-[#f7f9ff]',
+  red: 'bg-[#FFF200] text-[#003399] dark:bg-[#FFF200] dark:text-[#003399]',
+  amber: 'bg-[#FFF200]/35 text-[#003399] dark:bg-[#FFF200]/40 dark:text-[#003399]',
 }
 
 export function StatCard({ label, value, icon: Icon, tone = 'emerald' }: { label: string; value: string | number; note?: string; icon?: LucideIcon; tone?: string }) {
