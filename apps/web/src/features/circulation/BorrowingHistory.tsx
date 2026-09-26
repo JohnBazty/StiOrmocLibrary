@@ -28,18 +28,18 @@ export function BorrowingHistory() {
   const [reporting, setReporting] = useState<BorrowingHistoryData['items'][number] | null>(null)
   const [reportBusy, setReportBusy] = useState(false)
   const [reportError, setReportError] = useState('')
-  const load = useCallback(async () => {
-    setLoading(true); setError('')
+  const load = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true)
+    setError('')
     try { setData(await circulationApi.history()) }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Borrowing history is unavailable.') }
-    finally { setLoading(false) }
+    finally { if (!options?.silent) setLoading(false) }
   }, [])
   useEffect(() => {
     void load()
-    const refresh = () => void load()
-    const timer = window.setInterval(refresh, 5_000)
+    const refresh = () => void load({ silent: true })
     window.addEventListener('smartlib:circulation-updated', refresh)
-    return () => { window.clearInterval(timer); window.removeEventListener('smartlib:circulation-updated', refresh) }
+    return () => { window.removeEventListener('smartlib:circulation-updated', refresh) }
   }, [load])
 
   async function confirmCancellation(reason: string) {
