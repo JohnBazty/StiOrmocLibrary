@@ -4,11 +4,14 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import './index.css'
 import { MockAuthProvider } from './features/inventory/MockAuthContext'
+import { ThemeProvider } from './features/theme/ThemeProvider'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <MockAuthProvider><App /></MockAuthProvider>
+      <ThemeProvider>
+        <MockAuthProvider><App /></MockAuthProvider>
+      </ThemeProvider>
     </BrowserRouter>
   </StrictMode>,
 )
