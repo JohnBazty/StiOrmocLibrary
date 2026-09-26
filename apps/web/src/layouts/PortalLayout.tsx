@@ -135,18 +135,18 @@ export function PortalLayout({ role }: { role: Role }) {
     <div className="min-h-screen bg-[#FFFFFF] text-[#003399] transition-colors dark:bg-[#000d2b] dark:text-[#f2f6ff]">
       <Sidebar role={role} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-30 flex h-20 items-center border-b border-[#003399]/10 bg-white/90 px-4 backdrop-blur-xl transition-colors sm:px-6 lg:px-8 dark:border-white/10 dark:bg-[#001a4d]/92">
-          <button onClick={() => setSidebarOpen(true)} className="mr-3 rounded-xl border border-[#003399]/15 p-2.5 text-[#003399]/65 lg:hidden dark:border-white/15 dark:text-white/70"><Menu size={19} /></button>
-          <div className="hidden sm:block"><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#003399]/45 dark:text-white/45">{role === 'admin' ? 'Admin workspace' : role === 'faculty' ? 'Faculty portal' : 'Student portal'}</p><p className="mt-0.5 font-display text-sm font-bold text-[#003399] dark:text-white">{current?.label ?? 'Smart Library'}</p></div>
+        <header className="sticky top-0 z-30 flex h-16 items-center border-b border-[#003399]/10 bg-white/90 px-3 backdrop-blur-xl transition-colors sm:h-20 sm:px-6 lg:px-8 dark:border-white/10 dark:bg-[#001a4d]/92">
+          <button onClick={() => setSidebarOpen(true)} className="mr-2 rounded-xl border border-[#003399]/15 p-2.5 text-[#003399]/65 sm:mr-3 lg:hidden dark:border-white/15 dark:text-white/70"><Menu size={19} /></button>
+          <div className="min-w-0 flex-1 sm:block"><p className="truncate text-[10px] font-bold uppercase tracking-[0.15em] text-[#003399]/45 dark:text-white/45">{role === 'admin' ? 'Admin workspace' : role === 'faculty' ? 'Faculty portal' : 'Student portal'}</p><p className="mt-0.5 truncate font-display text-sm font-bold text-[#003399] dark:text-white">{current?.label ?? 'Smart Library'}</p></div>
           <label className="relative ml-auto hidden w-64 xl:block"><Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#003399]/45 dark:text-white/45" size={15} /><input placeholder="Search anywhere..." className="h-10 w-full rounded-xl border border-[#003399]/15 bg-[#003399]/5 pl-9 pr-3 text-sm outline-none transition focus:border-[#003399]/15 focus:bg-white focus:ring-4 focus:ring-[#003399]/10 dark:border-white/15 dark:bg-white/5 dark:text-white dark:focus:bg-[#002266]" /></label>
-          <div className="ml-auto flex items-center gap-2 xl:ml-3">
+          <div className="ml-2 flex shrink-0 items-center gap-1.5 sm:gap-2 xl:ml-3">
             <ThemeToggle />
             <button onClick={() => navigate(role === 'admin' ? '/admin/announcements' : role === 'faculty' ? '/faculty/notifications' : '/student/notifications')} aria-label="Notifications" className="relative rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 transition hover:bg-[#003399]/5 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><Bell size={18} />{hasAdminAlerts ? <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#FFF200] ring-2 ring-white dark:ring-[#001a4d]" /> : null}</button>
             <button onClick={signOut} aria-label="Sign out" title="Sign out" className="rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 transition hover:bg-[#003399]/5 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><LogOut size={18} /></button>
             <button aria-label="Collapse sidebar" className="hidden rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 lg:block dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80"><PanelLeftClose size={18} /></button>
           </div>
         </header>
-        <main className="mx-auto max-w-[1500px] p-4 sm:p-6 lg:p-8"><Outlet /></main>
+        <main className="mx-auto max-w-[1500px] p-3 sm:p-6 lg:p-8"><Outlet /></main>
         <AttendanceFab role={role} />
       </div>
     </div>

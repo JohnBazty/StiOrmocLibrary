@@ -9,11 +9,11 @@ export function cn(...classes: Array<string | false | null | undefined>) {
 export function PageHeader({ eyebrow, title, action }: { eyebrow?: string; title: string; description?: string; action?: ReactNode }) {
   return (
     <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div>
+      <div className="min-w-0">
         {eyebrow ? <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#003399] dark:text-[#f2f6ff]">{eyebrow}</p> : null}
         <h1 className="font-display text-2xl font-bold tracking-tight text-[#003399] sm:text-3xl dark:text-white">{title}</h1>
       </div>
-      {action}
+      {action ? <div className="flex flex-wrap gap-2">{action}</div> : null}
     </div>
   )
 }
@@ -109,6 +109,54 @@ export function MoreButton() {
 
 export function CardLink({ children }: { children: ReactNode }) {
   return <span className="inline-flex items-center gap-1 text-xs font-bold text-[#003399]">{children}<ArrowUpRight size={13} /></span>
+}
+
+/** Mobile stacked record card (student/faculty lists). */
+export function RecordCard({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <article className={cn('rounded-2xl border border-[#003399]/10 bg-white p-4 shadow-[0_1px_3px_rgba(0,51,153,0.06)] dark:border-white/10 dark:bg-[#001a4d]', className)}>
+      {children}
+    </article>
+  )
+}
+
+export function RecordField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#003399]/45 dark:text-white/45">{label}</p>
+      <div className="mt-1 text-sm font-semibold text-[#003399] dark:text-[#f7f9ff]">{children}</div>
+    </div>
+  )
+}
+
+/** Desktop table + mobile card stack. Pass table for md+ and cards for small screens. */
+export function ResponsiveRecords({
+  table,
+  cards,
+  empty,
+  emptyLabel = 'No records found.',
+  loading,
+  loadingLabel = 'Loading records…',
+}: {
+  table: ReactNode
+  cards: ReactNode
+  empty?: boolean
+  emptyLabel?: string
+  loading?: boolean
+  loadingLabel?: string
+}) {
+  if (loading) {
+    return <p className="px-5 py-12 text-center text-sm font-semibold text-[#003399] dark:text-[#f7f9ff]">{loadingLabel}</p>
+  }
+  if (empty) {
+    return <p className="px-5 py-12 text-center text-sm font-semibold text-[#003399] dark:text-[#f7f9ff]">{emptyLabel}</p>
+  }
+  return (
+    <>
+      <div className="hidden md:block">{table}</div>
+      <div className="space-y-3 p-4 md:hidden">{cards}</div>
+    </>
+  )
 }
 
 export function BookCover({ code, accent, className }: { code: string; accent: string; className?: string }) {
