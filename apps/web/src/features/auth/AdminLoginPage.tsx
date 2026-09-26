@@ -1,6 +1,7 @@
 import { ArrowLeft, Eye, EyeOff, IdCard, LibraryBig, LockKeyhole, ShieldCheck } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { ThemeToggle } from '../theme/ThemeToggle'
 import { AuthenticationError, login } from './auth-api'
 import { clearAccessToken, getCurrentClaims, saveAccessToken } from './auth-storage'
 
@@ -51,6 +52,7 @@ export function AdminLoginPage() {
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#003399] px-5 py-10">
       <div className="absolute -left-36 -top-36 h-96 w-96 rounded-full border-[70px] border-[#FFF200]/10" />
       <div className="absolute -bottom-44 -right-32 h-[30rem] w-[30rem] rounded-full border-[85px] border-[#FFFFFF]/5" />
+      <div className="absolute right-4 top-4 z-20 sm:right-6 sm:top-6"><ThemeToggle className="rounded-xl border border-white/20 bg-white/10 p-2.5 text-white transition hover:bg-white/20" /></div>
       <div className="relative w-full max-w-md">
         <div className="mb-6 flex items-center justify-between text-[#FFFFFF]"><Link to="/login" className="inline-flex items-center gap-2 text-sm font-bold text-[#FFFFFF]/75 hover:text-[#FFF200]"><ArrowLeft size={17} /> User login</Link><span className="inline-flex items-center gap-2 rounded-full border border-[#FFF200]/40 bg-[#FFF200]/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[.16em] text-[#FFF200]"><ShieldCheck size={14} /> Restricted access</span></div>
         <section className="overflow-hidden rounded-[2rem] bg-[#FFFFFF] shadow-2xl shadow-[#003399]">

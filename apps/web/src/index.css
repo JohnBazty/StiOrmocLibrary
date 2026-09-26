@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: "Segoe UI Variable", "Segoe UI", Arial, sans-serif;
   --font-display: "Aptos Display", "Segoe UI Variable Display", "Segoe UI", Arial, sans-serif;
@@ -11,6 +13,14 @@
   background: #FFFFFF;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  --sl-bg: #FFFFFF;
+  --sl-bg-elevated: #FFFFFF;
+  --sl-bg-muted: rgba(0, 51, 153, 0.05);
+  --sl-text: #003399;
+  --sl-text-muted: rgba(0, 51, 153, 0.65);
+  --sl-border: rgba(0, 51, 153, 0.15);
+  --sl-accent: #FFF200;
+  --sl-brand: #003399;
 }
 
 * {
@@ -19,13 +29,16 @@
 
 html {
   min-width: 320px;
-  background: #FFFFFF;
+  background: var(--sl-bg);
+  color: var(--sl-text);
 }
 
 body {
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
+  background: var(--sl-bg);
+  color: var(--sl-text);
 }
 
 button,
@@ -85,4 +98,180 @@ a {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Dark mode — STI palette only (deep navy / white / yellow)                  */
+/* Remaps the most common hardcoded utility classes used across portals.      */
+/* -------------------------------------------------------------------------- */
+
+html.dark {
+  color-scheme: dark;
+  --sl-bg: #000d2b;
+  --sl-bg-elevated: #001a4d;
+  --sl-bg-muted: rgba(255, 255, 255, 0.06);
+  --sl-text: #f2f6ff;
+  --sl-text-muted: rgba(242, 246, 255, 0.7);
+  --sl-border: rgba(255, 255, 255, 0.14);
+  --sl-accent: #FFF200;
+  --sl-brand: #003399;
+  color: var(--sl-text);
+  background: var(--sl-bg);
+}
+
+html.dark body {
+  color: var(--sl-text);
+  background: var(--sl-bg);
+}
+
+html.dark ::selection {
+  color: #000d2b;
+  background: #FFF200;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 242, 0, 0.55);
+  background-clip: padding-box;
+}
+
+/* Surfaces */
+html.dark :where(.bg-white, .bg-\[\#FFFFFF\], .bg-\[\#ffffff\], .bg-\[\#fff\]) {
+  background-color: var(--sl-bg-elevated) !important;
+}
+
+html.dark :where(.bg-white\/90) {
+  background-color: rgba(0, 26, 77, 0.92) !important;
+}
+
+html.dark :where(.bg-\[\#003399\]\/5, .bg-\[\#003399\]\/\[0\.05\]) {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+html.dark :where(.bg-\[\#003399\]\/10) {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+html.dark :where(.hover\:bg-\[\#003399\]\/5:hover) {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html.dark :where(.focus\:bg-white:focus) {
+  background-color: #002266 !important;
+}
+
+/* Text — body/ink blue becomes light; solid brand buttons keep white text */
+html.dark :where(
+  .text-\[\#003399\],
+  .text-\[\#003399\]\/90,
+  .text-\[\#003399\]\/80,
+  .text-\[\#003399\]\/75,
+  .text-\[\#003399\]\/70,
+  .text-\[\#003399\]\/65,
+  .text-\[\#003399\]\/60,
+  .text-\[\#003399\]\/55,
+  .text-\[\#003399\]\/50,
+  .text-\[\#003399\]\/45,
+  .text-\[\#003399\]\/40
+) {
+  color: var(--sl-text) !important;
+}
+
+html.dark :where(
+  .text-\[\#003399\]\/65,
+  .text-\[\#003399\]\/60,
+  .text-\[\#003399\]\/55,
+  .text-\[\#003399\]\/50,
+  .text-\[\#003399\]\/45,
+  .text-\[\#003399\]\/40
+) {
+  color: var(--sl-text-muted) !important;
+}
+
+html.dark :where(.hover\:text-\[\#003399\]:hover) {
+  color: #ffffff !important;
+}
+
+/* Borders */
+html.dark :where(
+  .border-\[\#003399\]\/10,
+  .border-\[\#003399\]\/15,
+  .border-\[\#003399\]\/20,
+  .border-\[\#003399\]\/25,
+  .border-\[\#003399\]
+) {
+  border-color: var(--sl-border) !important;
+}
+
+html.dark :where(.ring-\[\#003399\]\/10, .focus\:ring-\[\#003399\]\/10:focus) {
+  --tw-ring-color: rgba(255, 242, 0, 0.25) !important;
+}
+
+html.dark :where(.focus\:border-\[\#003399\]:focus, .focus\:border-\[\#003399\]\/15:focus) {
+  border-color: rgba(255, 242, 0, 0.45) !important;
+}
+
+/* Shadows soften on dark navy */
+html.dark :where([class*="shadow"]) {
+  --tw-shadow-color: rgba(0, 0, 0, 0.35);
+}
+
+/* Form controls */
+html.dark :where(input, select, textarea) {
+  color-scheme: dark;
+}
+
+html.dark :where(
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea
+) {
+  background-color: #001433;
+  color: #f2f6ff;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+html.dark :where(input::placeholder, textarea::placeholder) {
+  color: rgba(242, 246, 255, 0.45);
+}
+
+/* Tables: keep brand header; zebra/body rows use elevated navy */
+html.dark thead.bg-\[\#003399\] {
+  background-color: #003399 !important;
+  color: #ffffff !important;
+}
+
+html.dark tbody tr {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Yellow surfaces keep navy ink (STI yellow + blue contrast) */
+html.dark :where(.bg-\[\#FFF200\], .bg-\[\#FFF200\]\/35, .bg-\[\#FFF200\]\/40) {
+  color: #003399 !important;
+}
+
+html.dark :where(
+  .bg-\[\#FFF200\].text-\[\#003399\],
+  .bg-\[\#FFF200\]\/35.text-\[\#003399\],
+  .bg-\[\#FFF200\] .text-\[\#003399\],
+  .bg-\[\#FFF200\]\/35 .text-\[\#003399\],
+  .bg-\[\#FFF200\] [class*="text-[#003399]"],
+  .bg-\[\#FFF200\]\/35 [class*="text-[#003399]"]
+) {
+  color: #003399 !important;
+}
+
+/* Solid brand navy stays brand navy (login hero, primary CTAs) */
+html.dark :where(.bg-\[\#003399\], .bg-\[\#003399\]\/90) {
+  background-color: #003399 !important;
+}
+
+html.dark :where(.bg-\[\#003399\] .text-\[\#FFFFFF\], .bg-\[\#003399\] .text-white) {
+  color: #ffffff !important;
+}
+
+/* Sidebar active item: white pill becomes yellow so it stays visible on navy */
+html.dark aside a.bg-white,
+html.dark aside .bg-white.text-\[\#003399\] {
+  background-color: #FFF200 !important;
+  color: #003399 !important;
 }

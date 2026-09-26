@@ -9,6 +9,20 @@
       content="STI Ormoc Smart Library Management System prototype"
     />
     <title>STI Ormoc Smart Library</title>
+    <script>
+      (function () {
+        try {
+          var theme = localStorage.getItem('smartlib-theme')
+          if (theme === 'dark') {
+            document.documentElement.classList.add('dark')
+            document.documentElement.dataset.theme = 'dark'
+            document.documentElement.style.colorScheme = 'dark'
+            var meta = document.querySelector('meta[name="theme-color"]')
+            if (meta) meta.setAttribute('content', '#000d2b')
+          }
+        } catch (e) {}
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

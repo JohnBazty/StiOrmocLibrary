@@ -1,6 +1,7 @@
 import { Eye, EyeOff, IdCard, LibraryBig, LockKeyhole, ShieldCheck, UserRound } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { ThemeToggle } from '../theme/ThemeToggle'
 import { login, AuthenticationError } from './auth-api'
 import { dashboardForRole, getCurrentClaims, saveAccessToken, type AuthRole } from './auth-storage'
 
@@ -53,7 +54,8 @@ export function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-screen bg-[#FFFFFF] lg:grid-cols-[1.05fr_.95fr]">
+    <main className="relative grid min-h-screen bg-[#FFFFFF] transition-colors lg:grid-cols-[1.05fr_.95fr] dark:bg-[#000d2b]">
+      <div className="absolute right-4 top-4 z-20 sm:right-6 sm:top-6"><ThemeToggle /></div>
       <section className="relative hidden overflow-hidden bg-[#003399] p-12 text-[#FFFFFF] lg:flex lg:flex-col lg:justify-between">
         <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full border-[70px] border-[#FFF200]/10" />
         <div className="relative flex items-center gap-3"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FFF200] text-[#003399]"><LibraryBig /></span><div><p className="font-display text-lg font-black">STI ORMOC</p><p className="text-xs font-bold uppercase tracking-[.18em] text-[#FFFFFF]/70">Smart Library</p></div></div>

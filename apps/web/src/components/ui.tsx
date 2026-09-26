@@ -10,8 +10,8 @@ export function PageHeader({ eyebrow, title, action }: { eyebrow?: string; title
   return (
     <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        {eyebrow ? <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#003399]">{eyebrow}</p> : null}
-        <h1 className="font-display text-2xl font-bold tracking-tight text-[#003399] sm:text-3xl">{title}</h1>
+        {eyebrow ? <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#003399] dark:text-[#f2f6ff]">{eyebrow}</p> : null}
+        <h1 className="font-display text-2xl font-bold tracking-tight text-[#003399] sm:text-3xl dark:text-white">{title}</h1>
       </div>
       {action}
     </div>
@@ -21,14 +21,14 @@ export function PageHeader({ eyebrow, title, action }: { eyebrow?: string; title
 export function Button({ children, variant = 'primary', className, type = 'button', onClick, disabled = false }: { children: ReactNode; variant?: 'primary' | 'secondary' | 'ghost'; className?: string; type?: 'button' | 'submit'; onClick?: () => void; disabled?: boolean }) {
   const variants = {
     primary: 'bg-[#003399] text-white shadow-sm hover:bg-[#003399]',
-    secondary: 'border border-[#003399]/15 bg-white text-[#003399] hover:border-[#003399]/15 hover:text-[#003399]',
-    ghost: 'text-[#003399]/65 hover:bg-[#003399]/5 hover:text-[#003399]',
+    secondary: 'border border-[#003399]/15 bg-white text-[#003399] hover:border-[#003399]/15 hover:text-[#003399] dark:border-white/20 dark:bg-[#001a4d] dark:text-[#f2f6ff]',
+    ghost: 'text-[#003399]/65 hover:bg-[#003399]/5 hover:text-[#003399] dark:text-white/70 dark:hover:bg-white/10 dark:hover:text-white',
   }
   return <button type={type} onClick={onClick} disabled={disabled} className={cn('inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-45', variants[variant], className)}>{children}</button>
 }
 
 export function SectionCard({ children, className }: { children: ReactNode; className?: string }) {
-  return <section className={cn('rounded-2xl border border-[#003399]/10 bg-white shadow-[0_1px_3px_rgba(0,51,153,0.08)]', className)}>{children}</section>
+  return <section className={cn('rounded-2xl border border-[#003399]/10 bg-white shadow-[0_1px_3px_rgba(0,51,153,0.08)] dark:border-white/10 dark:bg-[#001a4d] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]', className)}>{children}</section>
 }
 
 const toneClasses: Record<string, string> = {
@@ -67,8 +67,8 @@ export function StatCard({ label, value, icon: Icon, tone = 'emerald' }: { label
     <SectionCard className="p-4 sm:p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold text-[#003399]/65">{label}</p>
-          <p className="mt-2 font-display text-2xl font-bold tracking-tight text-[#003399]">{value}</p>
+          <p className="text-xs font-semibold text-[#003399]/65 dark:text-white/70">{label}</p>
+          <p className="mt-2 font-display text-2xl font-bold tracking-tight text-[#003399] dark:text-white">{value}</p>
         </div>
         {Icon && <div className={cn('rounded-xl p-2.5', statTones[tone] ?? statTones.emerald)}><Icon size={18} /></div>}
       </div>
@@ -79,8 +79,8 @@ export function StatCard({ label, value, icon: Icon, tone = 'emerald' }: { label
 export function TableSearch({ placeholder = 'Search records...', value, onChange }: { placeholder?: string; value?: string; onChange?: (value: string) => void }) {
   return (
     <label className="relative block w-full sm:max-w-xs">
-      <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#003399]/45" size={16} />
-      <input value={value} onChange={(event) => onChange?.(event.target.value)} placeholder={placeholder} className="h-10 w-full rounded-xl border border-[#003399]/15 bg-[#003399]/5 pl-9 pr-3 text-sm outline-none transition focus:border-[#003399]/15 focus:bg-white focus:ring-4 focus:ring-[#003399]/10" />
+      <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#003399]/45 dark:text-white/45" size={16} />
+      <input value={value} onChange={(event) => onChange?.(event.target.value)} placeholder={placeholder} className="h-10 w-full rounded-xl border border-[#003399]/15 bg-[#003399]/5 pl-9 pr-3 text-sm outline-none transition focus:border-[#003399]/15 focus:bg-white focus:ring-4 focus:ring-[#003399]/10 dark:border-white/15 dark:bg-white/5 dark:text-white dark:focus:bg-[#002266]" />
     </label>
   )
 }
@@ -88,8 +88,8 @@ export function TableSearch({ placeholder = 'Search records...', value, onChange
 export function TableShell({ title, controls, children }: { title: string; subtitle?: string; controls?: ReactNode; children: ReactNode }) {
   return (
     <SectionCard className="overflow-hidden">
-      <div className="flex flex-col gap-3 border-b border-[#003399]/15 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="font-display text-base font-bold text-[#003399]">{title}</h2>
+      <div className="flex flex-col gap-3 border-b border-[#003399]/15 px-5 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-white/10">
+        <h2 className="font-display text-base font-bold text-[#003399] dark:text-white">{title}</h2>
         {controls}
       </div>
       <div className="overflow-x-auto">{children}</div>
@@ -98,7 +98,7 @@ export function TableShell({ title, controls, children }: { title: string; subti
 }
 
 export function MoreButton() {
-  return <button aria-label="More actions" className="rounded-lg p-2 text-[#003399]/45 transition hover:bg-[#003399]/5 hover:text-[#003399]"><MoreHorizontal size={17} /></button>
+  return <button aria-label="More actions" className="rounded-lg p-2 text-[#003399]/45 transition hover:bg-[#003399]/5 hover:text-[#003399] dark:text-white/45 dark:hover:bg-white/10 dark:hover:text-white"><MoreHorizontal size={17} /></button>
 }
 
 export function CardLink({ children }: { children: ReactNode }) {
