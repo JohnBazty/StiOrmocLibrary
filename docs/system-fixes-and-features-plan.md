@@ -7,11 +7,11 @@
 
 ## Why
 
-The deployed site has reported failures in reservation, clearance, fines, printing, lost-book reporting, attendance, and category management, while several administrative and student workflows are incomplete. The updated bug list also asks for book archiving, a lost-book quote and charge, and institutional-email registration. This plan sequences repairs before new features and defines how to verify each change without damaging live library records. Phases 1 and 3 are implemented and deployed; Phase 2 remains planned.
+The deployed site has reported failures in reservation, clearance, fines, printing, lost-book reporting, attendance, and category management, while several administrative and student workflows are incomplete. The updated bug list also asks for book archiving, a lost-book quote and charge, and institutional-email registration. This plan sequences repairs before new features and defines how to verify each change without damaging live library records. Phases 1 and 3 and Phase 2 item 1 are implemented and deployed. Phase 2 item 2 awaits the user's go-ahead.
 
 ## Current implementation and constraints
 
-- The React app and Express API are live on Vercel with Supabase Postgres. All planned features and deployment checks must use Supabase Postgres as the active database; local MySQL remains an inactive rollback reference only. The latest MySQL migration is `20260923_040_printing_digital_receipts.sql` (next `041`); the applied Supabase tree reaches `009` (next `010`). Reconcile the hosted migration ledger's untracked `007` and unrecorded `002`/`005` definitions before replaying migrations.
+- The React app and Express API are live on Vercel with Supabase Postgres. All planned features and deployment checks must use Supabase Postgres as the active database; local MySQL remains an inactive rollback reference only. The latest MySQL reference migration is `20260926_042_phase2_user_management.sql` (next `043`); the applied Supabase tree reaches `011` (next `012`). Reconcile the hosted migration ledger's unrecorded `002`/`005` definitions before any whole-directory replay.
 - Category create/edit/delete and reassignment already exist at `/admin/categories`, but the current table does not show every field required by the preserved product draft (category ID, description, date added). Extend and verify that workflow instead of building a second one.
 - The student dashboard already renders one published announcement when the API supplies it. Verify display and refresh after a real announcement is published; scheduled publication still depends on a durable job runner.
 - Student lost-book reporting, staff confirmation/rejection, copy-condition auditing, print-supply PDF reporting, and notification storage already have API foundations. The requested work should complete and connect those paths.
@@ -138,13 +138,19 @@ Today's check-in and attendance history/report 12-hour formatting are both cover
 
 - **Plan and source review:** `built` — scope and source review completed
 - **Phase 1 — Reported bugs:** `built` — all eight repairs are deployed; controlled production API writes, student browser controls, Supabase checks, and automated UI tests passed
-- **Phase 2 — Admin/catalog/reservations/finance:** `planned`
+- **Phase 2 — Admin/catalog/reservations/finance:** `inprogress` — item 1 user management is built and deployed; item 2 has not started and requires the user's go-ahead
 - **Phase 3 — Printing/student additions, Admin Book archive, and floor-plan image:** `built` — P1, P2, P3, A9, and F1 are deployed; R1 school-email registration remains explicitly excluded by the user
 - **Phase 4 — Attendance and semester automation:** `planned`
 - **Phase 5 — Student profile customization:** `planned`
 - **Future book comments/reviews/feedback:** `planned` — deferred from the current release
 
 For each active phase, change its status to `built` only after the updated behavior is verified on the deployed site; record the deployment and checks alongside that status.
+
+### Phase 2 item 1 — User management (2026-09-26; built)
+
+- Why: Admin needs to correct student profiles and control access without deleting circulation, payment, printing, or attendance history.
+- How: Extend the Admin directory to show Active, Deactivated, and Archived accounts. Permit only Admin to edit a Student's name, email, contact number, program, and year/grade level or change that Student's status. Require a reason and record actor/time/changed field names in an append-only management event. Keep school ID, password, and role read-only. Synchronize the linked `accounts` and `users` rows in one transaction. Archive is blocked while a loan or reservation is open. Status changes increment authentication versions so old JWTs and sessions remain invalid after later reactivation.
+- Tracking: Supabase migration `011` is applied; MySQL `042` remains an inactive rollback reference. The API and web tests and builds passed. Disposable Student accounts on preview `dpl_FmggKBafCQGkLVLQhHTP7zqVRAbL` and production `dpl_GX1JvCk3ys3CorzpMfRQsrd7tgqm` passed Admin authorization, invalid reason, profile edit, deactivation, reactivation, archiving, old-token revocation, login denial, status synchronization, audit readback, and archived-directory visibility. All disposable records were removed. The final production deployment `dpl_Czesiz9bK7Dsn5f5bq3UCDZ5TTfg` hides mutation controls from Librarians and checks the linked operational user's status at login; the public alias returned HTTP 200 for `/admin/users` and healthy database schema. Item 2 has not started.
 
 ### Phase 3 deployment and verification (2026-09-26)
 
@@ -194,3 +200,5 @@ For each active phase, change its status to `built` only after the updated behav
 - **2026-09-26:** Added Phase 3 F1 at the user's request: retire the interactive floor-plan features from the active app, preserve their code and Supabase data for future development, and replace them with an Admin-uploaded floor-plan image shown to all roles. The plan explicitly preserves category and inventory shelf workflows that depend on the current floor-plan data. Scope is now 31 items; no application, database, or deployment change was made for F1 yet.
 - **2026-09-26:** Clarified F1's book View location behavior: keep the action in catalog, cart, borrowing history, and reservations; open the uploaded image with the book's shelf label beside it rather than relying on the retired interactive highlight. No application or deployment change was made.
 - **2026-09-26:** Completed and deployed Phase 3 P2, A9, and F1 except excluded R1. A bundled browser renders DOCX to the PDF used for server-side page counting and staff printing. The Admin Book archive and image-based floor-plan viewer are live; legacy floor-plan data is preserved. End-to-end DOCX, archive safety, image upload, and shelf checks passed on preview or Supabase, and 98 production read routes passed. No real floor-plan image has been uploaded; printing is currently paused by staff. Marked Phase 3 `built` for its deployed features, with those operational conditions recorded above.
+- **2026-09-26:** Began Phase 2 item 1 at the user's request. Student profile editing and audited account lifecycle actions are being implemented with immediate JWT/session invalidation and preserved historical records. Item 2 requires a separate go-ahead after item 1 is finished.
+- **2026-09-26:** Completed Phase 2 item 1 on Supabase and Vercel production. The Admin directory now edits Student profiles and activates, deactivates, or archives accounts with reasoned audit records. Existing access is revoked on status changes; open loans/reservations block archive. Preview and production disposable-account workflows passed and were cleaned. The final deployment hides mutation controls from Librarians. Item 2 awaits the user's go-ahead.

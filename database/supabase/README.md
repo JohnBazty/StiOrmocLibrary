@@ -19,7 +19,8 @@
 --   008_cutover_schema_gaps.sql            — missing category description and asset-code history ledger
 --   009_inventory_audit_orphan_history.sql  — nullable copy link for Deleted audit snapshots
 --   010_phase3_archive_floor_image.sql      — archive actor and published floor image history
--- Next Postgres schema number: 011. Apply reviewed files individually.
+--   011_phase2_user_management.sql          — account auth versions and Admin management audit
+-- Next Postgres schema number: 012. Apply reviewed files individually.
 --
 -- MySQL tree under database/mysql56-schema.sql and database/migrations/ remains
 -- the historical contract and local rollback path (latest MySQL migration: 041).

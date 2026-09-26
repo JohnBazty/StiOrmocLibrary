@@ -6,15 +6,15 @@ The API is mid-cutover to Supabase PostgreSQL. See [supabase-migration-plan.md](
 
 - When `DATABASE_URL` (postgresql://…) is set, the runtime uses `pg` against drafts under [database/supabase/](../database/supabase/).
 - When unset, the runtime uses local MySQL via `mysql2` and the MySQL tree below (rollback / offline path).
-- The MySQL baseline and ordered migrations remain the historical product contract. Latest MySQL migration: `20260926_041_phase3_archive_floor_image.sql`. Next MySQL number if needed: **`042`**.
+- The MySQL baseline and ordered migrations remain the historical product contract. Latest MySQL reference migration: `20260926_042_phase2_user_management.sql`. Next MySQL number if needed: **`043`**. MySQL is not the active database.
 - Additive MAIN product tables for Postgres land in `database/supabase/005_main_product_gapfill.sql` (033–040).
-- The 2026-09-25 historical data cutover copied local MySQL rows into Supabase after applying Postgres 008–009. Hosted users/accounts were preserved, and the pre-cutover hosted snapshot is in schema `mysql_cutover_backup_20260925100301`. Postgres 010 adds book archive actor and floor image version metadata. Next Postgres migration number: **011**. See the cutover record in the migration plan.
+- The 2026-09-25 historical data cutover copied local MySQL rows into Supabase after applying Postgres 008–009. Hosted users/accounts were preserved, and the pre-cutover hosted snapshot is in schema `mysql_cutover_backup_20260925100301`. Postgres 010 adds book archive actor and floor image version metadata. Postgres 011 adds account authentication versions and management audit events. Next Postgres migration number: **012**. See the cutover record in the migration plan.
 
 ## Target requirements versus current baseline
 
 The target product requirements are the preserved PDFs indexed by [source-of-truth.md](source-of-truth.md). This file documents the **currently implemented** database baseline; it must not override newer product requirements.
 
-Known target gaps include Library Staff/Student Assistant authorization, Archived accounts, renewals, expanded reservation states, richer catalog/research data, and the future time-synchronized dynamic QR mode. Permanent offline attendance passes, cash fine collection, fine caps and infractions, operating-calendar calculation, print revenue/supply history, and archive/clearance audit trails now have additive schema support. Add remaining gaps through versioned, backward-safe migrations before depending on them in application code.
+Known target gaps include Library Staff/Student Assistant authorization, renewals, expanded reservation states, richer catalog/research data, and the future time-synchronized dynamic QR mode. Permanent offline attendance passes, cash fine collection, fine caps and infractions, operating-calendar calculation, print revenue/supply history, and archive/clearance audit trails now have additive schema support. Add remaining gaps through versioned, backward-safe migrations before depending on them in application code.
 
 The structural catalog migration [20260816_002_book_research_management.sql](../database/migrations/20260816_002_book_research_management.sql) supplies the active four-table `titles`, `authors`, `research_records`, and `physical_copies` model used by the API. `physical_copies.material_id` is the explicit compatibility mapping to the existing `materials.material_id` value. Deployments with legacy material rows still require a separately reconciled data backfill.
 
@@ -68,6 +68,8 @@ printers --< ink_repository
 - `auth_sessions`: expiring server-side session payloads keyed by an opaque session ID.
 
 Accounts should be deactivated through `account_status`; do not delete users with operational history.
+
+Phase 2 migration MySQL `042` (rollback reference) / applied Supabase `011` adds `auth_version` to both `accounts` and `users` and `account_management_events` with the affected account, actor, action, old/new status or changed field names, reason, and time. Admin Student account changes update the linked identity rows in one transaction; status changes increment both versions. Every protected JWT request checks the current account status and version, and legacy session requests check the linked operational user and account state. Archived accounts remain in the directory and keep their operational history. Archive is blocked by open loans or reservations.
 Expired rows in `auth_sessions` are periodically removed by the API session store.
 Migration `20260816_005_jwt_role_authentication.sql` adds the unique `school_id` and indexed four-value `user_role` compatibility fields without replacing normalized roles or server-side sessions.
 Migration `20260820_007_normalized_accounts_authentication.sql` adds `accounts` and `student_profiles`, backfills existing user credentials into linked account rows, and leaves all operational `users.user_id` foreign keys unchanged. New mobile-style student registration writes only the normalized account/profile pair; downstream operational enrollment can link an account to a user through `accounts.user_id` when those workflows are introduced.
