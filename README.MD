@@ -1,12 +1,12 @@
 # STI Ormoc Smart Library
 
-SmartLib is a web-based library management system for STI College Ormoc. It combines a React administration and user portal with a modular-monolith Node.js API and a relational database (MySQL locally, Supabase Postgres when `DATABASE_URL` is set — see [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md)).
+SmartLib is a web-based library management system for STI College Ormoc. It combines a React administration and user portal with a modular-monolith Node.js API. The active local and deployed database is Supabase Postgres; the MySQL schema remains a rollback reference. See [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md).
 
-This guide explains how to prepare a Windows development computer, configure MySQL and MySQL Workbench, initialize the database, create an administrator, run the system, test it, and prepare a production build.
+This guide explains how to prepare a Windows development computer, run and test the system, and prepare a production build. Its MySQL setup sections document the retained rollback environment.
 
 ## AI agents — read this first
 
-1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) (start-session protocol, plan statuses, MySQL migration tracker: latest **040**, next **041**).
+1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) (start-session protocol, plan statuses, MySQL reference migration tracker: latest **041**, next **042**; Supabase: latest **010**, next **011**).
 2. Read [AGENTS.md](AGENTS.md) and [agent.md](agent.md).
 3. Database cutover status: [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md).
 
@@ -38,7 +38,7 @@ React + Vite + Tailwind CSS web application
 Node.js + Express modular-monolith API
                     |
                     v
-           MySQL relational database
+           Supabase Postgres database
 ```
 
 The repository is an npm workspace:

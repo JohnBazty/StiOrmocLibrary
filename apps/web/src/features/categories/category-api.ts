@@ -41,7 +41,8 @@ async function request<T>(url: string, options: RequestInit = {}) {
 
 export const categoryApi = {
   list: () => request<Category[]>('/api/categories'),
-  listShelves: async () => (await request<{ shelves: Array<{ id: number; label: string; columnCount: number; rowCount: number }> }>('/api/v1/floor-plan')).shelves,
+  listShelves: () => request<Array<{ id: number; label: string; columnCount: number; rowCount: number }>>('/api/categories/shelves'),
+  addShelf: (label: string) => request<{ id: number; label: string }>('/api/categories/shelves', { method: 'POST', body: JSON.stringify({ label }) }),
   create: (payload: CategoryPayload) => request<CategorySaveResult>('/api/categories', { method: 'POST', body: JSON.stringify(payload) }),
   update: (categoryId: number, payload: CategoryPayload) => request<CategorySaveResult>(`/api/categories/${categoryId}`, { method: 'PUT', body: JSON.stringify(payload) }),
   remove: (categoryId: number) => request(`/api/categories/${categoryId}`, { method: 'DELETE' }),

@@ -7,7 +7,8 @@ import { env } from '../src/config/env.js'
 
 /**
  * Apply ordered SQL files under database/supabase/ to the DATABASE_URL Postgres.
- * Usage: node scripts/run-supabase-schema.js [optional-single-filename]
+ * Usage: node scripts/run-supabase-schema.js reviewed-single-filename.sql
+ * Whole-directory replay is unsafe while 002 is a draft and 007 is untracked.
  */
 if (env.db.driver !== 'postgres' || !env.db.connectionString) {
   throw new Error('Set DATABASE_URL (postgresql://…) in apps/api/.env before running Supabase schema scripts.')
@@ -15,6 +16,9 @@ if (env.db.driver !== 'postgres' || !env.db.connectionString) {
 
 const supabaseDir = fileURLToPath(new URL('../../../database/supabase/', import.meta.url))
 const onlyFile = process.argv[2]
+if (!onlyFile || !/^\d{3}_[a-z0-9_]+\.sql$/i.test(onlyFile)) {
+  throw new Error('Pass one reviewed Supabase SQL filename; whole-directory replay is disabled.')
+}
 
 function splitSql(source) {
   const statements = []
@@ -56,14 +60,7 @@ try {
     applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`)
 
-  const files = onlyFile
-    ? [onlyFile]
-    : (await fs.readdir(supabaseDir))
-        .filter((name) => /^\d+_.+\.sql$/i.test(name) || /^\d{3}_.+\.sql$/i.test(name))
-        .filter((name) => name.endsWith('.sql'))
-        .sort()
-
-  if (!files.length) throw new Error(`No SQL files found in ${supabaseDir}`)
+  const files = [onlyFile]
 
   for (const fileName of files) {
     const fullPath = path.join(supabaseDir, fileName)
@@ -82,17 +79,24 @@ try {
     }
 
     const statements = splitSql(source)
-    for (let index = 0; index < statements.length; index += 1) {
-      try {
-        await client.query(statements[index])
-      } catch (error) {
-        throw new Error(`${fileName}, statement ${index + 1} failed: ${error.message}`, { cause: error })
+    await client.query('BEGIN')
+    try {
+      for (let index = 0; index < statements.length; index += 1) {
+        try {
+          await client.query(statements[index])
+        } catch (error) {
+          throw new Error(`${fileName}, statement ${index + 1} failed: ${error.message}`, { cause: error })
+        }
       }
+      await client.query(
+        'INSERT INTO schema_migrations (migration_name, checksum) VALUES ($1, $2)',
+        [fileName, checksum],
+      )
+      await client.query('COMMIT')
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
     }
-    await client.query(
-      'INSERT INTO schema_migrations (migration_name, checksum) VALUES ($1, $2)',
-      [fileName, checksum],
-    )
     console.log(`Applied: ${fileName} (${statements.length} statements)`)
   }
   console.log(`Supabase schema run complete: ${files.length} file(s) checked.`)

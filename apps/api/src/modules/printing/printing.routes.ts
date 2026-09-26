@@ -3,8 +3,9 @@ import multer from 'multer'
 import { HttpError } from '../../core/http-error.ts'
 import { printingController } from './printing.controller.ts'
 
-const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:10*1024*1024,files:1},fileFilter:(_request,file,done)=>{const allowed=['application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document'];if(!allowed.includes(file.mimetype)){done(new HttpError(422,'PRINT_FILE_INVALID','Only PDF and DOCX documents are allowed.'));return}done(null,true)}})
-const documentUpload=(request:Request,response:Response,next:NextFunction)=>upload.single('document')(request,response,(error)=>{if((error as {code?:string}|undefined)?.code==='LIMIT_FILE_SIZE')return next(new HttpError(422,'PRINT_FILE_TOO_LARGE','The document must not exceed 10 MB.'));return error?next(error):next()})
+const maxDocumentMb=process.env.VERCEL?4:10
+const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:maxDocumentMb*1024*1024,files:1},fileFilter:(_request,file,done)=>{const allowed=['application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document'];if(!allowed.includes(file.mimetype)){done(new HttpError(422,'PRINT_FILE_INVALID','Only PDF and DOCX documents are allowed.'));return}done(null,true)}})
+const documentUpload=(request:Request,response:Response,next:NextFunction)=>upload.single('document')(request,response,(error)=>{if((error as {code?:string}|undefined)?.code==='LIMIT_FILE_SIZE')return next(new HttpError(422,'PRINT_FILE_TOO_LARGE',`The document must not exceed ${maxDocumentMb} MB.`));return error?next(error):next()})
 
 export const userPrintingV1Router=Router()
 userPrintingV1Router.get('/service-status',printingController.serviceStatus)
@@ -14,6 +15,7 @@ userPrintingV1Router.get('/requests',printingController.mine)
 userPrintingV1Router.get('/receipts',printingController.myReceipts)
 userPrintingV1Router.get('/receipts/:id',printingController.myReceipt)
 userPrintingV1Router.get('/receipts/:id/pdf',printingController.myReceiptPdf)
+userPrintingV1Router.post('/quote',documentUpload,printingController.quote)
 userPrintingV1Router.post('/requests',documentUpload,printingController.submit)
 userPrintingV1Router.put('/requests/:id/cancel',printingController.cancel)
 
@@ -53,4 +55,5 @@ export const printingRouter=Router()
 printingRouter.get('/availability',printingController.availability)
 printingRouter.get('/pricing',printingController.pricing)
 printingRouter.get('/requests',printingController.mine)
+printingRouter.post('/quote',documentUpload,printingController.quote)
 printingRouter.post('/requests',documentUpload,printingController.submit)

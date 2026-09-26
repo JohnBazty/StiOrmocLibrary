@@ -1,5 +1,6 @@
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import type { BookMetadataInput, ThesisMetadataInput } from './catalog.validation.ts'
+import { forUpdate } from '../../config/sql-dialect.js'
 import { buildBookSearchText, buildThesisSearchText, insertAuthors } from './catalog.repository.ts'
 
 export async function listCategories(database: Pool) {
@@ -74,7 +75,7 @@ export async function lockTitle(connection: PoolConnection, titleId: number) {
             t.row_version, c.category_name, c.shelf_location AS category_shelf_location
        FROM titles t
        LEFT JOIN categories c ON c.category_id = t.category_id
-      WHERE t.title_id = ? LIMIT 1 FOR UPDATE`,
+      WHERE t.title_id = ? LIMIT 1 ${forUpdate('t')}`,
     [titleId],
   )
   return rows[0] ?? null
@@ -86,7 +87,7 @@ export async function lockCategoryWithManagedShelf(connection: PoolConnection, c
             s.column_count, s.row_count
        FROM categories c
        LEFT JOIN floor_plan_shelves s ON s.label = c.shelf_location
-      WHERE c.category_id = ? LIMIT 1 FOR UPDATE`,
+      WHERE c.category_id = ? LIMIT 1 ${forUpdate('c')}`,
     [categoryId],
   )
   return rows[0] ?? null
@@ -165,10 +166,22 @@ export async function hasActiveTitleLoan(connection: PoolConnection, titleId: nu
   const [rows] = await connection.execute<RowDataPacket[]>(
     `SELECT bt.transaction_id, bt.transaction_status, pc.physical_copy_id, pc.accession_number
        FROM physical_copies pc
-       JOIN borrow_transactions bt ON bt.material_id = COALESCE(pc.material_id, pc.physical_copy_id)
-      WHERE pc.title_id = ? AND bt.transaction_status IN ('Borrowed', 'Overdue')
+       JOIN borrow_transactions bt ON bt.physical_copy_id = pc.physical_copy_id
+         OR (pc.material_id IS NOT NULL AND bt.material_id = pc.material_id)
+      WHERE pc.title_id = ? AND bt.transaction_status IN ('Pending', 'Borrowed', 'Overdue')
       LIMIT 1 FOR UPDATE`,
     [titleId],
+  )
+  return rows[0] ?? null
+}
+
+export async function hasActiveTitleReservation(connection: PoolConnection, titleId: number) {
+  const [rows] = await connection.execute<RowDataPacket[]>(
+    `SELECT reservation_id FROM reservations
+      WHERE (book_title_id = ? OR material_id IN
+        (SELECT material_id FROM physical_copies WHERE title_id = ? AND material_id IS NOT NULL))
+        AND reservation_status IN ('pending', 'approved', 'ready_for_pickup')
+      LIMIT 1 FOR UPDATE`, [titleId, titleId],
   )
   return rows[0] ?? null
 }
@@ -205,11 +218,16 @@ export async function updateThesisMetadata(connection: PoolConnection, titleId: 
   await insertAuthors(connection, titleId, input.authors)
 }
 
-export async function setTitleArchived(connection: PoolConnection, titleId: number, reason: string) {
+export async function setTitleArchived(connection: PoolConnection, titleId: number, reason: string, actorAccountId: number | null = null) {
+  await connection.execute(
+    `UPDATE materials SET availability_status='Unavailable', updated_at=NOW()
+      WHERE material_id IN (SELECT material_id FROM physical_copies WHERE title_id=? AND material_id IS NOT NULL)`,
+    [titleId],
+  )
   await connection.execute(
     `UPDATE titles SET lifecycle_status = 'Archived', archived_at = NOW(), archive_reason = ?,
-       row_version = row_version + 1, updated_at = NOW() WHERE title_id = ?`,
-    [reason, titleId],
+       archived_by_account_id = ?, row_version = row_version + 1, updated_at = NOW() WHERE title_id = ?`,
+    [reason, actorAccountId, titleId],
   )
   await connection.execute(
     `UPDATE physical_copies SET lifecycle_status = 'Archived', availability_status = 'Archived',

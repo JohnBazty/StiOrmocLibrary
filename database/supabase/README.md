@@ -3,7 +3,7 @@
 -- ============================================================================
 -- Status: drafts from MySQL baseline + migrations via tools/ai/mysql_to_pg.py,
 --         plus curated MAIN product gap-fill for migrations 033–040.
--- Apply with: npm run db:supabase -w @sti-library/api
+-- Apply a reviewed file with: npm run db:supabase -w @sti-library/api -- 009_inventory_audit_orphan_history.sql
 -- Requires DATABASE_URL=postgresql://… in apps/api/.env
 --
 -- Files:
@@ -16,9 +16,13 @@
 --                                           printing receipts)
 --   006_print_request_timestamps.sql      — print_requests started_at/ready_at/etc.
 --   007_security_invoker_views.sql        — borrow_records / book_titles SECURITY INVOKER
+--   008_cutover_schema_gaps.sql            — missing category description and asset-code history ledger
+--   009_inventory_audit_orphan_history.sql  — nullable copy link for Deleted audit snapshots
+--   010_phase3_archive_floor_image.sql      — archive actor and published floor image history
+-- Next Postgres schema number: 011. Apply reviewed files individually.
 --
 -- MySQL tree under database/mysql56-schema.sql and database/migrations/ remains
--- the historical contract and local rollback path (latest MySQL migration: 040).
+-- the historical contract and local rollback path (latest MySQL migration: 041).
 --
 -- Connection note: free-tier direct db.* host is often IPv6-only. Use Session
 -- pooler (port 5432) with user postgres.<project-ref> when on IPv4 networks.

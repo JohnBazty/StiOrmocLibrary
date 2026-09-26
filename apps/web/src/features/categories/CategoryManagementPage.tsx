@@ -21,6 +21,7 @@ export function CategoryManagementPage() {
   const [notice, setNotice] = useState<{ error: boolean; message: string } | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
+  const [newShelf, setNewShelf] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -74,10 +75,25 @@ export function CategoryManagementPage() {
     finally { setSaving(false) }
   }
 
+  async function addShelf() {
+    const label = newShelf.trim()
+    if (!label) return
+    setSaving(true)
+    try {
+      await categoryApi.addShelf(label)
+      setNewShelf('')
+      await load()
+      setNotice({ error: false, message: `Shelf ${label} is ready for category assignments.` })
+    } catch (error) { setNotice({ error: true, message: error instanceof Error ? error.message : 'Shelf could not be added.' }) }
+    finally { setSaving(false) }
+  }
+
   return <>
     <PageHeader eyebrow="Classification administration" title="Category management" description="Maintain catalog classifications, shelf locations, and active book/research assignments." action={<button onClick={() => { setFieldErrors({}); setEditor({ mode: 'create', category: null }) }} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#003399] px-4 text-sm font-bold text-white"><Plus size={16} /> Add category</button>} />
 
     {notice ? <div role="alert" className={`mb-5 flex items-start justify-between rounded-xl border px-4 py-3 text-sm font-semibold ${notice.error ? 'border-[#FFF200] bg-[#FFF200] text-[#003399]' : 'border-[#003399] bg-white text-[#003399]'}`}><span>{notice.message}</span><button aria-label="Dismiss alert" onClick={() => setNotice(null)}><X size={16} /></button></div> : null}
+
+    <SectionCard className="mb-5 p-5"><h2 className="font-bold text-[#003399]">Managed shelves</h2><p className="mt-1 text-sm text-[#003399]/70">Create a shelf label here, then assign categories and books to it.</p><form className="mt-4 flex flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); void addShelf() }}><input aria-label="New shelf label" value={newShelf} onChange={(event) => setNewShelf(event.target.value)} maxLength={100} placeholder="Shelf label" className={`${inputClass} max-w-xs`} /><button disabled={saving || !newShelf.trim()} className="rounded-xl bg-[#003399] px-4 text-sm font-bold text-white disabled:opacity-50">Add shelf</button></form><p className="mt-3 text-xs text-[#003399]/65">{shelves.length} shelves available</p></SectionCard>
 
     <div className="mb-5 grid gap-3 sm:grid-cols-3"><SectionCard className="p-5"><Tags className="text-[#003399]" /><p className="mt-3 text-xs font-bold uppercase text-[#003399]/60">Categories</p><p className="mt-1 text-3xl font-black text-[#003399]">{categories.length}</p></SectionCard><SectionCard className="p-5"><BookOpen className="text-[#003399]" /><p className="mt-3 text-xs font-bold uppercase text-[#003399]/60">Active physical books</p><p className="mt-1 text-3xl font-black text-[#003399]">{totals.books}</p></SectionCard><SectionCard className="p-5"><FileText className="text-[#003399]" /><p className="mt-3 text-xs font-bold uppercase text-[#003399]/60">Active theses</p><p className="mt-1 text-3xl font-black text-[#003399]">{totals.theses}</p></SectionCard></div>
 

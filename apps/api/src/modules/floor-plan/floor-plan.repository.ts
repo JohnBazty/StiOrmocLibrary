@@ -14,8 +14,8 @@ export function createFloorPlanRepository(database: Pool = db) {
   }
   async function shelves(executor:Pool|PoolConnection){
     const [rows]=await executor.execute<RowDataPacket[]>(`SELECT s.id,s.label,s.column_count,s.row_count,
-      (SELECT COUNT(*) FROM physical_copies pc WHERE pc.shelf_location=s.label AND pc.lifecycle_status='Active') bookCount,
-      (SELECT COUNT(*) FROM research_inventory ri WHERE ri.shelf_location=s.label AND ri.lifecycle_status='Active') researchCount
+      (SELECT COUNT(*) FROM physical_copies pc WHERE pc.shelf_location=s.label AND pc.lifecycle_status='Active') AS "bookCount",
+      (SELECT COUNT(*) FROM research_inventory ri WHERE ri.shelf_location=s.label AND ri.lifecycle_status='Active') AS "researchCount"
       FROM floor_plan_shelves s ORDER BY s.label`)
     return rows.map(r=>({id:Number(r.id),label:String(r.label),columnCount:Number(r.column_count),rowCount:Number(r.row_count),bookCount:Number(r.bookCount),researchCount:Number(r.researchCount)}))
   }
@@ -27,6 +27,7 @@ export function createFloorPlanRepository(database: Pool = db) {
     return known
   }
   return {
+    shelfDirectory: () => shelves(database),
     async state(editor=false){
       const [rows]=await database.execute<RowDataPacket[]>('SELECT * FROM floor_plan_state WHERE id=1')
       const row=rows[0]; if(!row)throw new HttpError(503,'FLOOR_PLAN_SETUP','Apply the floor plan migration.')
@@ -55,7 +56,7 @@ export function createFloorPlanRepository(database: Pool = db) {
       await event(c,actor,publish?'Published':'Draft saved',{revision:revision+1})
       return {revision:revision+1}
     })},
-    async versions(){const [rows]=await database.execute<RowDataPacket[]>(`SELECT v.id,v.created_at createdAt,a.school_id publishedBy FROM floor_plan_versions v JOIN accounts a ON a.account_id=v.published_by_account_id ORDER BY v.id DESC LIMIT 100`);return rows},
+    async versions(){const [rows]=await database.execute<RowDataPacket[]>(`SELECT v.id,v.created_at AS "createdAt",a.school_id AS "publishedBy" FROM floor_plan_versions v JOIN accounts a ON a.account_id=v.published_by_account_id ORDER BY v.id DESC LIMIT 100`);return rows},
     async restore(actor:number,id:number,revision:number){return locked(async(c,row)=>{
       if(Number(row.revision)!==revision)throw new HttpError(409,'FLOOR_PLAN_CONFLICT','Reload before restoring this layout.')
       const [versions]=await c.execute<RowDataPacket[]>('SELECT layout FROM floor_plan_versions WHERE id=?',[id]);if(!versions[0])throw new HttpError(404,'LAYOUT_NOT_FOUND','Layout version not found.')
@@ -73,9 +74,9 @@ export function createFloorPlanRepository(database: Pool = db) {
       const [targets]=await c.execute<RowDataPacket[]>('SELECT id,label,column_count,row_count FROM floor_plan_shelves WHERE id=? LIMIT 1 FOR UPDATE',[shelfId])
       const target=targets[0];if(!target)throw new HttpError(404,'SHELF_MISSING','Select an existing shelf.')
       const [occupied]=await c.execute<RowDataPacket[]>(`SELECT
-        (SELECT COUNT(*) FROM categories WHERE shelf_location=? AND (shelf_column>? OR shelf_row>?)) categoryCount,
-        (SELECT COUNT(*) FROM physical_copies WHERE shelf_location=? AND lifecycle_status='Active' AND (shelf_column>? OR shelf_row>?)) bookCount,
-        (SELECT COUNT(*) FROM research_inventory WHERE shelf_location=? AND lifecycle_status='Active' AND (shelf_column>? OR shelf_row>?)) researchCount`,
+        (SELECT COUNT(*) FROM categories WHERE shelf_location=? AND (shelf_column>? OR shelf_row>?)) AS "categoryCount",
+        (SELECT COUNT(*) FROM physical_copies WHERE shelf_location=? AND lifecycle_status='Active' AND (shelf_column>? OR shelf_row>?)) AS "bookCount",
+        (SELECT COUNT(*) FROM research_inventory WHERE shelf_location=? AND lifecycle_status='Active' AND (shelf_column>? OR shelf_row>?)) AS "researchCount"`,
         [target.label,columnCount,rowCount,target.label,columnCount,rowCount,target.label,columnCount,rowCount])
       const blocked={categories:Number(occupied[0]?.categoryCount??0),books:Number(occupied[0]?.bookCount??0),research:Number(occupied[0]?.researchCount??0)}
       if(blocked.categories+blocked.books+blocked.research>0)throw new HttpError(422,'SHELF_GRID_OCCUPIED','Move the assignments outside the rows or columns being removed before making this shelf smaller.',blocked)
@@ -106,8 +107,8 @@ export function createFloorPlanRepository(database: Pool = db) {
       if(query.unmapped==='true')clauses.push('s.id IS NULL')
       const joins=`FROM physical_copies pc JOIN titles t ON t.title_id=pc.title_id LEFT JOIN categories cat ON cat.category_id=t.category_id LEFT JOIN floor_plan_shelves s ON s.label=pc.shelf_location WHERE ${clauses.join(' AND ')}`
       const [[items],[matches]]=await Promise.all([
-        database.execute<RowDataPacket[]>(`SELECT pc.physical_copy_id copyId,t.title_id titleId,t.title,t.isbn,t.call_number callNumber,t.cover_image_path coverPath,cat.category_name categoryName,t.category_id categoryId,pc.barcode,pc.shelf_location shelfLabel,pc.shelf_column shelfColumn,pc.shelf_row shelfRow,s.id shelfId,s.column_count shelfColumnCount,s.row_count shelfRowCount,pc.availability_status availability,(SELECT ${authorsAgg('a')} FROM authors a WHERE a.title_id=t.title_id) author ${joins} ORDER BY pc.shelf_row,pc.shelf_column,t.call_number,t.title,pc.physical_copy_id LIMIT 100`,params),
-        database.execute<RowDataPacket[]>(`SELECT s.id shelfId,COUNT(*) count ${joins} GROUP BY s.id`,params)
+        database.execute<RowDataPacket[]>(`SELECT pc.physical_copy_id AS "copyId",t.title_id AS "titleId",t.title,t.isbn,t.call_number AS "callNumber",t.cover_image_path AS "coverPath",cat.category_name AS "categoryName",t.category_id AS "categoryId",pc.barcode,pc.shelf_location AS "shelfLabel",pc.shelf_column AS "shelfColumn",pc.shelf_row AS "shelfRow",s.id AS "shelfId",s.column_count AS "shelfColumnCount",s.row_count AS "shelfRowCount",pc.availability_status AS availability,(SELECT ${authorsAgg('a')} FROM authors a WHERE a.title_id=t.title_id) AS author ${joins} ORDER BY pc.shelf_row,pc.shelf_column,t.call_number,t.title,pc.physical_copy_id LIMIT 100`,params),
+        database.execute<RowDataPacket[]>(`SELECT s.id AS "shelfId",COUNT(*) AS count ${joins} GROUP BY s.id`,params)
       ])
       return {items,matches,total:matches.reduce((sum,r)=>sum+Number(r.count),0)}
     }

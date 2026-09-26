@@ -1,9 +1,11 @@
 import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { randomBytes } from 'node:crypto'
 import { db } from '../../config/db.js'
+import { env } from '../../config/env.js'
 import { excluded, isPostgres } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { removePrintDocument, resolvePrintDocument, storePrintDocument } from './printing.storage.ts'
+import { inspectPrintDocument } from './printing.document.ts'
 import { parseFinanceFilters, parseNewInkStock, parsePrintRequest, parseQueueFilters, parseRestock, parseServiceStatus, parseStatusUpdate, parseStockMovement } from './printing.validation.ts'
 import { PrintingRepository, printingRepository } from './printing.repository.ts'
 
@@ -21,7 +23,7 @@ export function createPrintingService(pool: Pool = db, repository: PrintingRepos
   }
 
   return {
-    serviceStatus:()=>repository.serviceStatus(), availability:()=>repository.serviceStatus(), pricing:()=>repository.pricing(),
+    serviceStatus:async()=>({...await repository.serviceStatus(),docx_auto_count_available:true}), availability:()=>repository.serviceStatus(), pricing:()=>repository.pricing(),
     ownRequests:async(actor:Actor)=>{await actorUserId(actor.schoolId);return repository.ownRequests(actor.schoolId!)},
     ownReceipts:async(actor:Actor)=>{await actorUserId(actor.schoolId);return repository.ownReceipts(actor.schoolId!)},
     ownReceipt:async(actor:Actor,receiptIdValue:unknown)=>{await actorUserId(actor.schoolId);const row=await repository.receiptById(receiptId(receiptIdValue),actor.schoolId);if(!row)throw new HttpError(404,'PRINT_RECEIPT_NOT_FOUND','The printing receipt was not found.');return row},
@@ -35,14 +37,30 @@ export function createPrintingService(pool: Pool = db, repository: PrintingRepos
     restockHistory:(query:Record<string,unknown>)=>repository.restockHistory(parseFinanceFilters(query)),
     stockUsageHistory:(limit:unknown)=>repository.stockUsageHistory(Number(limit)||100),
 
-    async submit(actor:Actor, body:Record<string,unknown>, file?:Express.Multer.File) {
-      const input=parsePrintRequest(body),userId=await actorUserId(actor.schoolId)
+    async quote(actor:Actor, body:Record<string,unknown>, file?:Express.Multer.File) {
+      await actorUserId(actor.schoolId)
       const serviceStatus=await repository.serviceStatus()
       if (!Number(serviceStatus.accepting_requests)) throw new HttpError(422,'PRINTING_UNAVAILABLE',String(serviceStatus.unavailable_reason??'Printing requests are temporarily unavailable.'))
+      const document=await inspectPrintDocument(file)
+      const input=parsePrintRequest(body,document.pageCount)
       const pricing=await repository.pricing(),rule=pricing.find(row=>row.print_type===input.printType&&row.paper_size===input.paperSize)
       if(!rule)throw new HttpError(503,'PRINT_PRICING_UNAVAILABLE','No active pricing rule exists for this print configuration.')
-      const calculatedCost=Number(rule.price_per_page)*input.totalSheets
-      const stored=await storePrintDocument(file)
+      return {page_count:input.pageCount,total_sheets:input.totalSheets,calculated_cost:Number((Number(rule.price_per_page)*input.totalSheets).toFixed(2)),document_sha256:document.sourceHash,printable_file_name:document.printableName}
+    },
+
+    async submit(actor:Actor, body:Record<string,unknown>, file?:Express.Multer.File) {
+      const userId=await actorUserId(actor.schoolId)
+      const serviceStatus=await repository.serviceStatus()
+      if (!Number(serviceStatus.accepting_requests)) throw new HttpError(422,'PRINTING_UNAVAILABLE',String(serviceStatus.unavailable_reason??'Printing requests are temporarily unavailable.'))
+      const document=await inspectPrintDocument(file)
+      const input=parsePrintRequest(body,document.pageCount)
+      if(body.document_sha256 && body.document_sha256!==document.sourceHash)throw new HttpError(409,'PRINT_DOCUMENT_CHANGED','The document changed after its price was calculated. Check the new page count before submitting.')
+      if(body.page_count != null && Number(body.page_count)!==input.pageCount)throw new HttpError(409,'PRINT_PAGE_COUNT_CHANGED','The page count changed. Review the updated price before submitting.')
+      const pricing=await repository.pricing(),rule=pricing.find(row=>row.print_type===input.printType&&row.paper_size===input.paperSize)
+      if(!rule)throw new HttpError(503,'PRINT_PRICING_UNAVAILABLE','No active pricing rule exists for this print configuration.')
+      const calculatedCost=Number((Number(rule.price_per_page)*input.totalSheets).toFixed(2))
+      if(body.quoted_cost != null && Number(body.quoted_cost)!==calculatedCost)throw new HttpError(409,'PRINT_PRICE_CHANGED','The printing price changed. Review the updated price before submitting.')
+      const stored=await storePrintDocument(document.printableFile)
       const connection=await pool.getConnection()
       try{
         await connection.beginTransaction()
@@ -97,12 +115,21 @@ export function createPrintingService(pool: Pool = db, repository: PrintingRepos
       const timestamp=input.status==='Printing'?'started_at':input.status==='Ready for Pickup'?'ready_at':input.status==='Completed'?'completed_at':'cancelled_at'
       await connection.execute(`UPDATE print_requests SET job_status=?,printer_id=NULL,processed_by_user_id=?,${timestamp}=NOW(),cancelled_reason=?,updated_at=NOW(),row_version=row_version+1 WHERE request_id=?`,[input.status,staffId,input.status==='Cancelled'?input.reason:null,requestId])
       await connection.execute(`INSERT INTO print_status_history(request_id,from_status,to_status,changed_by_user_id,reason) VALUES (?,?,?,?,?)`,[requestId,row.job_status,input.status,staffId,input.reason])
+      if(input.status==='Printing'){
+        const notificationSql=isPostgres
+          ? `INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
+             VALUES (?,'Print request printing',?,'Printing Update','Print Request',?,'/student/printing','Normal',?,NOW(),NOW())
+             ON CONFLICT (user_id,dedupe_key) DO NOTHING`
+          : `INSERT IGNORE INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
+             VALUES (?,'Print request printing',?,'Printing Update','Print Request',?,'/student/printing','Normal',?,NOW(),NOW())`
+        await connection.execute(notificationSql,[row.user_id,`${row.file_name} is now printing. Request #${requestId}.`,requestId,`print:${requestId}:printing`])
+      }
       await connection.commit();return{request_id:requestId,job_status:input.status}
     }catch(error){await connection.rollback();throw error}finally{connection.release()}},
 
     async setServiceStatus(actor:Actor,body:Record<string,unknown>){const staffId=await actorUserId(actor.schoolId),input=parseServiceStatus(body);await pool.execute(isPostgres?`INSERT INTO printing_service_settings(settings_id,accepting_requests,unavailable_reason,updated_by_user_id,updated_at) VALUES (1,?,?,?,NOW()) ON CONFLICT (settings_id) DO UPDATE SET accepting_requests=${excluded('accepting_requests')},unavailable_reason=${excluded('unavailable_reason')},updated_by_user_id=${excluded('updated_by_user_id')},updated_at=NOW()`:`INSERT INTO printing_service_settings(settings_id,accepting_requests,unavailable_reason,updated_by_user_id,updated_at) VALUES (1,?,?,?,NOW()) ON DUPLICATE KEY UPDATE accepting_requests=VALUES(accepting_requests),unavailable_reason=VALUES(unavailable_reason),updated_by_user_id=VALUES(updated_by_user_id),updated_at=NOW()`,[input.acceptingRequests?1:0,input.reason,staffId]);return{accepting_requests:input.acceptingRequests,unavailable_reason:input.reason}},
 
-    async downloadDocument(actor:Actor,requestIdValue:unknown,metadata:{sourceIp?:string;userAgent?:string}){const staffId=await actorUserId(actor.schoolId),requestId=Number(requestIdValue);if(!Number.isSafeInteger(requestId)||requestId<1)throw new HttpError(422,'PRINT_REQUEST_INVALID','The print request ID is invalid.');const[rows]=await pool.execute<RowDataPacket[]>(`SELECT request_id,file_name,file_path FROM print_requests WHERE request_id=? LIMIT 1`,[requestId]);const row=rows[0];if(!row)throw new HttpError(404,'PRINT_REQUEST_NOT_FOUND','The print request was not found.');const storedPath=await resolvePrintDocument(String(row.file_path));await pool.execute(`INSERT INTO print_file_download_audit(request_id,downloaded_by_user_id,source_ip,user_agent) VALUES (?,?,?,?)`,[requestId,staffId,String(metadata.sourceIp??'').slice(0,45)||null,String(metadata.userAgent??'').slice(0,255)||null]);const fileName=String(row.file_name),mime=fileName.toLowerCase().endsWith('.pdf')?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document';return{storedPath,fileName,mime}},
+    async downloadDocument(actor:Actor,requestIdValue:unknown,metadata:{sourceIp?:string;userAgent?:string}){const staffId=await actorUserId(actor.schoolId),requestId=Number(requestIdValue);if(!Number.isSafeInteger(requestId)||requestId<1)throw new HttpError(422,'PRINT_REQUEST_INVALID','The print request ID is invalid.');const[rows]=await pool.execute<RowDataPacket[]>(`SELECT request_id,file_name,file_path FROM print_requests WHERE request_id=? LIMIT 1`,[requestId]);const row=rows[0];if(!row)throw new HttpError(404,'PRINT_REQUEST_NOT_FOUND','The print request was not found.');const contents=await resolvePrintDocument(String(row.file_path));await pool.execute(`INSERT INTO print_file_download_audit(request_id,downloaded_by_user_id,source_ip,user_agent) VALUES (?,?,?,?)`,[requestId,staffId,String(metadata.sourceIp??'').slice(0,45)||null,String(metadata.userAgent??'').slice(0,255)||null]);const fileName=String(row.file_name),mime=fileName.toLowerCase().endsWith('.pdf')?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document';return{contents,fileName,mime}},
 
     async createInkStock(actor:Actor,body:Record<string,unknown>){const staffId=await actorUserId(actor.schoolId),input=parseNewInkStock(body),connection=await pool.getConnection();try{await connection.beginTransaction();const[result]=await connection.execute<ResultSetHeader>(`INSERT INTO ink_repository(printer_id,cartridge_type,color_variation,available_bottles,low_stock_threshold_bottles,cost_per_bottle,remaining_fluid_percentage,low_ink_threshold,last_replenished_at) VALUES (NULL,?,?,?,?,?,100,20,CASE WHEN ?>0 THEN NOW() ELSE NULL END)`,[input.cartridgeType,input.color,input.bottles,input.threshold,input.cost,input.bottles]);await connection.execute(`INSERT INTO ink_stock_movements(ink_id,movement_type,activity_code,quantity_bottles,unit_cost_per_bottle,expense_amount,balance_before,balance_after,recorded_by_user_id,notes) VALUES (?,'Restock','Restock',?,?,?,?,?,?, 'Initial bottle stock')`,[result.insertId,input.bottles,input.cost,Number((input.cost*input.bottles).toFixed(2)),0,input.bottles,staffId]);await connection.commit();return{ink_id:Number(result.insertId),...input,total_expense:Number((input.cost*input.bottles).toFixed(2))}}catch(error){await connection.rollback();throw error}finally{connection.release()}},
 

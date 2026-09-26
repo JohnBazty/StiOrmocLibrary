@@ -29,7 +29,7 @@ export function createNotificationRepository(database: Pool = db) {
              (user_id, message_title, message_body, trigger_type, source_type, source_id,
               action_path, priority, dedupe_key, scheduled_for, delivered_at, expires_at)
            SELECT u.user_id, ?, ?, 'Announcement', 'Announcement', ?, '/student/notifications', ?,
-                  CONCAT('announcement:', ?), ?, NOW(), ?
+                  CONCAT('announcement:', CAST(? AS text)), ?, NOW(), ?
              FROM users u
             WHERE u.account_status = 'Active'
            ON CONFLICT (user_id, dedupe_key) DO NOTHING`

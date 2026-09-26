@@ -59,6 +59,7 @@ const userNav = (role: 'student' | 'faculty'): NavItem[] => {
 const adminNav: NavItem[] = [
   { label: 'Dashboard', to: '/admin/dashboard', icon: LayoutDashboard, section: 'Operations' },
   { label: 'Books & research', to: '/admin/catalog', icon: BookOpen },
+  { label: 'Book archive', to: '/admin/book-archive', icon: Archive },
   { label: 'Categories', to: '/admin/categories', icon: Tags },
   { label: 'Borrow & return', to: '/admin/circulation', icon: CalendarClock },
   { label: 'Reservations', to: '/admin/reservations', icon: BookMarked },

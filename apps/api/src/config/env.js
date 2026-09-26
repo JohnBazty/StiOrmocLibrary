@@ -60,7 +60,8 @@ export const env = Object.freeze({
   isProduction,
   inventoryPreviewEnabled: !isProduction && process.env.INVENTORY_PREVIEW_ENABLED === 'true',
   port: Number(process.env.PORT ?? 4000),
-  webOrigin: process.env.WEB_ORIGIN ?? 'http://localhost:5173',
+  webOrigin: process.env.WEB_ORIGIN
+    ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:5173'),
   supabase: {
     url: process.env.SUPABASE_URL?.trim() || '',
     publishableKey: process.env.SUPABASE_PUBLISHABLE_KEY?.trim() || '',
@@ -75,7 +76,9 @@ export const env = Object.freeze({
     user: process.env.DB_USER ?? 'root',
     password: process.env.DB_PASSWORD ?? '',
     database: process.env.DB_NAME ?? 'sti_ormoc_library',
-    connectionLimit: Number(process.env.DB_CONNECTION_LIMIT ?? 10),
+    // A Vercel deployment can run many API instances at once. Keep each
+    // instance's pool small so bursts do not exhaust Supabase connections.
+    connectionLimit: Number(process.env.DB_CONNECTION_LIMIT ?? (process.env.VERCEL ? 1 : 10)),
   },
   session: {
     name: 'sti.sid',
@@ -99,5 +102,9 @@ export const env = Object.freeze({
   isbnLookup: {
     timeoutMs: Math.max(500, Math.min(10000, Number(process.env.ISBN_LOOKUP_TIMEOUT_MS ?? 3500))),
     googleBooksApiKey: process.env.GOOGLE_BOOKS_API_KEY?.trim() ?? '',
+  },
+  printing: {
+    docxRendererUrl: process.env.DOCX_RENDERER_URL?.trim() ?? '',
+    docxRendererToken: process.env.DOCX_RENDERER_TOKEN?.trim() ?? '',
   },
 })

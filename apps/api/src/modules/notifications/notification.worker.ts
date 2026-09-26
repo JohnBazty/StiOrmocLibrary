@@ -30,7 +30,7 @@ async function publishScheduledAnnouncements(database: Pool, now: Date) {
            (user_id, message_title, message_body, trigger_type, source_type, source_id,
             action_path, priority, dedupe_key, scheduled_for, delivered_at, expires_at)
          SELECT u.user_id, ?, ?, 'Announcement', 'Announcement', ?, '/student/notifications', ?,
-                CONCAT('announcement:', ?), ?, NOW(), ?
+                CONCAT('announcement:', ${isPostgres ? 'CAST(? AS text)' : '?'}), ?, NOW(), ?
            FROM users u WHERE u.account_status = 'Active'`),
         [row.title, row.message_body, row.announcement_id, row.priority, row.announcement_id, row.publish_at, row.expires_at],
       )

@@ -163,8 +163,12 @@ export class DashboardRepository {
         FROM print_requests WHERE user_id=? AND job_status<>'Completed' ORDER BY created_at DESC,request_id DESC LIMIT 1`, [userId]),
       this.pool.execute<RowDataPacket[]>(`SELECT notification_id,message_title,message_body,trigger_type,action_path,${formatDate('notification_timestamp', '%Y-%m-%d %h:%i %p', 'YYYY-MM-DD HH12:MI AM')} created_at
         FROM notifications WHERE user_id=? AND deleted_at IS NULL AND (delivered_at IS NULL OR delivered_at<=NOW()) AND (expires_at IS NULL OR expires_at>NOW()) ORDER BY notification_timestamp DESC LIMIT 1`, [userId]),
-      this.pool.execute<RowDataPacket[]>(`SELECT announcement_id,title,message_body,priority,${formatDate('COALESCE(published_at,publish_at)', '%Y-%m-%d %h:%i %p', 'YYYY-MM-DD HH12:MI AM')} published_at
-        FROM announcements WHERE announcement_status='Published' AND (publish_at IS NULL OR publish_at<=NOW()) AND (expires_at IS NULL OR expires_at>NOW()) ORDER BY COALESCE(published_at,publish_at) DESC,announcement_id DESC LIMIT 1`),
+      this.pool.execute<RowDataPacket[]>(`SELECT a.announcement_id,a.title,a.message_body,a.priority,${formatDate('COALESCE(a.published_at,a.publish_at)', '%Y-%m-%d %h:%i %p', 'YYYY-MM-DD HH12:MI AM')} published_at
+        FROM announcements a
+        WHERE ((a.announcement_status='Published' AND (a.publish_at IS NULL OR a.publish_at<=NOW()))
+          OR (a.announcement_status='Scheduled' AND a.publish_at<=NOW()))
+          AND (a.expires_at IS NULL OR a.expires_at>NOW())
+        ORDER BY COALESCE(a.published_at,a.publish_at) DESC,a.announcement_id DESC LIMIT 1`),
       this.pool.execute<RowDataPacket[]>(`SELECT bt.transaction_id,t.title,t.cover_image_path,bt.transaction_status,${formatDate('COALESCE(bt.returned_at,bt.due_at)', '%Y-%m-%d %h:%i %p', 'YYYY-MM-DD HH12:MI AM')} event_at
         FROM borrow_transactions bt LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id LEFT JOIN titles t ON t.title_id=pc.title_id
         WHERE bt.user_id=? ORDER BY COALESCE(bt.returned_at,bt.borrowed_at,bt.created_at) DESC LIMIT 4`, [userId]),

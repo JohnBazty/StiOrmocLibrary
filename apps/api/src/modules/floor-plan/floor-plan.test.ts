@@ -19,13 +19,13 @@ test('shelf grids accept practical dimensions and reject invalid sizes',()=>{
   assert.throws(()=>gridCount(0,'Rows'))
   assert.throws(()=>gridCount(13,'Columns'))
 })
-test('Student, Faculty and Librarian cannot edit, publish, transfer, or retrieve drafts',async()=>{
-  for(const role of ['Student','Faculty','Librarian']){
+test('retired layout mutation and draft routes cannot be used by any role',async()=>{
+  for(const role of ['Student','Faculty','Librarian','Admin']){
     const app=express();app.use(express.json());app.use((req,res,next)=>{res.locals.authenticatedUser={accountId:1,role};next()});app.use('/map',floorPlanRouter)
-    for(const path of ['/publish','/shelves','/transfer','/background','/versions/1/restore'])assert.equal((await request(app).post(`/map${path}`).send({})).status,403)
-    assert.equal((await request(app).get('/map/editor')).status,403)
-    assert.equal((await request(app).put('/map/draft').send({})).status,403)
-    assert.equal((await request(app).patch('/map/shelves/1/grid').send({columnCount:3,rowCount:5})).status,403)
+    for(const path of ['/publish','/shelves','/transfer','/background','/versions/1/restore'])assert.equal((await request(app).post(`/map${path}`).send({})).status,404)
+    assert.equal((await request(app).get('/map/editor')).status,404)
+    assert.equal((await request(app).put('/map/draft').send({})).status,404)
+    assert.equal((await request(app).patch('/map/shelves/1/grid').send({columnCount:3,rowCount:5})).status,404)
   }
 })
 

@@ -6,8 +6,9 @@ The API is mid-cutover to Supabase PostgreSQL. See [supabase-migration-plan.md](
 
 - When `DATABASE_URL` (postgresql://…) is set, the runtime uses `pg` against drafts under [database/supabase/](../database/supabase/).
 - When unset, the runtime uses local MySQL via `mysql2` and the MySQL tree below (rollback / offline path).
-- The MySQL baseline and ordered migrations remain the historical product contract. Latest MySQL migration: `20260923_040_printing_digital_receipts.sql`. Next MySQL number if needed: **`041`**.
+- The MySQL baseline and ordered migrations remain the historical product contract. Latest MySQL migration: `20260926_041_phase3_archive_floor_image.sql`. Next MySQL number if needed: **`042`**.
 - Additive MAIN product tables for Postgres land in `database/supabase/005_main_product_gapfill.sql` (033–040).
+- The 2026-09-25 historical data cutover copied local MySQL rows into Supabase after applying Postgres 008–009. Hosted users/accounts were preserved, and the pre-cutover hosted snapshot is in schema `mysql_cutover_backup_20260925100301`. Postgres 010 adds book archive actor and floor image version metadata. Next Postgres migration number: **011**. See the cutover record in the migration plan.
 
 ## Target requirements versus current baseline
 
@@ -108,6 +109,8 @@ Migration `20260823_014_research_catalog_search.sql` adds the nullable `research
 
 Category deletion is blocked while active physical copies, research records, or unbackfilled legacy materials remain assigned. The category reassignment service updates normalized `titles.category_id` and transitional `materials.category_id` in one transaction before deleting the old category.
 
+Phase 3 migration MySQL `041` / Supabase `010` adds nullable `titles.archived_by_account_id` for new book archive actions; legacy archived titles keep a null actor. The Admin Book archive reads retained `titles`, `physical_copies`, `inventory_audit_events`, and `borrow_transactions`. Archiving a title blocks active requests, loans, and reservations, and makes linked legacy `materials` unavailable. `floor_plan_images` stores versioned image metadata and one current version; image bytes are in the Supabase `floor-plan-images` Storage bucket. The old `floor_plan_state`, `floor_plan_versions`, `floor_plan_events`, and `floor_plan_shelves` tables remain intact for possible future use. Category shelf labels remain managed through the category API.
+
 ### Circulation
 
 - `borrow_transactions`: pending, borrowed, returned, and overdue activity.
@@ -184,7 +187,7 @@ Migration `20260923_039_static_attendance_qr_and_capacity.sql` adds permanent do
 - `paper_replenishments`: normalized history of quantities and expenses.
 - `paper_stock_movements`: append-only restock and manual ream-opening records with activity codes and before/after balances. Historical fractional print allocations remain preserved as legacy audit rows.
 
-Migration `20260828_025_printing_service_and_bottle_supplies.sql` supplies this contract. Uploaded PDF/DOCX binaries remain outside MySQL in protected server storage; only the sanitized original name and generated storage path are stored. Ink is updated manually by bottle and paper by ream. The application does not estimate ink remaining inside an opened bottle and never changes printer status from imagined consumable telemetry.
+Migration `20260828_025_printing_service_and_bottle_supplies.sql` supplies this contract. Uploaded PDF/DOCX binaries remain outside the relational database; only the sanitized original name and generated storage path are stored. New hosted uploads use the private Supabase `printing-documents` bucket, while local MySQL development can use local file storage. Ink is updated manually by bottle and paper by ream. The application does not estimate ink remaining inside an opened bottle and never changes printer status from imagined consumable telemetry.
 
 Migration `20260828_027_manual_printing_workflow.sql` removes printer hardware from the active request workflow without destructively dropping legacy printer references. `printing_service_settings` is the single administrative switch for accepting student requests and defaults to enabled, so a deployment with zero printer rows remains operational. Librarians download protected request files and print them manually; every download is recorded in `print_file_download_audit`. Ink remains manual whole-bottle inventory, and paper restocks are explicit whole-ream input movements. Legacy `print_requests.printer_id`, `printers`, and optional `ink_repository.printer_id` remain nullable compatibility fields and are not shown in the active interface.
 
@@ -269,7 +272,7 @@ Migration `20260824_023_research_asset_qr.sql` adds `research_inventory.qr_code_
 
 Physical book and research/thesis removal requires the copy condition to be `Lost`. Borrowed/Overdue transactions and active reservations remain stronger locks and must be resolved first. A Lost copy with circulation or inventory audit history is archived rather than hard-deleted so its historical references remain intact; the student catalog and active inventory queries exclude the archived row. Student-safe catalog, cart/history detail, and reservation payloads expose condition text without exposing administrative QR data. Reservation condition follows the specifically assigned physical copy when available and otherwise reports the source copy condition while assignment is pending.
 
-Book title covers remain file-backed metadata through `titles.cover_image_path`. Administrative bulk entry accepts a validated JPEG, PNG, or WebP image up to 2 MB, writes it beneath the controlled API assets directory, and student catalog responses expose only its public path.
+Book title covers remain file-backed metadata through `titles.cover_image_path`. Administrative bulk entry accepts a validated JPEG, PNG, or WebP image up to 2 MB. Hosted uploads use the public Supabase `book-covers` bucket, while local MySQL development uses the controlled API assets directory; student catalog responses expose the public image URL or path.
 
 Migration `20260906_035_floor_plans.sql` adds the editable library floor-plan contract:
 

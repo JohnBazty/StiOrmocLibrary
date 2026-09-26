@@ -10,12 +10,25 @@ function date(value: string | null) { if (!value) return '—'; const parsed = n
 export function StudentClearancePage() {
   const [data, setData] = useState<ClearanceRecord | null>(null)
   const [error, setError] = useState('')
-  const load = useCallback(async () => { try { setData(await clearanceApi.mine()); setError('') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Clearance is unavailable.') } }, [])
+  const [refreshing, setRefreshing] = useState(false)
+  const [notice, setNotice] = useState('')
+  const load = useCallback(async (showNotice = false) => {
+    setRefreshing(true)
+    setNotice('')
+    try {
+      setData(await clearanceApi.mine())
+      setError('')
+      if (showNotice) setNotice('Clearance updated from your current library records.')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Clearance is unavailable.')
+    } finally { setRefreshing(false) }
+  }, [])
   useEffect(() => { void load() }, [load])
   const cleared = data?.status === 'Cleared'
   return <>
-    <PageHeader eyebrow="Account standing" title="Library clearance" description="Computed from current unreturned books, overdue fines, and lost-book replacement charges." action={<Button variant="secondary" onClick={() => void load()}><RefreshCw size={16} /> Refresh</Button>} />
+    <PageHeader eyebrow="Account standing" title="Library clearance" description="Computed from current unreturned books, overdue fines, and lost-book replacement charges." action={<Button variant="secondary" disabled={refreshing} onClick={() => void load(true)}><RefreshCw size={16} /> {refreshing ? 'Refreshing…' : 'Refresh'}</Button>} />
     {error ? <div role="alert" className="mb-5 flex gap-2 rounded-xl bg-[#FFF200] p-4 font-bold text-[#003399]"><AlertTriangle size={18} />{error}</div> : null}
+    {notice ? <p role="status" className="mb-5 rounded-xl bg-[#003399]/5 p-4 text-sm font-semibold text-[#003399]">{notice}</p> : null}
     <section className="relative overflow-hidden rounded-3xl bg-[#003399] p-7 text-white"><div className="relative z-10 max-w-3xl"><div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold"><BadgeCheck size={15} className="text-[#FFF200]" />{data?.status ?? 'Checking…'}</div><h2 className="mt-5 font-display text-3xl font-bold">{cleared ? 'You have no library obligations.' : 'Your clearance is currently blocked.'}</h2><p className="mt-3 text-sm leading-6 text-white/80">{data?.reason ?? 'Reviewing your live circulation and fine records.'}</p><p className="mt-2 text-xs text-white/55">Checked {data ? date(data.checkedAt) : 'now'}</p></div></section>
     <div className="mt-5 grid gap-4 sm:grid-cols-3"><StatCard label="Unreturned books" value={data?.summary.activeLoans ?? 0} icon={BookOpen} tone="blue" /><StatCard label="Outstanding fines" value={money(data?.summary.unpaidOverdueFines ?? 0)} icon={PhilippinePeso} tone="blue" /><StatCard label="Lost-book charges" value={money(data?.summary.unpaidReplacementCharges ?? 0)} icon={ShieldAlert} tone="blue" /></div>
     {data?.activeOverride ? <SectionCard className="mt-5 border-[#FFF200] p-5"><div className="flex gap-3"><BadgeCheck className="text-[#003399]" /><div><h3 className="font-bold text-[#003399]">Authorized override: {data.activeOverride.status}</h3><p className="mt-1 text-sm text-[#003399]/70">{data.activeOverride.reason}</p><p className="mt-2 text-xs text-[#003399]/50">Applied by {data.activeOverride.appliedBy} · {date(data.activeOverride.appliedAt)}</p></div></div></SectionCard> : null}

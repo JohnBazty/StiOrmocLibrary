@@ -14,9 +14,9 @@ function integer(value: unknown, field: string, minimum: number, maximum: number
   return parsed
 }
 
-export function parsePrintRequest(body: Record<string, unknown>) {
+export function parsePrintRequest(body: Record<string, unknown>, detectedPageCount?: number) {
   const numberOfCopies = integer(body.number_of_copies, 'number_of_copies', 1, 50)
-  const pageCount = integer(body.page_count, 'page_count', 1, 500)
+  const pageCount = integer(detectedPageCount ?? body.page_count, 'page_count', 1, 500)
   const printType = String(body.print_type ?? '') as PrintType
   const paperSize = String(body.paper_size ?? '') as PaperSize
   if (!['Colored', 'Monochrome'].includes(printType)) throw new HttpError(422, 'PRINT_TYPE_INVALID', 'Choose Colored or Monochrome printing.')

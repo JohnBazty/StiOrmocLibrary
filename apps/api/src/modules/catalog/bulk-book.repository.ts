@@ -34,7 +34,7 @@ export async function lockCategoryShelf(connection: PoolConnection, categoryId: 
             s.column_count, s.row_count
        FROM categories c
        LEFT JOIN floor_plan_shelves s ON s.label = c.shelf_location
-      WHERE c.category_id = ? LIMIT 1 FOR UPDATE`,
+      WHERE c.category_id = ? LIMIT 1 FOR UPDATE${isPostgres ? ' OF c' : ''}`,
     [categoryId],
   )
   if (!rows[0]) return null

@@ -60,7 +60,7 @@ export const catalogController = {
     response.json({ success: true, message: 'Book details updated successfully.', data: await catalogManagementService.updateBook(request.params.titleId, request.body) })
   }),
   archiveBook: asyncController(async (request, response) => {
-    response.json({ success: true, message: 'Book archived successfully.', data: await catalogManagementService.archiveTitle(request.params.titleId, 'Book', request.body?.reason) })
+    response.json({ success: true, message: 'Book archived successfully.', data: await catalogManagementService.archiveTitle(request.params.titleId, 'Book', request.body?.reason, actorAccountId(response)) })
   }),
   deleteBook: asyncController(async (request, response) => {
     response.json({ success: true, message: 'Book deleted successfully.', data: await catalogManagementService.deleteTitle(request.params.titleId, 'Book') })
@@ -72,7 +72,7 @@ export const catalogController = {
     response.json({ success: true, message: 'Research/thesis metadata updated successfully.', data: await catalogManagementService.updateThesis(request.params.titleId, request.body) })
   }),
   archiveThesis: asyncController(async (request, response) => {
-    response.json({ success: true, message: 'Research/thesis record archived successfully.', data: await catalogManagementService.archiveTitle(request.params.titleId, 'Research/Thesis', request.body?.reason) })
+    response.json({ success: true, message: 'Research/thesis record archived successfully.', data: await catalogManagementService.archiveTitle(request.params.titleId, 'Research/Thesis', request.body?.reason, actorAccountId(response)) })
   }),
   deleteThesis: asyncController(async (request, response) => {
     response.json({ success: true, message: 'Research/thesis record deleted successfully.', data: await catalogManagementService.deleteTitle(request.params.titleId, 'Research/Thesis') })

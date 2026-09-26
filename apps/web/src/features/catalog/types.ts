@@ -2,6 +2,7 @@ export type CatalogItem = {
   titleId: number
   recordType: 'Book' | 'Research/Thesis'
   title: string
+  coverImagePath: string | null
   authors: string[]
   isbn: string | null
   publicationYear: number | null

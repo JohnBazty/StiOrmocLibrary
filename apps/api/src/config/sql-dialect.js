@@ -2,6 +2,11 @@ import { env } from './env.js'
 
 export const isPostgres = env.db.driver === 'postgres'
 
+/** Lock only mandatory rows when a query also has optional LEFT JOINs. */
+export function forUpdate(alias) {
+  return isPostgres ? `FOR UPDATE OF ${alias}` : 'FOR UPDATE'
+}
+
 /** Author list aggregation — MySQL GROUP_CONCAT vs Postgres string_agg */
 export function authorsAgg(alias = 'a', separator = ', ') {
   if (isPostgres) {
@@ -74,7 +79,7 @@ export function formatDate(expr, mysqlFormat, pgFormat) {
 }
 
 /** TIME_FORMAT / clock display helpers */
-export function formatTime(expr, mysqlFormat = '%h:%i %p', pgFormat = 'HH12:MI AM') {
+export function formatTime(expr, mysqlFormat = '%l:%i %p', pgFormat = 'FMHH12:MI AM') {
   if (isPostgres) return `to_char((${expr})::time, '${pgFormat}')`
   return `TIME_FORMAT(${expr}, '${mysqlFormat}')`
 }
@@ -100,7 +105,9 @@ export function weekday(expr) {
 }
 
 export function hourOf(expr) {
-  if (isPostgres) return `EXTRACT(HOUR FROM (${expr})::timestamp)`
+  // PostgreSQL EXTRACT accepts both TIME and TIMESTAMP. TIME cannot be cast
+  // directly to TIMESTAMP, and attendance_logs.time_in is a TIME column.
+  if (isPostgres) return `EXTRACT(HOUR FROM (${expr}))`
   return `HOUR(${expr})`
 }
 

@@ -19,6 +19,7 @@ const blocked: ClearanceRecord = {
 function listWith(item: ClearanceRecord) {
   return {
     summary: { totalStudents: 1, cleared: item.status === 'Cleared' ? 1 : 0, pending: item.status === 'Not Cleared' ? 1 : 0, activeOverrides: item.activeOverride ? 1 : 0 },
+    pendingLostReports: [],
     items: [item], pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
   }
 }
@@ -59,6 +60,25 @@ describe('AdminClearancePage simplified exceptions', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Review' }))
     expect(await screen.findByText('No exception is needed because the student is already cleared by the system.')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Clear student as an exception' })).toBeNull()
+  })
+
+  it('shows student lost reports in a review queue and opens the borrower record', async () => {
+    api.list.mockResolvedValue({
+      ...listWith(blocked),
+      pendingLostReports: [{ lostBookReportId: 12, userId: 7, schoolId: blocked.student.schoolId,
+        borrowerName: blocked.student.name, role: 'Student', title: 'Emma', reportedAt: '2026-09-26T01:00:00.000Z' }],
+    })
+    api.detail.mockResolvedValue({ ...blocked, lostBooks: [{ lostBookReportId: 12, transactionId: 20,
+      title: 'Emma', status: 'Pending', purchasePrice: null, replacementCharge: 0,
+      paymentStatus: 'Unpaid', reportedAt: '2026-09-26T01:00:00.000Z', verifiedAt: null }] })
+    render(<AdminClearancePage />)
+
+    expect(await screen.findByText('Lost-book reports awaiting review (1)')).toBeTruthy()
+    expect(screen.getByText('Emma')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Review report' }))
+    await waitFor(() => expect(api.detail).toHaveBeenCalledWith(7))
+    expect(await screen.findByText('Lost-book reports')).toBeTruthy()
+    expect(screen.getByText('Charge pending review')).toBeTruthy()
   })
 })
 

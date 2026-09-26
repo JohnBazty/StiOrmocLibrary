@@ -7,6 +7,7 @@ import {
   countPhysicalCopies,
   findRegistryMatch,
   hasActiveTitleLoan,
+  hasActiveTitleReservation,
   listCategories,
   listPhysicalCopies,
   lockTitle,
@@ -88,7 +89,7 @@ export function createCatalogManagementService(database: Pool = db) {
         const target = await lockCategoryWithManagedShelf(connection, input.targetCategoryId)
         if (!target) throw new HttpError(404, 'CATEGORY_NOT_FOUND', 'The selected category no longer exists.')
         if (!target.shelf_id) {
-          throw new HttpError(422, 'CATEGORY_SHELF_NOT_MANAGED', 'The selected category must use a shelf created in Floor Plan.')
+          throw new HttpError(422, 'CATEGORY_SHELF_NOT_MANAGED', 'The selected category must use a shelf managed in Category Management.')
         }
         if (Number(target.shelf_column) > Number(target.column_count) || Number(target.shelf_row) > Number(target.row_count)) {
           throw new HttpError(422, 'CATEGORY_SHELF_POSITION_INVALID', 'The category position is outside the selected shelf grid. Edit the category location and try again.')
@@ -169,19 +170,23 @@ export function createCatalogManagementService(database: Pool = db) {
       })
     },
 
-    async archiveTitle(titleIdValue: unknown, expectedType: 'Book' | 'Research/Thesis', reasonValue: unknown) {
+    async archiveTitle(titleIdValue: unknown, expectedType: 'Book' | 'Research/Thesis', reasonValue: unknown, actorAccountId: number | null = null) {
       const titleId = positiveId(titleIdValue)
       const reason = archiveReason(reasonValue)
       return inTransaction(async (connection) => {
         const title = await lockTitle(connection, titleId)
         if (!title || title.record_type !== expectedType) throw new HttpError(404, expectedType === 'Book' ? 'BOOK_NOT_FOUND' : 'THESIS_NOT_FOUND', 'The requested catalog title does not exist.')
+        if (title.lifecycle_status !== 'Active') throw new HttpError(409, 'CATALOG_ALREADY_ARCHIVED', 'This title is already archived.')
         const activeLoan = await hasActiveTitleLoan(connection, titleId)
         if (activeLoan) {
           throw new HttpError(422, 'PHYSICAL_COPY_HAS_ACTIVE_LOAN', `Cannot archive this title because copy ${activeLoan.accession_number} is currently ${String(activeLoan.transaction_status).toLowerCase()}.`, {
             titleId, physicalCopyId: activeLoan.physical_copy_id, transactionId: activeLoan.transaction_id,
           })
         }
-        await setTitleArchived(connection, titleId, reason)
+        if (await hasActiveTitleReservation(connection, titleId)) {
+          throw new HttpError(422, 'TITLE_HAS_ACTIVE_RESERVATION', 'Cancel or complete active reservations before archiving this title.')
+        }
+        await setTitleArchived(connection, titleId, reason, actorAccountId)
         return { titleId, lifecycleStatus: 'Archived', reason }
       })
     },

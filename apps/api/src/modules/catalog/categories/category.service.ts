@@ -19,8 +19,8 @@ function duplicateError(categoryName: string) {
 }
 
 function shelfError() {
-  return new HttpError(422, 'CATEGORY_SHELF_NOT_MANAGED', 'Select a shelf created in Floor Plan.', {
-    errors: { shelfLocation: 'Select one of the shelves created in Floor Plan.' },
+  return new HttpError(422, 'CATEGORY_SHELF_NOT_MANAGED', 'Select a shelf from Category Management.', {
+    errors: { shelfLocation: 'Select one of the managed shelves in Category Management.' },
   })
 }
 
@@ -33,7 +33,8 @@ function validateShelfPosition(shelf: Record<string, unknown>, column: number, r
 }
 
 function isDuplicateKey(error: unknown) {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ER_DUP_ENTRY'
+  return typeof error === 'object' && error !== null && 'code' in error &&
+    (error.code === 'ER_DUP_ENTRY' || error.code === '23505')
 }
 
 export function createCategoryService(database: Pool = db) {

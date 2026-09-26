@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "regions": ["icn1"],
+  "buildCommand": "npm run build",
+  "outputDirectory": "apps/web/dist",
+  "functions": {
+    "api/index.mjs": {
+      "includeFiles": "node_modules/{@sparticuz/chromium/bin/**,docx-preview/dist/docx-preview.js,jszip/dist/jszip.min.js}",
+      "maxDuration": 60
+    }
+  },
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/index?__api_route=:path*" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

@@ -1,5 +1,6 @@
 import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { db } from '../../config/db.js'
+import { forUpdate, isPostgres } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { parseQueueFilters, positiveId, validateReservationRequest, validateStatusAdjustment, type ReservationStatus } from './reservation.validation.ts'
 import { queryReservationQueue } from './reservation-query.repository.ts'
@@ -8,6 +9,8 @@ import { cancelPendingCounterClaim, createPendingCounterClaim } from './reservat
 // Claimed reservations are represented by their authoritative open loan and
 // must not remain in a user's capacity forever after that loan is returned.
 const ACTIVE_STATUSES = "('pending','approved','ready_for_pickup')"
+const nullableId = isPostgres ? 'CAST(? AS BIGINT)' : '?'
+const nullableText = isPostgres ? 'CAST(? AS TEXT)' : '?'
 const TRANSITIONS: Record<string, ReservationStatus[]> = {
   pending: ['approved', 'cancelled'], approved: ['ready_for_pickup', 'cancelled'],
   ready_for_pickup: ['cancelled'], claimed: [], cancelled: [], expired: [],
@@ -33,14 +36,14 @@ async function findActiveBorrowConflict(connection: import('mysql2/promise').Poo
         AND bt.transaction_status IN ('Pending','Borrowed','Overdue')
         AND (? = 0 OR bt.reservation_id IS NULL OR bt.reservation_id <> ?)
         AND (
-          (? IS NOT NULL AND borrowed_copy.title_id = ?)
-          OR ((? IS NULL OR borrowed_copy.title_id IS NULL) AND (
-            (borrowed_material.isbn IS NOT NULL AND ? IS NOT NULL AND borrowed_material.isbn = ?)
+          (${nullableId} IS NOT NULL AND borrowed_copy.title_id = ?)
+          OR ((${nullableId} IS NULL OR borrowed_copy.title_id IS NULL) AND (
+            (borrowed_material.isbn IS NOT NULL AND ${nullableText} IS NOT NULL AND borrowed_material.isbn = ?)
             OR LOWER(TRIM(borrowed_material.title)) = LOWER(TRIM(?))
           ))
         )
       ORDER BY bt.transaction_id ASC
-      LIMIT 1 FOR UPDATE`,
+      LIMIT 1 ${forUpdate('bt')}`,
     [input.userId, input.excludedReservationId ?? 0, input.excludedReservationId ?? 0,
       input.titleId, input.titleId, input.titleId, input.isbn, input.isbn, input.title],
   )
@@ -128,7 +131,7 @@ export function createReservationService(database: Pool = db) {
         const [materials] = await connection.execute<RowDataPacket[]>(
           `SELECT m.material_id, m.title, m.isbn, m.material_type, pc.title_id
              FROM materials m LEFT JOIN physical_copies pc ON pc.material_id = m.material_id
-            WHERE m.material_id = ? LIMIT 1 FOR UPDATE`, [materialId],
+            WHERE m.material_id = ? LIMIT 1 ${forUpdate('m')}`, [materialId],
         )
         const material = materials[0]
         if (!material) throw new HttpError(404, 'RESERVATION_MATERIAL_NOT_FOUND', 'The requested material does not exist.')
@@ -165,13 +168,13 @@ export function createReservationService(database: Pool = db) {
            WHERE r.user_id = ? AND r.reservation_status IN ${ACTIVE_STATUSES}
              AND (
                r.material_id = ?
-               OR (? IS NOT NULL AND COALESCE(r.book_title_id, reserved_copy.title_id) = ?)
-               OR ((? IS NULL OR COALESCE(r.book_title_id, reserved_copy.title_id) IS NULL) AND (
-                 (rm.isbn IS NOT NULL AND ? IS NOT NULL AND rm.isbn = ?)
+               OR (${nullableId} IS NOT NULL AND COALESCE(r.book_title_id, reserved_copy.title_id) = ?)
+               OR ((${nullableId} IS NULL OR COALESCE(r.book_title_id, reserved_copy.title_id) IS NULL) AND (
+                 (rm.isbn IS NOT NULL AND ${nullableText} IS NOT NULL AND rm.isbn = ?)
                  OR LOWER(TRIM(rm.title)) = LOWER(TRIM(?))
                ))
              )
-           LIMIT 1 FOR UPDATE`, [userId, materialId, material.title_id, material.title_id,
+           LIMIT 1 ${forUpdate('r')}`, [userId, materialId, material.title_id, material.title_id,
             material.title_id, material.isbn, material.isbn, material.title],
         )
         if (duplicates[0]) throw new HttpError(422, 'DUPLICATE_ACTIVE_RESERVATION', 'You already have an active reservation for this title.')
@@ -204,9 +207,9 @@ export function createReservationService(database: Pool = db) {
              LEFT JOIN physical_copies queue_copy ON queue_copy.material_id = r.material_id
             WHERE r.reservation_status IN ('pending','approved','ready_for_pickup')
               AND (
-                (? IS NOT NULL AND COALESCE(r.book_title_id, queue_copy.title_id) = ?)
-                OR ((? IS NULL OR COALESCE(r.book_title_id, queue_copy.title_id) IS NULL) AND (
-                  (qm.isbn IS NOT NULL AND ? IS NOT NULL AND qm.isbn = ?)
+                (${nullableId} IS NOT NULL AND COALESCE(r.book_title_id, queue_copy.title_id) = ?)
+                OR ((${nullableId} IS NULL OR COALESCE(r.book_title_id, queue_copy.title_id) IS NULL) AND (
+                  (qm.isbn IS NOT NULL AND ${nullableText} IS NOT NULL AND qm.isbn = ?)
                   OR LOWER(TRIM(qm.title)) = LOWER(TRIM(?))
                 ))
               )`, [material.title_id, material.title_id, material.title_id,
@@ -244,7 +247,7 @@ export function createReservationService(database: Pool = db) {
           `SELECT r.reservation_id, r.user_id, r.material_id, r.book_title_id, r.accession_id,
                   r.assigned_physical_copy_id, r.queue_position, r.reservation_status, m.title
              FROM reservations r INNER JOIN materials m ON m.material_id = r.material_id
-            WHERE r.reservation_id = ? LIMIT 1 FOR UPDATE`, [reservationId],
+            WHERE r.reservation_id = ? LIMIT 1 ${forUpdate('r')}`, [reservationId],
         )
         const reservation = rows[0]
         if (!reservation || Number(reservation.user_id) !== userId) throw new HttpError(404, 'RESERVATION_NOT_FOUND', 'The reservation does not exist.')
@@ -286,7 +289,7 @@ export function createReservationService(database: Pool = db) {
              FROM reservations r
              JOIN materials m ON m.material_id = r.material_id
              LEFT JOIN physical_copies pc ON pc.material_id = r.material_id
-            WHERE r.reservation_id = ? LIMIT 1 FOR UPDATE`, [reservationId],
+            WHERE r.reservation_id = ? LIMIT 1 ${forUpdate('r')}`, [reservationId],
         )
         const reservation = rows[0]
         if (!reservation) throw new HttpError(404, 'RESERVATION_NOT_FOUND', 'The reservation does not exist.')
@@ -314,7 +317,7 @@ export function createReservationService(database: Pool = db) {
                FROM materials candidate INNER JOIN physical_copies pc ON pc.material_id = candidate.material_id
               WHERE candidate.availability_status = 'Available' AND candidate.material_type = ?
                 AND pc.lifecycle_status = 'Active' AND pc.availability_status = 'Available'
-                AND ((candidate.isbn IS NOT NULL AND ? IS NOT NULL AND candidate.isbn = ?)
+                AND ((candidate.isbn IS NOT NULL AND ${nullableText} IS NOT NULL AND candidate.isbn = ?)
                   OR LOWER(TRIM(candidate.title)) = LOWER(TRIM(?)))
                 AND NOT EXISTS (SELECT 1 FROM reservations active
                   WHERE active.accession_id = candidate.material_id

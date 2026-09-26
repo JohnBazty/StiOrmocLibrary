@@ -1,6 +1,6 @@
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { db } from '../../config/db.js'
-import { excluded, isPostgres, timestampDiffSeconds } from '../../config/sql-dialect.js'
+import { excluded, forUpdate, isPostgres, timestampDiffSeconds } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { createFinesService } from '../fines/fines.service.ts'
 import { positiveId, validateLostDecision, validateOverride, validateRevocation } from './clearance.validation.ts'
@@ -192,13 +192,32 @@ export function createClearanceService(database: Pool = db) {
       const limit = Math.min(100, Math.max(1, Math.trunc(Number(query.limit) || 25)))
       const search = typeof query.search === 'string' ? query.search.trim().slice(0, 100) : ''
       const offset = (page - 1) * limit
-      const all = await aggregateStudents()
+      const [all, [pendingLostRows]] = await Promise.all([
+        aggregateStudents(),
+        database.execute<RowDataPacket[]>(
+          `SELECT l.lost_book_report_id,l.user_id,l.reported_at,u.school_id,u.full_name,u.user_role,
+                  COALESCE(t.title,m.title) AS title
+             FROM lost_book_reports l
+             INNER JOIN users u ON u.user_id=l.user_id
+             INNER JOIN borrow_transactions bt ON bt.transaction_id=l.transaction_id
+             INNER JOIN materials m ON m.material_id=bt.material_id
+             LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id
+             LEFT JOIN titles t ON t.title_id=pc.title_id
+            WHERE l.report_status='Pending'
+            ORDER BY l.reported_at ASC,l.lost_book_report_id ASC`,
+        ),
+      ])
       const normalized = search.toLocaleLowerCase('en-US')
       const filtered = normalized ? all.filter((item) => `${item.student.name} ${item.student.schoolId}`.toLocaleLowerCase('en-US').includes(normalized)) : all
       const items = filtered.slice(offset, offset + limit)
       const total = filtered.length
       return {
         summary: { totalStudents: all.length, cleared: all.filter((item) => item.status === 'Cleared').length, pending: all.filter((item) => item.status !== 'Cleared').length, activeOverrides: all.filter((item) => item.activeOverride).length },
+        pendingLostReports: pendingLostRows.map((row) => ({
+          lostBookReportId: Number(row.lost_book_report_id), userId: Number(row.user_id),
+          schoolId: String(row.school_id), borrowerName: String(row.full_name),
+          role: String(row.user_role), title: String(row.title), reportedAt: row.reported_at,
+        })),
         items, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
       }
     },
@@ -246,7 +265,7 @@ export function createClearanceService(database: Pool = db) {
              FROM borrow_transactions bt INNER JOIN materials m ON m.material_id=bt.material_id
              LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id
              LEFT JOIN titles t ON t.title_id=pc.title_id
-            WHERE bt.transaction_id=? LIMIT 1 FOR UPDATE`, [transactionId],
+            WHERE bt.transaction_id=? LIMIT 1 ${forUpdate('bt')}`, [transactionId],
         )
         const loan = rows[0]
         if (!loan || Number(loan.user_id) !== userId) throw new HttpError(404, 'LOST_BOOK_LOAN_NOT_FOUND', 'The active borrowing record was not found.')
@@ -286,7 +305,7 @@ export function createClearanceService(database: Pool = db) {
              INNER JOIN materials m ON m.material_id=bt.material_id
              LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id
              LEFT JOIN titles t ON t.title_id=pc.title_id
-            WHERE l.lost_book_report_id=? LIMIT 1 FOR UPDATE`, [reportId],
+            WHERE l.lost_book_report_id=? LIMIT 1 ${forUpdate('l')}`, [reportId],
         )
         const report = rows[0]
         if (!report) throw new HttpError(404, 'LOST_BOOK_REPORT_NOT_FOUND', 'The lost-book report was not found.')

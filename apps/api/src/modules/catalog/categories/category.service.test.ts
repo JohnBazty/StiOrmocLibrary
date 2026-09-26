@@ -3,6 +3,17 @@ import test from 'node:test'
 import type { Pool } from 'mysql2/promise'
 import { HttpError } from '../../../core/http-error.ts'
 import { createCategoryService } from './category.service.ts'
+import { findCategoryByName } from './category.repository.ts'
+
+test('category name lookup does not send an untyped nullable parameter', async () => {
+  const calls: Array<{ sql: string; values: unknown[] }> = []
+  const database = { async execute(sql: string, values: unknown[]) { calls.push({ sql, values }); return [[]] } } as unknown as Pool
+  await findCategoryByName(database, 'Programming')
+  await findCategoryByName(database, 'Programming', 7)
+  assert.deepEqual(calls.map((call) => call.values), [['Programming'], ['Programming', 7]])
+  assert.doesNotMatch(calls[0].sql, /IS NULL/)
+  assert.match(calls[1].sql, /category_id <> \?/)
+})
 
 test('creates a unique category with prepared values', async () => {
   const calls: Array<{ sql: string; values: unknown[] }> = []
@@ -20,7 +31,7 @@ test('creates a unique category with prepared values', async () => {
   assert.match(calls[2].sql, /INSERT INTO categories/)
 })
 
-test('rejects a category shelf that was not created in Floor Plan', async () => {
+test('rejects a category shelf that is not managed in Category Management', async () => {
   const database = {
     async execute(sql: string) {
       if (sql.includes('FROM categories')) return [[]]
@@ -31,7 +42,7 @@ test('rejects a category shelf that was not created in Floor Plan', async () => 
   await assert.rejects(createCategoryService(database).create({ categoryName: 'Programming', shelfLocation: 'Typed shelf' }), (error: unknown) => {
     assert.ok(error instanceof HttpError)
     assert.equal(error.code, 'CATEGORY_SHELF_NOT_MANAGED')
-    assert.deepEqual(error.details, { errors: { shelfLocation: 'Select one of the shelves created in Floor Plan.' } })
+    assert.deepEqual(error.details, { errors: { shelfLocation: 'Select one of the managed shelves in Category Management.' } })
     return true
   })
 })
@@ -41,6 +52,21 @@ test('halts a duplicate category with the required 422 error', async () => {
   await assert.rejects(createCategoryService(database).create({ categoryName: ' Programming ', shelfLocation: 'Aisle 3' }), (error: unknown) => {
     assert.ok(error instanceof HttpError)
     assert.equal(error.status, 422)
+    assert.equal(error.code, 'CATEGORY_NAME_ALREADY_EXISTS')
+    return true
+  })
+})
+
+test('translates a PostgreSQL duplicate category into a clear validation error', async () => {
+  const database = {
+    async execute(sql: string) {
+      if (sql.includes('FROM categories')) return [[]]
+      if (sql.includes('FROM floor_plan_shelves')) return [[{ id: 1, label: 'Shelf A-1', column_count: 2, row_count: 2 }]]
+      throw Object.assign(new Error('duplicate key'), { code: '23505' })
+    },
+  } as unknown as Pool
+  await assert.rejects(createCategoryService(database).create({ categoryName: 'Programming', shelfLocation: 'Shelf A-1' }), (error: unknown) => {
+    assert.ok(error instanceof HttpError)
     assert.equal(error.code, 'CATEGORY_NAME_ALREADY_EXISTS')
     return true
   })

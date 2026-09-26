@@ -8,4 +8,5 @@ export type ClearanceRecord = {
   activeOverride: null | { overrideId: number; status: string; reason: string; appliedAt: string; expiresAt: string | null; appliedBy: string }
   overrideHistory: Array<{ overrideId: number; status: string; reason: string; appliedAt: string; expiresAt: string | null; revokedAt: string | null; revocationReason: string | null; appliedBy: string; revokedBy: string | null }>
 }
-export type ClearanceList = { summary: { totalStudents: number; cleared: number; pending: number; activeOverrides: number }; items: ClearanceRecord[]; pagination: { page: number; limit: number; total: number; totalPages: number } }
+export type PendingLostReport = { lostBookReportId: number; userId: number; schoolId: string; borrowerName: string; role: string; title: string; reportedAt: string }
+export type ClearanceList = { summary: { totalStudents: number; cleared: number; pending: number; activeOverrides: number }; pendingLostReports: PendingLostReport[]; items: ClearanceRecord[]; pagination: { page: number; limit: number; total: number; totalPages: number } }

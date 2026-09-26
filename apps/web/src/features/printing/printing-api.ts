@@ -1,7 +1,8 @@
 import { getAccessToken } from '../auth/auth-storage'
 
-export type ServiceStatus={accepting_requests:number|boolean;unavailable_reason:string|null;updated_at?:string|null}
+export type ServiceStatus={accepting_requests:number|boolean;unavailable_reason:string|null;updated_at?:string|null;docx_auto_count_available?:boolean}
 export type PricingRule={pricing_rule_id:number;print_type:'Colored'|'Monochrome';paper_size:'Short'|'A4'|'Long';price_per_page:number|string}
+export type PrintQuote={page_count:number;total_sheets:number;calculated_cost:number;document_sha256:string;printable_file_name:string}
 export type PrintRequest={request_id:number;full_name?:string;school_id?:string;user_role?:string;file_name:string;number_of_copies:number;print_type:string;paper_size:string;page_count:number;total_sheets:number;calculated_cost:number|string;payment_status:'Unpaid'|'Paid';job_status:'Pending'|'Printing'|'Ready for Pickup'|'Completed'|'Cancelled';created_at:string;cancelled_reason?:string|null;print_receipt_id?:number|null;receipt_number?:string|null;verification_code?:string|null;receipt_status?:'Issued'|'Reversed'|null;receipt_issued_at?:string|null}
 export type PrintingReceipt={print_receipt_id:number;request_id:number;receipt_number:string;verification_code:string;receipt_status:'Issued'|'Reversed';student_name:string;school_id:string;file_name:string;page_count:number;number_of_copies:number;total_sheets:number;print_type:string;paper_size:string;amount_received:number|string;payment_method:'Cash';received_by:string;received_at:string}
 export type PrintCashPayment={request_id:number;payment_status:'Paid';amount_paid:number;receipt:PrintingReceipt}
@@ -34,6 +35,7 @@ export const printingApi={
   receipt:async(id:number,admin=false)=>(await request<PrintingReceipt>(`/api/v1/${admin?'admin/printing':'printing'}/receipts/${id}`)).data,
   downloadReceipt:(receipt:PrintingReceipt,admin=false)=>download(`/api/v1/${admin?'admin/printing':'printing'}/receipts/${receipt.print_receipt_id}/pdf`,`${receipt.receipt_number}.pdf`,'application/pdf','application/pdf'),
   submit:async(form:FormData)=>(await request<PrintRequest>('/api/v1/printing/requests',{method:'POST',body:form})).data,
+  quote:async(form:FormData)=>(await request<PrintQuote>('/api/v1/printing/quote',{method:'POST',body:form})).data,
   cancel:async(id:number)=>request(`/api/v1/printing/requests/${id}/cancel`,{method:'PUT',body:'{}'}),
   summary:async()=>(await request<PrintSummary>('/api/v1/admin/printing/summary')).data,
   setServiceStatus:async(accepting:boolean,reason?:string)=>request<ServiceStatus>('/api/v1/admin/printing/service-status',{method:'PATCH',body:JSON.stringify({accepting_requests:accepting,unavailable_reason:reason})}),

@@ -76,6 +76,8 @@ export function createPgPool(connectionString, connectionLimit) {
   const pool = new Pool({
     connectionString,
     max: connectionLimit,
+    idleTimeoutMillis: process.env.VERCEL ? 1000 : 10000,
+    connectionTimeoutMillis: 10000,
     options: '-c timezone=Asia/Manila',
   })
 

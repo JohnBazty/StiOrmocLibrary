@@ -6,6 +6,7 @@ import { circulationApi } from './circulation-api'
 import type { BorrowingHistoryData } from './types'
 import { BookDetailDrawer } from '../catalog/BookDetailDrawer'
 import { CancelBorrowRequestDialog } from './CancelBorrowRequestDialog'
+import { ReportLostDialog } from './ReportLostDialog'
 import { BookCoverThumbnail } from '../catalog/BookCoverThumbnail'
 import { clearanceApi } from '../clearance/clearance-api'
 
@@ -24,6 +25,9 @@ export function BorrowingHistory() {
   const [cancelling, setCancelling] = useState<BorrowingHistoryData['items'][number] | null>(null)
   const [cancelBusy, setCancelBusy] = useState(false)
   const [cancelError, setCancelError] = useState('')
+  const [reporting, setReporting] = useState<BorrowingHistoryData['items'][number] | null>(null)
+  const [reportBusy, setReportBusy] = useState(false)
+  const [reportError, setReportError] = useState('')
   const load = useCallback(async () => {
     setLoading(true); setError('')
     try { setData(await circulationApi.history()) }
@@ -52,10 +56,17 @@ export function BorrowingHistory() {
     } finally { setCancelBusy(false) }
   }
 
-  async function reportLost(transactionId: number, title: string) {
-    if (!window.confirm(`Report “${title}” as lost? The library will be notified and will verify the replacement charge.`)) return
-    try { await clearanceApi.reportLost(transactionId); setNotice(`${title} was reported lost. Library staff have been notified.`); await load() }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'The lost-book report could not be submitted.') }
+  async function reportLost() {
+    if (!reporting || reportBusy) return
+    setReportBusy(true); setReportError('')
+    try {
+      await clearanceApi.reportLost(reporting.transactionId)
+      setNotice(`${reporting.title} was reported lost. Library staff have been notified.`)
+      setReporting(null)
+      await load()
+    } catch (reason) {
+      setReportError(reason instanceof Error ? reason.message : 'The lost-book report could not be submitted.')
+    } finally { setReportBusy(false) }
   }
 
   const summary = data?.summary
@@ -75,11 +86,12 @@ export function BorrowingHistory() {
         <thead className="bg-[#003399] text-[#FFFFFF]"><tr><th className="px-5 py-3">Title</th><th className="px-5 py-3">Author</th><th className="px-5 py-3">Borrow date</th><th className="px-5 py-3">Due date</th><th className="px-5 py-3">Status</th><th className="px-5 py-3 text-right">Actions</th></tr></thead>
         <tbody>{loading ? <tr><td colSpan={6} className="px-5 py-12 text-center text-[#003399]">Loading borrowing records…</td></tr> : data?.items.length ? data.items.map((item) => <tr key={item.transactionId} className="border-b border-[#003399]/10">
           <td className="px-5 py-4"><div className="flex items-center gap-3"><BookCoverThumbnail title={item.title} coverImagePath={item.coverImagePath} className="h-16 w-11 rounded-lg" /><div className="min-w-0"><p className="font-bold text-[#003399]">{item.title}</p><p className="mt-1 font-mono text-xs text-[#003399]/60">{item.accessionNumber ?? item.barcode ?? `TX-${item.transactionId}`}</p></div></div></td>
-          <td className="px-5 py-4 text-[#003399]">{item.author}</td><td className="px-5 py-4 text-[#003399]">{formatDate(item.borrowDate)}</td><td className="px-5 py-4 font-semibold text-[#003399]">{formatDate(item.dueDate)}</td><td className="px-5 py-4"><StatusBadge status={item.lostReportStatus ?? item.status} /></td><td className="px-5 py-4"><div className="flex justify-end gap-2">{item.titleId ? <ViewLocationButton titleId={Number(item.titleId)} barcode={item.barcode}/> : null}{item.titleId ? <button onClick={() => setDetail({ titleId: Number(item.titleId), barcode: item.barcode })} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#003399]/20 px-3 text-xs font-bold text-[#003399]"><Eye size={15} /> View details</button> : null}{item.status === 'Pending' ? <button onClick={() => { setCancelError(''); setCancelling(item) }} className="h-9 rounded-lg px-3 text-xs font-bold text-[#003399] hover:bg-[#FFF200]"><X size={14} className="inline" /> Cancel request</button> : null}{['Borrowed','Overdue'].includes(item.status) && !item.lostReportStatus ? <button onClick={() => void reportLost(item.transactionId, item.title)} className="h-9 rounded-lg bg-[#FFF200] px-3 text-xs font-bold text-[#003399]">Report lost</button> : null}</div></td>
+          <td className="px-5 py-4 text-[#003399]">{item.author}</td><td className="px-5 py-4 text-[#003399]">{formatDate(item.borrowDate)}</td><td className="px-5 py-4 font-semibold text-[#003399]">{formatDate(item.dueDate)}</td><td className="px-5 py-4"><StatusBadge status={item.lostReportStatus ?? item.status} /></td><td className="px-5 py-4"><div className="flex justify-end gap-2">{item.titleId ? <ViewLocationButton titleId={Number(item.titleId)} barcode={item.barcode}/> : null}{item.titleId ? <button onClick={() => setDetail({ titleId: Number(item.titleId), barcode: item.barcode })} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#003399]/20 px-3 text-xs font-bold text-[#003399]"><Eye size={15} /> View details</button> : null}{item.status === 'Pending' ? <button onClick={() => { setCancelError(''); setCancelling(item) }} className="h-9 rounded-lg px-3 text-xs font-bold text-[#003399] hover:bg-[#FFF200]"><X size={14} className="inline" /> Cancel request</button> : null}{['Borrowed','Overdue'].includes(item.status) && !item.lostReportStatus ? <button onClick={() => { setReportError(''); setReporting(item) }} className="h-9 rounded-lg bg-[#FFF200] px-3 text-xs font-bold text-[#003399]">Report lost</button> : null}</div></td>
         </tr>) : <tr><td colSpan={6} className="px-5 py-12 text-center font-semibold text-[#003399]">No borrowing transactions have been recorded.</td></tr>}</tbody>
       </table></div>
     </SectionCard>
     {detail ? <BookDetailDrawer titleId={detail.titleId} barcode={detail.barcode} onClose={() => setDetail(null)} /> : null}
     {cancelling ? <CancelBorrowRequestDialog title={cancelling.title} busy={cancelBusy} error={cancelError} onCancel={() => { if (!cancelBusy) setCancelling(null) }} onConfirm={(reason) => void confirmCancellation(reason)} /> : null}
+    {reporting ? <ReportLostDialog title={reporting.title} busy={reportBusy} error={reportError} onCancel={() => { if (!reportBusy) setReporting(null) }} onConfirm={() => void reportLost()} /> : null}
   </>
 }

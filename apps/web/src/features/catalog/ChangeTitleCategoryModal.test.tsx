@@ -7,6 +7,7 @@ const item: CatalogItem = {
   titleId: 14,
   recordType: 'Book',
   title: 'Harry Potter',
+  coverImagePath: null,
   authors: ['J. K. Rowling'],
   isbn: '9780439064873',
   publicationYear: 1999,

@@ -1,4 +1,5 @@
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import { forUpdate, isPostgres } from '../../../config/sql-dialect.js'
 import type { CategoryInput } from './category.validation.ts'
 
 export type CategoryRecord = {
@@ -51,10 +52,11 @@ export async function listCategoriesWithCounts(database: Pool): Promise<Category
 }
 
 export async function findCategoryByName(database: Pool | PoolConnection, categoryName: string, excludedId: number | null = null) {
+  const excludedClause = excludedId === null ? '' : ' AND category_id <> ?'
   const [rows] = await database.execute<RowDataPacket[]>(
     `SELECT category_id, category_name FROM categories
-      WHERE category_name = ? AND (? IS NULL OR category_id <> ?) LIMIT 1`,
-    [categoryName, excludedId, excludedId],
+      WHERE category_name = ?${excludedClause} LIMIT 1`,
+    excludedId === null ? [categoryName] : [categoryName, excludedId],
   )
   return rows[0] ?? null
 }
@@ -82,7 +84,7 @@ export async function synchronizeCategoryShelf(connection: PoolConnection, categ
        JOIN physical_copies pc ON pc.title_id = t.title_id
       WHERE t.category_id = ? AND t.record_type = 'Book'
         AND t.lifecycle_status = 'Active' AND pc.lifecycle_status = 'Active'
-      FOR UPDATE`, [categoryId],
+      ${forUpdate('pc')}`, [categoryId],
   )
   const [researchRows] = await connection.execute<RowDataPacket[]>(
     `SELECT ri.research_inventory_id, ri.shelf_location
@@ -90,14 +92,20 @@ export async function synchronizeCategoryShelf(connection: PoolConnection, categ
        JOIN research_inventory ri ON ri.title_id = t.title_id
       WHERE t.category_id = ? AND t.record_type = 'Research/Thesis'
         AND t.lifecycle_status = 'Active' AND ri.lifecycle_status = 'Active'
-      FOR UPDATE`, [categoryId],
+      ${forUpdate('ri')}`, [categoryId],
   )
   await connection.execute(
-    `UPDATE physical_copies pc
-       JOIN titles t ON t.title_id = pc.title_id
-        SET pc.shelf_location = ?, pc.shelf_column = ?, pc.shelf_row = ?, pc.updated_at = NOW()
-      WHERE t.category_id = ? AND t.record_type = 'Book'
-        AND t.lifecycle_status = 'Active' AND pc.lifecycle_status = 'Active'`,
+    isPostgres
+      ? `UPDATE physical_copies pc
+            SET shelf_location = ?, shelf_column = ?, shelf_row = ?, updated_at = NOW()
+           FROM titles t
+          WHERE t.title_id = pc.title_id AND t.category_id = ? AND t.record_type = 'Book'
+            AND t.lifecycle_status = 'Active' AND pc.lifecycle_status = 'Active'`
+      : `UPDATE physical_copies pc
+           JOIN titles t ON t.title_id = pc.title_id
+            SET pc.shelf_location = ?, pc.shelf_column = ?, pc.shelf_row = ?, pc.updated_at = NOW()
+          WHERE t.category_id = ? AND t.record_type = 'Book'
+            AND t.lifecycle_status = 'Active' AND pc.lifecycle_status = 'Active'`,
     [shelfLocation, shelfColumn, shelfRow, categoryId],
   )
   await connection.execute(
@@ -105,11 +113,17 @@ export async function synchronizeCategoryShelf(connection: PoolConnection, categ
     [shelfLocation, categoryId],
   )
   await connection.execute(
-    `UPDATE research_inventory ri
-       JOIN titles t ON t.title_id = ri.title_id
-        SET ri.shelf_location = ?, ri.shelf_column = ?, ri.shelf_row = ?, ri.updated_at = NOW(), ri.row_version = ri.row_version + 1
-      WHERE t.category_id = ? AND t.record_type = 'Research/Thesis'
-        AND t.lifecycle_status = 'Active' AND ri.lifecycle_status = 'Active'`,
+    isPostgres
+      ? `UPDATE research_inventory ri
+            SET shelf_location = ?, shelf_column = ?, shelf_row = ?, updated_at = NOW(), row_version = ri.row_version + 1
+           FROM titles t
+          WHERE t.title_id = ri.title_id AND t.category_id = ? AND t.record_type = 'Research/Thesis'
+            AND t.lifecycle_status = 'Active' AND ri.lifecycle_status = 'Active'`
+      : `UPDATE research_inventory ri
+           JOIN titles t ON t.title_id = ri.title_id
+            SET ri.shelf_location = ?, ri.shelf_column = ?, ri.shelf_row = ?, ri.updated_at = NOW(), ri.row_version = ri.row_version + 1
+          WHERE t.category_id = ? AND t.record_type = 'Research/Thesis'
+            AND t.lifecycle_status = 'Active' AND ri.lifecycle_status = 'Active'`,
     [shelfLocation, shelfColumn, shelfRow, categoryId],
   )
   const distribution = (rows: RowDataPacket[]) => Object.entries(rows.reduce<Record<string, number>>((result, row) => {
@@ -165,21 +179,21 @@ export async function lockActiveCategoryAssets(connection: PoolConnection, categ
        FROM titles t JOIN physical_copies pc ON pc.title_id = t.title_id
       WHERE t.category_id = ? AND t.record_type = 'Book'
         AND t.lifecycle_status = 'Active' AND pc.lifecycle_status = 'Active'
-      FOR UPDATE`, [categoryId],
+      ${forUpdate('pc')}`, [categoryId],
   )
   const [thesisRows] = await connection.execute<RowDataPacket[]>(
     `SELECT rr.research_record_id
        FROM titles t JOIN research_records rr ON rr.title_id = t.title_id
       WHERE t.category_id = ? AND t.record_type = 'Research/Thesis'
         AND t.lifecycle_status = 'Active' AND rr.viewing_status <> 'Archived'
-      FOR UPDATE`, [categoryId],
+      ${forUpdate('rr')}`, [categoryId],
   )
   const [legacyRows] = await connection.execute<RowDataPacket[]>(
     `SELECT m.material_id
        FROM materials m
        LEFT JOIN physical_copies pc ON pc.material_id = m.material_id
       WHERE m.category_id = ? AND pc.physical_copy_id IS NULL
-      FOR UPDATE`, [categoryId],
+      ${forUpdate('m')}`, [categoryId],
   )
   return { books: bookRows.length, theses: thesisRows.length, legacyAssets: legacyRows.length }
 }

@@ -23,7 +23,7 @@ Allowed status values: `planned` → `inprogress` → `built`.
 | Decision | Choice |
 | --- | --- |
 | Access pattern | Supabase **Postgres** via `DATABASE_URL` + `pg` pool |
-| Supabase JS client | **Not** required for v1 |
+| Supabase JS client | Used server-side for private printing document storage; Postgres data access remains via `DATABASE_URL` + `pg` |
 | Supabase Auth / RLS | **Out of scope** for v1 |
 | Local MySQL | Keep schema/migrations + optional `DB_*` rollback path until buddies verify |
 | Historical MySQL SQL | **Stay in-repo**; new tree at `database/supabase/` |
@@ -64,7 +64,7 @@ Custom `MySqlSessionStore` (`apps/api/src/core/mysql-session-store.js`) on table
 | Item | Count / path |
 | --- | --- |
 | MySQL baseline | `database/mysql56-schema.sql` |
-| MySQL migrations | **40** (`001`…`040`); next MySQL number **`041`** if needed |
+| MySQL migrations | **41** (`001`…`041`); next MySQL number **`042`** if needed |
 | Postgres drafts | `database/supabase/` including `005_main_product_gapfill.sql` for MAIN 033–040 |
 | Views | `borrow_records`, `book_titles` |
 | Seed files | None |
@@ -98,7 +98,7 @@ Custom `MySqlSessionStore` (`apps/api/src/core/mysql-session-store.js`) on table
 | `TIMESTAMPDIFF(SECOND,a,b)` | `EXTRACT(EPOCH FROM (b-a))` |
 | `GROUP_CONCAT(x ORDER BY y SEPARATOR s)` | `string_agg(x, s ORDER BY y)` |
 | `SUM(col='x')` | `COUNT(*) FILTER (WHERE col='x')` or `SUM((col='x')::int)` |
-| `FOR UPDATE` | Keep (use direct Postgres connection, not transaction-mode pooler, for long txs) |
+| `FOR UPDATE` | Keep inside an explicit transaction on one acquired connection; verified against the transaction pooler for short API transactions |
 | `MEDIUMTEXT` / `LONGTEXT` | `TEXT` |
 | `YEAR` | `SMALLINT` |
 | `TINYINT` | `SMALLINT` |
@@ -110,7 +110,7 @@ Custom `MySqlSessionStore` (`apps/api/src/core/mysql-session-store.js`) on table
 2. `insertId` / tuple `execute` assumptions in writes and unit mocks.
 3. Trigger + ENUM rewrite (borrow/fine/lost/ink).
 4. Session upsert + notification `INSERT IGNORE` dedupe.
-5. Supabase pooler vs `FOR UPDATE` transactions — prefer **session/direct** port `5432` for the long-lived API pool; pooler `6543` only if compatible.
+5. Supabase pooler vs `FOR UPDATE` transactions — the local long-lived API can use session port `5432`; Vercel uses transaction port `6543` after an explicit transaction and row-lock check passed. Keep transaction-scoped operations on one acquired connection.
 
 ### Tests
 
@@ -187,15 +187,15 @@ await db.execute('SELECT * FROM users WHERE email = ? LIMIT 1', [email])
 | --- | --- | --- |
 | 0 | Plan drafted | done |
 | 1 | Inventory + decisions locked; status `inprogress` | done |
-| 2 | Confirm Supabase `.env` `DATABASE_URL` (local only) | pending (Ethan) |
+| 2 | Confirm Supabase `.env` `DATABASE_URL` (local only) | done (connection verified; secret stays local) |
 | 3 | Add `pg` + env/driver adapter (`?` → `$n`, result shape) | done |
 | 4 | Session store `ON CONFLICT` + dual upsert | done |
 | 5 | Dialect rewrites (upsert / GROUP_CONCAT / dates / IF) | done (hot paths) |
 | 6 | `schema-readiness` Postgres `information_schema` | done |
-| 7 | Translate squashed schema + triggers → `database/supabase/` | inprogress (001+003+004 applied on live Supabase; 002 drafts need MySQL procedural cleanup; triggers still deferred) |
+| 7 | Translate squashed schema + triggers → `database/supabase/` | inprogress (live ledger records 001, 003, 004, and 006–010; 002 draft and 005 ledger require reconciliation; triggers still deferred) |
 | 8 | Scripts `db:supabase` + `.env.example` | done |
 | 9 | Update `agent.md`, schema-context, protocol tracker | done |
-| 10 | Apply schema to Supabase; seed; smoke test | inprogress (connected via session pooler; schema readiness nearly green) |
+| 10 | Apply schema to Supabase; seed; smoke test | done for local cutover (source rows transferred; local web registration/login smoke passed); deployed environment and buddy access still need separate verification |
 | 11 | Mark plan `built`; note follow-ups | pending |
 
 ### Out of scope (unless later approved)
@@ -215,6 +215,22 @@ await db.execute('SELECT * FROM users WHERE email = ? LIMIT 1', [email])
 4. Prefer direct DB host for transactional locking.  
 5. Product docs must stay Postgres-aware after cutover.
 
+### Live migration audit (2026-09-25)
+
+The Supabase session pooler accepts the local API connection. The `schema_migrations` ledger records `001_from_baseline.sql`, `003_readiness_gapfill.sql`, `004_inventory_audit_action_reason.sql`, `006_print_request_timestamps.sql`, and the now-tracked `007_security_invoker_views.sql`. The ledger does not record `002` or `005`, although tables introduced by both are visible in the hosted schema. Reconcile the live definitions before applying another schema file; do not run the draft `002` through the ordered runner.
+
+Before cutover, hosted row counts were `roles` 4, `users` 2, `accounts` 1; core catalog/circulation tables were empty. Local MySQL access was restored with a local credential in the ignored API environment file. The source had 56 base tables and 40 applied MySQL migrations. Supabase schema migrations `008_cutover_schema_gaps.sql` and `009_inventory_audit_orphan_history.sql` were applied to reconcile the populated source, including nullable deleted-copy audit history.
+
+### Historical data cutover completed
+
+On 2026-09-25, `tools/ai/migrate-mysql-to-supabase.mjs` completed a full transactional dry run, then committed the historical rows from a consistent read-only MySQL snapshot. Existing Supabase accounts were preserved. Colliding numeric IDs were remapped with their dependent foreign keys; roles and seeded policy/settings rows were reconciled. Source `schema_migrations` and ephemeral `auth_sessions` were intentionally excluded. All table counts and mapped identities were checked before commit. The source MySQL rows were not modified.
+
+The target transaction created a pre-cutover snapshot of all public tables in private schema `mysql_cutover_backup_20260925100301`. Keep this schema until the team has verified the deployed app and agreed to retire rollback. The importer refuses a second `--apply` while a cutover backup exists. Use `node tools/ai/audit-supabase-cutover.mjs` for read-only source/target counts.
+
+Independent post-commit counts: `users` 6 (4 source + 2 prior hosted), `accounts` 5 (4 + 1), `student_profiles` 3 (2 + 1), `categories` 6, `titles` 16, `physical_copies` 27, `borrow_transactions` 30, `reservations` 10, `fines` 13, `attendance_logs` 7, and `print_requests` 4. All 56 source tables are present and no populated source column is missing. The local API health endpoint reports `healthy`; a new student registration and login succeeded through the local web proxy against Supabase, and the temporary account was removed.
+
+The deployed app URL and its production `DATABASE_URL` have not been verified here. The local cutover also does not finish the pending 007/002/005 migration-ledger reconciliation or deferred trigger parity, so this overall plan remains `inprogress`.
+
 ---
 
 ## Change log
@@ -226,9 +242,15 @@ await db.execute('SELECT * FROM users WHERE email = ? LIMIT 1', [email])
 | 2026-09-25 | Implementation started: `pg` adapter + dialect helpers + supabase drafts. | Agent Alpha |
 | 2026-09-25 | Live Supabase wired via session pooler (`ap-northeast-2`). Applied `001`+`003`+`004`; `checkSchemaReadiness` = ready. Direct `db.*` host is IPv6-only on this network. | Agent Alpha |
 | 2026-09-25 | Ported cutover into GitHub main: kept product migrations 033–040, added `005_main_product_gapfill.sql`, dialect merges for dual-driver API. | Agent |
+| 2026-09-25 | Verified hosted connection and audited live migration ledger and row counts. Started source MySQL access check; no hosted schema or data changes made. | Agent Alpha |
+| 2026-09-25 | Applied Postgres 008–009, migrated local MySQL history into Supabase with a pre-cutover backup, verified counts and local registration/login. | Agent Alpha |
+| 2026-09-25 | Switched Vercel's Supabase URL to transaction pooling after session pool exhaustion, bounded each function's `pg` pool, and verified linked-student routes on production. | Agent Alpha |
+| 2026-09-25 | Added server-side Supabase Storage for new print documents and corrected PostgreSQL printing and borrow-cart queries; verified live student and admin flows. | Agent Alpha |
+| 2026-09-25 | Migrated the four retained historical print PDFs to private Supabase Storage, kept local originals, and verified production downloads for every retained print document. | Agent Alpha |
+| 2026-09-25 | Corrected PostgreSQL admin checkout and bulk book row-lock queries and added public Supabase Storage for new covers; checked rollback-only database flows and a live image upload. | Agent Alpha |
 
 ---
 
 ## Approval gate
 
-Build is **approved**. Remaining Ethan action: put a working Supabase `DATABASE_URL` in local `apps/api/.env` (never commit) when ready to apply schema against the hosted project.
+Build is **approved**. The local MySQL history has been transferred. Keep local credentials out of Git and verify the deployed app's connection and flows before retiring MySQL or the pre-cutover backup.

@@ -3,14 +3,14 @@ import { db } from '../../config/db.js'
 import {
   currentDate,
   dateAddDays,
-  formatDate,
+  monthStart as startOfMonth,
   isPostgres,
   sumEquals,
 } from '../../config/sql-dialect.js'
 import type { FinanceFilters, QueueFilters } from './printing.validation.ts'
 
 const dayAfter = (placeholder = '?') => dateAddDays(placeholder, 1)
-const monthStart = formatDate(currentDate(), '%Y-%m-01', 'YYYY-MM-01')
+const monthStart = startOfMonth()
 
 export class PrintingRepository {
   readonly pool: Pool

@@ -53,7 +53,7 @@ export function createAttendanceService(pool: Pool = db) {
         ),
         pool.execute<RowDataPacket[]>(
           `SELECT ${sumCondition(`attendance_date BETWEEN ${monthStart()} AND ${lastDayOfMonth()}`)} visits_this_month,
-                  MAX(CASE WHEN attendance_date=${currentDate()} THEN time_in END) today_check_in,
+                  ${formatTime(`MAX(CASE WHEN attendance_date=${currentDate()} THEN time_in END)`)} today_check_in,
                   (SELECT reason_for_visit FROM attendance_logs WHERE user_id=?
                     GROUP BY reason_for_visit ORDER BY COUNT(*) DESC,reason_for_visit LIMIT 1) common_purpose
              FROM attendance_logs WHERE user_id=?`, [userId,userId],

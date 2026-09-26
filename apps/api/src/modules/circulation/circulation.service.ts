@@ -172,7 +172,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
               AND t.lifecycle_status = 'Active'
               AND pc.lifecycle_status = 'Active'
             ORDER BY t.title_id ASC, pc.physical_copy_id ASC
-            FOR UPDATE`,
+            FOR UPDATE${isPostgres ? ' OF t, pc' : ''}`,
           input.titleIds,
         )
         const selectedCopies = new Map<number, RowDataPacket>()
@@ -300,7 +300,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
                OR (bt.physical_copy_id IS NULL AND pc.material_id = bt.material_id)
              LEFT JOIN titles t ON t.title_id = pc.title_id
             WHERE bt.transaction_id = ?
-            LIMIT 1 FOR UPDATE`,
+            LIMIT 1 FOR UPDATE${isPostgres ? ' OF bt, m' : ''}`,
           [transactionId],
         )
         const request = rows[0]
@@ -412,7 +412,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
           `SELECT pc.physical_copy_id, pc.title_id, pc.material_id, pc.accession_number, pc.barcode, pc.condition_status,
                   pc.availability_status, pc.lifecycle_status, t.title, m.material_type
              FROM physical_copies pc INNER JOIN titles t ON t.title_id = pc.title_id LEFT JOIN materials m ON m.material_id = pc.material_id
-            WHERE pc.barcode = ? LIMIT 1 FOR UPDATE`, [input.barcode],
+            WHERE pc.barcode = ? LIMIT 1 FOR UPDATE${isPostgres ? ' OF pc, t' : ''}`, [input.barcode],
         )
         const copy = copyRows[0]
         if (!copy || copy.lifecycle_status !== 'Active') throw new HttpError(404, 'CIRCULATION_COPY_NOT_FOUND', 'No active physical copy matches this barcode.')
@@ -449,7 +449,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         if (input.reservationId && (!queueHead || Number(queueHead.reservation_id) !== input.reservationId)) throw new HttpError(422, 'CIRCULATION_RESERVATION_NOT_FIRST', 'The selected reservation is not currently first in the queue.')
         if (borrower.role_name === 'Student') {
           const [capacityRows] = await connection.execute<RowDataPacket[]>(
-            `SELECT COUNT(DISTINCT activity.title_id) AS active_count, MAX(activity.title_id = ?) AS target_already_active FROM (
+            `SELECT COUNT(DISTINCT activity.title_id) AS active_count, ${isPostgres ? 'COUNT(*) FILTER (WHERE activity.title_id = ?) > 0' : 'MAX(activity.title_id = ?)'} AS target_already_active FROM (
                SELECT pc_active.title_id FROM borrow_transactions bt INNER JOIN physical_copies pc_active ON pc_active.physical_copy_id = bt.physical_copy_id
                 WHERE bt.user_id = ? AND bt.transaction_status IN ${ACTIVE_LOANS}
                UNION ALL SELECT r.book_title_id FROM reservations r WHERE r.user_id = ? AND r.reservation_status IN ${ACTIVE_RESERVATIONS} AND r.book_title_id IS NOT NULL

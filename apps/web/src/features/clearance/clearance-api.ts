@@ -12,7 +12,7 @@ async function request<T>(url: string, options: RequestInit = {}) {
 }
 
 export const clearanceApi = {
-  mine: () => request<ClearanceRecord>('/api/v1/clearance/me'),
+  mine: () => request<ClearanceRecord>('/api/v1/clearance/me', { cache: 'no-store' }),
   list: (search = '') => request<ClearanceList>(`/api/v1/admin/clearance?limit=100&search=${encodeURIComponent(search)}`),
   detail: (userId: number) => request<ClearanceRecord>(`/api/v1/admin/clearance/${userId}`),
   override: (userId: number, input: { status: string; reason: string; expiresAt?: string | null }) => request<{ clearance: ClearanceRecord }>(`/api/v1/admin/clearance/${userId}/overrides`, { method: 'POST', body: JSON.stringify(input) }),

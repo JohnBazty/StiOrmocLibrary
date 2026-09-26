@@ -3,8 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BorrowingHistory } from './BorrowingHistory'
 
 const api = vi.hoisted(() => ({ history: vi.fn(), cancelRequest: vi.fn() }))
+const clearance = vi.hoisted(() => ({ reportLost: vi.fn() }))
 const catalogApi = vi.hoisted(() => ({ fetchBookOverview: vi.fn(), fetchCatalogCopyAsset: vi.fn() }))
 vi.mock('./circulation-api', () => ({ circulationApi: api }))
+vi.mock('../clearance/clearance-api', () => ({ clearanceApi: clearance }))
 vi.mock('../catalog/book-catalog-api', () => catalogApi)
 vi.mock('../catalog/AssetCodeCanvas', () => ({ AssetCodeCanvas: ({ testId }: { testId?: string }) => <canvas data-testid={testId} /> }))
 
@@ -59,6 +61,21 @@ describe('BorrowingHistory', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Cancel request' }).at(-1)!)
     await waitFor(() => expect(api.cancelRequest).toHaveBeenCalledWith(12, ''))
     expect(await screen.findByText('Clean Code request was cancelled and its copy is available again.')).toBeTruthy()
+  })
+
+  it('submits a lost report through an in-page confirmation and shows the result', async () => {
+    api.history.mockResolvedValue({
+      summary: { role: 'Student', activeLoans: 1, activeReservations: 0, activeStackCount: 1, loanLimit: 2, remainingLoanSlots: 1, nextDueAt: null, dueCutoffLabel: '8:59 AM' },
+      items: [{ transactionId: 21, titleId: 5, title: 'Clean Code', author: 'Robert C. Martin', coverImagePath: null, accessionNumber: 'ACC-1', barcode: 'BOOK-1', borrowDate: '2026-08-23T10:00:00', dueDate: '2026-08-24T08:59:00', returnDate: null, status: 'Borrowed', lostReportStatus: null }],
+      pagination: { page: 1, limit: 25, total: 1, totalPages: 1 },
+    })
+    clearance.reportLost.mockResolvedValue({ lostBookReportId: 3, status: 'Pending' })
+    render(<BorrowingHistory />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Report lost' }))
+    expect(screen.getByRole('dialog', { name: 'Report this book as lost?' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Submit lost report' }))
+    await waitFor(() => expect(clearance.reportLost).toHaveBeenCalledWith(21))
+    expect(await screen.findByText('Clean Code was reported lost. Library staff have been notified.')).toBeTruthy()
   })
 })
 

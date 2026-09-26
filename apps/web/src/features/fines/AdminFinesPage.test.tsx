@@ -71,6 +71,42 @@ describe('AdminFinesPage', () => {
     expect(api.pay).not.toHaveBeenCalled()
   })
 
+  it('keeps the audit reason editable and shows adjustment errors inside the form', async () => {
+    api.adminList.mockResolvedValue(fineList)
+    api.adminTerms.mockResolvedValue([])
+    api.adjust.mockRejectedValue(new Error('The adjustment could not be saved.'))
+    render(<AdminFinesPage />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Adjust' }))
+    fireEvent.change(screen.getByLabelText('Adjustment type'), { target: { value: 'Waiver' } })
+    const reason = screen.getByLabelText('Mandatory audit reason') as HTMLTextAreaElement
+    fireEvent.change(reason, { target: { value: 'Approved by the head librarian.' } })
+    expect(reason.value).toBe('Approved by the head librarian.')
+    fireEvent.click(screen.getByRole('button', { name: 'Record waiver' }))
+    expect(await screen.findByText('The adjustment could not be saved.')).toBeTruthy()
+    expect(reason.value).toBe('Approved by the head librarian.')
+  })
+
+  it('shows cash-payment errors in the form and reuses the same payment key on retry', async () => {
+    api.adminList.mockResolvedValue(fineList)
+    api.adminTerms.mockResolvedValue([])
+    api.pay.mockRejectedValueOnce(new Error('Payment response was interrupted.')).mockResolvedValueOnce({
+      receiptId: 12, receiptNumber: 'OR-20260903-000012', requestKey: 'retry-key',
+      verificationCode: '8A35C0C777F102AB',
+      student: { userId: 7, schoolId: '02000871654', name: 'Buentheo Nathaniel Noval' },
+      amountReceived: 28, paymentMethod: 'Cash', receivedBy: 'Library Admin', receivedAt: '2026-09-03T08:00:00.000Z', status: 'Issued',
+      reversedBy: null, reversedAt: null, reversalReason: null, notes: null, allocations: [],
+    })
+    render(<AdminFinesPage />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Cash payment' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm cash and generate receipt' }))
+    expect(await screen.findByText('Payment response was interrupted.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm cash and generate receipt' }))
+    await waitFor(() => expect(api.pay).toHaveBeenCalledTimes(2))
+    expect(api.pay.mock.calls[0][0].requestKey).toBe(api.pay.mock.calls[1][0].requestKey)
+  })
+
   it('shows receipt verification data, searches it, and opens the full receipt', async () => {
     const reference = { receiptId: 8, receiptNumber: 'OR-20260904-000008', verificationCode: '428FC7C836DCC645', status: 'Issued' }
     const listWithReceipt = { ...fineList, items: [{ ...fineList.items[0], paid: 28, balance: 0, status: 'Paid', paymentAllowed: false, receipts: [reference] }] }
