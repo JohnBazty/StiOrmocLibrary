@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { rateLimit } from 'express-rate-limit'
 import type { NextFunction, Request, Response } from 'express'
 import { jwtAuthService } from './jwt-auth.service.ts'
-import { authenticateJwt, requireJwtRoles } from './jwt-auth.middleware.ts'
+import { authenticateJwt, ensureActiveJwtAccount, requireJwtRoles } from './jwt-auth.middleware.ts'
 
 type Service = typeof jwtAuthService
 export function createJwtLoginController(service: Service = jwtAuthService) {
@@ -34,7 +34,7 @@ const registrationLimiter = rateLimit({
 export const jwtAuthRouter = Router()
 jwtAuthRouter.post('/register', registrationLimiter, createJwtRegisterController())
 jwtAuthRouter.post('/login', limiter, createJwtLoginController())
-jwtAuthRouter.get('/me', authenticateJwt, (_request, response) => response.json({ success: true, data: response.locals.authenticatedUser }))
+jwtAuthRouter.get('/me', authenticateJwt, ensureActiveJwtAccount, (_request, response) => response.json({ success: true, data: response.locals.authenticatedUser }))
 
 export const jwtProtectedRouter = Router()
 jwtProtectedRouter.get('/admin/dashboard', authenticateJwt, requireJwtRoles('Admin'), (_request, response) => response.json({ success: true, data: { area: 'admin' } }))

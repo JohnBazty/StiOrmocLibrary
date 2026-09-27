@@ -1,7 +1,8 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { env } from '../../config/env.js'
 import { dashboardForRole } from './auth.constants.js'
-import { bearerToken, verifyAccessToken } from './jwt-auth.middleware.ts'
+import { bearerToken, ensureActiveJwtAccount, verifyAccessToken } from './jwt-auth.middleware.ts'
+import { db } from '../../config/db.js'
 
 export function createCsrfToken() {
   return randomBytes(32).toString('hex')
@@ -58,7 +59,7 @@ export function requireAuth(request, response, next) {
       try {
         response.locals.authenticatedUser = verifyAccessToken(token)
         response.locals.authenticationType = 'jwt'
-        return next()
+        return ensureActiveJwtAccount(request, response, next)
       } catch {
         return response.status(401).json({ success: false, code: 'INVALID_ACCESS_TOKEN', message: 'Your access token is invalid or expired. Please sign in again.' })
       }
@@ -80,11 +81,25 @@ export function requireAuth(request, response, next) {
     })
   }
 
-  request.session.lastActivity = Date.now()
-  request.session.touch()
-  response.locals.authenticatedUser = user
-  response.locals.authenticationType = 'session'
-  next()
+  void db.execute(
+    `SELECT u.account_status,u.auth_version,a.account_status AS linked_status
+       FROM users u LEFT JOIN accounts a ON a.user_id=u.user_id WHERE u.user_id=?`, [user.id],
+  ).then(([rows]) => {
+    const current = rows[0]
+    if (!current || current.account_status !== 'Active' || (current.linked_status && current.linked_status !== 'Active')
+      || Number(current.auth_version) !== Number(request.session.authVersion ?? 1)) {
+      return request.session.destroy(() => {
+        clearSessionCookie(response)
+        if (isApiRequest(request)) return response.status(401).json({ success: false, code: 'ACCOUNT_ACCESS_REVOKED', message: 'Your account access changed. Please sign in again.' })
+        return response.redirect(303, '/login?auth=required')
+      })
+    }
+    request.session.lastActivity = Date.now()
+    request.session.touch()
+    response.locals.authenticatedUser = user
+    response.locals.authenticationType = 'session'
+    next()
+  }).catch(next)
 }
 
 export function requireRoles(...allowedRoles) {

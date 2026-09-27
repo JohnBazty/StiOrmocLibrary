@@ -1,0 +1,22 @@
+flowchart TB
+  C1[Open_Borrow_and_Return]
+  C2[Scan_User_or_Barcode]
+  C3{Transaction_Type}
+  C4[Issue_Checkout]
+  C5[Mark_Borrowed]
+  C6[Process_Return]
+  C7{Overdue}
+  C8[Create_or_Update_Fine]
+  C9[Close_Loan_Returned]
+  C10[Monitor_Active_Loans]
+  C1 --> C2
+  C2 --> C3
+  C3 -->|Issue| C4
+  C4 --> C5
+  C3 -->|Return| C6
+  C6 --> C7
+  C7 -->|Yes| C8
+  C7 -->|No| C9
+  C8 --> C9
+  C5 --> C10
+  C9 --> C10

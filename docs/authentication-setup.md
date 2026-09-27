@@ -12,6 +12,7 @@ The Express application now provides a server-rendered vanilla HTML/CSS/JavaScri
 - `HttpOnly`, `SameSite=Lax`, and production-only `Secure` cookies
 - 30-minute rolling inactivity timeout
 - session-ID regeneration after login
+- strict single-session enforcement: each successful JWT or cookie login increments `auth_version` (invalidating prior JWTs and cookie sessions) and cookie login also deletes other `auth_sessions` rows for that user
 - synchronizer-token CSRF protection for login, logout, and every state-changing feature API request
 - login rate limiting and security headers
 - server-side role guards for dashboards and feature APIs

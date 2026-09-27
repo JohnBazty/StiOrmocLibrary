@@ -1,0 +1,16 @@
+flowchart TB
+  Student[Student]
+  Faculty[Faculty]
+  Admin[Admin_Librarian]
+  UserPortal[Student_Faculty_Web_Portal]
+  AdminPortal[Admin_Web_Portal]
+  API[Node_Express_API]
+  DB[(Supabase_Postgres)]
+  Storage[Supabase_Storage]
+  Student --> UserPortal
+  Faculty --> UserPortal
+  Admin --> AdminPortal
+  UserPortal -->|JWT_REST| API
+  AdminPortal -->|JWT_REST| API
+  API --> DB
+  API --> Storage

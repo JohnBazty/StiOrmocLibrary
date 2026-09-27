@@ -1,0 +1,39 @@
+flowchart TB
+  ULogin[Login]
+  UReg[Student_Register]
+  UPortal[User_Portal]
+  UDash[Dashboard_Overview]
+  UCat[Book_Catalog]
+  UFloor[Library_Floor_Plan]
+  UCart[Book_Cart]
+  UResearch[Research_Thesis_Catalog]
+  UHist[Borrowing_History]
+  URes[My_Reservations]
+  UPrint[Printing_Service_Student]
+  UQR[QR_Attendance_Pass]
+  UNotif[Notifications]
+  UFine[Fines_and_Receipts]
+  UClear[Clearance_Status]
+  ULogin --> UPortal
+  UReg --> ULogin
+  UPortal --> UDash
+  UDash --> UCat
+  UDash --> UFloor
+  UDash --> UCart
+  UDash --> UResearch
+  UDash --> UHist
+  UDash --> URes
+  UDash --> UPrint
+  UDash --> UQR
+  UDash --> UNotif
+  UDash --> UFine
+  UDash --> UClear
+  UCat --> UCart
+  UCat --> UFloor
+  UCart --> UHist
+  UCat --> URes
+  UResearch --> URes
+  UHist --> UFine
+  UHist --> UClear
+  UPrint --> UFine
+  UFine --> UClear

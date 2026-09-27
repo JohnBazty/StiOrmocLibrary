@@ -3,6 +3,7 @@ import { db } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { ALL_ROLES, dashboardForRole, webDashboardForRole } from './auth.constants.js'
 import { createCsrfToken, sessionCookie } from './auth.middleware.js'
+import { createAuthSessionRepository } from './auth-session.repository.ts'
 import { validateLoginInput } from './auth.validation.js'
 
 const DUMMY_BCRYPT_HASH = '$2b$12$k1Pc4Uvw2o.7wwBZ1hQwHu5vTfEfRPRgRhhcaawYWpPJez0o7gaCq'
@@ -16,7 +17,11 @@ function saveSession(request) {
   return new Promise((resolve, reject) => request.session.save((error) => (error ? reject(error) : resolve())))
 }
 
-export function createLoginController({ database = db, passwordHasher = bcrypt } = {}) {
+export function createLoginController({
+  database = db,
+  passwordHasher = bcrypt,
+  sessions = createAuthSessionRepository(database),
+} = {}) {
   return async function login(request, response, next) {
     try {
       const validation = validateLoginInput(request.body)
@@ -25,9 +30,11 @@ export function createLoginController({ database = db, passwordHasher = bcrypt }
       }
 
       const [rows] = await database.execute(
-        `SELECT u.user_id, u.full_name, u.email, u.password_hash, u.account_status, r.role_name
+        `SELECT u.user_id, u.full_name, u.email, u.password_hash, u.account_status, u.auth_version,
+                a.account_status AS linked_status, r.role_name
          FROM users AS u
          INNER JOIN roles AS r ON r.role_id = u.role_id
+         LEFT JOIN accounts a ON a.user_id=u.user_id
          WHERE u.email = ?
          LIMIT 1`,
         [validation.email],
@@ -40,7 +47,7 @@ export function createLoginController({ database = db, passwordHasher = bcrypt }
         return response.status(401).json({ success: false, code: 'INVALID_CREDENTIALS', message: 'The email address or password is incorrect.' })
       }
 
-      if (user.account_status !== 'Active') {
+      if (user.account_status !== 'Active' || (user.linked_status && user.linked_status !== 'Active')) {
         return response.status(403).json({ success: false, code: 'ACCOUNT_DEACTIVATED', message: DEACTIVATED_MESSAGE })
       }
 
@@ -48,16 +55,21 @@ export function createLoginController({ database = db, passwordHasher = bcrypt }
         return response.status(403).json({ success: false, code: 'ROLE_NOT_AUTHORIZED', message: 'Your assigned role is not authorized to access this system.' })
       }
 
+      const userId = Number(user.user_id)
+      const authVersion = await sessions.incrementAuthVersionForUser(userId)
+
       await regenerateSession(request)
       request.session.user = {
-        id: Number(user.user_id),
+        id: userId,
         fullName: user.full_name,
         email: user.email,
         role: user.role_name,
       }
       request.session.lastActivity = Date.now()
+      request.session.authVersion = authVersion
       request.session.csrfToken = createCsrfToken()
       await saveSession(request)
+      await sessions.clearOtherSessions(userId, request.sessionID)
 
       return response.json({
         success: true,

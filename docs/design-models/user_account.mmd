@@ -1,0 +1,17 @@
+flowchart TB
+  S1[User_Dashboard]
+  S2[Borrowing_History]
+  S3[Notifications]
+  S4[Fines_Module]
+  S5[Clearance_Status]
+  S6[View_Balances_and_Receipts]
+  S7[Cleared_or_Blocked]
+  S1 --> S2
+  S1 --> S3
+  S1 --> S4
+  S1 --> S5
+  S2 --> S4
+  S4 --> S6
+  S4 --> S5
+  S5 --> S7
+  S3 --> S3
