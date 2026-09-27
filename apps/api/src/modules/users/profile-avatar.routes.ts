@@ -103,9 +103,8 @@ profileAvatarRouter.post('/submissions/:id/review', requireJwtRoles('Admin'), ha
   requireSupabase()
   const id = Number(request.params.id)
   const decision = String(request.body?.decision ?? '')
-  const reason = String(request.body?.reason ?? '').trim()
-  if (!Number.isSafeInteger(id) || id < 1 || !['approve', 'reject'].includes(decision) || reason.length < 10 || reason.length > 500) {
-    throw new HttpError(422, 'AVATAR_REVIEW_INVALID', 'Choose a decision and provide a reason of at least 10 characters.')
+  if (!Number.isSafeInteger(id) || id < 1 || !['approve', 'reject'].includes(decision)) {
+    throw new HttpError(422, 'AVATAR_REVIEW_INVALID', 'Choose approve or reject.')
   }
   const connection = await db.getConnection()
   try {
@@ -116,7 +115,7 @@ profileAvatarRouter.post('/submissions/:id/review', requireJwtRoles('Admin'), ha
     if (!rows.length) throw new HttpError(409, 'AVATAR_ALREADY_REVIEWED', 'This image is no longer awaiting review.')
     await connection.execute(
       `UPDATE profile_avatar_submissions SET status=?,reviewed_by_account_id=?,reviewed_at=NOW(),review_reason=?
-       WHERE submission_id=?`, [decision === 'approve' ? 'Approved' : 'Rejected', accountId(response), reason, id],
+       WHERE submission_id=?`, [decision === 'approve' ? 'Approved' : 'Rejected', accountId(response), decision === 'approve' ? 'Profile picture approved by Admin.' : 'Profile picture rejected by Admin.', id],
     )
     await connection.commit()
     response.json({ success: true, data: { id, status: decision === 'approve' ? 'Approved' : 'Rejected' } })

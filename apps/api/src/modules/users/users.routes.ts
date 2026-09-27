@@ -20,10 +20,16 @@ usersRouter.get('/active', handle(async (request, response) => {
 usersRouter.get('/:accountId', handle(async (request, response) => {
   response.json({ success: true, data: await usersRepository.detail(request.params.accountId) })
 }))
-usersRouter.patch('/:accountId/profile', requireJwtRoles('Admin'), handle(async (request, response) => {
-  response.json({ success: true, data: await usersRepository.editProfile(request.params.accountId, actor(response), request.body ?? {}) })
-}))
 usersRouter.post('/:accountId/status', requireJwtRoles('Admin'), handle(async (request, response) => {
   response.json({ success: true, data: await usersRepository.changeStatus(request.params.accountId, actor(response), request.body ?? {}) })
 }))
 export const adminUsersV1Router = usersRouter
+
+export const selfProfileRouter = Router()
+selfProfileRouter.get('/me', handle(async (_request, response) => {
+  response.set('Cache-Control', 'private, no-store').json({ success: true, data: await usersRepository.ownProfile(actor(response)) })
+}))
+selfProfileRouter.patch('/me', handle(async (request, response) => {
+  const accountId = actor(response)
+  response.set('Cache-Control', 'private, no-store').json({ success: true, data: await usersRepository.editProfile(accountId, accountId, request.body ?? {}) })
+}))

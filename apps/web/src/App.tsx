@@ -31,6 +31,7 @@ import { AdminPrintingQueuePage } from './features/printing/AdminPrintingQueuePa
 import { StaffPrintingQueuePage } from './features/printing/StaffPrintingQueuePage'
 import { AdminPrintSuppliesPage } from './features/printing/AdminPrintSuppliesPage'
 import { NotificationCenterPage } from './features/notifications/NotificationCenterPage'
+import { AdminNotificationsPage } from './features/notifications/AdminNotificationsPage'
 import { AdminAnnouncementsPage } from './features/notifications/AdminAnnouncementsPage'
 import { StaffAnnouncementsPage } from './features/notifications/StaffAnnouncementsPage'
 import { StudentClearancePage } from './features/clearance/StudentClearancePage'
@@ -75,8 +76,9 @@ export default function App() {
         <Route element={<PortalLayout role="admin" />}>
           <Route path="/admin/dashboard" element={<AdminAccountDashboardPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />
-          <Route path="/admin/user-archive" element={<AdminUsersPage initialStatus="Archived" />} />
+          <Route path="/admin/user-archive" element={<AdminUsersPage archive />} />
           <Route path="/admin/approvals" element={<AccountApprovalsPage />} />
+          <Route path="/admin/notifications" element={<AdminNotificationsPage />} />
           <Route path="/admin/clearance" element={<AdminClearancePage />} />
         </Route>
       </Route>

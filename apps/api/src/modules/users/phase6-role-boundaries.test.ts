@@ -4,6 +4,7 @@ import express from 'express'
 import request from 'supertest'
 import { adminClearanceV1Router } from '../clearance/clearance.routes.ts'
 import { profileAvatarRouter } from './profile-avatar.routes.ts'
+import { adminUsersV1Router } from './users.routes.ts'
 
 function appFor(role: string) {
   const app = express()
@@ -11,6 +12,7 @@ function appFor(role: string) {
   app.use((_request, response, next) => { response.locals.authenticatedUser = { role, accountId: 1 }; next() })
   app.use('/clearance', adminClearanceV1Router)
   app.use('/profile/avatar', profileAvatarRouter)
+  app.use('/admin/users', adminUsersV1Router)
   return app
 }
 
@@ -31,4 +33,9 @@ test('profile-picture approval requests are visible only to Admin', async () => 
   const response = await request(appFor('Staff')).get('/profile/avatar/submissions')
   assert.equal(response.status, 403)
   assert.equal(response.body.code, 'JWT_ROLE_FORBIDDEN')
+})
+
+test('Admin has no route to edit another account profile', async () => {
+  const response = await request(appFor('Admin')).patch('/admin/users/9/profile').send({ first_name: 'Changed' })
+  assert.equal(response.status, 404)
 })

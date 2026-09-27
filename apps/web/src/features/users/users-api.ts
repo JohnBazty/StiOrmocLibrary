@@ -5,9 +5,11 @@ export type ActiveUser = { id: number; school_id: string; role: string; account_
 export type UserSummary = { active_accounts: number; deactivated_accounts: number; archived_accounts: number; student_accounts: number; faculty_accounts: number; staff_accounts: number }
 export type UserFilters = { q: string; role: string; program: string; clearance: string; status: string; page: number; limit: number }
 export type Pagination = { page: number; limit: number; total: number; total_pages: number }
-export type ProfileEdit = { first_name: string; last_name: string; email: string; program_strand: string; year_grade_level: string; reason: string }
+export type ProfileEdit = { first_name: string; last_name: string; program_strand: string; year_grade_level: string }
 export type UserEvent = { id: number; action: string; previous_status: string | null; new_status: string | null; changed_fields: string | null; reason: string; created_at: string; actor_school_id: string }
-export type UserDetail = { id: number; school_id: string; role: string; account_status: AccountStatus; email: string | null; user_id: number | null; first_name: string | null; last_name: string | null; program_strand: string | null; year_grade_level: string | null; full_name: string; events: UserEvent[] }
+export type UserRecord = { id: number; status?: string; [key: string]: unknown }
+export type UserDetail = { id: number; school_id: string; role: string; account_status: AccountStatus; email: string | null; user_id: number | null; first_name: string | null; last_name: string | null; program_strand: string | null; year_grade_level: string | null; full_name: string; events: UserEvent[]; records: Record<string, UserRecord[]> }
+export type OwnProfile = Omit<UserDetail, 'events' | 'records'>
 
 async function request<T>(url: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers)
@@ -31,6 +33,7 @@ export const usersApi = {
     return { rows: result.data, pagination: result.meta?.pagination ?? { page: 1, limit: filters.limit, total: 0, total_pages: 0 } }
   },
   detail: async (id: number) => (await request<UserDetail>(`/api/v1/admin/users/${id}`)).data,
-  editProfile: async (id: number, body: ProfileEdit) => (await request(`/api/v1/admin/users/${id}/profile`, { method: 'PATCH', body: JSON.stringify(body) })).data,
+  myProfile: async () => (await request<OwnProfile>('/api/v1/profile/me')).data,
+  saveMyProfile: async (body: ProfileEdit) => (await request('/api/v1/profile/me', { method: 'PATCH', body: JSON.stringify(body) })).data,
   changeStatus: async (id: number, status: AccountStatus, reason: string) => (await request(`/api/v1/admin/users/${id}/status`, { method: 'POST', body: JSON.stringify({ status, reason }) })).data,
 }

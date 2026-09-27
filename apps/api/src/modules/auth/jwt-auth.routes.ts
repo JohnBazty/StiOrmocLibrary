@@ -51,7 +51,7 @@ jwtAuthRouter.get('/registration-requests', authenticateJwt, ensureActiveJwtAcco
 jwtAuthRouter.post('/registration-requests/:requestId/review', authenticateJwt, ensureActiveJwtAccount, requireJwtRoles('Admin'), async (request, response, next) => {
   try {
     const data = await registrationService.review(Number(request.params.requestId), response.locals.authenticatedUser.accountId,
-      String(request.body?.decision ?? ''), String(request.body?.reason ?? ''))
+      String(request.body?.decision ?? ''))
     response.json({ success: true, data })
   } catch (error) { next(error) }
 })

@@ -24,7 +24,7 @@ import { researchAssetRouter } from './modules/catalog/research-asset.routes.ts'
 import { adminCirculationRouter, borrowCartRouter, circulationRequestRouter, userCirculationRouter } from './modules/circulation/circulation.routes.ts'
 import { adminReservationsV1Router, userReservationsV1Router } from './modules/reservations/reservations.routes.ts'
 import { adminAttendanceV1Router, userAttendanceV1Router } from './modules/attendance/attendance.routes.ts'
-import { adminUsersV1Router } from './modules/users/users.routes.ts'
+import { adminUsersV1Router, selfProfileRouter } from './modules/users/users.routes.ts'
 import { adminPrintingV1Router, userPrintingV1Router } from './modules/printing/printing.routes.ts'
 import { adminClearanceV1Router, userClearanceV1Router } from './modules/clearance/clearance.routes.ts'
 import { adminAnnouncementsV1Router, userNotificationsV1Router } from './modules/notifications/notifications.routes.ts'
@@ -37,6 +37,7 @@ import { adminInvoiceRouter, userInvoiceRouter } from './modules/invoices/invoic
 import { usersRepository } from './modules/users/users.repository.ts'
 import { clearanceService } from './modules/clearance/clearance.service.ts'
 import { profileAvatarRouter } from './modules/users/profile-avatar.routes.ts'
+import { adminNotificationsRouter } from './modules/users/admin-notifications.routes.ts'
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
 const publicDirectory = path.resolve(currentDirectory, '../public')
@@ -94,6 +95,7 @@ export function createApp() {
   app.use('/api/v1/auth', jwtAuthRouter)
   app.use('/api/v1', authenticateJwt, ensureActiveJwtAccount)
   app.use('/api/v1/profile/avatar', profileAvatarRouter)
+  app.use('/api/v1/profile', selfProfileRouter)
   app.get('/api/v1/admin/account-dashboard', requireJwtRoles('Admin'), async (_request, response, next) => {
     try {
       const [accounts, clearance] = await Promise.all([usersRepository.summary(), clearanceService.activeStudentSummary()])
@@ -122,6 +124,7 @@ export function createApp() {
   app.use('/api/v1/admin/attendance', authenticateJwt, requireJwtRoles('Librarian', 'Staff'), adminAttendanceV1Router)
   app.use('/api/v1/attendance', authenticateJwt, requireJwtRoles('Librarian', 'Student', 'Faculty'), userAttendanceV1Router)
   app.use('/api/v1/admin/users', authenticateJwt, requireJwtRoles('Admin'), adminUsersV1Router)
+  app.use('/api/v1/admin/notifications', requireJwtRoles('Admin'), adminNotificationsRouter)
   app.use('/api/v1/printing', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userPrintingV1Router)
   app.use('/api/v1/clearance', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userClearanceV1Router)
   app.use('/api/v1/fines', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userFinesV1Router)

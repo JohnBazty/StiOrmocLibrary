@@ -24,7 +24,8 @@
 --   013_phase2_job_runner.sql                — durable scheduled-run lease and metrics (applied)
 --   014_phase2_invoices.sql                  — separate gated invoice ledger (applied)
 --   015_phase6_registration_roles.sql        — pending verified accounts, Staff role, and avatar reviews (applied)
--- Next Postgres file number: 016. Product files through 015 are applied. Apply reviewed files individually.
+--   016_phase6_legacy_student_account_links.sql — backfill missing Student/Faculty login links (applied)
+-- Next Postgres file number: 017. Product files through 016 are applied. Apply reviewed files individually.
 -- The hosted ledger also lists advisor-named 011/012 files absent from this checkout;
 -- reconcile their sources before whole-directory replay.
 --

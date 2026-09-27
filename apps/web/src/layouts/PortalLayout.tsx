@@ -56,7 +56,7 @@ const userNav = (role: 'student' | 'faculty'): NavItem[] => {
     { label: 'Fines', to: `${prefix}/fines`, icon: CircleDollarSign },
     { label: 'Invoices', to: `${prefix}/invoices`, icon: FileText },
     { label: 'Clearance status', to: `${prefix}/clearance`, icon: BadgeCheck },
-    { label: 'Profile picture', to: `${prefix}/profile`, icon: UserRound },
+    { label: 'My profile', to: `${prefix}/profile`, icon: UserRound },
   ]
 }
 
@@ -66,6 +66,7 @@ const adminNav: NavItem[] = [
   { label: 'User archive', to: '/admin/user-archive', icon: Archive },
   { label: 'Clearance', to: '/admin/clearance', icon: ClipboardCheck },
   { label: 'Approvals', to: '/admin/approvals', icon: BadgeCheck },
+  { label: 'Notifications', to: '/admin/notifications', icon: Bell },
 ]
 const librarianNav: NavItem[] = [
   { label: 'Dashboard', to: '/librarian/dashboard', icon: LayoutDashboard, section: 'Operations' },
@@ -83,7 +84,7 @@ const librarianNav: NavItem[] = [
   { label: 'Attendance', to: '/librarian/attendance', icon: QrCode, section: 'People & records' },
   { label: 'Clearance', to: '/librarian/clearance', icon: ClipboardCheck },
   { label: 'Announcements', to: '/librarian/announcements', icon: Megaphone },
-  { label: 'Profile picture', to: '/librarian/profile', icon: UserRound },
+  { label: 'My profile', to: '/librarian/profile', icon: UserRound },
 ]
 const staffNav: NavItem[] = [
   { label: 'Dashboard', to: '/staff/dashboard', icon: LayoutDashboard, section: 'My tasks' },
@@ -92,7 +93,7 @@ const staffNav: NavItem[] = [
   { label: 'Printing queue', to: '/staff/printing', icon: Printer },
   { label: 'Attendance', to: '/staff/attendance', icon: QrCode },
   { label: 'Announcements', to: '/staff/announcements', icon: Megaphone },
-  { label: 'Profile picture', to: '/staff/profile', icon: UserRound },
+  { label: 'My profile', to: '/staff/profile', icon: UserRound },
 ]
 const navigation = (role: Role) => role === 'admin' ? adminNav : role === 'librarian' ? librarianNav : role === 'staff' ? staffNav : userNav(role)
 
@@ -141,9 +142,9 @@ export function PortalLayout({ role }: { role: Role }) {
       try {
         const requestHeaders = { Accept: 'application/json', Authorization: `Bearer ${token}` }
         if (role === 'admin') {
-          const results = await Promise.all(['/api/v1/auth/registration-requests', '/api/v1/profile/avatar/submissions'].map(url =>
-            fetch(url, { headers: requestHeaders, credentials: 'include' }).then(async response => ({ response, payload: await response.json() as { data?: unknown[] } }))))
-          if (active && results.every(result => result.response.ok)) setHasAdminAlerts(results.some(result => Boolean(result.payload.data?.length)))
+          const response = await fetch('/api/v1/admin/notifications', { headers: requestHeaders, credentials: 'include' })
+          const payload = await response.json() as { data?: { pendingCount?: number } }
+          if (active && response.ok) setHasAdminAlerts(Number(payload.data?.pendingCount ?? 0) > 0)
           return
         }
         const response = await fetch('/api/v1/notifications?status=unread&limit=1', { headers: requestHeaders, credentials: 'include' })
@@ -167,7 +168,7 @@ export function PortalLayout({ role }: { role: Role }) {
           <label className="relative ml-auto hidden w-64 xl:block"><Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#003399]/45 dark:text-white/45" size={15} /><input placeholder="Search anywhere..." className="h-10 w-full rounded-xl border border-[#003399]/15 bg-[#003399]/5 pl-9 pr-3 text-sm outline-none transition focus:border-[#003399]/15 focus:bg-white focus:ring-4 focus:ring-[#003399]/10 dark:border-white/15 dark:bg-white/5 dark:text-white dark:focus:bg-[#002266]" /></label>
           <div className="ml-auto flex items-center gap-2 xl:ml-3">
             <ThemeToggle />
-            <button onClick={() => navigate(role === 'admin' ? '/admin/approvals' : role === 'librarian' ? '/librarian/announcements' : role === 'staff' ? '/staff/announcements' : role === 'faculty' ? '/faculty/notifications' : '/student/notifications')} aria-label="Notifications" className="relative rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 transition hover:bg-[#003399]/5 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><Bell size={18} />{hasAdminAlerts ? <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#FFF200] ring-2 ring-white dark:ring-[#001a4d]" /> : null}</button>
+            <button onClick={() => navigate(role === 'admin' ? '/admin/notifications' : role === 'librarian' ? '/librarian/announcements' : role === 'staff' ? '/staff/announcements' : role === 'faculty' ? '/faculty/notifications' : '/student/notifications')} aria-label="Notifications" className="relative rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 transition hover:bg-[#003399]/5 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><Bell size={18} />{hasAdminAlerts ? <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#FFF200] ring-2 ring-white dark:ring-[#001a4d]" /> : null}</button>
             <button onClick={signOut} aria-label="Sign out" title="Sign out" className="rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 transition hover:bg-[#003399]/5 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><LogOut size={18} /></button>
             <button aria-label="Collapse sidebar" className="hidden rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 lg:block dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80"><PanelLeftClose size={18} /></button>
           </div>

@@ -17,7 +17,7 @@ type RegistrationRow = RowDataPacket & {
 }
 const codeDigest = (requestId: number, code: string) =>
   createHmac('sha256', env.jwt.secret).update(`${requestId}:${code}`).digest('hex')
-const duplicate = () => new HttpError(422, 'REGISTRATION_UNAVAILABLE', 'This registration cannot be completed. Try signing in or contact the library for account help.')
+const duplicate = () => new HttpError(422, 'REGISTRATION_UNAVAILABLE', 'These details may already be in the library system. Try signing in with your original School ID and password, or contact the library for account help. The password entered here was not saved.')
 const pending = () => new HttpError(422, 'REGISTRATION_NOT_READY', 'The registration request is not ready for this action.')
 
 async function createActiveAccount(connection: PoolConnection, row: RegistrationRow) {
@@ -168,17 +168,14 @@ export function createRegistrationService(
           committed = true
           throw new HttpError(422, 'CODE_INVALID', 'The verification code is incorrect.')
         }
-        const needsApproval = row.requested_role === 'Librarian' || row.requested_role === 'Staff'
-        if (!needsApproval) await createActiveAccount(connection, row)
         await connection.execute(
-          `UPDATE registration_requests SET status=?,email_verified_at=NOW(),code_hash=NULL,code_expires_at=NULL,
-              password_hash=CASE WHEN ?='Completed' THEN NULL ELSE password_hash END,updated_at=NOW()
+          `UPDATE registration_requests SET status='PendingApproval',email_verified_at=NOW(),code_hash=NULL,code_expires_at=NULL,updated_at=NOW()
            WHERE request_id=?`,
-          [needsApproval ? 'PendingApproval' : 'Completed', needsApproval ? 'PendingApproval' : 'Completed', row.request_id],
+          [row.request_id],
         )
         await connection.commit()
         committed = true
-        return { status: needsApproval ? 'PendingApproval' : 'Active', role: row.requested_role }
+        return { status: 'PendingApproval', role: row.requested_role }
       } catch (error) {
         if (!committed) await connection.rollback()
         throw error
@@ -194,13 +191,13 @@ export function createRegistrationService(
       return rows
     },
 
-    async review(requestId: number, actorAccountId: number, decision: string, reason: string) {
+    async review(requestId: number, actorAccountId: number, decision: string) {
       requireSupabase()
       if (!Number.isSafeInteger(requestId) || requestId < 1 || !Number.isSafeInteger(actorAccountId) || actorAccountId < 1) {
         throw new HttpError(422, 'REVIEW_INVALID', 'Select a valid registration request.')
       }
-      if (!['approve', 'reject'].includes(decision) || reason.trim().length < 10 || reason.length > 500) {
-        throw new HttpError(422, 'REVIEW_INVALID', 'Choose approve or reject and provide a reason of at least 10 characters.')
+      if (!['approve', 'reject'].includes(decision)) {
+        throw new HttpError(422, 'REVIEW_INVALID', 'Choose approve or reject.')
       }
       const connection = await database.getConnection()
       await connection.beginTransaction()
@@ -214,7 +211,7 @@ export function createRegistrationService(
         const status = decision === 'approve' ? 'Completed' : 'Rejected'
         await connection.execute(
           'UPDATE registration_requests SET status=?,reviewed_by_account_id=?,reviewed_at=NOW(),review_reason=?,password_hash=NULL,updated_at=NOW() WHERE request_id=?',
-          [status, actorAccountId, reason.trim(), requestId],
+          [status, actorAccountId, decision === 'approve' ? 'Account registration approved by Admin.' : 'Account registration rejected by Admin.', requestId],
         )
         await connection.commit()
         return { requestId, status }

@@ -28,6 +28,7 @@ function fakeDatabase() {
     }
     if (sql.startsWith('SELECT * FROM registration_requests')) return [state.request ? [state.request] : []]
     if (sql.startsWith('UPDATE registration_requests SET code_attempts')) { state.request!.code_attempts = Number(state.request!.code_attempts) + 1; return [{}] }
+    if (sql.startsWith("UPDATE registration_requests SET status='PendingApproval'")) { state.request!.status = 'PendingApproval'; state.request!.code_hash = null; return [{}] }
     if (sql.startsWith('UPDATE registration_requests SET status=')) { state.request!.status = values[0]; state.request!.code_hash = null; return [{}] }
     if (sql.startsWith('DELETE FROM registration_requests')) { state.request = null; return [{}] }
     if (sql.startsWith('SELECT role_id FROM roles')) return [[{ role_id: 6 }]]
@@ -59,10 +60,37 @@ test('Staff registration verifies email before Admin approval creates an account
   assert.equal(state.writes.some(sql => sql.startsWith('INSERT INTO accounts')), false)
   await assert.rejects(service.verify({ school_id: application.school_id, code: delivered }),
     (error: unknown) => error instanceof HttpError && error.code === 'REGISTRATION_NOT_READY')
-  await service.review(5, 1, 'approve', 'Verified against the school staff roster.')
+  await service.review(5, 1, 'approve')
   assert.equal(state.request!.status, 'Completed')
   assert.equal(state.writes.some(sql => sql.startsWith('INSERT INTO accounts')), true)
   assert.equal(state.writes.some(sql => sql.startsWith('INSERT INTO users')), true)
+})
+
+test('Student and Faculty registrations also wait for Admin approval after email verification', async () => {
+  for (const role of ['Student', 'Faculty'] as const) {
+    const { state, database } = fakeDatabase()
+    let delivered = ''
+    const service = createRegistrationService(database, async (_email, code) => { delivered = code }, { hash: async () => 'secure-hash' } as never, 'postgres')
+    const details = role === 'Student' ? { program_strand: 'Bachelor of Science in Information Technology', year_grade_level: '4th Year' } : {}
+    await service.register({ ...application, ...details, role })
+    const verified = await service.verify({ school_id: application.school_id, code: delivered })
+    assert.equal(verified.status, 'PendingApproval')
+    assert.equal(state.writes.some(sql => sql.startsWith('INSERT INTO accounts')), false)
+    await service.review(5, 1, 'approve')
+    assert.equal(state.request?.status, 'Completed')
+    assert.equal(state.writes.some(sql => sql.startsWith('INSERT INTO accounts')), true)
+  }
+})
+
+test('rejecting a verified registration creates no account and stores the Admin decision', async () => {
+  const { state, database } = fakeDatabase()
+  let delivered = ''
+  const service = createRegistrationService(database, async (_email, code) => { delivered = code }, { hash: async () => 'secure-hash' } as never, 'postgres')
+  await service.register(application)
+  await service.verify({ school_id: application.school_id, code: delivered })
+  await service.review(5, 1, 'reject')
+  assert.equal(state.request?.status, 'Rejected')
+  assert.equal(state.writes.some(sql => sql.startsWith('INSERT INTO accounts')), false)
 })
 
 test('email delivery failure removes the unusable pending request', async () => {

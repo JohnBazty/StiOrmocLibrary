@@ -17,9 +17,11 @@ export function RegistrationPage() {
   const navigate = useNavigate()
   const [form, setForm] = useState(initialForm)
   const [verification, setVerification] = useState(false)
+  const [approvalPending, setApprovalPending] = useState(false)
   const [code, setCode] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [message, setMessage] = useState('')
+  const [registrationUnavailable, setRegistrationUnavailable] = useState(false)
   const [busy, setBusy] = useState(false)
   const [showPasswords, setShowPasswords] = useState(false)
 
@@ -52,7 +54,7 @@ export function RegistrationPage() {
   async function submit(event: FormEvent) {
     event.preventDefault()
     if (!validate()) { setMessage('Please correct the highlighted fields.'); return }
-    setBusy(true); setMessage('')
+    setBusy(true); setMessage(''); setRegistrationUnavailable(false)
     const schoolId = form.school_id.trim().toUpperCase()
     try {
       await registerStudent({
@@ -66,6 +68,7 @@ export function RegistrationPage() {
       const authError = error instanceof AuthenticationError ? error : new AuthenticationError('Unable to create your account right now.')
       setErrors(authError.errors)
       setMessage(authError.message)
+      setRegistrationUnavailable(authError.code === 'REGISTRATION_UNAVAILABLE')
     } finally { setBusy(false) }
   }
 
@@ -74,7 +77,10 @@ export function RegistrationPage() {
     try {
       const result = await verifyRegistration(form.school_id.trim().toUpperCase(), code)
       if (result.status === 'PendingApproval') {
-        setMessage('Your email is verified. An administrator must approve your role before you can sign in.')
+        setMessage('Your school email is verified. An administrator must approve your account before you can sign in.')
+        setApprovalPending(true)
+        setCode('')
+        setForm(current => ({ ...current, password: '', confirm_password: '' }))
       } else {
         navigate('/login', { replace: true, state: { registrationSuccess: true, registrationSchoolId: form.school_id.trim().toUpperCase() } })
       }
@@ -101,8 +107,8 @@ export function RegistrationPage() {
 
         <section className="p-6 sm:p-10">
           <p className="text-xs font-black uppercase tracking-[.18em] text-[#003399]/55">New account</p><h2 className="mt-2 font-display text-3xl font-black text-[#003399]">Account Registration</h2>
-          {message ? <div role="alert" className="mt-5 rounded-xl border border-[#003399] bg-[#FFF200] px-4 py-3 text-sm font-bold text-[#003399]">{message}</div> : null}
-          {verification ? <form className="mt-6 space-y-4" onSubmit={submitCode}>
+          {message ? <div role="alert" className="mt-5 rounded-xl border border-[#003399] bg-[#FFF200] px-4 py-3 text-sm font-bold text-[#003399]">{message}{registrationUnavailable ? <Link to="/login" className="mt-2 block underline underline-offset-4">Go to Sign In</Link> : null}</div> : null}
+          {approvalPending ? <div className="mt-6 rounded-xl border border-[#003399]/20 p-5 text-sm text-[#003399]">Your registration is awaiting Admin approval. You can sign in after your account is approved.<Link to="/login" className="mt-3 block font-bold underline">Return to Login</Link></div> : verification ? <form className="mt-6 space-y-4" onSubmit={submitCode}>
             <Field label="Verification code"><input inputMode="numeric" maxLength={6} autoComplete="one-time-code" value={code} onChange={event => setCode(event.target.value.replace(/\D/g, ''))} placeholder="Six-digit code" className={fieldClass} /></Field>
             <button disabled={busy || code.length !== 6} className="h-12 w-full rounded-xl bg-[#FFF200] font-bold text-[#003399] disabled:opacity-50">Verify school email</button>
             <button type="button" disabled={busy} onClick={() => void resendCode()} className="text-sm font-bold text-[#003399] underline">Resend code</button>
