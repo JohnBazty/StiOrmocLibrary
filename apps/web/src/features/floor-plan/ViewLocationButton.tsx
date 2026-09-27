@@ -1,6 +1,10 @@
 import { MapPin } from 'lucide-react'
 import { getCurrentIdentity } from '../auth/auth-storage'
+// Keep the location action archived until the floor-plan experience is ready again.
+const viewLocationButtonEnabled = false
+
 export function ViewLocationButton({titleId,copyId,barcode,availableOnly=false}:{titleId:number;copyId?:number;barcode?:string|null;availableOnly?:boolean}){
+  if (!viewLocationButtonEnabled) return null
   const role=getCurrentIdentity()?.role
   const prefix=role==='Faculty'?'/faculty':role==='Admin'?'/admin':role==='Librarian'?'/librarian':'/student'
   const params=new URLSearchParams({titleId:String(titleId)})

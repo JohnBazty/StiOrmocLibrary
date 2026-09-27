@@ -1,5 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "git": {
+    "deploymentEnabled": {
+      "codex/phase2-phase6-updates": false
+    }
+  },
   "framework": "vite",
   "regions": ["icn1"],
   "buildCommand": "npm run build",

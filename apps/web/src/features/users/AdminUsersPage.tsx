@@ -6,11 +6,11 @@ import { usersApi, type AccountStatus, type ActiveUser, type Pagination, type Pr
 
 const field = 'h-10 w-full rounded-xl border border-[#003399]/20 bg-white px-3 text-sm text-[#003399] outline-none focus:border-[#003399]'
 const initial: UserFilters = { q: '', role: '', program: '', clearance: '', status: 'Active', page: 1, limit: 25 }
-const emptyProfile: ProfileEdit = { first_name: '', last_name: '', email: '', contact_number: '', program_strand: '', year_grade_level: '', reason: '' }
+const emptyProfile: ProfileEdit = { first_name: '', last_name: '', email: '', program_strand: '', year_grade_level: '', reason: '' }
 
-export function AdminUsersPage() {
+export function AdminUsersPage({ initialStatus = 'Active' }: { initialStatus?: AccountStatus }) {
   const canManage = getCurrentIdentity()?.role === 'Admin'
-  const [filters, setFilters] = useState<UserFilters>(initial)
+  const [filters, setFilters] = useState<UserFilters>(() => ({ ...initial, status: initialStatus }))
   const [refresh, setRefresh] = useState(0)
   const [summary, setSummary] = useState<UserSummary | null>(null)
   const [programs, setPrograms] = useState<string[]>([])
@@ -49,7 +49,7 @@ export function AdminUsersPage() {
       const user = await usersApi.detail(row.id)
       setDetail(user)
       setProfile({ first_name: user.first_name ?? '', last_name: user.last_name ?? '', email: user.email ?? '',
-        contact_number: user.contact_number ?? '', program_strand: user.program_strand ?? '',
+        program_strand: user.program_strand ?? '',
         year_grade_level: user.year_grade_level ?? '', reason: '' })
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to open account.') }
   }
@@ -104,7 +104,7 @@ export function AdminUsersPage() {
       {notice && <p role="status" className="mt-4 rounded-xl border border-[#003399]/20 p-3 text-sm font-bold">{notice}</p>}
       {canManage && detail.role === 'Student' ? <>
         <form onSubmit={event => void saveProfile(event)} className="mt-6 grid gap-3 sm:grid-cols-2"><h3 className="sm:col-span-2 font-bold">Edit student profile</h3>
-          {([['first_name', 'First name'], ['last_name', 'Last name'], ['email', 'Email'], ['contact_number', 'Contact number'], ['program_strand', 'Program / strand'], ['year_grade_level', 'Year / grade level']] as const).map(([key, label]) => <label key={key} className="text-xs font-bold">{label}<input className={`${field} mt-1`} value={profile[key]} onChange={event => setProfile(current => ({ ...current, [key]: event.target.value }))} /></label>)}
+          {([['first_name', 'First name'], ['last_name', 'Last name'], ['email', 'Email'], ['program_strand', 'Program / strand'], ['year_grade_level', 'Year / grade level']] as const).map(([key, label]) => <label key={key} className="text-xs font-bold">{label}<input className={`${field} mt-1`} value={profile[key]} onChange={event => setProfile(current => ({ ...current, [key]: event.target.value }))} /></label>)}
           <label className="sm:col-span-2 text-xs font-bold">Audit reason<input className={`${field} mt-1`} value={profile.reason} onChange={event => setProfile(current => ({ ...current, reason: event.target.value }))} placeholder="Why are these details changing?" /></label>
           <Button type="submit" disabled={saving} className="sm:col-span-2">Save profile</Button>
         </form>

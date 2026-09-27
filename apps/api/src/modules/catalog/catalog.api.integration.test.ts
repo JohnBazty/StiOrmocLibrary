@@ -29,8 +29,8 @@ test('catalog management endpoint returns 403 for a Student role', async () => {
   assert.equal(response.body.code, 'CATALOG_ADMIN_FORBIDDEN')
 })
 
-test('book endpoint returns 422 field validation for an Admin request with missing mandatory fields', async () => {
-  const response = await request(testApp()).post('/api/catalog/books').set('x-test-role', 'System Administrator').send({ title: '' })
+test('book endpoint returns 422 field validation for a Librarian request with missing mandatory fields', async () => {
+  const response = await request(testApp()).post('/api/catalog/books').set('x-test-role', 'Librarian').send({ title: '' })
   assert.equal(response.status, 422)
   assert.equal(response.body.code, 'CATALOG_VALIDATION_FAILED')
   assert.ok(response.body.details.errors.title)

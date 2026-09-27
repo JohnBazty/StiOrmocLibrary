@@ -20,7 +20,7 @@ function reservationPool(role: 'Student' | 'Faculty', activeCount: number, mater
       if (sql.includes('COUNT(DISTINCT COALESCE(active.title_id')) { state.activeCountQueried = true; return [[{ active_count: activeCount }]] }
       if (sql.includes('MAX(r.queue_position)')) return [[{ next_position: 3 }]]
       if (sql.includes('INSERT INTO reservations')) { state.inserted = true; return [{ insertId: 501, affectedRows: 1 }] }
-      if (sql.includes('INSERT INTO admin_notifications')) return [{ insertId: 900, affectedRows: 1 }]
+      if (sql.includes('INSERT INTO admin_notifications') || sql.includes('INTO notifications')) return [{ insertId: 900, affectedRows: 1 }]
       throw new Error(`Unexpected SQL: ${sql}`)
     },
   }

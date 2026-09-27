@@ -215,6 +215,16 @@ export async function queryBookOverview(database: Pool, titleId: number) {
   return rows[0] ? mapBook(rows[0]) : null
 }
 
+export async function queryBookCopyDetails(database: Pool, titleId: number) {
+  const [rows] = await database.execute<RowDataPacket[]>(
+    `SELECT physical_copy_id, accession_number, barcode, availability_status, condition_status, shelf_location
+       FROM physical_copies WHERE title_id=? AND lifecycle_status='Active'
+       ORDER BY physical_copy_id ASC`, [titleId])
+  return rows.map(row => ({ copyId: Number(row.physical_copy_id), accessionNumber: String(row.accession_number),
+    barcode: String(row.barcode), availability: String(row.availability_status), condition: String(row.condition_status),
+    shelf: String(row.shelf_location) }))
+}
+
 export async function queryViewerActiveBookCount(database: Pool, accountId: number) {
   const [rows] = await database.execute<RowDataPacket[]>(
     `SELECT COUNT(DISTINCT COALESCE(activity.title_id, -activity.material_id)) AS active_count

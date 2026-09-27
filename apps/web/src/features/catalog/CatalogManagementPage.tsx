@@ -10,6 +10,7 @@ import { AddMultipleCopiesModal } from './AddMultipleCopiesModal'
 import { AddResearchModal } from './AddResearchModal'
 import { ChangeTitleCategoryModal } from './ChangeTitleCategoryModal'
 import { BookCoverThumbnail } from './BookCoverThumbnail'
+import { BookQuotationModal } from './BookQuotationModal'
 
 const fieldClass = 'h-11 w-full rounded-xl border border-[#003399]/20 bg-white px-3 text-sm text-[#003399] outline-none focus:border-[#003399] focus:ring-4 focus:ring-[#003399]/10'
 const labelClass = 'mb-1.5 block text-xs font-bold uppercase tracking-wide text-[#003399]'
@@ -38,6 +39,7 @@ export function CatalogManagementPage() {
   const [changingCategory, setChangingCategory] = useState(false)
   const [categoryError, setCategoryError] = useState<string | null>(null)
   const [archiveItem, setArchiveItem] = useState<CatalogItem | null>(null)
+  const [quotationItem, setQuotationItem] = useState<CatalogItem | null>(null)
   const [archiveReason, setArchiveReason] = useState('')
   const [archiving, setArchiving] = useState(false)
 
@@ -159,7 +161,7 @@ export function CatalogManagementPage() {
           <td className="px-4 py-3 text-[#003399]">{item.publicationYear ?? '—'}</td>
           <td className="px-4 py-3 font-mono text-xs text-[#003399]">{item.isbn ?? item.research?.researchCode ?? '—'}</td>
           <td className="px-4 py-3"><StatusBadge status={item.availability} /></td>
-          <td className="px-4 py-3"><div className="flex min-w-[130px] flex-col items-start gap-2">{item.recordType === 'Book' ? <button onClick={() => setOverviewTitleId(item.titleId)} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#003399]"><Eye size={15} /> View details</button> : item.research?.researchInventoryId ? <button type="button" onClick={() => setResearchAssetId(item.research!.researchInventoryId)} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#003399]"><Eye size={15} /> View codes</button> : <span className="text-xs text-[#003399]/50">Codes unavailable</span>}<button type="button" onClick={() => { setCategoryError(null); setCategoryItem(item) }} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#003399]"><ArrowRightLeft size={15} /> Change category</button>{item.recordType === 'Book' ? <button type="button" onClick={() => { setArchiveReason(''); setArchiveItem(item) }} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#003399]"><Archive size={15} /> Archive book</button> : null}</div></td>
+          <td className="px-4 py-3"><div className="flex min-w-[130px] flex-col items-start gap-2">{item.recordType === 'Book' ? <button onClick={() => setOverviewTitleId(item.titleId)} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#003399]"><Eye size={15} /> View details</button> : item.research?.researchInventoryId ? <button type="button" onClick={() => setResearchAssetId(item.research!.researchInventoryId)} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#003399]"><Eye size={15} /> View codes</button> : <span className="text-xs text-[#003399]/50">Codes unavailable</span>}<button type="button" onClick={() => { setCategoryError(null); setCategoryItem(item) }} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#003399]"><ArrowRightLeft size={15} /> Change category</button>{item.recordType === 'Book' ? <><button type="button" onClick={() => setQuotationItem(item)} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#003399]">Supplier quotations</button><button type="button" onClick={() => { setArchiveReason(''); setArchiveItem(item) }} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#003399]"><Archive size={15} /> Archive book</button></> : null}</div></td>
         </tr>) : <tr><td colSpan={8} className="px-4 py-8 text-center text-[#003399]">No records match these filters.</td></tr>}</tbody>
       </table></div>
     </SectionCard>
@@ -173,5 +175,6 @@ export function CatalogManagementPage() {
     {researchAssetId !== null ? <AssetCodeModal assetType="research" researchInventoryId={researchAssetId} onClose={() => setResearchAssetId(null)} /> : null}
     {categoryItem ? <ChangeTitleCategoryModal item={categoryItem} categories={categories} saving={changingCategory} error={categoryError} onClose={() => { if (!changingCategory) setCategoryItem(null) }} onConfirm={(categoryId) => void changeCategory(categoryId)} /> : null}
     {archiveItem ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#003399]/75 p-4"><div role="dialog" aria-modal="true" aria-label="Archive book" className="w-full max-w-md rounded-2xl bg-white p-6 text-[#003399]"><h2 className="text-xl font-black">Archive {archiveItem.title}?</h2><p className="mt-2 text-sm">The book and its copies will leave the active catalog. Their records will remain in Book archive. Active loans or reservations must be completed first.</p><label className="mt-5 block text-sm font-bold">Reason for archiving<textarea value={archiveReason} onChange={(event) => setArchiveReason(event.target.value)} maxLength={255} rows={3} className="mt-2 w-full rounded-xl border border-[#003399]/20 p-3" /></label><div className="mt-5 flex justify-end gap-2"><button disabled={archiving} onClick={() => setArchiveItem(null)} className="rounded-xl border border-[#003399] px-4 py-2 font-bold">Cancel</button><button disabled={archiving || !archiveReason.trim()} onClick={() => void archiveBook()} className="rounded-xl bg-[#003399] px-4 py-2 font-bold text-white disabled:opacity-50">Archive book</button></div></div></div> : null}
+    {quotationItem ? <BookQuotationModal titleId={quotationItem.titleId} title={quotationItem.title} onClose={() => setQuotationItem(null)} /> : null}
   </>
 }

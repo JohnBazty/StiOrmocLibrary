@@ -1,4 +1,4 @@
-export type AuthRole = 'Admin' | 'Librarian' | 'Faculty' | 'Student'
+export type AuthRole = 'Admin' | 'Librarian' | 'Faculty' | 'Student' | 'Staff'
 
 export type AccessTokenClaims = {
   userId: number
@@ -16,7 +16,7 @@ export type AuthenticatedIdentity = {
 }
 
 const TOKEN_KEY = 'smartlib_access_token'
-const ROLES = new Set<AuthRole>(['Admin', 'Librarian', 'Faculty', 'Student'])
+const ROLES = new Set<AuthRole>(['Admin', 'Librarian', 'Faculty', 'Student', 'Staff'])
 let cachedSessionIdentity: AuthenticatedIdentity | null = null
 
 function decodeBase64Url(value: string) {
@@ -45,6 +45,7 @@ export function dashboardForRole(role: AuthRole) {
     Librarian: '/librarian/dashboard',
     Faculty: '/faculty/dashboard',
     Student: '/student/dashboard',
+    Staff: '/staff/dashboard',
   })[role]
 }
 

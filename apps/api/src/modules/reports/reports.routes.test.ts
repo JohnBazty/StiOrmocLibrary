@@ -20,8 +20,8 @@ function appFor(role: string) {
   return app
 }
 
-test('authorized Admin streams a CSV attachment with inventory rows', async () => {
-  const response = await request(appFor('Admin')).get('/api/reports/catalog/inventory.csv')
+test('authorized Librarian streams a CSV attachment with inventory rows', async () => {
+  const response = await request(appFor('Librarian')).get('/api/reports/catalog/inventory.csv')
   assert.equal(response.status, 200)
   assert.match(response.headers['content-type'], /text\/csv/)
   assert.match(response.headers['content-disposition'], /sti-library-inventory\.csv/)

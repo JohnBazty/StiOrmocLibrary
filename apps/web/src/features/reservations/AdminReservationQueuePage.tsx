@@ -26,6 +26,7 @@ export function AdminReservationQueuePage() {
   useEffect(() => { const timer = window.setTimeout(() => void load(), 180); return () => window.clearTimeout(timer) }, [load])
 
   async function changeStatus(item: ReservationQueueItem, status: ReservationStatus) {
+    if (status === 'cancelled' && !window.confirm(`Cancel ${item.materialTitle} for ${item.userName}? The student will be notified.`)) return
     setUpdatingId(item.reservationId); setSuccess(null)
     try { await reservationApi.adjustStatus(item.reservationId, status); setSuccess(`${item.materialTitle} is now ${status.replaceAll('_', ' ')}.`); await load() }
     catch (reason) {
@@ -41,7 +42,7 @@ export function AdminReservationQueuePage() {
   }), [items])
 
   return <>
-    <PageHeader eyebrow="Circulation desk" title="Reservation queue management" description="Approve requests, assign available accessions, monitor pickup deadlines, and confirm claimed materials." action={<button onClick={() => void load()} className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#003399] bg-white px-4 text-sm font-bold text-[#003399]"><RefreshCw size={16} /> Refresh queue</button>} />
+    <PageHeader eyebrow="Circulation desk" title="Reservation queue management" description="Approve, mark ready, then verify pickup by school ID and barcode at the circulation desk. Each change notifies the borrower." action={<button onClick={() => void load()} className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#003399] bg-white px-4 text-sm font-bold text-[#003399]"><RefreshCw size={16} /> Refresh queue</button>} />
     {error ? <div role="alert" className="mb-5 flex items-start justify-between rounded-xl border border-[#FFF200] bg-[#FFF200] px-4 py-3 text-[#003399]"><div><p className="font-black">{error.title}</p><p className="mt-0.5 text-sm font-semibold">{error.message}</p></div><button aria-label="Dismiss" onClick={() => setError(null)}><X size={17} /></button></div> : null}
     {success ? <div role="status" className="mb-5 flex items-center justify-between rounded-xl border border-[#003399] bg-white px-4 py-3 text-sm font-bold text-[#003399]"><span>{success}</span><button onClick={() => setSuccess(null)}><X size={16} /></button></div> : null}
 

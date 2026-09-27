@@ -20,6 +20,7 @@ export type BookCatalogItem = {
   availableCopiesCount: number
   reservableMaterialId: number | null
   previewBarcode: string | null
+  copies?: Array<{ copyId: number; accessionNumber: string; barcode: string; availability: string; condition: string; shelf: string }>
 }
 
 export type CatalogCopyAsset = {

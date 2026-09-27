@@ -11,15 +11,16 @@ describe('authentication pages', () => {
     render(<MemoryRouter><ThemeProvider><LoginPage /></ThemeProvider></MemoryRouter>)
     expect(screen.getByLabelText('Login as')).toBeTruthy()
     expect(screen.getByLabelText('School ID')).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Register as Student' }).getAttribute('href')).toBe('/register')
+    expect(screen.getByRole('link', { name: 'Register an account' }).getAttribute('href')).toBe('/register')
     expect(screen.getByRole('link', { name: 'System Administrator Login' }).getAttribute('href')).toBe('/admin/login')
   })
 
-  it('shows every field required by normalized student registration', () => {
+  it('shows role-aware account registration and school email', () => {
     render(<MemoryRouter><RegistrationPage /></MemoryRouter>)
-    for (const label of ['First Name', 'Last Name', 'Contact Number', 'Student ID', 'Program / Strand', 'Year / Grade Level', 'Password', 'Confirm Password']) {
+    for (const label of ['Register as', 'First Name', 'Last Name', 'School Email', 'School ID', 'Program / Strand', 'Year / Grade Level', 'Password', 'Confirm Password']) {
       expect(screen.getByLabelText(label)).toBeTruthy()
     }
+    expect(screen.queryByLabelText('Contact Number')).toBeNull()
     expect(screen.getByRole('button', { name: 'Register' })).toBeTruthy()
   })
 

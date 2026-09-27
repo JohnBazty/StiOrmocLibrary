@@ -95,6 +95,11 @@ export function BookOverview({ titleId, role, activeBookCount, selectedBookCount
               <Metadata label="Available stock" value={`${book.availableCopiesCount} of ${book.totalCopiesCount} copies`} />
             </dl>
 
+            <section className="mt-5 rounded-2xl border border-[#003399]/10 p-4" aria-label="Individual book copies">
+              <h3 className="font-bold text-[#003399]">Individual copies</h3>
+              <div className="mt-3 space-y-2">{book.copies?.length ? book.copies.map(copy => <div key={copy.copyId} className="grid gap-1 rounded-xl border border-[#003399]/15 p-3 text-xs text-[#003399] sm:grid-cols-2"><strong>{copy.accessionNumber}</strong><span className="font-mono">{copy.barcode}</span><span>Availability: {copy.availability}</span><span>Condition: {copy.condition}</span><span className="sm:col-span-2">Shelf: {copy.shelf}</span></div>) : <p className="text-sm text-[#003399]/60">No active copies are recorded.</p>}</div>
+            </section>
+
             <div className="mt-5 rounded-2xl border border-[#003399]/10 p-4">
               <button onClick={() => setCitationVisible((value) => !value)} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#FFF200] px-4 text-sm font-bold text-[#003399]"><Clipboard size={17} /> Generate APA reference</button>
               {citationVisible ? <div className="mt-3"><label htmlFor="apa-reference" className="text-xs font-bold text-[#003399]">APA 7th Edition reference</label><textarea id="apa-reference" readOnly value={citation} className="mt-1.5 min-h-24 w-full resize-none rounded-xl border border-[#003399]/15 bg-[#FFFFFF] p-3 text-sm text-[#003399]" /><button onClick={copyCitation} className="mt-2 inline-flex items-center gap-2 text-xs font-bold text-[#003399]">{copied ? <Check size={15} /> : <Clipboard size={15} />}{copied ? 'Copied' : 'Copy to clipboard'}</button></div> : null}

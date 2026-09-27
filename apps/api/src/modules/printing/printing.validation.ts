@@ -15,7 +15,7 @@ function integer(value: unknown, field: string, minimum: number, maximum: number
 }
 
 export function parsePrintRequest(body: Record<string, unknown>, detectedPageCount?: number) {
-  const numberOfCopies = integer(body.number_of_copies, 'number_of_copies', 1, 50)
+  const numberOfCopies = integer(body.number_of_copies, 'number_of_copies', 1, 100)
   const pageCount = integer(detectedPageCount ?? body.page_count, 'page_count', 1, 500)
   const printType = String(body.print_type ?? '') as PrintType
   const paperSize = String(body.paper_size ?? '') as PaperSize

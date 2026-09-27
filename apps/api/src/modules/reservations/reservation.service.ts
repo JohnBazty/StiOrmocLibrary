@@ -5,6 +5,7 @@ import { HttpError } from '../../core/http-error.ts'
 import { parseQueueFilters, positiveId, validateReservationRequest, validateStatusAdjustment, type ReservationStatus } from './reservation.validation.ts'
 import { queryReservationQueue } from './reservation-query.repository.ts'
 import { cancelPendingCounterClaim, createPendingCounterClaim } from './reservation-claim.repository.ts'
+import { notifyReservationStatus } from './reservation-notification.ts'
 
 // Claimed reservations are represented by their authoritative open loan and
 // must not remain in a user's capacity forever after that loan is returned.
@@ -227,6 +228,7 @@ export function createReservationService(database: Pool = db) {
            VALUES ('reservation_requested', ?, ?, ?, 'New reservation request', ?)`,
           [userId, insert.insertId, material.title_id ?? null, `${user.full_name ?? 'A library user'} requested ${material.title}.`],
         )
+        await notifyReservationStatus(connection, Number(insert.insertId), userId, String(material.title), 'pending')
         await connection.commit()
         return { reservationId: insert.insertId, userId, materialId, queuePosition, status: 'pending' }
       } catch (error) { await connection.rollback(); throw error } finally { connection.release() }
@@ -272,6 +274,7 @@ export function createReservationService(database: Pool = db) {
            VALUES ('reservation_cancelled', ?, ?, ?, 'Reservation cancelled', ?)`,
           [userId, reservationId, reservation.book_title_id ?? null, `${reservation.title} reservation was cancelled and its queue was realigned.`],
         )
+        await notifyReservationStatus(connection, reservationId, userId, String(reservation.title), 'cancelled')
         await connection.commit()
         return { reservationId, status: 'cancelled' as const, queueRealigned: Boolean(reservation.book_title_id) }
       } catch (error) { await connection.rollback(); throw error } finally { connection.release() }
@@ -346,6 +349,7 @@ export function createReservationService(database: Pool = db) {
             [reservation.user_id, reservationId, pendingClaimTransactionId, reservation.resolved_title_id,
               `${reservation.title} is ready. Verify the borrower school ID and scan the physical barcode at the desk.`],
           )
+          await notifyReservationStatus(connection, reservationId, Number(reservation.user_id), String(reservation.title), 'ready_for_pickup', deadline)
         } else if (adjustment.status === 'cancelled') {
           await connection.execute("UPDATE reservations SET reservation_status = 'cancelled', accession_id = NULL, assigned_physical_copy_id = NULL, pickup_deadline = NULL, updated_at = NOW() WHERE reservation_id = ?", [reservationId])
           await cancelPendingCounterClaim(connection, reservationId, adminUserId, 'Reservation cancelled by library staff.')
@@ -362,6 +366,9 @@ export function createReservationService(database: Pool = db) {
           }
         } else {
           await connection.execute("UPDATE reservations SET reservation_status = 'approved', updated_at = NOW() WHERE reservation_id = ?", [reservationId])
+        }
+        if (adjustment.status === 'approved' || adjustment.status === 'cancelled') {
+          await notifyReservationStatus(connection, reservationId, Number(reservation.user_id), String(reservation.title), adjustment.status)
         }
         await connection.commit()
         return { reservationId, status: adjustment.status, processedByUserId: adminUserId }

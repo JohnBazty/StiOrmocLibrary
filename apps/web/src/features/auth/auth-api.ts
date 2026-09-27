@@ -18,10 +18,11 @@ export type LoginResult = {
 }
 
 export type StudentRegistrationInput = {
+  role?: Exclude<AuthRole, 'Admin'>
   school_id: string
+  school_email?: string
   first_name: string
   last_name: string
-  contact_number: string
   program_strand: string
   year_grade_level: string
   password: string
@@ -29,7 +30,10 @@ export type StudentRegistrationInput = {
 }
 
 export type RegistrationResult = {
-  account: { id: number; schoolId: string; role: 'Student'; firstName: string; lastName: string }
+  requestId: number
+  schoolId: string
+  email: string
+  status: 'PendingEmail'
 }
 
 export async function login(schoolId: string, role: AuthRole, password: string): Promise<LoginResult> {
@@ -79,9 +83,28 @@ export async function registerStudent(input: StudentRegistrationInput): Promise<
   return payload.data
 }
 
+export async function verifyRegistration(schoolId: string, code: string): Promise<{ status: 'Active' | 'PendingApproval'; role: AuthRole }> {
+  const response = await fetch('/api/v1/auth/register/verify', {
+    method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ school_id: schoolId, code }),
+  })
+  const payload = await response.json() as { data?: { status: 'Active' | 'PendingApproval'; role: AuthRole }; message?: string; code?: string }
+  if (!response.ok || !payload.data) throw new AuthenticationError(payload.message ?? 'Code verification failed.', payload.code)
+  return payload.data
+}
+
+export async function resendRegistrationCode(schoolId: string) {
+  const response = await fetch('/api/v1/auth/register/resend', {
+    method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ school_id: schoolId }),
+  })
+  const payload = await response.json() as { message?: string; code?: string }
+  if (!response.ok) throw new AuthenticationError(payload.message ?? 'Unable to resend the code.', payload.code)
+}
+
 function normalizeSessionRole(role: string): AuthRole | null {
   if (role === 'System Administrator' || role === 'Admin') return 'Admin'
-  if (role === 'Librarian' || role === 'Faculty' || role === 'Student') return role
+  if (role === 'Librarian' || role === 'Faculty' || role === 'Student' || role === 'Staff' || role === 'Library Staff') return role === 'Library Staff' ? 'Staff' : role
   return null
 }
 

@@ -1,10 +1,9 @@
 import type { NextFunction, Request, Response } from 'express'
 
-const ADMIN_ROLES = new Set(['Admin', 'System Administrator', 'Librarian'])
+const ADMIN_ROLES = new Set(['Librarian'])
 
 /**
- * Catalog administration is session-backed in this application. The database
- * role "System Administrator" is treated as the API's effective "Admin" role.
+ * Catalog administration is limited to the Librarian on both session and JWT routes.
  */
 export function requireCatalogManager(request: Request, response: Response, next: NextFunction) {
   const role = (request.session as typeof request.session & { user?: { role?: string } })?.user?.role
@@ -13,7 +12,7 @@ export function requireCatalogManager(request: Request, response: Response, next
     return response.status(403).json({
       success: false,
       code: 'CATALOG_ADMIN_FORBIDDEN',
-      message: 'Only Admin or Librarian accounts may manage catalog records.',
+      message: 'Only Librarian accounts may manage catalog records.',
     })
   }
   return next()

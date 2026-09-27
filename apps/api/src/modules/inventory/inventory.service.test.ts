@@ -61,7 +61,7 @@ test('for-repair preserves a manually unavailable state', async () => {
 })
 
 test('lost forces unavailable, synchronizes legacy status, and releases reservations', async () => {
-  const { database, state } = fakeDatabase({ availability: 'Borrowed', activeLoan: true, activeReservation: true })
+  const { database, state } = fakeDatabase({ availability: 'Reserved', activeReservation: true })
   const result = await overrideInventoryCondition('BC-42', 'Lost', { userId: 1, label: 'Librarian' }, database)
   assert.equal(result.availability_status, 'Unavailable')
   assert.equal(result.released_reservations, 1)
@@ -69,6 +69,13 @@ test('lost forces unavailable, synchronizes legacy status, and releases reservat
   assert.equal(state.reservationReleases, 1)
   assert.equal(state.audits[0]?.[2], 'Lost Override')
   assert.equal(state.committed, 1)
+})
+
+test('borrowed copy must use the circulation lost-report workflow', async () => {
+  const { database, state } = fakeDatabase({ availability: 'Borrowed', activeLoan: true })
+  await assert.rejects(overrideInventoryCondition('BC-42', 'Lost', { userId: 1, label: 'Librarian' }, database),
+    (error: unknown) => error instanceof HttpError && error.code === 'PHYSICAL_COPY_HAS_ACTIVE_LOAN')
+  assert.equal(state.copyUpdates.length, 0)
 })
 
 test('manual availability synchronizes legacy row and writes audit history', async () => {

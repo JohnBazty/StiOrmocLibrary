@@ -12,7 +12,7 @@ function accountDatabase(reservationCount = 0) {
     beginTransaction: async () => undefined,
     execute: async (sql: string, values: unknown[] = []) => {
       writes.push({ sql, values })
-      if (sql.includes('FROM accounts WHERE account_id')) return [[{ account_id: 9, user_id: 19, role: 'Student', account_status: 'Active', contact_number: '09170000000' }]]
+      if (sql.includes('FROM accounts WHERE account_id')) return [[{ account_id: 9, user_id: 19, role: 'Student', account_status: 'Active' }]]
       if (sql.includes('FROM borrow_transactions')) return [[{ active_count: 0 }]]
       if (sql.includes('FROM reservations')) return [[{ active_count: reservationCount }]]
       if (sql.includes('FROM users WHERE user_id')) return [[{ full_name: 'Old Name', email: 'old@example.test', course_or_strand: 'BSIT' }]]
@@ -45,10 +45,11 @@ test('archiving an account with an active reservation rolls back without changin
 test('profile editing keeps the school ID and role unchanged and audits changed fields', async () => {
   const fixture = accountDatabase()
   const result = await new UsersRepository(fixture.pool).editProfile(9, 2, {
-    first_name: 'New', last_name: 'Name', email: 'new@example.test', contact_number: '09170000000',
+    first_name: 'New', last_name: 'Name', email: 'new@example.test',
     program_strand: 'BSIT', year_grade_level: '2nd Year', reason: 'Corrected enrollment record',
   })
   assert.deepEqual(result.changed_fields, ['first_name', 'email', 'year_grade_level'])
   assert.ok(fixture.writes.every(row => !row.sql.includes('SET school_id') && !row.sql.includes('SET role')))
+  assert.ok(fixture.writes.every(row => !row.sql.includes('contact_number')))
   assert.ok(fixture.writes.some(row => row.sql.includes('ProfileEdited') && row.values.includes('Corrected enrollment record')))
 })

@@ -20,7 +20,7 @@ export function verifyAccessToken(token: string): AuthenticatedJwtUser {
   const schoolId = typeof decoded.schoolId === 'string' ? decoded.schoolId : ''
   const role = decoded.role
   const authVersion = Number(decoded.authVersion ?? 1)
-  if (!Number.isSafeInteger(id) || id < 1 || !schoolId || !Number.isSafeInteger(authVersion) || authVersion < 1 || !['Admin', 'Librarian', 'Student', 'Faculty'].includes(role)) {
+  if (!Number.isSafeInteger(id) || id < 1 || !schoolId || !Number.isSafeInteger(authVersion) || authVersion < 1 || !['Admin', 'Librarian', 'Student', 'Faculty', 'Staff'].includes(role)) {
     throw new Error('Token claims are invalid.')
   }
   return { id, accountId: id, schoolId, role: role as JwtRole, authVersion }

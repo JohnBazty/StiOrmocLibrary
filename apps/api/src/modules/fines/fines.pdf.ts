@@ -9,6 +9,7 @@ type AuditRow = {
 }
 
 type Receipt = ReceiptVerificationData & {
+  documentLabel?: string
   status: string; paymentMethod: string
   receivedBy: string; reversedBy: string | null; reversedAt: unknown; reversalReason: string | null; notes: string | null
   student: { name: string; schoolId: string }
@@ -46,7 +47,8 @@ export function createFineReceiptPdf(receipt: Receipt) {
   const blue = '#003399'; const yellow = '#FFF200'; const width = document.page.width - 84
   document.rect(0, 0, document.page.width, 94).fill(blue)
   document.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(19).text('STI ORMOC SMART LIBRARY', 42, 25)
-  document.fillColor(yellow).fontSize(10).text('OFFICIAL CASH FINE RECEIPT', 42, 53)
+  const legacy = receipt.documentLabel !== 'Payment Record'
+  document.fillColor(yellow).fontSize(10).text(legacy ? 'OFFICIAL CASH FINE RECEIPT' : 'CASH PAYMENT RECORD — NOT A TAX INVOICE', 42, 53)
   document.fillColor('#FFFFFF').font('Helvetica').fontSize(8).text('Cash payment recorded by authorized library personnel', 42, 70)
 
   let y = 120
@@ -89,11 +91,11 @@ export function createFineReceiptPdf(receipt: Receipt) {
   if(receipt.notes){document.fillColor(blue).font('Helvetica-Bold').fontSize(8).text('NOTES',42,y);document.font('Helvetica').text(receipt.notes,42,y+13,{width});y+=42}
   if(receipt.status==='Reversed'){
     document.roundedRect(42,y,width,62,8).fill(yellow)
-    document.fillColor(blue).font('Helvetica-Bold').fontSize(10).text('RECEIPT REVERSED',55,y+12)
+    document.fillColor(blue).font('Helvetica-Bold').fontSize(10).text(legacy ? 'RECEIPT REVERSED' : 'PAYMENT REVERSED',55,y+12)
     document.font('Helvetica').fontSize(8).text(`Reason: ${receipt.reversalReason ?? 'Not specified'} | By: ${receipt.reversedBy ?? 'Authorized staff'} | ${timestamp(receipt.reversedAt)}`,55,y+30,{width:width-26})
     y+=78
   }
   document.moveTo(42,document.page.height-92).lineTo(document.page.width-42,document.page.height-92).strokeColor(blue).strokeOpacity(0.3).stroke().strokeOpacity(1)
-  document.fillColor(blue).font('Helvetica').fontSize(8).text('This digital receipt is generated from the immutable SmartLib cash-payment ledger. Reprints contain the same receipt number and verification code.',42,document.page.height-76,{width,align:'center'})
+  document.fillColor(blue).font('Helvetica').fontSize(8).text(legacy ? 'This digital receipt is generated from the immutable SmartLib cash-payment ledger. Reprints contain the same receipt number and verification code.' : 'This payment record reflects the SmartLib cash ledger and is not a tax invoice. Reprints retain the same number and verification code.',42,document.page.height-76,{width,align:'center'})
   document.end(); return document
 }

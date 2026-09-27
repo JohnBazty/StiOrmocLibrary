@@ -20,7 +20,7 @@ function checkoutPool(role: 'Student' | 'Faculty', activeCount = 0, readyClaim: 
       if (sql.includes('UPDATE borrow_transactions')) return [{ affectedRows: 1 }]
       if (sql.includes("UPDATE reservations SET reservation_status = 'claimed'")) return [{ affectedRows: 1 }]
       if (sql.includes('UPDATE reservations SET queue_position')) { state.queueCompactions += 1; return [{ affectedRows: 1 }] }
-      if (sql.includes('INSERT INTO notifications') || sql.includes('INSERT INTO admin_notifications')) { state.notifications += 1; return [{ insertId: 1, affectedRows: 1 }] }
+      if (sql.includes('INTO notifications') || sql.includes('INSERT INTO admin_notifications')) { state.notifications += 1; return [{ insertId: 1, affectedRows: 1 }] }
       if (sql.includes('UPDATE physical_copies') || sql.includes('UPDATE materials')) return [{ affectedRows: 1 }]
       throw new Error(`Unexpected SQL: ${sql}`)
     },

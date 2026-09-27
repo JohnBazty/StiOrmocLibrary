@@ -29,4 +29,5 @@ export const circulationApi = {
   }),
   returnBook: (transactionId: number) => request(`/api/v1/admin/borrowing/${transactionId}/return`, { method: 'PUT' }),
   calculatePenalty: (transactionId: number) => request<{ amount: number; currency: string }>(`/api/v1/admin/borrowing/${transactionId}/calculate-penalty`, { method: 'POST' }),
+  reportLost: (transactionId: number) => request<{ lostBookReportId: number; status: string; alreadyReported?: boolean }>(`/api/v1/admin/clearance/lost-books/loans/${transactionId}/report`, { method: 'POST' }),
 }

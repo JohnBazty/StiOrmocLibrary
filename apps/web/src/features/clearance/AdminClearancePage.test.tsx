@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AdminClearancePage } from './AdminClearancePage'
+import { MemoryRouter } from 'react-router-dom'
 import type { ClearanceRecord } from './types'
 
 const api = vi.hoisted(() => ({
@@ -35,7 +36,7 @@ describe('AdminClearancePage simplified exceptions', () => {
     api.list.mockResolvedValue(listWith(blocked))
     api.detail.mockResolvedValue(blocked)
     api.override.mockResolvedValue({ clearance: overridden })
-    render(<AdminClearancePage />)
+    render(<MemoryRouter><AdminClearancePage /></MemoryRouter>)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Review' }))
     expect(await screen.findByRole('button', { name: 'Clear student as an exception' })).toBeTruthy()
@@ -55,7 +56,7 @@ describe('AdminClearancePage simplified exceptions', () => {
     const cleared: ClearanceRecord = { ...blocked, status: 'Cleared', computedStatus: 'Cleared', reason: 'No library obligations', summary: { ...blocked.summary, unpaidOverdueFines: 0, totalOutstanding: 0, blockCount: 0 } }
     api.list.mockResolvedValue(listWith(cleared))
     api.detail.mockResolvedValue(cleared)
-    render(<AdminClearancePage />)
+    render(<MemoryRouter><AdminClearancePage /></MemoryRouter>)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Review' }))
     expect(await screen.findByText('No exception is needed because the student is already cleared by the system.')).toBeTruthy()
@@ -69,16 +70,16 @@ describe('AdminClearancePage simplified exceptions', () => {
         borrowerName: blocked.student.name, role: 'Student', title: 'Emma', reportedAt: '2026-09-26T01:00:00.000Z' }],
     })
     api.detail.mockResolvedValue({ ...blocked, lostBooks: [{ lostBookReportId: 12, transactionId: 20,
-      title: 'Emma', status: 'Pending', purchasePrice: null, replacementCharge: 0,
+      titleId: 5, title: 'Emma', status: 'Pending', quotationId: null, quotedAmount: null, replacementCharge: 0,
       paymentStatus: 'Unpaid', reportedAt: '2026-09-26T01:00:00.000Z', verifiedAt: null }] })
-    render(<AdminClearancePage />)
+    render(<MemoryRouter initialEntries={['/librarian/clearance']}><AdminClearancePage /></MemoryRouter>)
 
     expect(await screen.findByText('Lost-book reports awaiting review (1)')).toBeTruthy()
     expect(screen.getByText('Emma')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Review report' }))
     await waitFor(() => expect(api.detail).toHaveBeenCalledWith(7))
     expect(await screen.findByText('Lost-book reports')).toBeTruthy()
-    expect(screen.getByText('Charge pending review')).toBeTruthy()
+    expect(screen.getByText('Awaiting quotation')).toBeTruthy()
   })
 })
 

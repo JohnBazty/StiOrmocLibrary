@@ -20,6 +20,12 @@ userPrintingV1Router.post('/requests',documentUpload,printingController.submit)
 userPrintingV1Router.put('/requests/:id/cancel',printingController.cancel)
 
 export const adminPrintingV1Router=Router()
+adminPrintingV1Router.use((request,response,next)=>{
+  if(response.locals.authenticatedUser?.role!=='Staff')return next()
+  const allowed=(request.method==='GET'&&(request.path==='/queue'||/^\/requests\/\d+\/document$/.test(request.path)))
+    ||(request.method==='PATCH'&&/^\/requests\/\d+\/status$/.test(request.path))
+  return allowed?next():response.status(403).json({success:false,code:'STAFF_PRINTING_FORBIDDEN',message:'Staff may access only the printing queue and job actions.'})
+})
 adminPrintingV1Router.get('/summary',printingController.summary)
 adminPrintingV1Router.get('/service-status',printingController.serviceStatus)
 adminPrintingV1Router.patch('/service-status',printingController.setServiceStatus)

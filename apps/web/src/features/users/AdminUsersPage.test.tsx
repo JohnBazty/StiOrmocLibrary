@@ -8,7 +8,7 @@ vi.mock('./users-api', () => ({ usersApi: api }))
 vi.mock('../auth/auth-storage', () => ({ getCurrentIdentity: () => identity }))
 
 const student = { id: 8, school_id: '02000000008', role: 'Student', account_status: 'Active', full_name: 'Test Student', email: 'student@example.invalid', program: 'IT', year_or_unit: '4th Year', clearance_status: 'Cleared' }
-const detail = { ...student, contact_number: '09123456789', user_id: 18, first_name: 'Test', last_name: 'Student', program_strand: 'IT', year_grade_level: '4th Year', events: [] }
+const detail = { ...student, user_id: 18, first_name: 'Test', last_name: 'Student', program_strand: 'IT', year_grade_level: '4th Year', events: [] }
 
 beforeEach(() => {
   identity.role = 'Admin'

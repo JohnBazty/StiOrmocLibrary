@@ -99,6 +99,7 @@ async function queryObligations(database: Pool, filters: FineFilters, onlyUserId
   const commonParameters: Array<string|number> = [`${range.from} 00:00:00`, `${range.to} 23:59:59`]
   const userClause = onlyUserId ? ' AND f.user_id=?' : ''
   const lostUserClause = onlyUserId ? ' AND l.user_id=?' : ''
+  // A positive confirmed charge works before and after the optional quotation migration.
   const [fineRows] = await database.execute<RowDataPacket[]>(
     `SELECT f.fine_id,f.user_id,f.fine_type,f.fine_amount,f.payment_status,f.calculation_basis,
             f.overdue_units,f.rate_applied,f.maximum_cap_applied,f.applied_date,f.finalized_at,f.notes,f.updated_at,
@@ -136,7 +137,7 @@ async function queryObligations(database: Pool, filters: FineFilters, onlyUserId
          INNER JOIN fine_payment_receipts r ON r.fine_payment_receipt_id=a.fine_payment_receipt_id AND r.receipt_status='Issued'
          WHERE a.lost_book_report_id IS NOT NULL GROUP BY a.lost_book_report_id
        ) payments ON payments.lost_book_report_id=l.lost_book_report_id
-      WHERE l.report_status='Confirmed' AND COALESCE(l.verified_at,l.reported_at) BETWEEN ? AND ?${lostUserClause}
+      WHERE l.report_status='Confirmed' AND l.replacement_charge>0 AND COALESCE(l.verified_at,l.reported_at) BETWEEN ? AND ?${lostUserClause}
       ORDER BY COALESCE(l.verified_at,l.reported_at) DESC,l.lost_book_report_id DESC LIMIT 5000`, onlyUserId ? [...commonParameters, onlyUserId] : commonParameters,
   )
   const obligations: Obligation[] = fineRows.map((row) => {
@@ -224,7 +225,7 @@ async function refreshClearance(connection: PoolConnection, userId: number) {
     `SELECT
        EXISTS(SELECT 1 FROM borrow_transactions WHERE user_id=? AND transaction_status IN ('Borrowed','Overdue') AND lost_confirmed_at IS NULL) AS has_loan,
        EXISTS(SELECT 1 FROM fines WHERE user_id=? AND payment_status IN ('Accruing','Unpaid','Partially Paid') AND fine_amount>0) AS has_fine,
-       EXISTS(SELECT 1 FROM lost_book_reports WHERE user_id=? AND report_status='Confirmed' AND payment_status='Unpaid') AS has_loss`,
+       EXISTS(SELECT 1 FROM lost_book_reports WHERE user_id=? AND report_status='Confirmed' AND replacement_charge>0 AND payment_status='Unpaid') AS has_loss`,
     [userId,userId,userId],
   )
   const blocked = Number(rows[0]?.has_loan) || Number(rows[0]?.has_fine) || Number(rows[0]?.has_loss)
@@ -275,6 +276,7 @@ export function createFinesService(database: Pool = db) {
     const verificationCode = receiptVerificationCode({ receiptId: Number(receipt.fine_payment_receipt_id), receiptNumber: String(receipt.receipt_number), amountReceived: number(receipt.amount_received), receivedAt: receipt.received_at, student: { schoolId: String(receipt.school_id) } })
     return {
       receiptId: Number(receipt.fine_payment_receipt_id), receiptNumber: String(receipt.receipt_number), requestKey: String(receipt.request_key),
+      documentLabel: String(receipt.document_label ?? 'Legacy Receipt'),
       verificationCode,
       student: { userId: Number(receipt.user_id), schoolId: String(receipt.school_id), name: String(receipt.full_name) },
       amountReceived: number(receipt.amount_received), paymentMethod: 'Cash' as const, receivedBy: String(receipt.received_by), receivedAt: receipt.received_at,
@@ -361,7 +363,7 @@ export function createFinesService(database: Pool = db) {
             const [rows] = await connection.execute<RowDataPacket[]>(
               `SELECT l.lost_book_report_id,l.user_id,l.replacement_charge,l.payment_status,
                       COALESCE((SELECT SUM(a.amount_allocated) FROM fine_payment_allocations a INNER JOIN fine_payment_receipts r ON r.fine_payment_receipt_id=a.fine_payment_receipt_id AND r.receipt_status='Issued' WHERE a.lost_book_report_id=l.lost_book_report_id),0) AS paid
-                 FROM lost_book_reports l WHERE l.lost_book_report_id=? AND l.report_status='Confirmed' LIMIT 1 FOR UPDATE`, [allocation.lostBookReportId],
+                 FROM lost_book_reports l WHERE l.lost_book_report_id=? AND l.report_status='Confirmed' AND l.replacement_charge>0 LIMIT 1 FOR UPDATE`, [allocation.lostBookReportId],
             )
             const loss = rows[0]; if (!loss) throw new HttpError(404, 'LOST_BOOK_CHARGE_NOT_FOUND', 'A selected lost-book charge was not found.')
             const remaining = Math.max(0,number(loss.replacement_charge)-number(loss.paid))
@@ -421,13 +423,19 @@ export function createFinesService(database: Pool = db) {
       } catch(error){await connection.rollback();throw error}finally{connection.release()}
     },
     async reverseReceipt(actor: FineActor, target: unknown, body: unknown) {
-      requireStaff(actor); const targetReceiptId=receiptId(target); const input=validateReversal(body); const connection=await database.getConnection()
+      requireStaff(actor); const targetReceiptId=receiptId(target); const input=validateReversal(body)
+      const [invoiceTables]=await database.execute<RowDataPacket[]>(isPostgres
+        ? "SELECT to_regclass('public.customer_invoices') IS NOT NULL AS exists"
+        : "SELECT COUNT(*) AS exists FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='customer_invoices'")
+      const invoiceLedgerExists=Boolean(invoiceTables[0]?.exists)
+      const connection=await database.getConnection()
       try {
         await connection.beginTransaction(); const staffUserId=await linkedUserId(connection,actorAccountId(actor))
         const [rows]=await connection.execute<RowDataPacket[]>('SELECT user_id,receipt_status FROM fine_payment_receipts WHERE fine_payment_receipt_id=? LIMIT 1 FOR UPDATE',[targetReceiptId])
         const receipt=rows[0]; if(!receipt) throw new HttpError(404,'FINE_RECEIPT_NOT_FOUND','The payment receipt was not found.')
         if(receipt.receipt_status!=='Issued') throw new HttpError(422,'FINE_RECEIPT_ALREADY_REVERSED','This receipt has already been reversed.')
         await connection.execute("UPDATE fine_payment_receipts SET receipt_status='Reversed',reversed_by_user_id=?,reversed_at=NOW(),reversal_reason=? WHERE fine_payment_receipt_id=?",[staffUserId,input.reason,targetReceiptId])
+        if(invoiceLedgerExists) await connection.execute("UPDATE customer_invoices SET status='Voided',voided_by_user_id=?,voided_at=NOW(),void_reason=? WHERE source_type='Fine Collection' AND source_id=? AND status='Issued'",[staffUserId,`Underlying payment reversed: ${input.reason}`.slice(0,500),targetReceiptId])
         const [allocations]=await connection.execute<RowDataPacket[]>('SELECT fine_id,lost_book_report_id FROM fine_payment_allocations WHERE fine_payment_receipt_id=?',[targetReceiptId])
         for(const allocation of allocations){if(allocation.fine_id) await recomputeFineStatus(connection,Number(allocation.fine_id));else await connection.execute("UPDATE lost_book_reports SET payment_status='Unpaid',paid_at=NULL,payment_recorded_by_user_id=NULL,updated_at=NOW() WHERE lost_book_report_id=?",[allocation.lost_book_report_id])}
         await connection.execute(

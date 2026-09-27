@@ -27,7 +27,7 @@ describe('normalized authentication API client', () => {
     }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
     vi.stubGlobal('fetch', fetchMock)
     const input = {
-      school_id: 'STI-2026-0040', first_name: 'Ana', last_name: 'Reyes', contact_number: '09171234567',
+      school_id: 'STI-2026-0040', first_name: 'Ana', last_name: 'Reyes',
       program_strand: 'BS Information Technology', year_grade_level: '2nd Year', password: 'LibraryPass9', confirm_password: 'LibraryPass9',
     }
 

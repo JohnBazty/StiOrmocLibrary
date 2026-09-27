@@ -6,6 +6,7 @@ import {
   queryBookCatalog,
   queryBookCategories,
   queryBookOverview,
+  queryBookCopyDetails,
   queryReservationTarget,
   queryViewerActiveBookCount,
 } from './book-catalog.repository.ts'
@@ -36,7 +37,7 @@ export function createBookCatalogService(database: Pool = db) {
       const titleId = parseBookTitleId(titleIdValue)
       const book = await queryBookOverview(database, titleId)
       if (!book) throw new HttpError(404, 'BOOK_TITLE_NOT_FOUND', 'The requested book title does not exist or is archived.')
-      return book
+      return { ...book, copies: await queryBookCopyDetails(database, titleId) }
     },
 
     async reserve(titleIdValue: unknown, viewer: CatalogViewer) {

@@ -25,7 +25,7 @@ export function AdminAnnouncementsPage() {
     finally { setBusy(false) }
   }
   return <>
-    <PageHeader eyebrow="Admin communication" title="Announcements" description="Only Admin accounts can publish messages to every active SmartLib user." action={<Button variant="secondary" onClick={() => void load()}><RefreshCw size={16} /> Refresh</Button>} />
+    <PageHeader eyebrow="Library communication" title="Announcements" description="Librarians can publish messages to every active SmartLib user." action={<Button variant="secondary" onClick={() => void load()}><RefreshCw size={16} /> Refresh</Button>} />
     {error ? <div role="alert" className="mb-5 flex gap-2 rounded-xl bg-[#FFF200] p-4 font-bold text-[#003399]"><AlertTriangle size={18} />{error}</div> : null}
     {notice ? <div role="status" className="mb-5 rounded-xl bg-[#003399] p-4 font-bold text-white">{notice}</div> : null}
     <div className="grid gap-5 xl:grid-cols-[.75fr_1.25fr]">

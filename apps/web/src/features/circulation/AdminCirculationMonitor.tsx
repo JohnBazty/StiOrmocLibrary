@@ -4,6 +4,7 @@ import { Button, PageHeader, SectionCard, StatCard, StatusBadge } from '../../co
 import { circulationApi } from './circulation-api'
 import type { CirculationMonitorData } from './types'
 import { CancelBorrowRequestDialog } from './CancelBorrowRequestDialog'
+import { ReportLostDialog } from './ReportLostDialog'
 
 function formatDate(value: string | null) {
   if (!value) return '—'
@@ -18,6 +19,8 @@ export function AdminCirculationMonitor() {
   const [barcode, setBarcode] = useState(''); const [schoolId, setSchoolId] = useState(''); const [submitting, setSubmitting] = useState(false)
   const [cancelTarget, setCancelTarget] = useState<CirculationMonitorData['items'][number] | null>(null)
   const [cancelError, setCancelError] = useState('')
+  const [lostTarget, setLostTarget] = useState<CirculationMonitorData['items'][number] | null>(null)
+  const [lostError, setLostError] = useState('')
   const load = useCallback(async () => {
     setLoading(true)
     try { setData(await circulationApi.monitor()); setError('') }
@@ -69,6 +72,17 @@ export function AdminCirculationMonitor() {
       setCancelError(reasonValue instanceof Error ? reasonValue.message : 'The pending request could not be cancelled.')
     } finally { setBusyId(null) }
   }
+  async function reportLost() {
+    if (!lostTarget || busyId !== null) return
+    setBusyId(lostTarget.transactionId); setLostError(''); setError(''); setSuccess('')
+    try {
+      const result = await circulationApi.reportLost(lostTarget.transactionId)
+      setSuccess(result.alreadyReported ? 'This loss is already awaiting staff review.' : 'Loss reported and borrower notified. Review it in Admin clearance.')
+      setLostTarget(null)
+      await load()
+    } catch (reason) { setLostError(reason instanceof Error ? reason.message : 'The loss could not be reported.') }
+    finally { setBusyId(null) }
+  }
   const lanes = useMemo(() => ({
     pending: data?.items.filter((item) => item.status === 'Pending') ?? [],
     active: data?.items.filter((item) => ['Borrowed', 'Active'].includes(item.status)) ?? [],
@@ -81,7 +95,7 @@ export function AdminCirculationMonitor() {
       <td className="px-4 py-4"><p className="font-bold text-[#003399]">{item.userName}</p><p className="text-xs text-[#003399]/60">{item.schoolId} · {item.role}</p></td>
       <td className="px-4 py-4"><p className="font-bold text-[#003399]">{item.title}</p><p className="font-mono text-xs text-[#003399]/60">{item.accessionNumber ?? item.barcode}</p></td>
       <td className="px-4 py-4 text-xs text-[#003399]">{formatDate(item.borrowDate ?? item.requestedAt)}</td><td className="px-4 py-4 text-xs font-semibold text-[#003399]">{formatDate(item.dueDate)}</td><td className="px-4 py-4"><StatusBadge status={item.status === 'Pending' ? 'Pending claim' : item.status} /></td>
-      <td className="px-4 py-4"><div className="flex justify-end gap-2">{item.status === 'Pending' ? <><button type="button" onClick={() => { setSchoolId(item.schoolId); setBarcode(item.barcode); setError(''); setSuccess('Borrower School ID and book barcode loaded. Confirm checkout after verifying the presented ID and book.') }} className="rounded-lg border border-[#003399]/20 bg-[#FFFFFF] px-3 py-2 text-xs font-bold text-[#003399]">Verify borrower</button><button disabled={busyId === item.transactionId} onClick={() => { setCancelError(''); setCancelTarget(item) }} className="rounded-lg border border-[#003399]/20 bg-[#FFFFFF] px-3 py-2 text-xs font-bold text-[#003399] disabled:opacity-40">Cancel</button></> : <>{item.status === 'Overdue' ? <button disabled={busyId === item.transactionId} onClick={() => void penalty(item.transactionId)} className="rounded-lg bg-[#FFF200] px-3 py-2 text-xs font-bold text-[#003399] disabled:opacity-40">Calculate penalty</button> : null}<button disabled={busyId === item.transactionId} onClick={() => void completeReturn(item.transactionId)} className="rounded-lg bg-[#003399] px-3 py-2 text-xs font-bold text-[#FFFFFF] disabled:opacity-40">Process return</button></>}</div></td>
+      <td className="px-4 py-4"><div className="flex justify-end gap-2">{item.status === 'Pending' ? <><button type="button" onClick={() => { setSchoolId(item.schoolId); setBarcode(item.barcode); setError(''); setSuccess('Borrower School ID and book barcode loaded. Confirm checkout after verifying the presented ID and book.') }} className="rounded-lg border border-[#003399]/20 bg-[#FFFFFF] px-3 py-2 text-xs font-bold text-[#003399]">Verify borrower</button><button disabled={busyId === item.transactionId} onClick={() => { setCancelError(''); setCancelTarget(item) }} className="rounded-lg border border-[#003399]/20 bg-[#FFFFFF] px-3 py-2 text-xs font-bold text-[#003399] disabled:opacity-40">Cancel</button></> : <>{item.status === 'Overdue' ? <button disabled={busyId === item.transactionId} onClick={() => void penalty(item.transactionId)} className="rounded-lg bg-[#FFF200] px-3 py-2 text-xs font-bold text-[#003399] disabled:opacity-40">Calculate penalty</button> : null}<button disabled={busyId === item.transactionId} onClick={() => { setLostError(''); setLostTarget(item) }} className="rounded-lg border border-[#003399]/20 px-3 py-2 text-xs font-bold text-[#003399] disabled:opacity-40">Report lost</button><button disabled={busyId === item.transactionId} onClick={() => void completeReturn(item.transactionId)} className="rounded-lg bg-[#003399] px-3 py-2 text-xs font-bold text-[#FFFFFF] disabled:opacity-40">Process return</button></>}</div></td>
     </tr>) : <tr><td colSpan={6} className="px-4 py-10 text-center font-semibold text-[#003399]">{empty}</td></tr>}</tbody>
   </table></div>
 
@@ -97,5 +111,6 @@ export function AdminCirculationMonitor() {
     <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><StatCard label="Pending claim" value={data?.summary.pendingClaims ?? 0} icon={ScanBarcode} tone="orange" /><StatCard label="Active claims" value={data?.summary.activeLoans ?? 0} icon={BookOpen} tone="blue" /><StatCard label="Due today" value={data?.summary.dueToday ?? 0} icon={CalendarClock} tone="orange" /><StatCard label="Overdue" value={data?.summary.overdueLoans ?? 0} icon={AlertTriangle} tone="red" /><StatCard label="Returned today" value={data?.summary.returnedToday ?? 0} icon={CheckCircle2} tone="blue" /></div>
     {loading && !data ? <SectionCard className="p-10 text-center font-semibold text-[#003399]">Loading circulation monitor…</SectionCard> : <div className="space-y-5"><SectionCard className="overflow-hidden"><div className="border-b border-[#003399]/15 px-5 py-4"><h2 className="font-bold text-[#003399]">Online carts pending counter claim</h2></div>{table(lanes.pending, 'No students are currently on the way to claim books.')}</SectionCard><SectionCard className="overflow-hidden"><div className="border-b border-[#003399]/15 px-5 py-4"><h2 className="font-bold text-[#003399]">Active material claims waiting for return</h2></div>{table(lanes.active, 'No active claims.')}</SectionCard><SectionCard className="overflow-hidden"><div className="border-b border-[#003399]/15 px-5 py-4"><h2 className="font-bold text-[#003399]">Overdue records</h2></div>{table(lanes.overdue, 'No overdue records.')}</SectionCard></div>}
     {cancelTarget ? <CancelBorrowRequestDialog title={cancelTarget.title} busy={busyId === cancelTarget.transactionId} error={cancelError} onCancel={() => { if (busyId === null) setCancelTarget(null) }} onConfirm={(reason) => void cancelPending(reason)} /> : null}
+    {lostTarget ? <ReportLostDialog title={lostTarget.title} busy={busyId === lostTarget.transactionId} error={lostError} onCancel={() => { if (busyId === null) setLostTarget(null) }} onConfirm={() => void reportLost()} /> : null}
   </>
 }

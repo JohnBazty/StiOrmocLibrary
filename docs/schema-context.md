@@ -1,14 +1,16 @@
 # Database Schema Context
 
-## Engine note (2026-09-25)
+## Engine note (updated 2026-09-28)
 
 The API is mid-cutover to Supabase PostgreSQL. See [supabase-migration-plan.md](supabase-migration-plan.md).
 
 - When `DATABASE_URL` (postgresql://…) is set, the runtime uses `pg` against drafts under [database/supabase/](../database/supabase/).
 - When unset, the runtime uses local MySQL via `mysql2` and the MySQL tree below (rollback / offline path).
-- The MySQL baseline and ordered migrations remain the historical product contract. Latest MySQL reference migration: `20260926_042_phase2_user_management.sql`. Next MySQL number if needed: **`043`**. MySQL is not the active database.
+- The MySQL baseline and ordered migrations remain the historical product contract. Latest MySQL reference migration: `20260927_047_phase6_registration_roles.sql` (prepared locally, not applied). Next MySQL number: **`048`**. MySQL is not the active database.
 - Additive MAIN product tables for Postgres land in `database/supabase/005_main_product_gapfill.sql` (033–040).
-- The 2026-09-25 historical data cutover copied local MySQL rows into Supabase after applying Postgres 008–009. Hosted users/accounts were preserved, and the pre-cutover hosted snapshot is in schema `mysql_cutover_backup_20260925100301`. Postgres 010 adds book archive actor and floor image version metadata. Postgres 011 adds account authentication versions and management audit events. Next Postgres migration number: **012**. See the cutover record in the migration plan.
+- Applied Supabase Phase 2 files `012`–`014` add `book_quotations`, lost-report charge resolution, `library_job_runs`, `invoice_setup`, and `customer_invoices`. Existing payment rows now have `document_label='Legacy Receipt'`; future rows default to `Payment Record`.
+- Applied Supabase Phase 6 file `015` adds `registration_requests` with hashed one-time codes and password hashes pending approval, the Library Staff role, a private `profile-avatars` Storage bucket, and `profile_avatar_submissions`. Completed/rejected requests clear their extra password hash. The MySQL rollback reference `047` also extends account/user role enums with Staff but remains unapplied.
+- The 2026-09-25 historical data cutover copied local MySQL rows into Supabase after applying Postgres 008–009. Hosted users/accounts were preserved, and the pre-cutover hosted snapshot is in schema `mysql_cutover_backup_20260925100301`. Postgres 010 adds book archive actor and floor image version metadata. Postgres 011 adds account authentication versions and management audit events. Product files 012–015 are now applied; the private pre-migration snapshot of affected rows is `migration_backup_20260927154637`. Next Postgres file number: **016**. The live ledger also contains two advisor-named files not present in this checkout; reconcile their sources before a whole-directory replay. See the cutover record in the migration plan.
 
 ## Target requirements versus current baseline
 
@@ -76,7 +78,7 @@ Migration `20260820_007_normalized_accounts_authentication.sql` adds `accounts` 
 
 ### Catalog
 
-- `categories`: unique category name, physical shelf-location tag, and creation/update timestamps. The table uses `utf8mb4_unicode_ci`; category names are case-insensitively unique.
+- `categories`: unique category name, optional description, physical shelf-location tag, and creation/update timestamps. Supabase migration `008` already added the nullable `description` text column; Phase 2 A2 reads and edits it without a new Postgres migration. MySQL reference migration `043` adds the field for rollback compatibility and is not applied locally. The MySQL table uses `utf8mb4_unicode_ci`; category names are case-insensitively unique.
 - `materials`: barcode, title, author, ISBN, year, category, shelf, type, and availability.
 
 The `department_or_program` and `abstract_text` fields support thesis/manuscript analytics and discovery.

@@ -5,9 +5,9 @@ export type ActiveUser = { id: number; school_id: string; role: string; account_
 export type UserSummary = { active_accounts: number; deactivated_accounts: number; archived_accounts: number; student_accounts: number; faculty_accounts: number; staff_accounts: number }
 export type UserFilters = { q: string; role: string; program: string; clearance: string; status: string; page: number; limit: number }
 export type Pagination = { page: number; limit: number; total: number; total_pages: number }
-export type ProfileEdit = { first_name: string; last_name: string; email: string; contact_number: string; program_strand: string; year_grade_level: string; reason: string }
+export type ProfileEdit = { first_name: string; last_name: string; email: string; program_strand: string; year_grade_level: string; reason: string }
 export type UserEvent = { id: number; action: string; previous_status: string | null; new_status: string | null; changed_fields: string | null; reason: string; created_at: string; actor_school_id: string }
-export type UserDetail = { id: number; school_id: string; role: string; account_status: AccountStatus; contact_number: string | null; email: string | null; user_id: number | null; first_name: string | null; last_name: string | null; program_strand: string | null; year_grade_level: string | null; full_name: string; events: UserEvent[] }
+export type UserDetail = { id: number; school_id: string; role: string; account_status: AccountStatus; email: string | null; user_id: number | null; first_name: string | null; last_name: string | null; program_strand: string | null; year_grade_level: string | null; full_name: string; events: UserEvent[] }
 
 async function request<T>(url: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers)

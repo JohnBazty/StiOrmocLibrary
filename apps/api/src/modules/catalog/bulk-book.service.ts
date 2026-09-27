@@ -2,7 +2,7 @@ import type { Pool } from 'mysql2/promise'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { renderBookLabel } from './book-label.renderer.ts'
-import { createBulkBookTitle, insertGeneratedBookCopy, lockBookTitleByIsbn, lockCategoryShelf, reserveBarcodeSequence, updateBookCover, updateBookPurchasePrice } from './bulk-book.repository.ts'
+import { createBulkBookTitle, insertGeneratedBookCopy, lockBookTitleByIsbn, lockCategoryShelf, reserveBarcodeSequence, updateBookCover } from './bulk-book.repository.ts'
 import { validateBulkBookInput } from './bulk-book.validation.ts'
 import { removeStoredCover, storeCoverImage } from './cover-image.storage.ts'
 
@@ -44,7 +44,6 @@ export function createBulkBookService(database: Pool = db, clock: () => Date = (
         storedCoverPath = await storeCoverImage(input.coverImageData)
         if (titleId === null) titleId = await createBulkBookTitle(connection, input, storedCoverPath)
         else if (storedCoverPath) await updateBookCover(connection, titleId, storedCoverPath)
-        if (existingTitle && input.purchasePrice !== null) await updateBookPurchasePrice(connection, titleId, input.purchasePrice)
 
         const year = clock().getFullYear()
         const firstSequence = await reserveBarcodeSequence(connection, year, input.numberOfCopies)

@@ -64,7 +64,7 @@ Custom `MySqlSessionStore` (`apps/api/src/core/mysql-session-store.js`) on table
 | Item | Count / path |
 | --- | --- |
 | MySQL baseline | `database/mysql56-schema.sql` |
-| MySQL reference migrations | **42** (`001`…`042`); next MySQL number **`043`** if needed; the active database remains Supabase Postgres |
+| MySQL reference migrations | **47** (`001`…`047`); next MySQL number **`048`**; `043`–`047` are prepared locally and unapplied; the active database remains Supabase Postgres |
 | Postgres drafts | `database/supabase/` including `005_main_product_gapfill.sql` for MAIN 033–040 |
 | Views | `borrow_records`, `book_titles` |
 | Seed files | None |
@@ -226,6 +226,10 @@ Before cutover, hosted row counts were `roles` 4, `users` 2, `accounts` 1; core 
 On 2026-09-25, `tools/ai/migrate-mysql-to-supabase.mjs` completed a full transactional dry run, then committed the historical rows from a consistent read-only MySQL snapshot. Existing Supabase accounts were preserved. Colliding numeric IDs were remapped with their dependent foreign keys; roles and seeded policy/settings rows were reconciled. Source `schema_migrations` and ephemeral `auth_sessions` were intentionally excluded. All table counts and mapped identities were checked before commit. The source MySQL rows were not modified.
 
 On 2026-09-26, the reviewed Postgres `011_phase2_user_management.sql` was applied to Supabase. It adds authentication-version columns to `accounts` and `users` and the append-only account-management event table. MySQL `042` is a rollback reference and was not applied to the active application.
+
+On 2026-09-27, Phase 6 Postgres `015_phase6_registration_roles.sql` and MySQL rollback reference `047` were prepared locally. They add pending school-email registration, the restricted Library Staff role, and private profile-picture approvals. Supabase `012`–`015` remain unapplied; the hosted ledger's latest applied file is still `011`. Applying these to the shared database is a separate release step and was not performed for the local-only Phase 6 work.
+
+On 2026-09-28, the user approved using the connected Supabase project for local verification. A private schema snapshot `migration_backup_20260927154637` captured the existing roles, lost-book reports, and print/fine payment rows before changes. Product files `012_phase2_book_quotations.sql`, `013_phase2_job_runner.sql`, `014_phase2_invoices.sql`, and `015_phase6_registration_roles.sql` then applied individually and transactionally. The API health check became healthy; existing lost-book and payment row counts stayed at 2, 10, and 20. A disposable Staff registration passed pending-email and code-verification transitions against Supabase, entered PendingApproval without creating an account, and was removed. The Gmail SMTP test was accepted by Gmail and the owner confirmed the message arrived in school Outlook; a full browser registration with a real unused school address remains unconfirmed. No GitHub push or Vercel deployment occurred. The live migration ledger also contains `011_advisor_security_lockdown.sql` and `012_performance_advisor_fixes.sql`, whose source files are absent from this checkout; reconcile them before any full replay.
 
 The target transaction created a pre-cutover snapshot of all public tables in private schema `mysql_cutover_backup_20260925100301`. Keep this schema until the team has verified the deployed app and agreed to retire rollback. The importer refuses a second `--apply` while a cutover backup exists. Use `node tools/ai/audit-supabase-cutover.mjs` for read-only source/target counts.
 

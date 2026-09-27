@@ -20,10 +20,16 @@
 --   009_inventory_audit_orphan_history.sql  — nullable copy link for Deleted audit snapshots
 --   010_phase3_archive_floor_image.sql      — archive actor and published floor image history
 --   011_phase2_user_management.sql          — account auth versions and Admin management audit
--- Next Postgres schema number: 012. Apply reviewed files individually.
+--   012_phase2_book_quotations.sql           — private quotation history and lost charge resolution (applied)
+--   013_phase2_job_runner.sql                — durable scheduled-run lease and metrics (applied)
+--   014_phase2_invoices.sql                  — separate gated invoice ledger (applied)
+--   015_phase6_registration_roles.sql        — pending verified accounts, Staff role, and avatar reviews (applied)
+-- Next Postgres file number: 016. Product files through 015 are applied. Apply reviewed files individually.
+-- The hosted ledger also lists advisor-named 011/012 files absent from this checkout;
+-- reconcile their sources before whole-directory replay.
 --
 -- MySQL tree under database/mysql56-schema.sql and database/migrations/ remains
--- the historical contract and local rollback path (latest MySQL migration: 041).
+-- the historical contract and local rollback path (latest MySQL reference migration: 047, prepared locally).
 --
 -- Connection note: free-tier direct db.* host is often IPv6-only. Use Session
 -- pooler (port 5432) with user postgres.<project-ref> when on IPv4 networks.

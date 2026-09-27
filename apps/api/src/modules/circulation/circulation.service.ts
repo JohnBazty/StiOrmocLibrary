@@ -1,6 +1,7 @@
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { randomUUID } from 'node:crypto'
 import { db } from '../../config/db.js'
+import { notifyReservationStatus } from '../reservations/reservation-notification.ts'
 import {
   authorsAgg,
   caseIf,
@@ -280,7 +281,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
       const actor = actorValue && typeof actorValue === 'object' ? actorValue as { accountId?: unknown; role?: unknown } : {}
       const actorAccountId = positiveCirculationId(actor.accountId, 'actorAccountId')
       const actorRole = String(actor.role ?? '')
-      if (!['Student', 'Faculty', 'Admin', 'Librarian'].includes(actorRole)) {
+      if (!['Student', 'Faculty', 'Librarian', 'Staff'].includes(actorRole)) {
         throw new HttpError(403, 'CIRCULATION_CANCEL_FORBIDDEN', 'Your role cannot cancel borrowing requests.')
       }
       const transactionId = positiveCirculationId(transactionIdValue, 'transactionId')
@@ -305,7 +306,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         )
         const request = rows[0]
         if (!request) throw new HttpError(404, 'BORROW_REQUEST_NOT_FOUND', 'The pending borrow request was not found.')
-        const staffOverride = ['Admin', 'Librarian'].includes(actorRole)
+        const staffOverride = ['Librarian', 'Staff'].includes(actorRole)
         if (!staffOverride && (!cancellingUserId || Number(request.user_id) !== cancellingUserId)) {
           throw new HttpError(403, 'BORROW_REQUEST_NOT_OWNED', 'You can cancel only your own pending borrow request.')
         }
@@ -479,6 +480,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
           && Number(queueHead.reservation_id) === Number(pendingClaim.reservation_id) ? queueHead : null
         if (fulfilledReservation) {
           await connection.execute(`UPDATE reservations SET reservation_status = 'claimed', accession_id = ?, assigned_physical_copy_id = ?, pickup_deadline = NULL, updated_at = NOW() WHERE reservation_id = ?`, [copy.material_id, copy.physical_copy_id, queueHead.reservation_id])
+          await notifyReservationStatus(connection, Number(queueHead.reservation_id), Number(borrower.user_id), String(copy.title), 'claimed')
           await compactQueue(connection, Number(copy.title_id), Number(queueHead.queue_position))
         }
         await connection.execute("UPDATE physical_copies SET availability_status = 'Borrowed', row_version = row_version + 1, updated_at = NOW() WHERE physical_copy_id = ?", [copy.physical_copy_id])
@@ -492,7 +494,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
 
     async fulfillClaim(actorValue: unknown, body: unknown) {
       const actor = actorValue && typeof actorValue === 'object' ? actorValue as { accountId?: unknown; role?: unknown } : {}
-      if (!['Admin', 'System Administrator', 'Librarian'].includes(String(actor.role ?? ''))) {
+      if (!['Librarian', 'Staff'].includes(String(actor.role ?? ''))) {
         throw new HttpError(403, 'CIRCULATION_FORBIDDEN', 'Only an administrator or librarian may fulfill a counter claim.')
       }
       const actorAccountId = positiveCirculationId(actor.accountId, 'actorAccountId')

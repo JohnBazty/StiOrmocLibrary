@@ -24,6 +24,7 @@ import {
   ShoppingCart,
   Tags,
   Users,
+  UserRound,
   X,
   type LucideIcon,
 } from 'lucide-react'
@@ -36,7 +37,7 @@ import { AttendanceFab } from '../features/attendance/AttendanceFab'
 import { useMockAuth } from '../features/inventory/MockAuthContext'
 import { ThemeToggle } from '../features/theme/ThemeToggle'
 
-type Role = 'student' | 'faculty' | 'admin'
+type Role = 'student' | 'faculty' | 'admin' | 'librarian' | 'staff'
 type NavItem = { label: string; to: string; icon: LucideIcon; section?: string }
 
 const userNav = (role: 'student' | 'faculty'): NavItem[] => {
@@ -53,28 +54,47 @@ const userNav = (role: 'student' | 'faculty'): NavItem[] => {
     { label: 'QR attendance', to: `${prefix}/attendance`, icon: QrCode },
     { label: 'Notifications', to: `${prefix}/notifications`, icon: Bell, section: 'My account' },
     { label: 'Fines', to: `${prefix}/fines`, icon: CircleDollarSign },
+    { label: 'Invoices', to: `${prefix}/invoices`, icon: FileText },
     { label: 'Clearance status', to: `${prefix}/clearance`, icon: BadgeCheck },
+    { label: 'Profile picture', to: `${prefix}/profile`, icon: UserRound },
   ]
 }
 
 const adminNav: NavItem[] = [
-  { label: 'Dashboard', to: '/admin/dashboard', icon: LayoutDashboard, section: 'Operations' },
-  { label: 'Books & research', to: '/admin/catalog', icon: BookOpen },
-  { label: 'Book archive', to: '/admin/book-archive', icon: Archive },
-  { label: 'Categories', to: '/admin/categories', icon: Tags },
-  { label: 'Borrow & return', to: '/admin/circulation', icon: CalendarClock },
-  { label: 'Reservations', to: '/admin/reservations', icon: BookMarked },
-  { label: 'Fines', to: '/admin/fines', icon: CircleDollarSign },
-  { label: 'Inventory', to: '/admin/inventory', icon: Archive, section: 'Resources' },
-  { label: 'Floor plan', to: '/admin/floor-plan', icon: Map },
-  { label: 'Printing queue', to: '/admin/printing', icon: Printer },
-  { label: 'Print supplies', to: '/admin/supplies', icon: PackageOpen },
-  { label: 'Attendance', to: '/admin/attendance', icon: QrCode, section: 'People & records' },
+  { label: 'Dashboard', to: '/admin/dashboard', icon: LayoutDashboard, section: 'Accounts' },
   { label: 'Users', to: '/admin/users', icon: Users },
+  { label: 'User archive', to: '/admin/user-archive', icon: Archive },
   { label: 'Clearance', to: '/admin/clearance', icon: ClipboardCheck },
-  { label: 'Announcements', to: '/admin/announcements', icon: Megaphone },
-  { label: 'Reports', to: '/admin/reports', icon: FileBarChart },
+  { label: 'Approvals', to: '/admin/approvals', icon: BadgeCheck },
 ]
+const librarianNav: NavItem[] = [
+  { label: 'Dashboard', to: '/librarian/dashboard', icon: LayoutDashboard, section: 'Operations' },
+  { label: 'Books & research', to: '/librarian/catalog', icon: BookOpen },
+  { label: 'Book archive', to: '/librarian/book-archive', icon: Archive },
+  { label: 'Categories', to: '/librarian/categories', icon: Tags },
+  { label: 'Borrow & return', to: '/librarian/circulation', icon: CalendarClock },
+  { label: 'Reservations', to: '/librarian/reservations', icon: BookMarked },
+  { label: 'Fines', to: '/librarian/fines', icon: CircleDollarSign },
+  { label: 'Invoices', to: '/librarian/invoices', icon: FileText },
+  { label: 'Inventory', to: '/librarian/inventory', icon: Archive, section: 'Resources' },
+  { label: 'Floor plan', to: '/librarian/floor-plan', icon: Map },
+  { label: 'Printing queue', to: '/librarian/printing', icon: Printer },
+  { label: 'Print supplies', to: '/librarian/supplies', icon: PackageOpen },
+  { label: 'Attendance', to: '/librarian/attendance', icon: QrCode, section: 'People & records' },
+  { label: 'Clearance', to: '/librarian/clearance', icon: ClipboardCheck },
+  { label: 'Announcements', to: '/librarian/announcements', icon: Megaphone },
+  { label: 'Profile picture', to: '/librarian/profile', icon: UserRound },
+]
+const staffNav: NavItem[] = [
+  { label: 'Dashboard', to: '/staff/dashboard', icon: LayoutDashboard, section: 'My tasks' },
+  { label: 'Borrow & return', to: '/staff/circulation', icon: CalendarClock },
+  { label: 'Reservations', to: '/staff/reservations', icon: BookMarked },
+  { label: 'Printing queue', to: '/staff/printing', icon: Printer },
+  { label: 'Attendance', to: '/staff/attendance', icon: QrCode },
+  { label: 'Announcements', to: '/staff/announcements', icon: Megaphone },
+  { label: 'Profile picture', to: '/staff/profile', icon: UserRound },
+]
+const navigation = (role: Role) => role === 'admin' ? adminNav : role === 'librarian' ? librarianNav : role === 'staff' ? staffNav : userNav(role)
 
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
@@ -86,7 +106,7 @@ function Brand({ compact = false }: { compact?: boolean }) {
 }
 
 function Sidebar({ role, open, onClose }: { role: Role; open: boolean; onClose: () => void }) {
-  const nav = role === 'admin' ? adminNav : userNav(role)
+  const nav = navigation(role)
   const preview = useMockAuth()
   const claims = preview.identity ?? getCurrentIdentity()
   return (
@@ -100,7 +120,7 @@ function Sidebar({ role, open, onClose }: { role: Role; open: boolean; onClose: 
             return <div key={item.to}>{item.section ? <p className="mb-2 mt-4 px-3 text-[9px] font-bold uppercase tracking-[0.2em] text-white/40 first:mt-0">{item.section}</p> : null}<NavLink onClick={onClose} to={item.to} className={({ isActive }) => cn('mb-1 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition', isActive ? 'bg-white text-[#003399] shadow-sm dark:bg-[#FFF200]' : 'text-white/70 hover:bg-white/10 hover:text-white')}><Icon size={17} /><span>{item.label}</span></NavLink></div>
           })}
         </nav>
-        <div className="border-t border-white/10 p-3"><button className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-white/60 transition hover:bg-white/10 hover:text-white"><Settings size={17} /> Settings</button><div className="mt-2 rounded-xl bg-white/5 p-3 ring-1 ring-white/10"><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#FFF200] text-xs font-black text-[#003399]">{claims?.role.slice(0, 2).toUpperCase() ?? 'ST'}</span><div className="min-w-0"><p className="truncate text-xs font-bold text-white">{claims?.schoolId ?? 'STI account'}</p><p className="mt-0.5 text-[10px] text-white/50">{claims?.role ?? role}</p></div></div></div></div>
+        <div className="border-t border-white/10 p-3"><div className="mt-2 rounded-xl bg-white/5 p-3 ring-1 ring-white/10"><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#FFF200] text-xs font-black text-[#003399]">{claims?.role.slice(0, 2).toUpperCase() ?? 'ST'}</span><div className="min-w-0"><p className="truncate text-xs font-bold text-white">{claims?.schoolId ?? 'STI account'}</p><p className="mt-0.5 text-[10px] text-white/50">{claims?.role ?? role}</p></div></div></div></div>
       </aside>
     </>
   )
@@ -110,7 +130,7 @@ export function PortalLayout({ role }: { role: Role }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
-  const nav = role === 'admin' ? adminNav : userNav(role)
+  const nav = navigation(role)
   const current = nav.find((item) => location.pathname.startsWith(item.to))
   const [hasAdminAlerts, setHasAdminAlerts] = useState(false)
   useEffect(() => {
@@ -119,8 +139,14 @@ export function PortalLayout({ role }: { role: Role }) {
       const token = getAccessToken()
       if (!token) return
       try {
-        const url = role === 'admin' ? '/api/v1/admin/notifications?limit=1' : '/api/v1/notifications?status=unread&limit=1'
-        const response = await fetch(url, { headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }, credentials: 'include' })
+        const requestHeaders = { Accept: 'application/json', Authorization: `Bearer ${token}` }
+        if (role === 'admin') {
+          const results = await Promise.all(['/api/v1/auth/registration-requests', '/api/v1/profile/avatar/submissions'].map(url =>
+            fetch(url, { headers: requestHeaders, credentials: 'include' }).then(async response => ({ response, payload: await response.json() as { data?: unknown[] } }))))
+          if (active && results.every(result => result.response.ok)) setHasAdminAlerts(results.some(result => Boolean(result.payload.data?.length)))
+          return
+        }
+        const response = await fetch('/api/v1/notifications?status=unread&limit=1', { headers: requestHeaders, credentials: 'include' })
         const payload = await response.json() as { success?: boolean; data?: unknown[] | { unreadCount?: number } }
         const hasAlerts = Array.isArray(payload.data) ? Boolean(payload.data.length) : Number(payload.data?.unreadCount ?? 0) > 0
         if (active && response.ok && payload.success) setHasAdminAlerts(hasAlerts)
@@ -137,17 +163,17 @@ export function PortalLayout({ role }: { role: Role }) {
       <div className="lg:pl-64">
         <header className="sticky top-0 z-30 flex h-20 items-center border-b border-[#003399]/10 bg-white/90 px-4 backdrop-blur-xl transition-colors sm:px-6 lg:px-8 dark:border-white/10 dark:bg-[#001a4d]/92">
           <button onClick={() => setSidebarOpen(true)} className="mr-3 rounded-xl border border-[#003399]/15 p-2.5 text-[#003399]/65 lg:hidden dark:border-white/15 dark:text-white/70"><Menu size={19} /></button>
-          <div className="hidden sm:block"><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#003399]/45 dark:text-white/45">{role === 'admin' ? 'Admin workspace' : role === 'faculty' ? 'Faculty portal' : 'Student portal'}</p><p className="mt-0.5 font-display text-sm font-bold text-[#003399] dark:text-white">{current?.label ?? 'Smart Library'}</p></div>
+          <div className="hidden sm:block"><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#003399]/45 dark:text-white/45">{role === 'admin' ? 'Admin workspace' : role === 'librarian' ? 'Librarian workspace' : role === 'staff' ? 'Staff workspace' : role === 'faculty' ? 'Faculty portal' : 'Student portal'}</p><p className="mt-0.5 font-display text-sm font-bold text-[#003399] dark:text-white">{current?.label ?? 'Smart Library'}</p></div>
           <label className="relative ml-auto hidden w-64 xl:block"><Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#003399]/45 dark:text-white/45" size={15} /><input placeholder="Search anywhere..." className="h-10 w-full rounded-xl border border-[#003399]/15 bg-[#003399]/5 pl-9 pr-3 text-sm outline-none transition focus:border-[#003399]/15 focus:bg-white focus:ring-4 focus:ring-[#003399]/10 dark:border-white/15 dark:bg-white/5 dark:text-white dark:focus:bg-[#002266]" /></label>
           <div className="ml-auto flex items-center gap-2 xl:ml-3">
             <ThemeToggle />
-            <button onClick={() => navigate(role === 'admin' ? '/admin/announcements' : role === 'faculty' ? '/faculty/notifications' : '/student/notifications')} aria-label="Notifications" className="relative rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 transition hover:bg-[#003399]/5 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><Bell size={18} />{hasAdminAlerts ? <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#FFF200] ring-2 ring-white dark:ring-[#001a4d]" /> : null}</button>
+            <button onClick={() => navigate(role === 'admin' ? '/admin/approvals' : role === 'librarian' ? '/librarian/announcements' : role === 'staff' ? '/staff/announcements' : role === 'faculty' ? '/faculty/notifications' : '/student/notifications')} aria-label="Notifications" className="relative rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 transition hover:bg-[#003399]/5 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><Bell size={18} />{hasAdminAlerts ? <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#FFF200] ring-2 ring-white dark:ring-[#001a4d]" /> : null}</button>
             <button onClick={signOut} aria-label="Sign out" title="Sign out" className="rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 transition hover:bg-[#003399]/5 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><LogOut size={18} /></button>
             <button aria-label="Collapse sidebar" className="hidden rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 lg:block dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80"><PanelLeftClose size={18} /></button>
           </div>
         </header>
         <main className="mx-auto max-w-[1500px] p-4 sm:p-6 lg:p-8"><Outlet /></main>
-        <AttendanceFab role={role} />
+        {role !== 'admin' ? <AttendanceFab role={role} /> : null}
       </div>
     </div>
   )

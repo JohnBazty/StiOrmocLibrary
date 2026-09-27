@@ -54,9 +54,9 @@ export async function createBulkBookTitle(connection: PoolConnection, input: Bul
     `INSERT INTO titles
        (category_id, record_type, title, normalized_title, isbn, publication_year, publisher, purchase_price,
         call_number, cover_image_path, search_text, lifecycle_status, created_at)
-     VALUES (?, 'Book', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active', NOW())`,
+     VALUES (?, 'Book', ?, ?, ?, ?, ?, NULL, ?, ?, ?, 'Active', NOW())`,
     [input.categoryId, input.title, input.title.toLocaleLowerCase('en-US'), input.isbn, input.publicationYear,
-      input.publisher, input.purchasePrice, input.callNumber, coverImagePath, `${input.title} ${input.author} ${input.isbn}`.toLocaleLowerCase('en-US')],
+      input.publisher, input.callNumber, coverImagePath, `${input.title} ${input.author} ${input.isbn}`.toLocaleLowerCase('en-US')],
   )
   await connection.execute(
     `INSERT INTO authors (title_id, author_name, normalized_name, author_order, created_at)
@@ -68,10 +68,6 @@ export async function createBulkBookTitle(connection: PoolConnection, input: Bul
 
 export async function updateBookCover(connection: PoolConnection, titleId: number, coverImagePath: string) {
   await connection.execute('UPDATE titles SET cover_image_path = ?, updated_at = NOW() WHERE title_id = ?', [coverImagePath, titleId])
-}
-
-export async function updateBookPurchasePrice(connection: PoolConnection, titleId: number, purchasePrice: number) {
-  await connection.execute('UPDATE titles SET purchase_price = ?, updated_at = NOW() WHERE title_id = ?', [purchasePrice, titleId])
 }
 
 export async function reserveBarcodeSequence(connection: PoolConnection, year: number, count: number) {

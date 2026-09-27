@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-09-26 (Phase 2 item 1 deployed; migration tracker updated) |
+| **Date last updated** | 2026-09-28 (Supabase product migrations 012–015 applied; migration tracker updated) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---
@@ -98,10 +98,10 @@ Always know and document:
 | Item | Value |
 | --- | --- |
 | Migrations directory | `database/migrations/` |
-| Latest migration | `20260926_042_phase2_user_management.sql` |
-| Latest number | `042` |
-| **Next available number** | **`043`** |
-| Supabase / Postgres files | `database/supabase/` through `011_phase2_user_management.sql`; next **012**. The tracked `007` is present in the live ledger. Reconcile the `002`/`005` ledger gaps before whole-directory replay. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set. |
+| Latest migration | `20260927_047_phase6_registration_roles.sql` (prepared locally; unapplied) |
+| Latest number | `047` |
+| **Next available number** | **`048`** |
+| Supabase / Postgres files | Product files through `015_phase6_registration_roles.sql` are applied; next file number **016**. The live ledger also contains `011_advisor_security_lockdown.sql` and `012_performance_advisor_fixes.sql`, which are absent from this checkout and need source reconciliation. The tracked `007` is present. Reconcile the `002`/`005` ledger gaps before whole-directory replay. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set. |
 
 Naming pattern in this repo:
 
@@ -112,7 +112,7 @@ YYYYMMDD_NNN_short_snake_description.sql
 Example next file (date prefix chosen on authoring day):
 
 ```text
-20260926_042_example_change.sql
+20260927_048_example_change.sql
 ```
 
 When a new **MySQL** migration lands:
@@ -162,3 +162,7 @@ Prefer simple, readable scripts under a clear folder (for example `tools/` or `s
 | 2026-09-25 | Cutover ported into GitHub main: MySQL tracker advanced to `040` / next `041`; added `005_main_product_gapfill.sql` for MAIN product tables. |
 | 2026-09-26 | Phase 3 archive and image migration added: MySQL reference `041` / next `042`, Supabase applied `010` / next `011`. Phase 3 P1–P3, A9, and F1 deployed; R1 excluded as requested. |
 | 2026-09-26 | Phase 2 item 1 account management deployed: MySQL reference `042` / next `043`, Supabase applied `011` / next `012`. Student lifecycle and audit flows passed production acceptance. Item 2 awaits user approval. |
+| 2026-09-26 | Phase 2 items 2–3 built and tested locally without pushing or deploying. MySQL rollback reference `043` adds category description; Supabase already has that column from applied migration `008`, so no new Postgres migration was needed. Next MySQL number `044`, next Postgres number `012`. |
+| 2026-09-27 | Remaining Phase 2 work prepared locally without pushing or deploying. MySQL rollback references `044`–`046` and Supabase `012`–`014` are unapplied. Next MySQL number `047`, next Postgres file `015`; latest hosted Supabase applied migration remains `011`. See `docs/phase2-local-implementation.md`. |
+| 2026-09-27 | Phase 6 role registration migration prepared locally: MySQL reference `047`, Supabase `015`; both unapplied. Next numbers `048` and `016`. No push or deployment. |
+| 2026-09-28 | Applied reviewed Supabase product files `012`–`015` individually after taking private snapshots of affected rows. Local API schema health is ready; a disposable Staff request passed real-Postgres registration/code verification and was removed. MySQL `047` remains a rollback reference; next numbers remain `048` and `016`. The live ledger has two advisor-named files absent from this checkout. No GitHub push or Vercel deployment. |

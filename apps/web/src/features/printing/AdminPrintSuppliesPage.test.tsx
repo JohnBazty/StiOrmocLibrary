@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AdminPrintSuppliesPage } from './AdminPrintSuppliesPage'
 
-const api=vi.hoisted(()=>({supplies:vi.fn(),revenueSummary:vi.fn(),revenueEntries:vi.fn(),expenseSummary:vi.fn(),restockHistory:vi.fn(),stockUsage:vi.fn(),restock:vi.fn(),createInk:vi.fn(),useInkBottle:vi.fn(),openPaperReam:vi.fn(),revenueReport:vi.fn(),stockExpenseReport:vi.fn()}))
+const api=vi.hoisted(()=>({supplies:vi.fn(),revenueSummary:vi.fn(),revenueEntries:vi.fn(),expenseSummary:vi.fn(),restockHistory:vi.fn(),stockUsage:vi.fn(),restock:vi.fn(),createInk:vi.fn(),useInkBottle:vi.fn(),openPaperReam:vi.fn(),revenueReport:vi.fn(),stockExpenseReport:vi.fn(),supplyReport:vi.fn()}))
 vi.mock('./printing-api',()=>({printingApi:api}))
 
 const supplyData={ink:[{ink_id:1,cartridge_type:'Dye ink',color_variation:'Black',available_bottles:2,low_stock_threshold_bottles:1,cost_per_bottle:100,is_low:0}],paper:[{paper_stock_id:1,paper_size_dimension:'A4',unopened_reams:2,remaining_reams:2,low_stock_threshold_reams:2,average_expense_cost:100,is_low:1}],summary:{low_ink_items:0,low_paper_items:1,monthly_expense:0}}
@@ -42,6 +42,14 @@ describe('AdminPrintSuppliesPage',()=>{
     fireEvent.click(await screen.findByRole('button',{name:'Use one bottle'}))
     fireEvent.click(screen.getByRole('button',{name:'Confirm usage'}))
     await waitFor(()=>expect(api.useInkBottle).toHaveBeenCalledWith(1))
+  })
+
+  it('downloads current stock separately from period expense reports',async()=>{
+    mockReads();api.supplyReport.mockResolvedValue(undefined)
+    render(<AdminPrintSuppliesPage/>)
+    fireEvent.click(await screen.findByRole('button',{name:'Export current stock PDF'}))
+    await waitFor(()=>expect(api.supplyReport).toHaveBeenCalledTimes(1))
+    expect(api.stockExpenseReport).not.toHaveBeenCalled()
   })
 })
 

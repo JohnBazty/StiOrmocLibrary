@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express'
 
-const CATEGORY_MANAGER_ROLES = new Set(['Admin', 'System Administrator', 'Librarian'])
+const CATEGORY_MANAGER_ROLES = new Set(['Librarian'])
 
 export function requireCategoryManager(request: Request, response: Response, next: NextFunction) {
   const role = (request.session as typeof request.session & { user?: { role?: string } })?.user?.role

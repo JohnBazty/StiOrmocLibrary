@@ -9,7 +9,7 @@ test('expiration transaction marks ready reservation expired and releases its ac
     async beginTransaction() {}, async commit() { state.committed += 1 }, async rollback() { state.rolledBack += 1 }, release() { state.released += 1 },
     async execute(sql: string) {
       state.statements.push(sql)
-      if (sql.includes('SELECT reservation_id')) return [[{ reservation_id: 91, accession_id: 42 }]]
+      if (sql.includes('SELECT r.reservation_id')) return [[{ reservation_id: 91, user_id: 8, accession_id: 42, title: 'Emma' }]]
       return [{ affectedRows: 1 }]
     },
   }

@@ -19,13 +19,12 @@ function reason(value: unknown) {
 }
 function profile(body: Record<string, unknown>) {
   const firstName = String(body.first_name ?? '').trim(), lastName = String(body.last_name ?? '').trim()
-  const email = String(body.email ?? '').trim().toLowerCase(), contact = String(body.contact_number ?? '').trim()
+  const email = String(body.email ?? '').trim().toLowerCase()
   const program = String(body.program_strand ?? '').trim(), year = String(body.year_grade_level ?? '').trim()
   if (!firstName || firstName.length > 100 || !lastName || lastName.length > 100) throw new HttpError(422, 'USER_NAME_INVALID', 'Enter first and last names up to 100 characters each.')
   if (!email || email.length > 191 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(422, 'USER_EMAIL_INVALID', 'Enter a valid email address.')
-  if (contact.length > 30) throw new HttpError(422, 'USER_CONTACT_INVALID', 'Contact number must be at most 30 characters.')
   if (!program || program.length > 150 || !year || year.length > 100) throw new HttpError(422, 'USER_ACADEMIC_DETAILS_INVALID', 'Enter a program and year or grade level.')
-  return { firstName, lastName, email, contact, program, year, reason: reason(body.reason) }
+  return { firstName, lastName, email, program, year, reason: reason(body.reason) }
 }
 export function parseUserFilters(q: Record<string, unknown>): UserFilters {
   const status = String(q.status ?? '').trim()
@@ -57,11 +56,11 @@ export class UsersRepository {
          COUNT(*) FILTER (WHERE account_status='Archived') archived_accounts,
          COUNT(*) FILTER (WHERE role='Student' AND account_status='Active') student_accounts,
          COUNT(*) FILTER (WHERE role='Faculty' AND account_status='Active') faculty_accounts,
-         COUNT(*) FILTER (WHERE role IN ('Admin','Librarian') AND account_status='Active') staff_accounts`
+         COUNT(*) FILTER (WHERE role IN ('Admin','Librarian','Staff') AND account_status='Active') staff_accounts`
       : `SUM(account_status='Active') active_accounts,SUM(account_status='Deactivated') deactivated_accounts,
          SUM(account_status='Archived') archived_accounts,SUM(role='Student' AND account_status='Active') student_accounts,
          SUM(role='Faculty' AND account_status='Active') faculty_accounts,
-         SUM(role IN ('Admin','Librarian') AND account_status='Active') staff_accounts`
+         SUM(role IN ('Admin','Librarian','Staff') AND account_status='Active') staff_accounts`
     const [rows] = await this.pool.execute<RowDataPacket[]>(`SELECT ${counts} FROM accounts`)
     return rows[0]
   }
@@ -85,7 +84,7 @@ export class UsersRepository {
   async detail(value: unknown) {
     const accountId = id(value)
     const [rows] = await this.pool.execute<RowDataPacket[]>(
-      `SELECT a.account_id id,a.school_id,a.role,a.account_status,a.contact_number,
+      `SELECT a.account_id id,a.school_id,a.role,a.account_status,
               u.email,u.user_id,sp.first_name,sp.last_name,sp.program_strand,sp.year_grade_level,
               COALESCE(u.full_name,a.school_id) full_name
          FROM accounts a LEFT JOIN users u ON u.user_id=a.user_id
@@ -103,7 +102,7 @@ export class UsersRepository {
     const connection = await this.pool.getConnection()
     try {
       await connection.beginTransaction()
-      const [accounts] = await connection.execute<RowDataPacket[]>('SELECT account_id,user_id,role,account_status,contact_number FROM accounts WHERE account_id=? FOR UPDATE', [accountId])
+      const [accounts] = await connection.execute<RowDataPacket[]>('SELECT account_id,user_id,role,account_status FROM accounts WHERE account_id=? FOR UPDATE', [accountId])
       const account = accounts[0]
       if (!account) throw new HttpError(404, 'USER_NOT_FOUND', 'Account not found.')
       if (account.role !== 'Student') throw new HttpError(422, 'USER_ROLE_READ_ONLY', 'Only student profiles can be edited here.')
@@ -111,11 +110,10 @@ export class UsersRepository {
       const [users] = await connection.execute<RowDataPacket[]>('SELECT full_name,email,course_or_strand FROM users WHERE user_id=? FOR UPDATE', [account.user_id])
       if (!users[0]) throw new HttpError(409, 'USER_PROFILE_NOT_LINKED', 'This account needs its operational profile linked before editing.')
       const [profiles] = await connection.execute<RowDataPacket[]>('SELECT first_name,last_name,program_strand,year_grade_level FROM student_profiles WHERE account_id=? FOR UPDATE', [accountId])
-      const old = { first_name: profiles[0]?.first_name ?? '', last_name: profiles[0]?.last_name ?? '', email: users[0]?.email ?? '', contact_number: account.contact_number ?? '', program_strand: profiles[0]?.program_strand ?? '', year_grade_level: profiles[0]?.year_grade_level ?? '' }
-      const next = { first_name: input.firstName, last_name: input.lastName, email: input.email, contact_number: input.contact, program_strand: input.program, year_grade_level: input.year }
+      const old = { first_name: profiles[0]?.first_name ?? '', last_name: profiles[0]?.last_name ?? '', email: users[0]?.email ?? '', program_strand: profiles[0]?.program_strand ?? '', year_grade_level: profiles[0]?.year_grade_level ?? '' }
+      const next = { first_name: input.firstName, last_name: input.lastName, email: input.email, program_strand: input.program, year_grade_level: input.year }
       const changedFields = (Object.keys(next) as Array<keyof typeof next>).filter(key => String(old[key]) !== String(next[key]))
       if (!changedFields.length) throw new HttpError(422, 'USER_NO_CHANGES', 'Change at least one profile field before saving.')
-      await connection.execute('UPDATE accounts SET contact_number=?,updated_at=NOW() WHERE account_id=?', [input.contact || null, accountId])
       await connection.execute('UPDATE users SET full_name=?,email=?,course_or_strand=?,updated_at=NOW() WHERE user_id=?', [`${input.firstName} ${input.lastName}`, input.email, input.program, account.user_id])
       if (profiles[0]) await connection.execute('UPDATE student_profiles SET first_name=?,last_name=?,program_strand=?,year_grade_level=?,updated_at=NOW() WHERE account_id=?', [input.firstName, input.lastName, input.program, input.year, accountId])
       else await connection.execute('INSERT INTO student_profiles(account_id,first_name,last_name,program_strand,year_grade_level) VALUES (?,?,?,?,?)', [accountId, input.firstName, input.lastName, input.program, input.year])

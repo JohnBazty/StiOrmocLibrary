@@ -6,7 +6,7 @@ import { login, AuthenticationError } from './auth-api'
 import { dashboardForRole, getCurrentClaims, saveAccessToken, type AuthRole } from './auth-storage'
 
 const SCHOOL_ID = /^[A-Z0-9][A-Z0-9._-]{2,49}$/
-const ROLES: AuthRole[] = ['Student', 'Faculty', 'Librarian']
+const ROLES: AuthRole[] = ['Student', 'Faculty', 'Librarian', 'Staff']
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -25,7 +25,7 @@ export function LoginPage() {
     if (claims) navigate(dashboardForRole(claims.role), { replace: true })
     else if (state?.registrationSuccess || new URLSearchParams(location.search).has('registered')) {
       if (state?.registrationSchoolId) setSchoolId(state.registrationSchoolId)
-      setMessage('Account created successfully! Sign in using your Student ID and password.')
+      setMessage('Your school email is verified. Sign in using your School ID and password.')
     } else if (state?.deniedPath) {
       setMessage('Your account cannot open that page. Please sign in with an authorized account.')
     }
@@ -75,7 +75,7 @@ export function LoginPage() {
             <label className="flex cursor-pointer items-center gap-3 text-sm font-semibold text-[#003399]/70"><input type="checkbox" checked={showPassword} onChange={(event) => setShowPassword(event.target.checked)} className="h-4 w-4 accent-[#003399]" />Show password</label>
             <button disabled={busy} className="flex h-13 w-full items-center justify-center rounded-xl bg-[#003399] px-5 text-sm font-black text-[#FFFFFF] shadow-lg shadow-[#003399]/15 transition hover:bg-[#003399]/90 disabled:cursor-wait disabled:opacity-60">{busy ? 'Verifying account…' : 'Login'}</button>
           </form>
-          <p className="mt-7 text-center text-sm text-[#003399]/70">Don&apos;t have an account? <Link to="/register" className="font-black text-[#003399] underline decoration-[#FFF200] decoration-4 underline-offset-4">Register as Student</Link></p>
+          <p className="mt-7 text-center text-sm text-[#003399]/70">Don&apos;t have an account? <Link to="/register" className="font-black text-[#003399] underline decoration-[#FFF200] decoration-4 underline-offset-4">Register an account</Link></p>
           <div className="mt-6 border-t border-[#003399]/10 pt-6 text-center"><Link to="/admin/login" className="inline-flex items-center gap-2 rounded-xl border border-[#003399]/20 px-4 py-2.5 text-xs font-black text-[#003399] hover:bg-[#FFF200]"><ShieldCheck size={15} /> System Administrator Login</Link></div>
         </div>
       </section>

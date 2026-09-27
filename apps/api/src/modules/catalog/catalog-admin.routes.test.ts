@@ -14,12 +14,12 @@ function appFor(role: 'Admin' | 'Librarian') {
   return app
 }
 
-test('only Admin can change a catalog title category', async () => {
+test('only Librarian can change a catalog title category', async () => {
   const librarian = await request(appFor('Librarian')).patch('/catalog/titles/14/category').send({ targetCategoryId: 8, expectedRowVersion: 3 })
-  assert.equal(librarian.status, 403)
-  assert.equal(librarian.body.code, 'JWT_ROLE_FORBIDDEN')
+  assert.equal(librarian.status, 200)
+  assert.equal(librarian.body.data.titleId, 14)
 
   const admin = await request(appFor('Admin')).patch('/catalog/titles/14/category').send({ targetCategoryId: 8, expectedRowVersion: 3 })
-  assert.equal(admin.status, 200)
-  assert.equal(admin.body.data.titleId, 14)
+  assert.equal(admin.status, 403)
+  assert.equal(admin.body.code, 'JWT_ROLE_FORBIDDEN')
 })

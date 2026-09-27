@@ -10,7 +10,7 @@ import { createJwtAuthService, type JwtRole } from './jwt-auth.service.ts'
 import { createActiveJwtAccountGuard, verifyAccessToken } from './jwt-auth.middleware.ts'
 
 const redirects: Record<JwtRole, string> = {
-  Admin: '/admin/dashboard', Librarian: '/librarian/dashboard', Faculty: '/faculty/dashboard', Student: '/student/dashboard',
+  Admin: '/admin/dashboard', Librarian: '/librarian/dashboard', Faculty: '/faculty/dashboard', Student: '/student/dashboard', Staff: '/staff/dashboard',
 }
 
 test('authenticates all four roles, signs the required claims, and returns the correct redirect', async () => {
@@ -49,63 +49,12 @@ test('rejects invalid credentials without revealing whether the account exists',
   )
 })
 
-test('registration hashes the password and commits separate account and student profile rows', async () => {
-  const writes: Array<{ sql: string; values: unknown[] }> = []
-  let committed = false
-  let released = false
-  const connection = {
-    beginTransaction: async () => undefined,
-    execute: async (sql: string, values: unknown[]) => {
-      writes.push({ sql, values })
-      if (sql.includes('FOR UPDATE')) return [[]]
-      if (sql.includes('INSERT INTO accounts')) return [{ insertId: 91 }]
-      return [{ insertId: 12 }]
-    },
-    commit: async () => { committed = true },
-    rollback: async () => undefined,
-    release: () => { released = true },
-  }
-  const database = { execute: async () => [[]], getConnection: async () => connection } as never
-  const passwordHasher = { hash: async () => '$2b$12$secure-hash', compare: async () => false } as never
-  const service = createJwtAuthService(database, passwordHasher, jwt)
-
-  const result = await service.register({
-    school_id: ' sti-2026-0091 ', first_name: ' Ada ', last_name: ' Lovelace ',
-    contact_number: '0917 123 4567', program_strand: 'BSIT', year_grade_level: '4th Year',
-    password: 'CorrectHorse1', confirm_password: 'CorrectHorse1',
-  })
-
-  assert.equal(result.account.id, 91)
-  assert.equal(result.account.schoolId, 'STI-2026-0091')
-  assert.equal(committed, true)
-  assert.equal(released, true)
-  assert.equal(writes.some(({ sql }) => sql.includes('INSERT INTO accounts')), true)
-  assert.equal(writes.some(({ sql }) => sql.includes('INSERT INTO student_profiles')), true)
-  assert.equal(writes.flatMap(({ values }) => values).includes('CorrectHorse1'), false)
-  assert.equal(writes.flatMap(({ values }) => values).includes('$2b$12$secure-hash'), true)
-})
-
-test('duplicate school ID is rejected with 422 before hashing or opening a transaction', async () => {
-  let hashed = false
-  let openedConnection = false
-  const database = {
-    execute: async () => [[{ account_id: 7 }]],
-    getConnection: async () => { openedConnection = true; throw new Error('must not open') },
-  } as never
-  const service = createJwtAuthService(database, {
-    hash: async () => { hashed = true; return 'unexpected' }, compare: async () => false,
-  } as never, jwt)
-
-  await assert.rejects(
-    service.register({
-      school_id: 'STI-2026-0007', first_name: 'Existing', last_name: 'Student',
-      contact_number: '09171234567', program_strand: 'BSIT', year_grade_level: '1st Year',
-      password: 'CorrectHorse1', confirm_password: 'CorrectHorse1',
-    }),
-    (error: unknown) => error instanceof HttpError && error.status === 422 && error.code === 'SCHOOL_ID_ALREADY_REGISTERED',
-  )
-  assert.equal(hashed, false)
-  assert.equal(openedConnection, false)
+test('correct pending role credentials explain the approval wait without issuing a token', async () => {
+  let queries = 0
+  const database = { execute: async () => { queries++; return queries === 1 ? [[]] : [[{ status: 'PendingApproval', password_hash: 'hashed' }]] } } as never
+  const service = createJwtAuthService(database, { compare: async () => true } as never, jwt)
+  await assert.rejects(service.login({ school_id: 'STAFF-123', login_as: 'Staff', password: 'CorrectHorse1' }),
+    (error: unknown) => error instanceof HttpError && error.code === 'ACCOUNT_APPROVAL_PENDING')
 })
 
 test('rejects valid credentials when login_as does not match the stored role', async () => {

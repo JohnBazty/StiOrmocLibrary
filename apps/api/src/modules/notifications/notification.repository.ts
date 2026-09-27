@@ -147,7 +147,7 @@ export function createNotificationRepository(database: Pool = db) {
     },
 
     async createAnnouncement(actor: NotificationActor, input: AnnouncementInput) {
-      if (actor.role !== 'Admin') throw new HttpError(403, 'ANNOUNCEMENT_ADMIN_ONLY', 'Only an Admin can publish announcements.')
+      if (actor.role !== 'Librarian') throw new HttpError(403, 'ANNOUNCEMENT_LIBRARIAN_ONLY', 'Only a Librarian can publish announcements.')
       const connection = await database.getConnection()
       try {
         await connection.beginTransaction()
@@ -179,7 +179,7 @@ export function createNotificationRepository(database: Pool = db) {
     },
 
     async announcements(actor: NotificationActor) {
-      if (actor.role !== 'Admin') throw new HttpError(403, 'ANNOUNCEMENT_ADMIN_ONLY', 'Only an Admin can manage announcements.')
+      if (actor.role !== 'Librarian') throw new HttpError(403, 'ANNOUNCEMENT_LIBRARIAN_ONLY', 'Only a Librarian can manage announcements.')
       const [rows] = await database.execute<RowDataPacket[]>(
         `SELECT a.announcement_id, a.title, a.message_body, a.priority, a.announcement_status,
                 a.publish_at, a.expires_at, a.published_at, a.archived_at, a.created_at,

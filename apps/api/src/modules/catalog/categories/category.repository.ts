@@ -5,6 +5,7 @@ import type { CategoryInput } from './category.validation.ts'
 export type CategoryRecord = {
   categoryId: number
   categoryName: string
+  description: string
   shelfLocation: string
   shelfColumn: number
   shelfRow: number
@@ -16,7 +17,7 @@ export type CategoryRecord = {
 
 export async function listCategoriesWithCounts(database: Pool): Promise<CategoryRecord[]> {
   const [rows] = await database.execute<RowDataPacket[]>(
-    `SELECT c.category_id, c.category_name, c.shelf_location, c.shelf_column, c.shelf_row, c.created_at, c.updated_at,
+    `SELECT c.category_id, c.category_name, c.description, c.shelf_location, c.shelf_column, c.shelf_row, c.created_at, c.updated_at,
             COALESCE(book_totals.total_books_count, 0) AS total_books_count,
             COALESCE(thesis_totals.total_thesis_count, 0) AS total_thesis_count
        FROM categories c
@@ -41,6 +42,7 @@ export async function listCategoriesWithCounts(database: Pool): Promise<Category
   return rows.map((row) => ({
     categoryId: Number(row.category_id),
     categoryName: String(row.category_name),
+    description: String(row.description ?? ''),
     shelfLocation: String(row.shelf_location),
     shelfColumn: Number(row.shelf_column),
     shelfRow: Number(row.shelf_row),
@@ -151,16 +153,16 @@ export async function recordCategoryShelfEvent(connection: PoolConnection, actor
 
 export async function insertCategory(database: Pool, input: CategoryInput) {
   const [result] = await database.execute<ResultSetHeader>(
-    `INSERT INTO categories (category_name, shelf_location, shelf_column, shelf_row, created_at)
-     VALUES (?, ?, ?, ?, NOW())`,
-    [input.categoryName, input.shelfLocation, input.shelfColumn, input.shelfRow],
+    `INSERT INTO categories (category_name, description, shelf_location, shelf_column, shelf_row, created_at)
+     VALUES (?, ?, ?, ?, ?, NOW())`,
+    [input.categoryName, input.description, input.shelfLocation, input.shelfColumn, input.shelfRow],
   )
   return result.insertId
 }
 
 export async function lockCategory(connection: PoolConnection, categoryId: number) {
   const [rows] = await connection.execute<RowDataPacket[]>(
-    `SELECT category_id, category_name, shelf_location, shelf_column, shelf_row
+    `SELECT category_id, category_name, description, shelf_location, shelf_column, shelf_row
        FROM categories WHERE category_id = ? LIMIT 1 FOR UPDATE`, [categoryId],
   )
   return rows[0] ?? null
@@ -168,8 +170,8 @@ export async function lockCategory(connection: PoolConnection, categoryId: numbe
 
 export async function updateCategoryRow(connection: PoolConnection, categoryId: number, input: CategoryInput) {
   await connection.execute<ResultSetHeader>(
-    `UPDATE categories SET category_name = ?, shelf_location = ?, shelf_column = ?, shelf_row = ?, updated_at = NOW()
-      WHERE category_id = ?`, [input.categoryName, input.shelfLocation, input.shelfColumn, input.shelfRow, categoryId],
+    `UPDATE categories SET category_name = ?, description = ?, shelf_location = ?, shelf_column = ?, shelf_row = ?, updated_at = NOW()
+      WHERE category_id = ?`, [input.categoryName, input.description, input.shelfLocation, input.shelfColumn, input.shelfRow, categoryId],
   )
 }
 
