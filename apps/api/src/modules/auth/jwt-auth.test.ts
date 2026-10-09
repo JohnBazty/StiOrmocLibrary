@@ -7,6 +7,7 @@ import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
 import { jwtProtectedRouter } from './jwt-auth.routes.ts'
 import { createJwtAuthService, type JwtRole } from './jwt-auth.service.ts'
+import { createActiveJwtAccountGuard, verifyAccessToken } from './jwt-auth.middleware.ts'
 
 const redirects: Record<JwtRole, string> = {
   Admin: '/admin/dashboard', Librarian: '/librarian/dashboard', Faculty: '/faculty/dashboard', Student: '/student/dashboard',
@@ -130,4 +131,34 @@ test('blocks a Student bearer token from the Admin dashboard data endpoint', asy
   const response = await request(app).get('/api/v1/admin/dashboard').set('Authorization', `Bearer ${token}`)
   assert.equal(response.status, 403)
   assert.equal(response.body.code, 'JWT_ROLE_FORBIDDEN')
+})
+
+test('rejects login when the linked operational user is deactivated', async () => {
+  const database = { execute: async () => [[{
+    account_id: 1, school_id: 'STI-2026-0001', password_hash: 'bcrypt-hash',
+    role: 'Student', account_status: 'Active', linked_status: 'Deactivated',
+  }]] } as never
+  const service = createJwtAuthService(database, { compare: async () => true } as never, jwt)
+  await assert.rejects(
+    service.login({ login_as: 'Student', school_id: 'STI-2026-0001', password: 'correct-password' }),
+    (error: unknown) => error instanceof HttpError && error.status === 403 && error.code === 'ACCOUNT_DEACTIVATED',
+  )
+})
+
+test('old bearer tokens are rejected after a status change or activation version increment', async () => {
+  const token = jwt.sign({ accountId: 9, schoolId: 'TEST-9', role: 'Student' }, env.jwt.secret,
+    { algorithm: 'HS256', issuer: env.jwt.issuer, audience: env.jwt.audience, expiresIn: 900 })
+  const identity = verifyAccessToken(token)
+  assert.equal(identity.authVersion, 1)
+  for (const account of [
+    { account_status: 'Deactivated', auth_version: 2 },
+    { account_status: 'Active', auth_version: 3 },
+  ]) {
+    const guard = createActiveJwtAccountGuard({ execute: async () => [[{ ...account, school_id: 'TEST-9', role: 'Student', user_status: account.account_status }]] } as never)
+    const outcome = await new Promise<{ code?: string; next?: boolean }>(resolve => {
+      const response = { locals: { authenticatedUser: identity }, status: () => response, json: (body: { code: string }) => resolve(body) }
+      guard({} as never, response as never, () => resolve({ next: true }))
+    })
+    assert.equal(outcome.code, 'ACCOUNT_ACCESS_REVOKED')
+  }
 })

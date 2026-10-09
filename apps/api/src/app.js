@@ -14,7 +14,7 @@ import { dashboardForRole, ROLES, STAFF_ROLES, USER_ROLES, webDashboardForRole }
 import { requireAuth, requireCsrfForStateChanges, requireRoles, sessionCookie } from './modules/auth/auth.middleware.js'
 import { authRouter, logoutRouter } from './modules/auth/auth.routes.js'
 import { jwtAuthRouter, jwtProtectedRouter } from './modules/auth/jwt-auth.routes.ts'
-import { authenticateJwt, requireJwtRoles } from './modules/auth/jwt-auth.middleware.ts'
+import { authenticateJwt, ensureActiveJwtAccount, requireJwtRoles } from './modules/auth/jwt-auth.middleware.ts'
 import { inventoryPreviewRouter } from './modules/inventory/inventory-preview.routes.ts'
 import { thesisInventoryV1AdminRouter } from './modules/inventory/thesis-inventory.routes.ts'
 import { bookCatalogRouter } from './modules/catalog/book-catalog.routes.ts'
@@ -83,6 +83,7 @@ export function createApp() {
   })
   app.use('/api/auth', authRouter)
   app.use('/api/v1/auth', jwtAuthRouter)
+  app.use('/api/v1', authenticateJwt, ensureActiveJwtAccount)
   app.use('/api/v1/catalog', authenticateJwt, bookCatalogRouter)
   app.use('/api/v1/floor-plan', authenticateJwt, requireJwtRoles('Admin', 'Librarian', 'Student', 'Faculty'), floorPlanRouter)
   app.use('/api/v1/catalog', authenticateJwt, researchCatalogRouter)

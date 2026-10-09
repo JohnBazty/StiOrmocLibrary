@@ -25,9 +25,11 @@ export function createLoginController({ database = db, passwordHasher = bcrypt }
       }
 
       const [rows] = await database.execute(
-        `SELECT u.user_id, u.full_name, u.email, u.password_hash, u.account_status, r.role_name
+        `SELECT u.user_id, u.full_name, u.email, u.password_hash, u.account_status, u.auth_version,
+                a.account_status AS linked_status, r.role_name
          FROM users AS u
          INNER JOIN roles AS r ON r.role_id = u.role_id
+         LEFT JOIN accounts a ON a.user_id=u.user_id
          WHERE u.email = ?
          LIMIT 1`,
         [validation.email],
@@ -40,7 +42,7 @@ export function createLoginController({ database = db, passwordHasher = bcrypt }
         return response.status(401).json({ success: false, code: 'INVALID_CREDENTIALS', message: 'The email address or password is incorrect.' })
       }
 
-      if (user.account_status !== 'Active') {
+      if (user.account_status !== 'Active' || (user.linked_status && user.linked_status !== 'Active')) {
         return response.status(403).json({ success: false, code: 'ACCOUNT_DEACTIVATED', message: DEACTIVATED_MESSAGE })
       }
 
@@ -56,6 +58,7 @@ export function createLoginController({ database = db, passwordHasher = bcrypt }
         role: user.role_name,
       }
       request.session.lastActivity = Date.now()
+      request.session.authVersion = Number(user.auth_version ?? 1)
       request.session.csrfToken = createCsrfToken()
       await saveSession(request)
 

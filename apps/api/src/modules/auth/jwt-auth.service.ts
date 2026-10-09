@@ -32,9 +32,9 @@ function isDuplicateEntry(error: unknown) {
 }
 
 export function createJwtAuthService(database: Pool = db, passwordHasher = bcrypt, tokenSigner = jwt) {
-  function issueToken(accountId: number, schoolId: string, role: JwtRole) {
+  function issueToken(accountId: number, schoolId: string, role: JwtRole, authVersion = 1) {
     return tokenSigner.sign(
-      { accountId, userId: accountId, schoolId, role },
+      { accountId, userId: accountId, schoolId, role, authVersion },
       env.jwt.secret,
       {
         algorithm: 'HS256', expiresIn: env.jwt.expiresInSeconds,
@@ -47,18 +47,20 @@ export function createJwtAuthService(database: Pool = db, passwordHasher = bcryp
     const validation = validateLoginInput(body)
     if (!validation.isValid) throw new HttpError(422, 'AUTH_VALIDATION_FAILED', 'Please correct the highlighted fields.', { errors: validation.errors })
     const [rows] = await database.execute<RowDataPacket[]>(
-      `SELECT user_id, school_id, full_name, email, password_hash, user_role, account_status
-         FROM users WHERE email = ? LIMIT 1`, [validation.email],
+      `SELECT u.user_id,u.school_id,u.full_name,u.email,u.password_hash,u.user_role,u.account_status,
+              a.account_id,a.account_status AS linked_status,a.auth_version
+         FROM users u LEFT JOIN accounts a ON a.user_id=u.user_id WHERE u.email = ? LIMIT 1`, [validation.email],
     )
     const user = rows[0]
     const matches = await passwordHasher.compare(validation.password, user?.password_hash ?? DUMMY_BCRYPT_HASH)
     if (!user || !matches) throw new HttpError(401, 'INVALID_CREDENTIALS', 'The email address or password is incorrect.')
     if (user.account_status !== 'Active') throw new HttpError(403, 'ACCOUNT_DEACTIVATED', 'Your account is currently deactivated. Please coordinate with the campus librarian.')
+    if (!user.account_id || user.linked_status !== 'Active') throw new HttpError(403, 'ACCOUNT_DEACTIVATED', 'Your account needs to be active and linked. Please coordinate with the campus librarian.')
     if (!JWT_ROLES.has(user.user_role)) throw new HttpError(403, 'ROLE_NOT_AUTHORIZED', 'Your assigned role is not authorized.')
-    const accountId = Number(user.user_id)
+    const accountId = Number(user.account_id)
     const role = user.user_role as JwtRole
     return {
-      token: issueToken(accountId, String(user.school_id), role), tokenType: 'Bearer', expiresIn: env.jwt.expiresInSeconds,
+      token: issueToken(accountId, String(user.school_id), role, Number(user.auth_version ?? 1)), tokenType: 'Bearer', expiresIn: env.jwt.expiresInSeconds,
       user: { id: accountId, accountId, schoolId: user.school_id, fullName: user.full_name, email: user.email, role },
       redirect: dashboardForJwtRole(role),
     }
@@ -138,9 +140,11 @@ export function createJwtAuthService(database: Pool = db, passwordHasher = bcryp
       const validation = validateRoleLogin(body)
       if (!validation.isValid) throw new HttpError(422, 'AUTH_VALIDATION_FAILED', 'Please correct the highlighted fields.', { errors: validation.errors })
       const [rows] = await database.execute<RowDataPacket[]>(
-        `SELECT a.account_id, a.school_id, a.password_hash, a.role, a.account_status,
+        `SELECT a.account_id, a.school_id, a.password_hash, a.role, a.account_status, a.auth_version,
+                u.account_status AS linked_status,
                 sp.first_name, sp.last_name
            FROM accounts AS a
+           LEFT JOIN users AS u ON u.user_id = a.user_id
            LEFT JOIN student_profiles AS sp ON sp.account_id = a.account_id
           WHERE a.school_id = ? AND a.role = ?
           LIMIT 1`,
@@ -149,14 +153,14 @@ export function createJwtAuthService(database: Pool = db, passwordHasher = bcryp
       const account = rows[0]
       const matches = await passwordHasher.compare(validation.password, account?.password_hash ?? DUMMY_BCRYPT_HASH)
       if (!account || !matches) throw new HttpError(401, 'INVALID_CREDENTIALS', INVALID_CREDENTIALS_MESSAGE)
-      if (account.account_status !== 'Active') throw new HttpError(403, 'ACCOUNT_DEACTIVATED', 'Your account is currently deactivated. Please coordinate with the campus librarian.')
+      if (account.account_status !== 'Active' || (account.linked_status && account.linked_status !== 'Active')) throw new HttpError(403, 'ACCOUNT_DEACTIVATED', 'Your account is currently deactivated. Please coordinate with the campus librarian.')
       if (!JWT_ROLES.has(account.role)) throw new HttpError(403, 'ROLE_NOT_AUTHORIZED', 'Your assigned role is not authorized.')
 
       const accountId = Number(account.account_id)
       const role = account.role as JwtRole
       const fullName = [account.first_name, account.last_name].filter(Boolean).join(' ') || null
       return {
-        token: issueToken(accountId, String(account.school_id), role), tokenType: 'Bearer', expiresIn: env.jwt.expiresInSeconds,
+        token: issueToken(accountId, String(account.school_id), role, Number(account.auth_version ?? 1)), tokenType: 'Bearer', expiresIn: env.jwt.expiresInSeconds,
         user: { id: accountId, accountId, schoolId: account.school_id, fullName, role },
         redirect: dashboardForJwtRole(role),
       }

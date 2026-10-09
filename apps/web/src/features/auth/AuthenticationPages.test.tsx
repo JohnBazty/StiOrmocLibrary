@@ -4,10 +4,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { LoginPage } from './LoginPage'
 import { RegistrationPage } from './RegistrationPage'
 import { AdminLoginPage } from './AdminLoginPage'
+import { ThemeProvider } from '../theme/ThemeProvider'
 
 describe('authentication pages', () => {
   it('shows the role and school-ID login contract with a registration link', () => {
-    render(<MemoryRouter><LoginPage /></MemoryRouter>)
+    render(<MemoryRouter><ThemeProvider><LoginPage /></ThemeProvider></MemoryRouter>)
     expect(screen.getByLabelText('Login as')).toBeTruthy()
     expect(screen.getByLabelText('School ID')).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Register as Student' }).getAttribute('href')).toBe('/register')
@@ -23,7 +24,7 @@ describe('authentication pages', () => {
   })
 
   it('provides a dedicated administrator login without a selectable role', () => {
-    render(<MemoryRouter><AdminLoginPage /></MemoryRouter>)
+    render(<MemoryRouter><ThemeProvider><AdminLoginPage /></ThemeProvider></MemoryRouter>)
     expect(screen.getByRole('heading', { name: 'Administration Portal' })).toBeTruthy()
     expect(screen.getByLabelText('Administrator School ID')).toBeTruthy()
     expect(screen.queryByLabelText('Login as')).toBeNull()

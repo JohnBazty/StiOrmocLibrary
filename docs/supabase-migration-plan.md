@@ -64,7 +64,7 @@ Custom `MySqlSessionStore` (`apps/api/src/core/mysql-session-store.js`) on table
 | Item | Count / path |
 | --- | --- |
 | MySQL baseline | `database/mysql56-schema.sql` |
-| MySQL migrations | **41** (`001`…`041`); next MySQL number **`042`** if needed |
+| MySQL reference migrations | **42** (`001`…`042`); next MySQL number **`043`** if needed; the active database remains Supabase Postgres |
 | Postgres drafts | `database/supabase/` including `005_main_product_gapfill.sql` for MAIN 033–040 |
 | Views | `borrow_records`, `book_titles` |
 | Seed files | None |
@@ -224,6 +224,8 @@ Before cutover, hosted row counts were `roles` 4, `users` 2, `accounts` 1; core 
 ### Historical data cutover completed
 
 On 2026-09-25, `tools/ai/migrate-mysql-to-supabase.mjs` completed a full transactional dry run, then committed the historical rows from a consistent read-only MySQL snapshot. Existing Supabase accounts were preserved. Colliding numeric IDs were remapped with their dependent foreign keys; roles and seeded policy/settings rows were reconciled. Source `schema_migrations` and ephemeral `auth_sessions` were intentionally excluded. All table counts and mapped identities were checked before commit. The source MySQL rows were not modified.
+
+On 2026-09-26, the reviewed Postgres `011_phase2_user_management.sql` was applied to Supabase. It adds authentication-version columns to `accounts` and `users` and the append-only account-management event table. MySQL `042` is a rollback reference and was not applied to the active application.
 
 The target transaction created a pre-cutover snapshot of all public tables in private schema `mysql_cutover_backup_20260925100301`. Keep this schema until the team has verified the deployed app and agreed to retire rollback. The importer refuses a second `--apply` while a cutover backup exists. Use `node tools/ai/audit-supabase-cutover.mjs` for read-only source/target counts.
 
