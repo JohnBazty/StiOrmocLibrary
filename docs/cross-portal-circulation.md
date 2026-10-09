@@ -2,7 +2,7 @@
 
 ## Module boundary
 
-SmartLib uses one transactional circulation domain for the Student/Faculty portal and the Admin/Librarian console. Both clients read committed records from the same MySQL database; neither client owns availability, queue position, due dates, or borrowing-limit calculations.
+The system uses one transactional circulation domain for the Student/Faculty portal and the Admin/Librarian console. Both clients read committed records from the same MySQL database; neither client owns availability, queue position, due dates, or borrowing-limit calculations.
 
 ```text
 JWT account -> linked operational user

@@ -80,7 +80,7 @@ function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <div className="flex items-center gap-3">
       <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#FFF200] text-[#003399] shadow-sm"><LibraryBig size={22} strokeWidth={2.5} /><span className="absolute bottom-0 h-1 w-full bg-[#003399]" /></div>
-      {!compact ? <div><p className="font-display text-sm font-black leading-tight tracking-tight text-white">STI ORMOC</p><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/70">Smart Library</p></div> : null}
+      {!compact ? <div><p className="font-display text-sm font-black leading-tight tracking-tight text-white">STI College Ormoc</p><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/70">ILMS</p></div> : null}
     </div>
   )
 }
@@ -137,7 +137,7 @@ export function PortalLayout({ role }: { role: Role }) {
       <div className="lg:pl-64">
         <header className="sticky top-0 z-30 flex h-16 items-center border-b border-[#003399]/10 bg-white/90 px-3 backdrop-blur-xl transition-colors sm:h-20 sm:px-6 lg:px-8 dark:border-white/10 dark:bg-[#001a4d]/92">
           <button onClick={() => setSidebarOpen(true)} className="mr-2 rounded-xl border border-[#003399]/15 p-2.5 text-[#003399]/65 sm:mr-3 lg:hidden dark:border-white/15 dark:text-white/70"><Menu size={19} /></button>
-          <div className="min-w-0 flex-1 sm:block"><p className="truncate text-[10px] font-bold uppercase tracking-[0.15em] text-[#003399]/45 dark:text-white/45">{role === 'admin' ? 'Admin workspace' : role === 'faculty' ? 'Faculty portal' : 'Student portal'}</p><p className="mt-0.5 truncate font-display text-sm font-bold text-[#003399] dark:text-white">{current?.label ?? 'Smart Library'}</p></div>
+          <div className="min-w-0 flex-1 sm:block"><p className="truncate text-[10px] font-bold uppercase tracking-[0.15em] text-[#003399]/45 dark:text-white/45">{role === 'admin' ? 'Admin workspace' : role === 'faculty' ? 'Faculty portal' : 'Student portal'}</p><p className="mt-0.5 truncate font-display text-sm font-bold text-[#003399] dark:text-white">{current?.label ?? 'STI College Ormoc ILMS'}</p></div>
           <label className="relative ml-auto hidden w-64 xl:block"><Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#003399]/45 dark:text-white/45" size={15} /><input placeholder="Search anywhere..." className="h-10 w-full rounded-xl border border-[#003399]/15 bg-[#003399]/5 pl-9 pr-3 text-sm outline-none transition focus:border-[#003399]/15 focus:bg-white focus:ring-4 focus:ring-[#003399]/10 dark:border-white/15 dark:bg-white/5 dark:text-white dark:focus:bg-[#002266]" /></label>
           <div className="ml-2 flex shrink-0 items-center gap-1.5 sm:gap-2 xl:ml-3">
             <ThemeToggle />

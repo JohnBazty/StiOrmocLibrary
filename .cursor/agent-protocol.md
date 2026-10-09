@@ -1,4 +1,4 @@
-# STI Ormoc Smart Library — Agent Protocol
+# STI College Ormoc Integrated Library Management System — Agent Protocol
 
 This file is the shared working agreement for AI agents on this repository.
 It is stored under `.cursor/` so it is versioned and visible when the project is pushed to GitHub.
@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-09-26 (Phase 3 deployed; migration tracker updated) |
+| **Date last updated** | 2026-10-09 (public system branding) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---
@@ -98,10 +98,10 @@ Always know and document:
 | Item | Value |
 | --- | --- |
 | Migrations directory | `database/migrations/` |
-| Latest migration | `20260926_041_phase3_archive_floor_image.sql` |
-| Latest number | `041` |
-| **Next available number** | **`042`** |
-| Supabase / Postgres files | `database/supabase/` through applied `010_phase3_archive_floor_image.sql`; next **011**. The tracked `007` is present in the live ledger. Reconcile the `002`/`005` ledger gaps before whole-directory replay. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set. |
+| Latest migration | `20261009_045_rename_system_brand.sql` |
+| Latest number | `045` |
+| **Next available number** | **`046`** |
+| Supabase / Postgres files | `database/supabase/` through branding migration `015_rename_system_brand.sql`; next **016**. The tracked `007` is present in the live ledger. Reconcile the `002`/`005` ledger gaps before whole-directory replay. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set. |
 
 Naming pattern in this repo:
 
@@ -161,3 +161,4 @@ Prefer simple, readable scripts under a clear folder (for example `tools/` or `s
 | 2026-09-25 | Supabase conversion started: dual MySQL/Postgres driver, `database/supabase/` drafts, tracker notes for parallel Postgres tree. See `docs/supabase-migration-plan.md`. |
 | 2026-09-25 | Cutover ported into GitHub main: MySQL tracker advanced to `040` / next `041`; added `005_main_product_gapfill.sql` for MAIN product tables. |
 | 2026-09-26 | Phase 3 archive and image migration added: MySQL reference `041` / next `042`, Supabase applied `010` / next `011`. Phase 3 P1–P3, A9, and F1 deployed; R1 excluded as requested. |
+| 2026-10-09 | Added branding migrations `045` and Supabase `015`; tracker advanced to MySQL next `046` and Supabase next `016`. |
