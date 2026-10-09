@@ -80,7 +80,7 @@ export function RegistrationPage() {
       <div className="mx-auto w-full max-w-5xl overflow-hidden rounded-[2rem] bg-[#FFFFFF] shadow-2xl shadow-[#003399] lg:grid lg:grid-cols-[.78fr_1.22fr]">
         <section className="relative overflow-hidden bg-[#003399] p-8 text-[#FFFFFF] lg:p-10">
           <div className="absolute -bottom-24 -left-24 h-72 w-72 rounded-full border-[55px] border-[#FFF200]/10" />
-          <div className="relative flex items-center gap-3"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FFF200] text-[#003399]"><LibraryBig /></span><div><p className="font-display text-lg font-black">STI ORMOC</p><p className="text-xs font-bold uppercase tracking-[.18em] text-[#FFFFFF]/70">Smart Library</p></div></div>
+          <div className="relative flex items-center gap-3"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FFF200] text-[#003399]"><LibraryBig /></span><div><p className="font-display text-lg font-black">STI College Ormoc</p><p className="text-xs font-bold uppercase tracking-[.18em] text-[#FFFFFF]/70">ILMS</p></div></div>
           <div className="relative mt-14"><p className="text-xs font-black uppercase tracking-[.2em] text-[#FFF200]">Student access</p><h1 className="mt-4 font-display text-4xl font-black leading-tight">Create your library account.</h1></div>
           <div className="relative mt-10 rounded-2xl border border-[#FFF200]/35 bg-[#FFF200]/10 p-5 text-sm leading-6 text-[#FFFFFF]/80"><strong className="block text-[#FFF200]">Already registered?</strong><Link to="/login" className="mt-1 inline-flex font-bold text-[#FFFFFF] underline underline-offset-4">Return to Login</Link></div>
         </section>

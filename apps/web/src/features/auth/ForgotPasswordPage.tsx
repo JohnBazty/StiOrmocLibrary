@@ -95,8 +95,8 @@ export function ForgotPasswordPage() {
         <div className="relative flex items-center gap-3">
           <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FFF200] text-[#003399]"><LibraryBig /></span>
           <div>
-            <p className="font-display text-lg font-black">STI ORMOC</p>
-            <p className="text-xs font-bold uppercase tracking-[.18em] text-[#FFFFFF]/70">Smart Library</p>
+            <p className="font-display text-lg font-black">STI College Ormoc</p>
+            <p className="text-xs font-bold uppercase tracking-[.18em] text-[#FFFFFF]/70">ILMS</p>
           </div>
         </div>
         <div className="relative max-w-xl">

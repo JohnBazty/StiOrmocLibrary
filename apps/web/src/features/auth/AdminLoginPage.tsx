@@ -64,8 +64,8 @@ export function AdminLoginPage() {
             <div className="flex items-center gap-3">
               <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#003399] text-[#FFFFFF]"><LibraryBig /></span>
               <div>
-                <p className="font-display text-lg font-black">STI ORMOC</p>
-                <p className="text-[10px] font-black uppercase tracking-[.18em]">Smart Library Staff</p>
+                <p className="font-display text-lg font-black">STI College Ormoc</p>
+                <p className="text-[10px] font-black uppercase tracking-[.18em]">ILMS Staff</p>
               </div>
             </div>
           </header>

@@ -1,6 +1,6 @@
 # JWT Role Authentication
 
-This module adds a versioned JWT login boundary without removing SmartLib's existing MySQL-backed session authentication. New clients authenticate with a school ID and an explicit role selection. The older email payload remains accepted for backward compatibility while clients migrate.
+This module adds a versioned JWT login boundary without removing the system's existing MySQL-backed session authentication. New clients authenticate with a school ID and an explicit role selection. The older email payload remains accepted for backward compatibility while clients migrate.
 
 ## Database migration
 

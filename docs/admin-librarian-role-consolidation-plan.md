@@ -2,7 +2,7 @@
 
 ## Why
 
-SmartLib currently represents `Admin`, `System Administrator`, and `Librarian` as overlapping staff identities. This creates inconsistent access: most administrative APIs accept both Admin and Librarian, some high-control features accept only Admin, the legacy session flow uses System Administrator, and the React application gives Librarian a separate but incomplete workspace.
+The system currently represents `Admin`, `System Administrator`, and `Librarian` as overlapping staff identities. This creates inconsistent access: most administrative APIs accept both Admin and Librarian, some high-control features accept only Admin, the legacy session flow uses System Administrator, and the React application gives Librarian a separate but incomplete workspace.
 
 The approved direction is one administrative identity: the **Admin is the Librarian**. `Admin` will be the only stored and issued administrative authorization role. “Librarian” remains the staff member's real-world job title and may appear in explanatory interface text, but it will no longer be a separate permission value, login destination, or dashboard.
 

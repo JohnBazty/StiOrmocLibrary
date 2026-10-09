@@ -6,9 +6,11 @@ The API is mid-cutover to Supabase PostgreSQL. See [supabase-migration-plan.md](
 
 - When `DATABASE_URL` (postgresql://…) is set, the runtime uses `pg` against drafts under [database/supabase/](../database/supabase/).
 - When unset, the runtime uses local MySQL via `mysql2` and the MySQL tree below (rollback / offline path).
-- The MySQL baseline and ordered migrations remain the historical product contract. Latest MySQL migration: `20260923_040_printing_digital_receipts.sql`. Next MySQL number if needed: **`041`**.
+- The MySQL baseline and ordered migrations remain the historical product contract. Latest MySQL migration: `20261009_045_rename_system_brand.sql`. Next MySQL number if needed: **`046`**.
 - Additive MAIN product tables for Postgres land in `database/supabase/005_main_product_gapfill.sql` (033–040).
 - User-row isolation is enforced in the Express API (JWT `accountId` → linked `user_id`). Postgres `008_rls_service_role_lockdown.sql` enables RLS with `service_role` policies and revokes `anon`/`authenticated` PostgREST access; it does **not** use Supabase Auth `auth.uid()` policies.
+
+Migration `20261009_045_rename_system_brand.sql` and Supabase migration `015_rename_system_brand.sql` change only the public `library_profiles.library_name` default and replace the existing row only when it still has the previous default. Database structures, relationships, routes, stored sessions, and technical `SmartLib` identifiers are unchanged.
 
 ## Target requirements versus current baseline
 

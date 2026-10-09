@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer'
+import { SYSTEM_NAME, SYSTEM_SHORT_NAME } from '../../config/branding.ts'
 import { env } from '../../config/env.js'
 
 export type PasswordResetMailer = {
@@ -29,9 +30,9 @@ export function createPasswordResetMailer(): PasswordResetMailer {
       await transporter.sendMail({
         from,
         to,
-        subject: 'STI Ormoc Smart Library password reset code',
+        subject: `${SYSTEM_SHORT_NAME} password reset code`,
         text: [
-          'Your STI Ormoc Smart Library password reset code is:',
+          `Your ${SYSTEM_NAME} password reset code is:`,
           '',
           otp,
           '',
