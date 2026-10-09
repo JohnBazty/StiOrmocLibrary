@@ -1,6 +1,6 @@
 # Multi-copy book labels
 
-SmartLib creates multiple accessioned assets under one normalized `titles.title_id`. The administrator enters the title metadata, shelf location, and copy count in the existing **Add book** dialog. `POST /api/v1/admin/books/add-bulk` then performs the whole batch in one transaction.
+The system creates multiple accessioned assets under one normalized `titles.title_id`. The administrator enters the title metadata, shelf location, and copy count in the existing **Add book** dialog. `POST /api/v1/admin/books/add-bulk` then performs the whole batch in one transaction.
 
 The current Admin form calls the canonical `POST /api/v1/admin/catalog/bulk-entry` alias. Category and Book Location are live dropdowns populated from Category Management; the server verifies both values again before reserving serials. The original `/api/v1/admin/books/add-bulk` path remains available for backward compatibility.
 

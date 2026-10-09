@@ -1,6 +1,6 @@
 # CSV Report Integrity
 
-CSV is a plain-text interchange format and cannot be made read-only. Spreadsheet applications will always permit a downloaded CSV to be edited. SmartLib therefore makes administrative CSV reports **tamper-evident** instead of claiming that they are locked.
+CSV is a plain-text interchange format and cannot be made read-only. Spreadsheet applications will always permit a downloaded CSV to be edited. The system therefore makes administrative CSV reports **tamper-evident** instead of claiming that they are locked.
 
 ## Protection applied during download
 

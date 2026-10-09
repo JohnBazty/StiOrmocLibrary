@@ -1,8 +1,8 @@
-# STI Ormoc Smart Library - Development Architecture Guide
+# STI College Ormoc Integrated Library Management System - Development Architecture Guide
 
 ## Purpose
 
-Use this guide for every future development task in this repository. Preserve a consistent, practical architecture for the STI Ormoc Smart Library Management System: digital cataloging, circulation, inventory, QR attendance, printing requests, fines, reservations, clearance, analytics, and reports.
+Use this guide for every future development task in this repository. Preserve a consistent, practical architecture for the STI College Ormoc Integrated Library Management System: digital cataloging, circulation, inventory, QR attendance, printing requests, fines, reservations, clearance, analytics, and reports.
 
 The system is designed for a small capstone team and campus deployment. Prefer understandable, well-tested implementation choices over complex distributed infrastructure.
 
