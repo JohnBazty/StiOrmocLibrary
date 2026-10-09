@@ -2,7 +2,36 @@ import { randomUUID } from 'node:crypto'
 import jwt from 'jsonwebtoken'
 import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
-import { nextOperatingDueDate } from './due-date.ts'
+import { calculateOperatingDueDate } from './due-date.ts'
+import {
+  isMaterialBorrowable,
+  roleBookLimit,
+  type BorrowingPolicyVersion,
+} from './borrowing-policy.types.ts'
+
+export const LEGACY_BORROWING_POLICY: BorrowingPolicyVersion = {
+  versionId: 1,
+  effectiveOn: '2000-01-01',
+  studentMaxActiveBooks: 2,
+  facultyMaxActiveBooks: null,
+  borrowingDays: 1,
+  dueTimeCutoff: '08:59:00',
+  maxRenewals: 1,
+  renewalExtensionDays: 1,
+  studentMaxActiveReservations: 2,
+  facultyMaxActiveReservations: null,
+  blockRenewalIfOverdue: true,
+  blockRenewalIfUnpaidFines: true,
+  blockRenewalIfReserved: true,
+  longOverdueAfterDays: null,
+  changeReason: 'Legacy baseline reflecting behavior before configurable borrowing policies.',
+  createdByUserId: null,
+  createdAt: '2000-01-01T00:00:00.000Z',
+  materialRules: [
+    { materialType: 'Book', isBorrowable: true },
+    { materialType: 'Thesis/Manuscript', isBorrowable: false },
+  ],
+}
 
 export const PREFLIGHT_PURPOSE = 'circulation_preflight'
 export const PREFLIGHT_AUDIENCE = 'circulation-preflight'
@@ -72,6 +101,7 @@ export type CheckoutEvaluation = {
   dueDateAdjusted: boolean
   pendingClaim: CheckoutEvaluationContext['openLoan'] | null
   fulfilledReservationId: number | null
+  policyVersionId: number
 }
 
 type PreflightTokenClaims = {
@@ -82,6 +112,7 @@ type PreflightTokenClaims = {
   reservationId: number | null
   flow: CheckoutFlow
   warningCodes: string[]
+  policyVersionId: number
   jti: string
 }
 
@@ -96,10 +127,11 @@ function localDateKey(value: Date) {
   return `${year}-${month}-${day}`
 }
 
-function nextCalendarDueDate(borrowedAt: Date) {
+function nextCalendarDueDate(borrowedAt: Date, borrowingDays: number, cutoff: string) {
   const due = new Date(borrowedAt)
-  due.setDate(due.getDate() + 1)
-  due.setHours(8, 59, 0, 0)
+  due.setDate(due.getDate() + Math.max(1, borrowingDays))
+  const [hourText, minuteText] = cutoff.split(':')
+  due.setHours(Number(hourText), Number(minuteText), 0, 0)
   return due
 }
 
@@ -113,13 +145,22 @@ export function decideFromFindings(blockers: PreflightFinding[], warnings: Prefl
   return 'ready'
 }
 
-export function evaluateCheckoutRules(context: CheckoutEvaluationContext): CheckoutEvaluation {
+export function evaluateCheckoutRules(
+  context: CheckoutEvaluationContext,
+  policy: BorrowingPolicyVersion = LEGACY_BORROWING_POLICY,
+): CheckoutEvaluation {
   const blockers: PreflightFinding[] = []
   const warnings: PreflightFinding[] = []
   const alerts: PreflightFinding[] = []
-  const dueAt = nextOperatingDueDate(context.borrowedAt, context.closedDates)
-  const calendarDue = nextCalendarDueDate(context.borrowedAt)
+  const dueAt = calculateOperatingDueDate(
+    context.borrowedAt,
+    policy.borrowingDays,
+    policy.dueTimeCutoff,
+    context.closedDates,
+  )
+  const calendarDue = nextCalendarDueDate(context.borrowedAt, policy.borrowingDays, policy.dueTimeCutoff)
   const dueDateAdjusted = localDateKey(dueAt) !== localDateKey(calendarDue)
+  const bookLimit = roleBookLimit(policy, context.borrower.role)
 
   if (!context.borrower.found) {
     blockers.push(finding('BORROWER_NOT_FOUND', 'The borrower account was not found.', 'CIRCULATION_BORROWER_NOT_FOUND', 404))
@@ -130,8 +171,8 @@ export function evaluateCheckoutRules(context: CheckoutEvaluationContext): Check
   if (!context.copy.found || context.copy.lifecycleStatus !== 'Active') {
     blockers.push(finding('COPY_NOT_FOUND', 'No active physical copy matches this barcode.', 'CIRCULATION_COPY_NOT_FOUND', 404))
   } else {
-    if (context.copy.materialType && context.copy.materialType !== 'Book') {
-      blockers.push(finding('RESEARCH_VIEW_ONLY', 'Research and thesis records cannot be borrowed.', 'RESEARCH_VIEW_ONLY'))
+    if (context.copy.materialType && !isMaterialBorrowable(policy, context.copy.materialType)) {
+      blockers.push(finding('RESEARCH_VIEW_ONLY', 'This material type cannot be borrowed under the active policy.', 'RESEARCH_VIEW_ONLY'))
     }
     if (!context.copy.materialId) {
       blockers.push(finding('COPY_NOT_LINKED', 'This copy is not linked to the circulation material ledger.', 'CIRCULATION_COPY_NOT_LINKED'))
@@ -192,11 +233,11 @@ export function evaluateCheckoutRules(context: CheckoutEvaluationContext): Check
       'CIRCULATION_RESERVATION_NOT_FIRST',
     ))
   }
-  if (context.borrower.found && context.borrower.role === 'Student'
-    && context.studentActiveTitleCount >= 2 && !context.targetTitleAlreadyActive) {
+  if (context.borrower.found && bookLimit !== null
+    && context.studentActiveTitleCount >= bookLimit && !context.targetTitleAlreadyActive) {
     blockers.push(finding(
       'STUDENT_LIMIT',
-      'Transaction Blocked: Students cannot exceed 2 books',
+      `Transaction Blocked: ${context.borrower.role} cannot exceed ${bookLimit} books`,
       'STUDENT_BORROW_LIMIT_REACHED',
     ))
   }
@@ -210,10 +251,10 @@ export function evaluateCheckoutRules(context: CheckoutEvaluationContext): Check
   if (blockers.length === 0 && context.copy.found && String(context.copy.condition) === 'Fair') {
     alerts.push(finding('CONDITION_FAIR', 'Copy condition is Fair.'))
   }
-  if (blockers.length === 0 && context.borrower.found && context.borrower.role === 'Student'
+  if (blockers.length === 0 && context.borrower.found && bookLimit !== null
     && !context.targetTitleAlreadyActive
-    && context.studentActiveTitleCount === 1) {
-    alerts.push(finding('FINAL_SLOT', 'This checkout will use the student’s final available borrowing slot.'))
+    && context.studentActiveTitleCount === bookLimit - 1) {
+    alerts.push(finding('FINAL_SLOT', 'This checkout will use the borrower’s final available borrowing slot.'))
   }
   if (blockers.length === 0 && pendingClaim?.reservationId && context.queueHead
     && Number(context.queueHead.reservationId) === Number(pendingClaim.reservationId)) {
@@ -240,17 +281,18 @@ export function evaluateCheckoutRules(context: CheckoutEvaluationContext): Check
     dueDateAdjusted,
     pendingClaim,
     fulfilledReservationId,
+    policyVersionId: policy.versionId,
   }
 }
 
-export function throwFirstBlocker(evaluation: CheckoutEvaluation): void {
+export function throwFirstBlocker(evaluation: CheckoutEvaluation, limit: number | null = null): void {
   const blocker = evaluation.blockers[0]
   if (!blocker) return
   throw new HttpError(
     blocker.httpStatus ?? 422,
     blocker.httpCode ?? 'CIRCULATION_VALIDATION_FAILED',
     blocker.message,
-    blocker.code === 'STUDENT_LIMIT' ? { activeCount: 2, limit: 2 } : undefined,
+    blocker.code === 'STUDENT_LIMIT' ? { limit } : undefined,
   )
 }
 
@@ -261,6 +303,7 @@ export function signPreflightToken(input: {
   reservationId: number | null
   flow: CheckoutFlow
   warningCodes: string[]
+  policyVersionId: number
   expiresInSeconds?: number
   secret?: string
 }) {
@@ -277,6 +320,7 @@ export function signPreflightToken(input: {
       reservationId: input.reservationId,
       flow: input.flow,
       warningCodes,
+      policyVersionId: input.policyVersionId,
     },
     secret,
     {
@@ -305,10 +349,12 @@ export function verifyPreflightToken(token: string, secret = env.jwt.secret): Pr
     const accountId = Number(payload.accountId)
     const borrowerUserId = Number(payload.borrowerUserId)
     const physicalCopyId = Number(payload.physicalCopyId)
+    const policyVersionId = Number(payload.policyVersionId)
     const flow = payload.flow
     if (!Number.isSafeInteger(accountId) || accountId < 1
       || !Number.isSafeInteger(borrowerUserId) || borrowerUserId < 1
       || !Number.isSafeInteger(physicalCopyId) || physicalCopyId < 1
+      || !Number.isSafeInteger(policyVersionId) || policyVersionId < 1
       || (flow !== 'claim' && flow !== 'walk_in')
       || !Array.isArray(payload.warningCodes)
       || typeof payload.jti !== 'string') {
@@ -328,6 +374,7 @@ export function verifyPreflightToken(token: string, secret = env.jwt.secret): Pr
       reservationId,
       flow,
       warningCodes: payload.warningCodes.map(String).sort(),
+      policyVersionId,
       jti: payload.jti,
     }
   } catch (error) {
@@ -359,12 +406,16 @@ export function assertTokenMatchesEvaluation(input: {
   reservationId: number | null
   flow: CheckoutFlow
   evaluation: CheckoutEvaluation
+  activePolicyVersionId: number
   secret?: string
 }) {
   const warningCodes = sortedWarningCodes(input.evaluation.warnings)
   if (warningCodes.length === 0) {
     if (!input.token) return { decisionId: null as string | null, overrideReason: null as string | null, warningCodes }
     const claims = verifyPreflightToken(input.token, input.secret)
+    if (claims.policyVersionId !== input.activePolicyVersionId) {
+      throw new HttpError(422, 'CIRCULATION_POLICY_CHANGED', 'The borrowing policy changed after preflight. Run preflight again.')
+    }
     if (claims.accountId !== input.accountId
       || claims.borrowerUserId !== input.borrowerUserId
       || claims.physicalCopyId !== input.physicalCopyId
@@ -381,6 +432,9 @@ export function assertTokenMatchesEvaluation(input: {
     })
   }
   const claims = verifyPreflightToken(input.token, input.secret)
+  if (claims.policyVersionId !== input.activePolicyVersionId) {
+    throw new HttpError(422, 'CIRCULATION_POLICY_CHANGED', 'The borrowing policy changed after preflight. Run preflight again.')
+  }
   const claimedCodes = [...claims.warningCodes].sort().join('|')
   const currentCodes = warningCodes.join('|')
   if (claims.accountId !== input.accountId

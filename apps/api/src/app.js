@@ -22,6 +22,7 @@ import { researchCatalogRouter } from './modules/catalog/research-catalog.routes
 import { bulkBookRouter, bulkCatalogEntryRouter } from './modules/catalog/bulk-book.routes.ts'
 import { researchAssetRouter } from './modules/catalog/research-asset.routes.ts'
 import { adminCirculationRouter, borrowCartRouter, circulationRequestRouter, userCirculationRouter } from './modules/circulation/circulation.routes.ts'
+import { borrowingPolicyRouter } from './modules/circulation/borrowing-policy.routes.ts'
 import { adminReservationsV1Router, userReservationsV1Router } from './modules/reservations/reservations.routes.ts'
 import { adminAttendanceV1Router, userAttendanceV1Router } from './modules/attendance/attendance.routes.ts'
 import { adminUsersV1Router } from './modules/users/users.routes.ts'
@@ -109,6 +110,7 @@ export function createApp() {
   app.use('/api/v1/admin/fines', authenticateJwt, requireJwtRoles('Admin'), adminFinesV1Router)
   app.use('/api/v1/admin/announcements', authenticateJwt, requireJwtRoles('Admin'), adminAnnouncementsV1Router)
   app.use('/api/v1/admin/dashboard', authenticateJwt, requireJwtRoles('Admin'), adminDashboardV1Router)
+  app.use('/api/v1/admin/borrowing-policies', authenticateJwt, requireJwtRoles('Admin'), borrowingPolicyRouter)
   app.use('/api/v1/admin', authenticateJwt, requireJwtRoles('Admin'), adminCirculationRouter)
   app.use('/api/v1/admin', authenticateJwt, requireJwtRoles('Admin'), thesisInventoryV1AdminRouter)
   app.use('/api/v1', jwtProtectedRouter)

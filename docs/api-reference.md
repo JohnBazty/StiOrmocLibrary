@@ -157,11 +157,14 @@ The response status is `422 Unprocessable Entity`. A copy with completed borrowi
 | `GET` | `/api/v1/borrowing/history` | Student, Faculty | Read personal capacity and borrowing history. |
 | `POST` | `/api/v1/borrow/submit-request` | Student, Faculty | Atomically assign available copies and create a grouped pending-claim request from `title_ids`. |
 | `GET` | `/api/v1/admin/reservations` | Admin | Read the contextual reservation queue. |
-| `POST` | `/api/v1/admin/borrowing/preflight` | Admin | Preview checkout blockers, warnings, and alerts without writing. |
-| `POST` | `/api/v1/admin/borrowing/confirm-checkout` | Admin | Confirm a walk-in barcode checkout. |
+| `POST` | `/api/v1/admin/borrowing/preflight` | Admin | Preview checkout blockers, warnings, and alerts without writing. Includes active `policyVersionId` and binds it into the preflight token. |
+| `POST` | `/api/v1/admin/borrowing/confirm-checkout` | Admin | Confirm a walk-in barcode checkout. Re-resolves policy under locks; returns `CIRCULATION_POLICY_CHANGED` if the token policy version is stale. |
 | `GET` | `/api/v1/admin/borrowing/monitor` | Admin | Read active, due, overdue, and returned records. |
 | `PUT` | `/api/v1/admin/borrowing/:transactionId/return` | Admin | Complete a return and advance the queue. |
 | `POST` | `/api/v1/admin/borrowing/:transactionId/calculate-penalty` | Admin | Persist the current overdue calculation. |
+| `GET` | `/api/v1/admin/borrowing-policies` | Admin | Active, scheduled, and historical immutable borrowing policy versions. |
+| `GET` | `/api/v1/admin/borrowing-policies/:versionId` | Admin | One immutable policy version with material rules. |
+| `POST` | `/api/v1/admin/borrowing-policies` | Admin | Publish a new immutable policy version (no update/delete). |
 | `GET` | `/api/v1/admin/notifications` | Admin | Read shared circulation/reservation alerts. |
 
 ### POST `/api/v1/admin/borrowing/preflight`

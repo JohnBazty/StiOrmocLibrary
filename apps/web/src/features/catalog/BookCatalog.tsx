@@ -77,7 +77,7 @@ export function BookCatalog() {
   const cartBooks = useMemo(() => new Set(cart.map((item) => item.titleId)), [cart])
   const addToCart = (book: BookCatalogItem) => {
     assertCatalogItemCanEnterLoanCart({ catalogType: 'Book', id: book.titleId })
-    const validation = validateBookCartAddition({ role: viewer.role, activeBookCount: viewer.activeBookCount, selectedBookCount: cart.length, alreadySelected: cartBooks.has(book.titleId) })
+    const validation = validateBookCartAddition({ role: viewer.role, activeBookCount: viewer.activeBookCount, selectedBookCount: cart.length, alreadySelected: cartBooks.has(book.titleId), bookLimit: viewer.bookLimit })
     if (!validation.allowed) { setNotice(''); setError(validation.message ?? 'This book cannot be added to the cart.'); return }
     if (!cartBooks.has(book.titleId)) addItem(book)
     setError('')
@@ -115,7 +115,7 @@ export function BookCatalog() {
         />
       </SectionCard>
 
-      <div className="mb-4 flex items-center justify-between"><p className="text-sm font-bold text-[#003399]">{pagination.total} books found</p>{viewer.role === 'Student' ? <p className="text-xs font-semibold text-[#003399]/65">Active + selected: {viewer.activeBookCount + cart.length} / 2</p> : null}</div>
+      <div className="mb-4 flex items-center justify-between"><p className="text-sm font-bold text-[#003399]">{pagination.total} books found</p>{viewer.bookLimit !== null ? <p className="text-xs font-semibold text-[#003399]/65">Active + selected: {viewer.activeBookCount + cart.length} / {viewer.bookLimit}</p> : <p className="text-xs font-semibold text-[#003399]/65">Active + selected: {viewer.activeBookCount + cart.length} / Unlimited</p>}</div>
 
       {loading && books.length === 0 ? <SectionCard className="p-16 text-center text-sm font-semibold text-[#003399]">Loading catalog…</SectionCard> : null}
       {!loading && books.length === 0 ? <SectionCard className="p-16 text-center"><BookOpen className="mx-auto text-[#003399]" size={30} /><p className="mt-3 font-display text-lg font-bold text-[#003399]">No books match these filters</p></SectionCard> : null}

@@ -4,11 +4,21 @@ import type { Pool } from 'mysql2/promise'
 import { HttpError } from '../../core/http-error.ts'
 import { createCirculationService } from './circulation.service.ts'
 
+const legacyPolicyRow = {
+  borrowing_policy_version_id: 1, effective_on: '2000-01-01', student_max_active_books: 2, faculty_max_active_books: null,
+  borrowing_days: 1, due_time_cutoff: '08:59:00', max_renewals: 1, renewal_extension_days: 1,
+  student_max_active_reservations: 2, faculty_max_active_reservations: null,
+  block_renewal_if_overdue: 1, block_renewal_if_unpaid_fines: 1, block_renewal_if_reserved: 1,
+  long_overdue_after_days: null, change_reason: 'Legacy baseline', created_by_user_id: null, created_at: '2000-01-01',
+}
+
 function checkoutPool(role: 'Student' | 'Faculty', activeCount = 0, readyClaim: boolean | 'cart' = false, condition = 'Good') {
   const state = { commits: 0, rollbacks: 0, borrowInserts: 0, queueCompactions: 0, notifications: 0, overrideInserts: 0 }
   const connection = {
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() {},
     async execute(sql: string) {
+      if (sql.includes('FROM borrowing_policy_versions')) return [[legacyPolicyRow]]
+      if (sql.includes('FROM borrowing_policy_material_rules')) return [[{ borrowing_policy_version_id: 1, material_type: 'Book', is_borrowable: 1 }, { borrowing_policy_version_id: 1, material_type: 'Thesis/Manuscript', is_borrowable: 0 }]]
       if (sql.includes('SELECT user_id FROM accounts')) return [[{ user_id: 2 }]]
       if (sql.includes('FROM users u INNER JOIN roles')) return [[{ user_id: 7, full_name: 'Test Borrower', institutional_id: 'STI-7', school_id: 'STI-7', role_name: role, account_status: 'Active' }]]
       if (sql.includes('FROM physical_copies pc INNER JOIN titles')) return [[{ physical_copy_id: 20, title_id: 10, material_id: 30, accession_number: 'ACC-20', barcode: 'BOOK-20', condition_status: condition, availability_status: 'Available', lifecycle_status: 'Active', title: 'Clean Code', material_type: 'Book' }]]
@@ -28,7 +38,7 @@ function checkoutPool(role: 'Student' | 'Faculty', activeCount = 0, readyClaim: 
       throw new Error(`Unexpected SQL: ${sql}`)
     },
   }
-  return { state, database: { getConnection: async () => connection } as unknown as Pool }
+  return { state, database: { getConnection: async () => connection, execute: connection.execute.bind(connection) } as unknown as Pool }
 }
 
 test('student checkout at the combined two-item cap rolls back before inserting', async () => {
@@ -179,6 +189,10 @@ test('student owner can cancel their pending request while another student is fo
 test('borrowing history exposes the normalized title cover path', async () => {
   const database = {
     async execute(sql: string) {
+      if (sql.includes('FROM borrowing_policy_versions')) return [[legacyPolicyRow]]
+      if (sql.includes('FROM borrowing_policy_material_rules')) {
+        return [[{ borrowing_policy_version_id: 1, material_type: 'Book', is_borrowable: 1 }, { borrowing_policy_version_id: 1, material_type: 'Thesis/Manuscript', is_borrowable: 0 }]]
+      }
       if (sql.includes('SELECT user_id, role FROM accounts')) return [[{ user_id: 7, role: 'Student' }]]
       if (sql.includes('FROM borrow_transactions bt INNER JOIN materials')) return [[{
         transaction_id: 41, title_id: 9, title: 'Clean Code', author: 'Robert C. Martin',
@@ -193,4 +207,6 @@ test('borrowing history exposes the normalized title cover path', async () => {
 
   const result = await createCirculationService(database).history(1, { page: 1, limit: 25 })
   assert.equal(result.items[0].coverImagePath, '/api/assets/covers/clean-code.png')
+  assert.equal(result.summary.loanLimit, 2)
+  assert.equal(result.summary.dueCutoffLabel, '8:59 AM')
 })

@@ -127,13 +127,14 @@ test('preflight token signs and verifies with matching claims', () => {
   const secret = 'test-circulation-preflight-secret-32chars!!'
   const signed = signPreflightToken({
     accountId: 3, borrowerUserId: 7, physicalCopyId: 20, reservationId: null,
-    flow: 'walk_in', warningCodes: ['COPY_DAMAGED'], secret, expiresInSeconds: 120,
+    flow: 'walk_in', warningCodes: ['COPY_DAMAGED'], policyVersionId: 1, secret, expiresInSeconds: 120,
   })
   const claims = verifyPreflightToken(signed.token, secret)
   assert.equal(claims.accountId, 3)
   assert.equal(claims.borrowerUserId, 7)
   assert.equal(claims.physicalCopyId, 20)
   assert.equal(claims.flow, 'walk_in')
+  assert.equal(claims.policyVersionId, 1)
   assert.deepEqual(claims.warningCodes, ['COPY_DAMAGED'])
   assert.equal(claims.jti, signed.decisionId)
 })
@@ -142,7 +143,7 @@ test('expired and modified tokens are rejected', async () => {
   const secret = 'test-circulation-preflight-secret-32chars!!'
   const { default: jwt } = await import('jsonwebtoken')
   const expired = jwt.sign(
-    { purpose: 'circulation_preflight', accountId: 3, borrowerUserId: 7, physicalCopyId: 20, reservationId: null, flow: 'walk_in', warningCodes: [] },
+    { purpose: 'circulation_preflight', accountId: 3, borrowerUserId: 7, physicalCopyId: 20, reservationId: null, flow: 'walk_in', warningCodes: [], policyVersionId: 1 },
     secret,
     { algorithm: 'HS256', expiresIn: -10, audience: 'circulation-preflight', issuer: 'sti-ormoc-smart-library-api', subject: '3', jwtid: 'expired-jti' },
   )
@@ -151,7 +152,7 @@ test('expired and modified tokens are rejected', async () => {
   ))
   const valid = signPreflightToken({
     accountId: 3, borrowerUserId: 7, physicalCopyId: 20, reservationId: null,
-    flow: 'walk_in', warningCodes: ['COPY_DAMAGED'], secret,
+    flow: 'walk_in', warningCodes: ['COPY_DAMAGED'], policyVersionId: 1, secret,
   })
   assert.throws(() => verifyPreflightToken(`${valid.token}x`, secret), (error: unknown) => (
     error instanceof HttpError && error.code === 'CIRCULATION_PREFLIGHT_TOKEN_INVALID'
@@ -165,30 +166,30 @@ test('token mismatch and missing override reason stop confirmation', () => {
   }))
   const signed = signPreflightToken({
     accountId: 3, borrowerUserId: 7, physicalCopyId: 20, reservationId: null,
-    flow: 'walk_in', warningCodes: ['COPY_DAMAGED'], secret,
+    flow: 'walk_in', warningCodes: ['COPY_DAMAGED'], policyVersionId: 1, secret,
   })
   assert.throws(() => assertTokenMatchesEvaluation({
     token: signed.token, overrideReason: 'Cover worn but pages intact.',
     accountId: 9, borrowerUserId: 7, physicalCopyId: 20, reservationId: null,
-    flow: 'walk_in', evaluation, secret,
+    flow: 'walk_in', evaluation, activePolicyVersionId: 1, secret,
   }), (error: unknown) => error instanceof HttpError && error.code === 'CIRCULATION_PREFLIGHT_TOKEN_MISMATCH')
 
   assert.throws(() => assertTokenMatchesEvaluation({
     token: undefined, overrideReason: undefined,
     accountId: 3, borrowerUserId: 7, physicalCopyId: 20, reservationId: null,
-    flow: 'walk_in', evaluation, secret,
+    flow: 'walk_in', evaluation, activePolicyVersionId: 1, secret,
   }), (error: unknown) => error instanceof HttpError && error.code === 'CIRCULATION_CONFIRMATION_REQUIRED')
 
   assert.throws(() => assertTokenMatchesEvaluation({
     token: signed.token, overrideReason: 'short',
     accountId: 3, borrowerUserId: 7, physicalCopyId: 20, reservationId: null,
-    flow: 'walk_in', evaluation, secret,
+    flow: 'walk_in', evaluation, activePolicyVersionId: 1, secret,
   }), (error: unknown) => error instanceof HttpError && error.code === 'CIRCULATION_VALIDATION_FAILED')
 
   const ok = assertTokenMatchesEvaluation({
     token: signed.token, overrideReason: 'Cover worn but pages and binding are usable.',
     accountId: 3, borrowerUserId: 7, physicalCopyId: 20, reservationId: null,
-    flow: 'walk_in', evaluation, secret,
+    flow: 'walk_in', evaluation, activePolicyVersionId: 1, secret,
   })
   assert.equal(ok.decisionId, signed.decisionId)
   assert.ok((ok.overrideReason ?? '').length >= 10)

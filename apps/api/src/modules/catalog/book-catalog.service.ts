@@ -1,6 +1,8 @@
 import type { Pool } from 'mysql2/promise'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
+import { createBorrowingPolicyService } from '../circulation/borrowing-policy.service.ts'
+import { roleBookLimit } from '../circulation/borrowing-policy.types.ts'
 import { reservationService } from '../reservations/reservation.service.ts'
 import {
   queryBookCatalog,
@@ -18,16 +20,21 @@ export function createBookCatalogService(database: Pool = db) {
     categories: () => queryBookCategories(database),
 
     async list(query: Record<string, unknown>, viewer: CatalogViewer) {
-      const [catalog, activeBookCount] = await Promise.all([
+      const policyService = createBorrowingPolicyService(database)
+      const [catalog, activeBookCount, policy] = await Promise.all([
         queryBookCatalog(database, parseBookCatalogFilters(query)),
-        viewer.role === 'Student' ? queryViewerActiveBookCount(database, viewer.accountId) : Promise.resolve(0),
+        viewer.role === 'Student' || viewer.role === 'Faculty'
+          ? queryViewerActiveBookCount(database, viewer.accountId)
+          : Promise.resolve(0),
+        policyService.resolveActive(database),
       ])
       return {
         ...catalog,
         viewer: {
           role: viewer.role,
           activeBookCount,
-          bookLimit: viewer.role === 'Student' ? 2 : null,
+          bookLimit: roleBookLimit(policy, viewer.role),
+          policyVersionId: policy.versionId,
         },
       }
     },

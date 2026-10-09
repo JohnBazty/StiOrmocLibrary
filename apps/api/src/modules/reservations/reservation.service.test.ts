@@ -4,11 +4,23 @@ import type { Pool } from 'mysql2/promise'
 import { HttpError } from '../../core/http-error.ts'
 import { createReservationService } from './reservation.service.ts'
 
+const legacyPolicyRow = {
+  borrowing_policy_version_id: 1, effective_on: '2000-01-01', student_max_active_books: 2, faculty_max_active_books: null,
+  borrowing_days: 1, due_time_cutoff: '08:59:00', max_renewals: 1, renewal_extension_days: 1,
+  student_max_active_reservations: 2, faculty_max_active_reservations: null,
+  block_renewal_if_overdue: 1, block_renewal_if_unpaid_fines: 1, block_renewal_if_reserved: 1,
+  long_overdue_after_days: null, change_reason: 'Legacy baseline', created_by_user_id: null, created_at: '2000-01-01',
+}
+
 function reservationPool(role: 'Student' | 'Faculty', activeCount: number, materialType = 'Book', activeBorrowStatus: string | null = null) {
   const state = { commits: 0, rollbacks: 0, releases: 0, inserted: false, activeCountQueried: false }
   const connection = {
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() { state.releases += 1 },
     async execute(sql: string) {
+      if (sql.includes('FROM borrowing_policy_versions')) return [[legacyPolicyRow]]
+      if (sql.includes('FROM borrowing_policy_material_rules')) {
+        return [[{ borrowing_policy_version_id: 1, material_type: 'Book', is_borrowable: 1 }, { borrowing_policy_version_id: 1, material_type: 'Thesis/Manuscript', is_borrowable: 0 }]]
+      }
       if (sql.includes('FROM users u')) return [[{ user_id: 4, account_status: 'Active', role_name: role }]]
       if (sql.includes('FROM materials m LEFT JOIN physical_copies')) return [[{ material_id: 17, title_id: 9, title: 'Clean Code', isbn: '9780132350884', material_type: materialType }]]
       if (sql.includes('FROM physical_copies pc') && sql.includes("pc.lifecycle_status = 'Active'")) return [[
@@ -17,7 +29,10 @@ function reservationPool(role: 'Student' | 'Faculty', activeCount: number, mater
       ]]
       if (sql.includes('FROM borrow_transactions bt') && sql.includes('borrowed_material')) return [activeBorrowStatus ? [{ transaction_id: 71, transaction_status: activeBorrowStatus }] : []]
       if (sql.includes('SELECT r.reservation_id')) return [[]]
-      if (sql.includes('COUNT(DISTINCT COALESCE(active.title_id')) { state.activeCountQueried = true; return [[{ active_count: activeCount }]] }
+      if (sql.includes('COUNT(DISTINCT COALESCE(active.title_id')) {
+        state.activeCountQueried = true
+        return [[{ active_count: activeCount, reservation_count: Math.min(activeCount, 2) }]]
+      }
       if (sql.includes('MAX(r.queue_position)')) return [[{ next_position: 3 }]]
       if (sql.includes('INSERT INTO reservations')) { state.inserted = true; return [{ insertId: 501, affectedRows: 1 }] }
       if (sql.includes('INSERT INTO admin_notifications')) return [{ insertId: 900, affectedRows: 1 }]
@@ -33,7 +48,7 @@ test('Student with two active books receives 422 and no third reservation insert
     assert.ok(error instanceof HttpError)
     assert.equal(error.status, 422)
     assert.equal(error.code, 'STUDENT_BORROW_LIMIT_REACHED')
-    assert.equal(error.message, 'Transaction Blocked: Students cannot exceed 2 books')
+    assert.match(error.message, /Student cannot exceed 2 books/)
     return true
   })
   assert.equal(state.inserted, false)
@@ -46,7 +61,7 @@ test('Faculty with ten or more active books bypasses the cap and creates a reser
   const result = await createReservationService(database).create(4, { materialId: 17 })
   assert.equal(result.reservationId, 501)
   assert.equal(result.status, 'pending')
-  assert.equal(state.activeCountQueried, false)
+  assert.equal(state.activeCountQueried, true)
   assert.equal(state.inserted, true)
   assert.equal(state.commits, 1)
   assert.equal(state.rollbacks, 0)

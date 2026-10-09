@@ -20,7 +20,7 @@ export function AdminReservationQueuePage() {
     try { const result = await reservationApi.queue(filters); setItems(result.items); setError(null) }
     catch (reason) {
       const apiError = reason as ReservationApiError
-      setError({ title: apiError.code === 'STUDENT_BORROW_LIMIT_REACHED' ? 'Transaction Blocked' : 'Reservation queue unavailable', message: apiError.code === 'STUDENT_BORROW_LIMIT_REACHED' ? 'Students cannot exceed 2 books' : apiError.message })
+      setError({ title: apiError.code === 'STUDENT_BORROW_LIMIT_REACHED' ? 'Transaction Blocked' : 'Reservation queue unavailable', message: apiError.message })
     } finally { setLoading(false) }
   }, [filters])
   useEffect(() => { const timer = window.setTimeout(() => void load(), 180); return () => window.clearTimeout(timer) }, [load])
@@ -30,7 +30,7 @@ export function AdminReservationQueuePage() {
     try { await reservationApi.adjustStatus(item.reservationId, status); setSuccess(`${item.materialTitle} is now ${status.replaceAll('_', ' ')}.`); await load() }
     catch (reason) {
       const apiError = reason as ReservationApiError
-      setError({ title: apiError.code === 'STUDENT_BORROW_LIMIT_REACHED' ? 'Transaction Blocked' : 'Status update blocked', message: apiError.code === 'STUDENT_BORROW_LIMIT_REACHED' ? 'Students cannot exceed 2 books' : apiError.message })
+      setError({ title: apiError.code === 'STUDENT_BORROW_LIMIT_REACHED' ? 'Transaction Blocked' : 'Status update blocked', message: apiError.message })
     } finally { setUpdatingId(null) }
   }
 

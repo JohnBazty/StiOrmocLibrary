@@ -20,10 +20,12 @@
 --   009_inventory_audit_orphan_history.sql  — nullable copy link for Deleted audit snapshots
 --   010_phase3_archive_floor_image.sql      — archive actor and published floor image history
 --   011_phase2_user_management.sql          — account auth versions and Admin management audit
--- Next Postgres schema number: 012. Apply reviewed files individually.
+--   015_rename_system_brand.sql             — public library name branding
+--   016_configurable_borrowing_policies.sql — immutable borrowing policy versions
+-- Next Postgres schema number: 017. Apply reviewed files individually.
 --
 -- MySQL tree under database/mysql56-schema.sql and database/migrations/ remains
--- the historical contract and local rollback path (latest MySQL migration: 041).
+-- the historical contract and local rollback path (latest MySQL migration: 046).
 --
 -- Connection note: free-tier direct db.* host is often IPv6-only. Use Session
 -- pooler (port 5432) with user postgres.<project-ref> when on IPv4 networks.

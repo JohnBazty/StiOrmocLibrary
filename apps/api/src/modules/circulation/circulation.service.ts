@@ -20,6 +20,9 @@ import {
   type CheckoutEvaluationContext,
   type CheckoutFlow,
 } from './circulation-preflight.ts'
+import { createBorrowingPolicyService } from './borrowing-policy.service.ts'
+import { roleBookLimit } from './borrowing-policy.types.ts'
+import { formatDueCutoffLabel } from './due-date.ts'
 import {
   positiveCirculationId,
   validateBorrowCart,
@@ -195,6 +198,7 @@ async function compactQueue(connection: PoolConnection, titleId: number, removed
 }
 
 export function createCirculationService(database: Pool = db, clock: () => Date = () => new Date()) {
+  const policyService = createBorrowingPolicyService(database, clock)
   return {
     async history(accountIdValue: unknown, query: Record<string, unknown>) {
       const accountId = positiveCirculationId(accountIdValue, 'accountId')
@@ -204,6 +208,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
       if (!identity?.user_id) throw new HttpError(422, 'CIRCULATION_PROFILE_NOT_LINKED', 'This login account is not linked to a circulation profile.')
       const userId = Number(identity.user_id)
       const offset = (filters.page - 1) * filters.limit
+      const policy = await policyService.resolveActive(database, clock())
       const [[rows], [countRows], [activityRows]] = await Promise.all([
         database.execute<RowDataPacket[]>(
           `SELECT bt.transaction_id, bt.borrowed_at, bt.due_at, bt.returned_at,
@@ -232,10 +237,13 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
       const activity = activityRows[0] ?? {}; const role = String(identity.role)
       const activeLoans = Number(activity.active_loans ?? 0); const activeReservations = Number(activity.active_reservations ?? 0)
       const total = Number(countRows[0]?.total ?? 0)
+      const loanLimit = roleBookLimit(policy, role)
+      const activeStack = activeLoans + activeReservations
       return {
-        summary: { role, activeLoans, activeReservations, activeStackCount: activeLoans + activeReservations,
-          loanLimit: role === 'Student' ? 2 : null, remainingLoanSlots: role === 'Student' ? Math.max(0, 2 - activeLoans - activeReservations) : null,
-          nextDueAt: activity.next_due_at ?? null, dueCutoffLabel: '8:59 AM' },
+        summary: { role, activeLoans, activeReservations, activeStackCount: activeStack,
+          loanLimit, remainingLoanSlots: loanLimit === null ? null : Math.max(0, loanLimit - activeStack),
+          nextDueAt: activity.next_due_at ?? null, dueCutoffLabel: formatDueCutoffLabel(policy.dueTimeCutoff),
+          policyVersionId: policy.versionId },
         items: rows.map((row) => ({ transactionId: Number(row.transaction_id), titleId: row.title_id ? Number(row.title_id) : null, title: row.title ?? 'Catalog title unavailable', author: row.author,
           coverImagePath: row.cover_image_path ? String(row.cover_image_path) : null,
           accessionNumber: row.accession_number ?? null, barcode: row.barcode ?? null, borrowDate: row.borrowed_at, dueDate: row.due_at,
@@ -279,12 +287,15 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
             activeCount,
           })
         }
-        if (borrower.role_name === 'Student' && activeCount + input.titleIds.length > 2) {
-          throw new HttpError(422, 'STUDENT_BORROW_LIMIT_REACHED', 'Transaction Blocked: Students cannot exceed 2 books', {
+        const policy = await policyService.resolveActive(connection, clock())
+        const bookLimit = roleBookLimit(policy, String(borrower.role_name))
+        if (bookLimit !== null && activeCount + input.titleIds.length > bookLimit) {
+          throw new HttpError(422, 'STUDENT_BORROW_LIMIT_REACHED', `Transaction Blocked: ${borrower.role_name} cannot exceed ${bookLimit} books`, {
             activeCount,
             incomingCount: input.titleIds.length,
             projectedCount: activeCount + input.titleIds.length,
-            limit: 2,
+            limit: bookLimit,
+            policyVersionId: policy.versionId,
           })
         }
 
@@ -534,8 +545,9 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
       const connection = await database.getConnection()
       try {
         const borrowedAt = clock()
+        const policy = await policyService.resolveActive(connection, borrowedAt)
         const context = await loadCheckoutEvaluationContext(connection, input, input.flow, borrowedAt, false)
-        const evaluation = evaluateCheckoutRules(context)
+        const evaluation = evaluateCheckoutRules(context, policy)
         const payload = {
           decision: evaluation.decision,
           expiresAt: null as string | null,
@@ -554,6 +566,10 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
             availability: context.copy.availability,
           } : null,
           dueAt: evaluation.dueAt,
+          policyVersionId: policy.versionId,
+          policyDisplayName: `Policy ${policy.versionId}`,
+          policyEffectiveOn: policy.effectiveOn,
+          dueCutoffLabel: formatDueCutoffLabel(policy.dueTimeCutoff),
           blockers: evaluation.blockers.map(({ code, message }) => ({ code, message })),
           warnings: evaluation.warnings.map(({ code, message }) => ({ code, message })),
           alerts: evaluation.alerts.map(({ code, message }) => ({ code, message })),
@@ -567,6 +583,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
             reservationId: evaluation.fulfilledReservationId,
             flow: input.flow,
             warningCodes: sortedWarningCodes(evaluation.warnings),
+            policyVersionId: policy.versionId,
           })
           payload.preflightToken = signed.token
           payload.expiresAt = signed.expiresAt.toISOString()
@@ -586,9 +603,10 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         await connection.beginTransaction()
         const processedByUserId = await actorUserId(connection, actorAccountId)
         const borrowedAt = clock()
+        const policy = await policyService.resolveActive(connection, borrowedAt)
         const context = await loadCheckoutEvaluationContext(connection, input, flow, borrowedAt, true)
-        const evaluation = evaluateCheckoutRules(context)
-        if (evaluation.decision === 'blocked') throwFirstBlocker(evaluation)
+        const evaluation = evaluateCheckoutRules(context, policy)
+        if (evaluation.decision === 'blocked') throwFirstBlocker(evaluation, roleBookLimit(policy, context.borrower.role))
         if (!context.borrower.userId || !context.copy.physicalCopyId || !context.copy.materialId || !context.copy.titleId) {
           throw new HttpError(422, 'CIRCULATION_VALIDATION_FAILED', 'Checkout context is incomplete.')
         }
@@ -601,6 +619,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
           reservationId: evaluation.fulfilledReservationId,
           flow,
           evaluation,
+          activePolicyVersionId: policy.versionId,
         })
         const dueAt = evaluation.dueAt
         const pendingClaim = evaluation.pendingClaim
@@ -609,15 +628,17 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
           transactionId = pendingClaim.transactionId
           await connection.execute(
             `UPDATE borrow_transactions
-                SET processed_by_user_id = ?, borrowed_at = ?, due_at = ?, transaction_status = 'Borrowed', updated_at = NOW()
+                SET processed_by_user_id = ?, borrowed_at = ?, due_at = ?, borrowing_policy_version_id = ?,
+                    transaction_status = 'Borrowed', updated_at = NOW()
               WHERE transaction_id = ?`,
-            [processedByUserId, borrowedAt, dueAt, transactionId],
+            [processedByUserId, borrowedAt, dueAt, policy.versionId, transactionId],
           )
         } else {
           const [insert] = await connection.execute<ResultSetHeader>(
-            `INSERT INTO borrow_transactions (user_id, material_id, physical_copy_id, processed_by_user_id, borrowed_at, due_at, transaction_status, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, 'Borrowed', NOW())`,
-            [context.borrower.userId, context.copy.materialId, context.copy.physicalCopyId, processedByUserId, borrowedAt, dueAt],
+            `INSERT INTO borrow_transactions
+               (user_id, material_id, physical_copy_id, borrowing_policy_version_id, processed_by_user_id, borrowed_at, due_at, transaction_status, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'Borrowed', NOW())`,
+            [context.borrower.userId, context.copy.materialId, context.copy.physicalCopyId, policy.versionId, processedByUserId, borrowedAt, dueAt],
           )
           transactionId = Number(insert.insertId)
         }
