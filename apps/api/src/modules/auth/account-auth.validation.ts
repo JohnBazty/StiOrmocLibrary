@@ -64,18 +64,34 @@ export function validateAccountRegistration(body: unknown) {
   }
 }
 
-export function validateRoleLogin(body: unknown) {
+export type LoginPortal = 'user' | 'staff'
+
+const PORTALS = new Set<LoginPortal>(['user', 'staff'])
+
+export function normalizePortal(value: unknown): LoginPortal | '' {
+  if (typeof value !== 'string') return ''
+  const candidate = value.trim().toLowerCase()
+  return PORTALS.has(candidate as LoginPortal) ? candidate as LoginPortal : ''
+}
+
+/** Roles allowed on each public login surface (no client-selected role). */
+export const PORTAL_ROLES: Record<LoginPortal, ReadonlySet<JwtRole>> = {
+  user: new Set(['Student', 'Faculty']),
+  staff: new Set(['Admin', 'Librarian']),
+}
+
+export function validatePortalLogin(body: unknown) {
   const input = body && typeof body === 'object' ? body as Record<string, unknown> : {}
   const schoolId = normalizeSchoolId(input.school_id)
-  const role = normalizeRole(input.login_as)
+  const portal = normalizePortal(input.portal)
   const password = typeof input.password === 'string' ? input.password : ''
   const errors: FieldErrors = {}
 
-  if (!role) errors.login_as = 'Select a valid login role.'
+  if (!portal) errors.portal = 'Select a valid login portal.'
   if (!schoolId) errors.school_id = 'School ID is required.'
   else if (!SCHOOL_ID_PATTERN.test(schoolId)) errors.school_id = 'Enter a valid school ID.'
   if (!password) errors.password = 'Password is required.'
   else if (password.length > 72) errors.password = 'Password must not exceed 72 characters.'
 
-  return { schoolId, role, password, errors, isValid: Object.keys(errors).length === 0 }
+  return { schoolId, portal, password, errors, isValid: Object.keys(errors).length === 0 }
 }

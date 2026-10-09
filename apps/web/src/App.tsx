@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import { PortalLayout } from './layouts/PortalLayout'
 import { UserAttendancePage } from './features/attendance/UserAttendancePage'
 import {
@@ -16,6 +16,7 @@ import { AuthenticatedHome, ProtectedRoute } from './features/auth/ProtectedRout
 import { LoginPage } from './features/auth/LoginPage'
 import { RegistrationPage } from './features/auth/RegistrationPage'
 import { AdminLoginPage } from './features/auth/AdminLoginPage'
+import { ForgotPasswordPage } from './features/auth/ForgotPasswordPage'
 import { RoleDashboardPage } from './features/auth/RoleDashboardPage'
 import { InventoryDashboard } from './features/inventory/InventoryDashboard'
 import { BookCatalog } from './features/catalog/BookCatalog'
@@ -44,7 +45,9 @@ export default function App() {
       <Route path="/" element={<AuthenticatedHome />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegistrationPage />} />
-      <Route path="/admin/login" element={<AdminLoginPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/staff" element={<AdminLoginPage />} />
+      <Route path="/admin/login" element={<Navigate to="/staff" replace />} />
 
       <Route element={<ProtectedRoute roles={['Student']} />}>
         <Route element={<PortalLayout role="student" />}>

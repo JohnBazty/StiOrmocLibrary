@@ -5,12 +5,14 @@ import {
   dateAddDays,
   formatDate,
   isPostgres,
+  monthStart as monthStartExpr,
   sumEquals,
 } from '../../config/sql-dialect.js'
 import type { FinanceFilters, QueueFilters } from './printing.validation.ts'
 
 const dayAfter = (placeholder = '?') => dateAddDays(placeholder, 1)
-const monthStart = formatDate(currentDate(), '%Y-%m-01', 'YYYY-MM-01')
+// Use a real date/timestamp expression — to_char(...) is text and breaks Postgres comparisons.
+const monthStart = monthStartExpr()
 
 export class PrintingRepository {
   readonly pool: Pool

@@ -5,20 +5,26 @@ import { db } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
 import { validateLoginInput } from './auth.validation.js'
-import { validateAccountRegistration, validateRoleLogin } from './account-auth.validation.ts'
+import { PORTAL_ROLES, validateAccountRegistration, validatePortalLogin, type LoginPortal } from './account-auth.validation.ts'
 import { issueAttendanceCredential } from '../attendance/attendance-credential.service.ts'
 
 export type JwtRole = 'Admin' | 'Librarian' | 'Student' | 'Faculty'
 const JWT_ROLES = new Set<JwtRole>(['Admin', 'Librarian', 'Student', 'Faculty'])
 const DUMMY_BCRYPT_HASH = '$2b$12$k1Pc4Uvw2o.7wwBZ1hQwHu5vTfEfRPRgRhhcaawYWpPJez0o7gaCq'
-const INVALID_CREDENTIALS_MESSAGE = 'Invalid school ID, password, or selected role.'
+const INVALID_CREDENTIALS_MESSAGE = 'Invalid school ID or password.'
 
 export function dashboardForJwtRole(role: JwtRole) {
   return ({ Admin: '/admin/dashboard', Librarian: '/librarian/dashboard', Faculty: '/faculty/dashboard', Student: '/student/dashboard' })[role]
 }
 
 function isLegacyEmailLogin(body: unknown) {
-  return Boolean(body && typeof body === 'object' && 'email' in body && !('school_id' in body) && !('login_as' in body))
+  return Boolean(
+    body && typeof body === 'object'
+    && 'email' in body
+    && !('school_id' in body)
+    && !('login_as' in body)
+    && !('portal' in body),
+  )
 }
 
 function duplicateSchoolIdError() {
@@ -131,20 +137,22 @@ export function createJwtAuthService(database: Pool = db, passwordHasher = bcryp
     },
 
     async login(body: unknown) {
-      // Preserve the pre-existing email-based JWT client while new clients move
-      // to the explicit school_id/login_as contract.
+      // Preserve the pre-existing email-based JWT client while new clients use portal login.
       if (isLegacyEmailLogin(body)) return loginWithLegacyEmail(body)
 
-      const validation = validateRoleLogin(body)
-      if (!validation.isValid) throw new HttpError(422, 'AUTH_VALIDATION_FAILED', 'Please correct the highlighted fields.', { errors: validation.errors })
+      const validation = validatePortalLogin(body)
+      if (!validation.isValid || !validation.portal) {
+        throw new HttpError(422, 'AUTH_VALIDATION_FAILED', 'Please correct the highlighted fields.', { errors: validation.errors })
+      }
+      const portal = validation.portal as LoginPortal
       const [rows] = await database.execute<RowDataPacket[]>(
         `SELECT a.account_id, a.school_id, a.password_hash, a.role, a.account_status,
                 sp.first_name, sp.last_name
            FROM accounts AS a
            LEFT JOIN student_profiles AS sp ON sp.account_id = a.account_id
-          WHERE a.school_id = ? AND a.role = ?
+          WHERE a.school_id = ?
           LIMIT 1`,
-        [validation.schoolId, validation.role],
+        [validation.schoolId],
       )
       const account = rows[0]
       const matches = await passwordHasher.compare(validation.password, account?.password_hash ?? DUMMY_BCRYPT_HASH)
@@ -152,8 +160,13 @@ export function createJwtAuthService(database: Pool = db, passwordHasher = bcryp
       if (account.account_status !== 'Active') throw new HttpError(403, 'ACCOUNT_DEACTIVATED', 'Your account is currently deactivated. Please coordinate with the campus librarian.')
       if (!JWT_ROLES.has(account.role)) throw new HttpError(403, 'ROLE_NOT_AUTHORIZED', 'Your assigned role is not authorized.')
 
-      const accountId = Number(account.account_id)
       const role = account.role as JwtRole
+      // Wrong portal looks like bad credentials so roles are not leaked across surfaces.
+      if (!PORTAL_ROLES[portal].has(role)) {
+        throw new HttpError(401, 'INVALID_CREDENTIALS', INVALID_CREDENTIALS_MESSAGE)
+      }
+
+      const accountId = Number(account.account_id)
       const fullName = [account.first_name, account.last_name].filter(Boolean).join(' ') || null
       return {
         token: issueToken(accountId, String(account.school_id), role), tokenType: 'Bearer', expiresIn: env.jwt.expiresInSeconds,

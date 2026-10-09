@@ -16,6 +16,14 @@ import { parseAttendanceScan, parseCapacityUpdate } from './attendance.validatio
 
 export type AttendanceActor = { accountId?: number; role?: string }
 
+export function requireStaff(actor: AttendanceActor) {
+  const role = String(actor.role ?? '')
+  const normalized = role === 'System Administrator' ? 'Admin' : role
+  if (!['Admin', 'Librarian'].includes(normalized)) {
+    throw new HttpError(403, 'ATTENDANCE_STAFF_ONLY', 'Only library staff can manage attendance check-in and capacity.')
+  }
+}
+
 async function actorUserId(executor: Pool | PoolConnection, actor: AttendanceActor) {
   const accountId = Number(actor.accountId)
   if (!Number.isSafeInteger(accountId) || accountId < 1) throw new HttpError(401,'JWT_REQUIRED','A valid login is required.')
@@ -67,7 +75,8 @@ export function createAttendanceService(pool: Pool = db) {
       }
     },
 
-    async resolve(body: unknown) {
+    async resolve(actor: AttendanceActor, body: unknown) {
+      requireStaff(actor)
       const input = parseAttendanceScan(body,'resolve')
       const visitor = await validateAttendanceCredential(pool,input.qrPayload)
       const [[open], [profile]] = await Promise.all([
@@ -85,6 +94,7 @@ export function createAttendanceService(pool: Pool = db) {
     },
 
     async checkIn(actor: AttendanceActor, body: unknown) {
+      requireStaff(actor)
       const input = parseAttendanceScan(body,'check-in')
       const connection = await pool.getConnection()
       try {
@@ -140,6 +150,7 @@ export function createAttendanceService(pool: Pool = db) {
     },
 
     async checkOut(actor: AttendanceActor, body: unknown) {
+      requireStaff(actor)
       const input = parseAttendanceScan(body,'check-out')
       const connection = await pool.getConnection()
       try {
@@ -165,7 +176,8 @@ export function createAttendanceService(pool: Pool = db) {
       } catch (error) { await connection.rollback(); throw error } finally { connection.release() }
     },
 
-    async capacity() {
+    async capacity(actor: AttendanceActor) {
+      requireStaff(actor)
       const [rows] = await pool.execute<RowDataPacket[]>(
         `SELECT p.seat_capacity,
                 (SELECT COUNT(*) FROM attendance_logs WHERE attendance_date=${currentDate()} AND time_out IS NULL) current_occupancy
@@ -176,6 +188,7 @@ export function createAttendanceService(pool: Pool = db) {
     },
 
     async updateCapacity(actor: AttendanceActor, body: unknown) {
+      requireStaff(actor)
       const input=parseCapacityUpdate(body),connection=await pool.getConnection()
       try {
         await connection.beginTransaction()

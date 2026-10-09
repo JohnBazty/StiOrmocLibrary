@@ -16,9 +16,11 @@
 --                                           printing receipts)
 --   006_print_request_timestamps.sql      — print_requests started_at/ready_at/etc.
 --   007_security_invoker_views.sql        — borrow_records / book_titles SECURITY INVOKER
+--   008_rls_service_role_lockdown.sql     — RLS + service_role policies; revoke anon/authenticated
+--   009_password_reset_otp.sql            — student OTP reset + password history
 --
 -- MySQL tree under database/mysql56-schema.sql and database/migrations/ remains
--- the historical contract and local rollback path (latest MySQL migration: 040).
+-- the historical contract and local rollback path (latest MySQL migration: 041).
 --
 -- Connection note: free-tier direct db.* host is often IPv6-only. Use Session
 -- pooler (port 5432) with user postgres.<project-ref> when on IPv4 networks.

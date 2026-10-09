@@ -348,7 +348,7 @@ export function createFinesService(database: Pool = db) {
               `SELECT f.fine_id,f.user_id,f.fine_amount,f.payment_status,f.fine_type,bt.transaction_status,bt.lost_confirmed_at,
                       COALESCE((SELECT SUM(a.amount_allocated) FROM fine_payment_allocations a INNER JOIN fine_payment_receipts r ON r.fine_payment_receipt_id=a.fine_payment_receipt_id AND r.receipt_status='Issued' WHERE a.fine_id=f.fine_id),0) AS paid,
                       COALESCE((SELECT SUM(amount_adjusted) FROM fine_adjustments WHERE fine_id=f.fine_id),0) AS adjusted
-                 FROM fines f LEFT JOIN borrow_transactions bt ON bt.transaction_id=f.transaction_id WHERE f.fine_id=? LIMIT 1 FOR UPDATE`, [allocation.fineId],
+                 FROM fines f LEFT JOIN borrow_transactions bt ON bt.transaction_id=f.transaction_id WHERE f.fine_id=? LIMIT 1 ${isPostgres ? 'FOR UPDATE OF f' : 'FOR UPDATE'}`, [allocation.fineId],
             )
             const fine = rows[0]; if (!fine) throw new HttpError(404, 'FINE_NOT_FOUND', 'A selected fine was not found.')
             if (fine.fine_type === 'Overdue' && ['Borrowed','Overdue'].includes(String(fine.transaction_status)) && !fine.lost_confirmed_at) throw new HttpError(422, 'FINE_STILL_ACCRUING', 'Return the overdue book before accepting payment for its changing fine.')
@@ -403,7 +403,7 @@ export function createFinesService(database: Pool = db) {
           `SELECT f.fine_id,f.user_id,f.fine_amount,f.fine_type,f.payment_status,bt.transaction_status,bt.lost_confirmed_at,
                   COALESCE((SELECT SUM(a.amount_allocated) FROM fine_payment_allocations a INNER JOIN fine_payment_receipts r ON r.fine_payment_receipt_id=a.fine_payment_receipt_id AND r.receipt_status='Issued' WHERE a.fine_id=f.fine_id),0) AS paid,
                   COALESCE((SELECT SUM(amount_adjusted) FROM fine_adjustments WHERE fine_id=f.fine_id),0) AS adjusted
-             FROM fines f LEFT JOIN borrow_transactions bt ON bt.transaction_id=f.transaction_id WHERE f.fine_id=? LIMIT 1 FOR UPDATE`, [targetFineId],
+             FROM fines f LEFT JOIN borrow_transactions bt ON bt.transaction_id=f.transaction_id WHERE f.fine_id=? LIMIT 1 ${isPostgres ? 'FOR UPDATE OF f' : 'FOR UPDATE'}`, [targetFineId],
         )
         const fine=rows[0]; if(!fine) throw new HttpError(404,'FINE_NOT_FOUND','The fine was not found.')
         if(fine.fine_type==='Overdue'&&['Borrowed','Overdue'].includes(String(fine.transaction_status))&&!fine.lost_confirmed_at) throw new HttpError(422,'FINE_STILL_ACCRUING','An accruing fine cannot be adjusted until the loan is returned or confirmed lost.')

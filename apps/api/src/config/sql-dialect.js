@@ -100,7 +100,9 @@ export function weekday(expr) {
 }
 
 export function hourOf(expr) {
-  if (isPostgres) return `EXTRACT(HOUR FROM (${expr})::timestamp)`
+  // Do not cast to timestamp: attendance time_in/time_out are TIME, and Postgres
+  // rejects time::timestamp. EXTRACT(HOUR FROM …) accepts both time and timestamp.
+  if (isPostgres) return `EXTRACT(HOUR FROM (${expr}))`
   return `HOUR(${expr})`
 }
 

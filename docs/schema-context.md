@@ -8,6 +8,7 @@ The API is mid-cutover to Supabase PostgreSQL. See [supabase-migration-plan.md](
 - When unset, the runtime uses local MySQL via `mysql2` and the MySQL tree below (rollback / offline path).
 - The MySQL baseline and ordered migrations remain the historical product contract. Latest MySQL migration: `20260923_040_printing_digital_receipts.sql`. Next MySQL number if needed: **`041`**.
 - Additive MAIN product tables for Postgres land in `database/supabase/005_main_product_gapfill.sql` (033–040).
+- User-row isolation is enforced in the Express API (JWT `accountId` → linked `user_id`). Postgres `008_rls_service_role_lockdown.sql` enables RLS with `service_role` policies and revokes `anon`/`authenticated` PostgREST access; it does **not** use Supabase Auth `auth.uid()` policies.
 
 ## Target requirements versus current baseline
 
@@ -65,6 +66,10 @@ printers --< ink_repository
 - `accounts`: normalized credential identity keyed by unique `school_id`, with contact number, bcrypt password hash, explicit JWT-facing role, and Active/Deactivated/Archived lifecycle. A nullable unique `user_id` is the backward-compatible bridge for identities imported from `users`.
 - `student_profiles`: one-to-one student academic extension containing first/last name, program or strand, and year/grade level. It never stores credentials or authorization state.
 - `auth_sessions`: expiring server-side session payloads keyed by an opaque session ID.
+- `password_reset_otps`: short-lived hashed student password-reset OTP challenges with expiry, failed-attempt counters, and optional lockout.
+- `account_password_history`: recent password hashes used to reject reused passwords during student OTP reset.
+
+SPA login uses portal allow-lists instead of a client-selected role: `portal=user` accepts Student/Faculty; `portal=staff` (hidden `/staff` route) accepts Admin/Librarian. Role is read from `accounts` after password verification. Student forgot-password OTP email is delivered only to a real institutional `users.email` (not synthetic `account.{id}@…` placeholders). Migration `20261009_041_password_reset_otp.sql` / Supabase `009_password_reset_otp.sql` add the OTP and history tables.
 
 Accounts should be deactivated through `account_status`; do not delete users with operational history.
 Expired rows in `auth_sessions` are periodically removed by the API session store.

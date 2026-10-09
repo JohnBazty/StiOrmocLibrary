@@ -172,7 +172,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
               AND t.lifecycle_status = 'Active'
               AND pc.lifecycle_status = 'Active'
             ORDER BY t.title_id ASC, pc.physical_copy_id ASC
-            FOR UPDATE`,
+            ${isPostgres ? 'FOR UPDATE OF t, pc' : 'FOR UPDATE'}`,
           input.titleIds,
         )
         const selectedCopies = new Map<number, RowDataPacket>()
@@ -300,7 +300,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
                OR (bt.physical_copy_id IS NULL AND pc.material_id = bt.material_id)
              LEFT JOIN titles t ON t.title_id = pc.title_id
             WHERE bt.transaction_id = ?
-            LIMIT 1 FOR UPDATE`,
+            LIMIT 1 ${isPostgres ? 'FOR UPDATE OF bt, m' : 'FOR UPDATE'}`,
           [transactionId],
         )
         const request = rows[0]
@@ -412,7 +412,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
           `SELECT pc.physical_copy_id, pc.title_id, pc.material_id, pc.accession_number, pc.barcode, pc.condition_status,
                   pc.availability_status, pc.lifecycle_status, t.title, m.material_type
              FROM physical_copies pc INNER JOIN titles t ON t.title_id = pc.title_id LEFT JOIN materials m ON m.material_id = pc.material_id
-            WHERE pc.barcode = ? LIMIT 1 FOR UPDATE`, [input.barcode],
+            WHERE pc.barcode = ? LIMIT 1 ${isPostgres ? 'FOR UPDATE OF pc, t' : 'FOR UPDATE'}`, [input.barcode],
         )
         const copy = copyRows[0]
         if (!copy || copy.lifecycle_status !== 'Active') throw new HttpError(404, 'CIRCULATION_COPY_NOT_FOUND', 'No active physical copy matches this barcode.')

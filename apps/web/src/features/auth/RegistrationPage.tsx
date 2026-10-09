@@ -31,16 +31,21 @@ export function RegistrationPage() {
   function validate() {
     const next: Record<string, string> = {}
     const schoolId = form.school_id.trim().toUpperCase()
+    const firstName = form.first_name.trim()
+    const lastName = form.last_name.trim()
     if (!schoolId) next.school_id = 'Student ID is required.'
     else if (!SCHOOL_ID.test(schoolId)) next.school_id = 'Enter a valid STI Student ID.'
-    if (!form.first_name.trim()) next.first_name = 'First name is required.'
-    if (!form.last_name.trim()) next.last_name = 'Last name is required.'
+    if (!firstName) next.first_name = 'First name is required.'
+    else if (firstName.length > 100) next.first_name = 'First name must not exceed 100 characters.'
+    if (!lastName) next.last_name = 'Last name is required.'
+    else if (lastName.length > 100) next.last_name = 'Last name must not exceed 100 characters.'
     if (!form.contact_number.trim()) next.contact_number = 'Contact number is required.'
     else if (!CONTACT_NUMBER.test(form.contact_number.trim())) next.contact_number = 'Enter a valid contact number.'
     if (!form.program_strand) next.program_strand = 'Program or strand is required.'
     if (!form.year_grade_level) next.year_grade_level = 'Year or grade level is required.'
     if (!form.password) next.password = 'Password is required.'
     else if (form.password.length < 8) next.password = 'Password must contain at least 8 characters.'
+    else if (form.password.length > 72) next.password = 'Password must not exceed 72 characters.'
     if (!form.confirm_password) next.confirm_password = 'Confirm your password.'
     else if (form.password !== form.confirm_password) next.confirm_password = 'Password confirmation does not match.'
     setErrors(next)
@@ -84,14 +89,14 @@ export function RegistrationPage() {
           <p className="text-xs font-black uppercase tracking-[.18em] text-[#003399]/55">New student</p><h2 className="mt-2 font-display text-3xl font-black text-[#003399]">Student Registration</h2>
           {message ? <div role="alert" className="mt-5 rounded-xl border border-[#003399] bg-[#FFF200] px-4 py-3 text-sm font-bold text-[#003399]">{message}</div> : null}
           <form className="mt-6 grid gap-4 sm:grid-cols-2" onSubmit={submit} noValidate>
-            <Field label="First Name" error={errors.first_name}><span className="relative block"><UserRound className="absolute left-4 top-1/2 -translate-y-1/2 text-[#003399]/45" size={17} /><input autoFocus autoComplete="given-name" value={form.first_name} onChange={(event) => update('first_name', event.target.value)} placeholder="First name" className={`${fieldClass} pl-11`} /></span></Field>
-            <Field label="Last Name" error={errors.last_name}><input autoComplete="family-name" value={form.last_name} onChange={(event) => update('last_name', event.target.value)} placeholder="Last name" className={fieldClass} /></Field>
-            <Field label="Contact Number" error={errors.contact_number}><span className="relative block"><Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-[#003399]/45" size={17} /><input inputMode="tel" autoComplete="tel" value={form.contact_number} onChange={(event) => update('contact_number', event.target.value)} placeholder="09XX XXX XXXX" className={`${fieldClass} pl-11`} /></span></Field>
-            <Field label="Student ID" error={errors.school_id}><span className="relative block"><IdCard className="absolute left-4 top-1/2 -translate-y-1/2 text-[#003399]/45" size={17} /><input autoComplete="username" value={form.school_id} onChange={(event) => update('school_id', event.target.value)} placeholder="STI-2026-XXXX" className={`${fieldClass} pl-11 uppercase placeholder:normal-case`} /></span></Field>
+            <Field label="First Name" error={errors.first_name}><span className="relative block"><UserRound className="absolute left-4 top-1/2 -translate-y-1/2 text-[#003399]/45" size={17} /><input autoFocus autoComplete="given-name" maxLength={100} value={form.first_name} onChange={(event) => update('first_name', event.target.value)} placeholder="First name" className={`${fieldClass} pl-11`} /></span></Field>
+            <Field label="Last Name" error={errors.last_name}><input autoComplete="family-name" maxLength={100} value={form.last_name} onChange={(event) => update('last_name', event.target.value)} placeholder="Last name" className={fieldClass} /></Field>
+            <Field label="Contact Number" error={errors.contact_number}><span className="relative block"><Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-[#003399]/45" size={17} /><input inputMode="tel" autoComplete="tel" maxLength={30} value={form.contact_number} onChange={(event) => update('contact_number', event.target.value)} placeholder="09XX XXX XXXX" className={`${fieldClass} pl-11`} /></span></Field>
+            <Field label="Student ID" error={errors.school_id}><span className="relative block"><IdCard className="absolute left-4 top-1/2 -translate-y-1/2 text-[#003399]/45" size={17} /><input autoComplete="username" maxLength={50} value={form.school_id} onChange={(event) => update('school_id', event.target.value)} placeholder="STI-2026-XXXX" className={`${fieldClass} pl-11 uppercase placeholder:normal-case`} /></span></Field>
             <Field label="Program / Strand" error={errors.program_strand}><select value={form.program_strand} onChange={(event) => update('program_strand', event.target.value)} className={fieldClass}><option value="">Select program or strand</option><option>BS Information Technology</option><option>BS Computer Science</option><option>STEM</option><option>ABM</option><option>HUMSS</option><option>GAS</option><option>TVL-ICT</option></select></Field>
             <Field label="Year / Grade Level" error={errors.year_grade_level}><select value={form.year_grade_level} onChange={(event) => update('year_grade_level', event.target.value)} className={fieldClass}><option value="">Select year or grade level</option><option>Grade 11</option><option>Grade 12</option><option>1st Year</option><option>2nd Year</option><option>3rd Year</option><option>4th Year</option></select></Field>
-            <Field label="Password" error={errors.password}><span className="relative block"><LockKeyhole className="absolute left-4 top-1/2 -translate-y-1/2 text-[#003399]/45" size={17} /><input type={showPasswords ? 'text' : 'password'} autoComplete="new-password" value={form.password} onChange={(event) => update('password', event.target.value)} placeholder="At least 8 characters" className={`${fieldClass} pl-11 pr-11`} /><button type="button" onClick={() => setShowPasswords((current) => !current)} aria-label={showPasswords ? 'Hide passwords' : 'Show passwords'} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-[#003399]/55">{showPasswords ? <EyeOff size={17} /> : <Eye size={17} />}</button></span></Field>
-            <Field label="Confirm Password" error={errors.confirm_password}><input type={showPasswords ? 'text' : 'password'} autoComplete="new-password" value={form.confirm_password} onChange={(event) => update('confirm_password', event.target.value)} placeholder="Repeat your password" className={fieldClass} /></Field>
+            <Field label="Password" error={errors.password}><span className="relative block"><LockKeyhole className="absolute left-4 top-1/2 -translate-y-1/2 text-[#003399]/45" size={17} /><input type={showPasswords ? 'text' : 'password'} autoComplete="new-password" maxLength={72} value={form.password} onChange={(event) => update('password', event.target.value)} placeholder="At least 8 characters" className={`${fieldClass} pl-11 pr-11`} /><button type="button" onClick={() => setShowPasswords((current) => !current)} aria-label={showPasswords ? 'Hide passwords' : 'Show passwords'} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-[#003399]/55">{showPasswords ? <EyeOff size={17} /> : <Eye size={17} />}</button></span></Field>
+            <Field label="Confirm Password" error={errors.confirm_password}><input type={showPasswords ? 'text' : 'password'} autoComplete="new-password" maxLength={72} value={form.confirm_password} onChange={(event) => update('confirm_password', event.target.value)} placeholder="Repeat your password" className={fieldClass} /></Field>
             <button disabled={busy} className="mt-2 flex h-13 items-center justify-center rounded-xl bg-[#FFF200] px-5 text-sm font-black uppercase tracking-[.12em] text-[#003399] shadow-lg shadow-[#003399]/10 transition hover:ring-4 hover:ring-[#003399]/10 disabled:cursor-wait disabled:opacity-60 sm:col-span-2">{busy ? 'Creating account…' : 'Register'}</button>
           </form>
           <p className="mt-6 text-center text-sm text-[#003399]/65">Already registered? <Link to="/login" className="font-black text-[#003399] underline decoration-[#FFF200] decoration-4 underline-offset-4">Sign In Here</Link></p>

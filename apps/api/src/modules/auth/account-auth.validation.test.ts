@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { validateAccountRegistration, validateRoleLogin } from './account-auth.validation.ts'
+import { validateAccountRegistration, validatePortalLogin } from './account-auth.validation.ts'
 
 test('registration validator trims identity fields and accepts the mobile form contract', () => {
   const result = validateAccountRegistration({
@@ -27,10 +27,19 @@ test('registration validator returns field errors for missing data and mismatche
   assert.equal(result.errors.confirm_password, 'Password confirmation does not match.')
 })
 
-test('login validator requires an explicit supported role, school ID, and password', () => {
-  const invalid = validateRoleLogin({ login_as: 'Visitor', school_id: '', password: '' })
+test('login validator requires portal, school ID, and password', () => {
+  const invalid = validatePortalLogin({ portal: 'visitor', school_id: '', password: '' })
   assert.equal(invalid.isValid, false)
-  assert.ok(invalid.errors.login_as)
+  assert.ok(invalid.errors.portal)
   assert.ok(invalid.errors.school_id)
   assert.ok(invalid.errors.password)
+})
+
+test('login validator accepts user and staff portals', () => {
+  const user = validatePortalLogin({ portal: 'user', school_id: 'STI-2026-0001', password: 'LibraryPass9' })
+  const staff = validatePortalLogin({ portal: 'staff', school_id: 'ADMIN-001', password: 'LibraryPass9' })
+  assert.equal(user.isValid, true)
+  assert.equal(user.portal, 'user')
+  assert.equal(staff.isValid, true)
+  assert.equal(staff.portal, 'staff')
 })

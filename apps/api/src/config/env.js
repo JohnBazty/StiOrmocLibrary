@@ -75,7 +75,8 @@ export const env = Object.freeze({
     user: process.env.DB_USER ?? 'root',
     password: process.env.DB_PASSWORD ?? '',
     database: process.env.DB_NAME ?? 'sti_ormoc_library',
-    connectionLimit: Number(process.env.DB_CONNECTION_LIMIT ?? 10),
+    // Supabase session pooler allows ~15 clients total across every local/API process.
+    connectionLimit: Number(process.env.DB_CONNECTION_LIMIT ?? (process.env.VERCEL ? 1 : dbDriver === 'postgres' ? 3 : 10)),
   },
   session: {
     name: 'sti.sid',
@@ -99,5 +100,17 @@ export const env = Object.freeze({
   isbnLookup: {
     timeoutMs: Math.max(500, Math.min(10000, Number(process.env.ISBN_LOOKUP_TIMEOUT_MS ?? 3500))),
     googleBooksApiKey: process.env.GOOGLE_BOOKS_API_KEY?.trim() ?? '',
+  },
+  mail: {
+    gmailUser: process.env.GMAIL_USER?.trim() || '',
+    gmailAppPassword: process.env.GMAIL_APP_PASSWORD?.trim() || '',
+    from: process.env.MAIL_FROM?.trim() || process.env.GMAIL_USER?.trim() || '',
+  },
+  passwordReset: {
+    otpTtlMinutes: Math.max(5, Math.min(10, Number(process.env.PASSWORD_RESET_OTP_TTL_MINUTES ?? 10))),
+    lockMinutes: Math.max(5, Math.min(60, Number(process.env.PASSWORD_RESET_LOCK_MINUTES ?? 15))),
+    maxFailedAttempts: 3,
+    historyLimit: 3,
+    resetTokenTtlSeconds: Math.max(300, Math.min(900, Number(process.env.PASSWORD_RESET_TOKEN_TTL_SECONDS ?? 600))),
   },
 })

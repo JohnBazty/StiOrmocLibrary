@@ -76,6 +76,9 @@ export function createPgPool(connectionString, connectionLimit) {
   const pool = new Pool({
     connectionString,
     max: connectionLimit,
+    // Release idle clients quickly so session-pooler slots are not held after watch restarts.
+    idleTimeoutMillis: process.env.VERCEL ? 1000 : 5000,
+    allowExitOnIdle: true,
     options: '-c timezone=Asia/Manila',
   })
 

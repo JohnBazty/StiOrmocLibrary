@@ -141,6 +141,9 @@ export function createApp() {
   app.use('/api/fines', requireRoles(...STAFF_ROLES))
   app.use('/api/inventory', requireRoles(...STAFF_ROLES))
   app.use('/api/reports', requireRoles(...STAFF_ROLES))
+  // Legacy remounts of staff attendance/admin dashboard must not be reachable by Student/Faculty.
+  app.use('/api/attendance', requireRoles(...STAFF_ROLES))
+  app.use('/api/dashboard/admin', requireRoles(...STAFF_ROLES))
   registerModules(app)
 
   app.use((_request, response) => response.status(404).json({ success: false, message: 'Route not found.' }))

@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express'
+import { HttpError } from '../../core/http-error.ts'
 import { createBrandedTablePdf } from '../reports/branded-table-pdf.ts'
 import { dashboardRepository } from './dashboard.repository.ts'
 
@@ -6,6 +7,13 @@ function actor(request: Request, response: Response) {
   const jwt = response.locals.authenticatedUser as { accountId?: number; id?: number; role?: string } | undefined
   const session = request.session?.user as { id?: number; accountId?: number; role?: string } | undefined
   return { accountId: Number(jwt?.accountId ?? jwt?.id ?? session?.accountId ?? session?.id), role: String(jwt?.role ?? session?.role ?? '') }
+}
+
+function requireStaff(role: string) {
+  const normalized = role === 'System Administrator' ? 'Admin' : role
+  if (!['Admin', 'Librarian'].includes(normalized)) {
+    throw new HttpError(403, 'DASHBOARD_STAFF_ONLY', 'Only library staff can open the admin dashboard.')
+  }
 }
 
 const handle = (action: (request: Request, response: Response) => Promise<void>) =>
@@ -28,7 +36,9 @@ async function* summaryRows(data: Awaited<ReturnType<typeof dashboardRepository.
 
 export const dashboardController = {
   admin: handle(async (request, response) => {
-    const data = await dashboardRepository.admin(actor(request, response))
+    const current = actor(request, response)
+    requireStaff(current.role)
+    const data = await dashboardRepository.admin(current)
     response.set('Cache-Control', 'private, no-store').json({ success: true, message: 'Dashboard loaded.', data })
   }),
   user: handle(async (request, response) => {
@@ -36,7 +46,9 @@ export const dashboardController = {
     response.set('Cache-Control', 'private, no-store').json({ success: true, message: 'Dashboard loaded.', data })
   }),
   adminPdf: handle(async (request, response) => {
-    const data = await dashboardRepository.admin(actor(request, response))
+    const current = actor(request, response)
+    requireStaff(current.role)
+    const data = await dashboardRepository.admin(current)
     const report = createBrandedTablePdf(summaryRows(data), {
       title: 'ADMIN DASHBOARD SUMMARY',
       subtitle: `Generated ${new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Manila' }).format(new Date())} | Live operational totals`,

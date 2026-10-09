@@ -1,13 +1,19 @@
 import { getAccessToken } from '../auth/auth-storage'
+import { throwApiError } from '../../lib/api-error'
 import type { Announcement, LibrarySchedule, NotificationList } from './types'
 
 async function request<T>(url: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers); headers.set('Accept', 'application/json')
   const token = getAccessToken(); if (token) headers.set('Authorization', `Bearer ${token}`)
   if (options.body) headers.set('Content-Type', 'application/json')
-  const response = await fetch(url, { ...options, headers, credentials: 'include' })
+  let response: Response
+  try {
+    response = await fetch(url, { ...options, headers, credentials: 'include' })
+  } catch {
+    throw new TypeError('Failed to fetch')
+  }
   const payload = await response.json().catch(() => null) as { success?: boolean; data?: T; message?: string } | null
-  if (!response.ok || !payload?.success) throw new Error(payload?.message ?? 'The notification request failed.')
+  if (!response.ok || !payload?.success) throwApiError(response, payload, 'Notifications could not be loaded. Try again.')
   return payload.data as T
 }
 

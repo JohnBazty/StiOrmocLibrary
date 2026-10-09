@@ -2,6 +2,7 @@ import { AlertTriangle, Bell, BookMarked, CalendarClock, CheckCircle2, Megaphone
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, PageHeader, SectionCard } from '../../components/ui'
+import { getErrorMessage } from '../../lib/api-error'
 import { getCurrentIdentity } from '../auth/auth-storage'
 import { notificationApi } from './notification-api'
 import type { LibrarySchedule, NotificationItem, NotificationList } from './types'
@@ -25,35 +26,52 @@ export function NotificationCenterPage() {
   const [schedule, setSchedule] = useState<LibrarySchedule | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false)
   const navigate = useNavigate()
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     setError('')
     try { const [items, hours] = await Promise.all([notificationApi.list(), notificationApi.schedule()]); setData(items); setSchedule(hours) }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Notifications are unavailable.') }
+    catch (reason) { setError(getErrorMessage(reason, 'Notifications are unavailable. Try again.')) }
+    finally { if (!silent) setLoading(false) }
   }, [])
-  useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 30_000); return () => window.clearInterval(timer) }, [load])
+  useEffect(() => { void load(); const timer = window.setInterval(() => void load(true), 30_000); return () => window.clearInterval(timer) }, [load])
   async function read(item: NotificationItem) {
-    if (!item.isRead) await notificationApi.markRead(item.notificationId)
+    if (!item.isRead) {
+      setData((current) => current ? {
+        ...current,
+        unreadCount: Math.max(0, current.unreadCount - 1),
+        items: current.items.map((entry) => entry.notificationId === item.notificationId ? { ...entry, isRead: true } : entry),
+      } : current)
+      try { await notificationApi.markRead(item.notificationId) }
+      catch (reason) { setError(getErrorMessage(reason, 'The notification could not be marked read.')); await load(true); return }
+    }
     const target = route(item.actionPath); if (target) navigate(target)
-    await load()
   }
-  async function readAll() { setBusy(true); try { await notificationApi.markAllRead(); await load() } finally { setBusy(false) } }
+  async function readAll() {
+    setBusy(true); setError('')
+    const previous = data
+    if (data) setData({ ...data, unreadCount: 0, items: data.items.map((entry) => ({ ...entry, isRead: true })) })
+    try { await notificationApi.markAllRead() }
+    catch (reason) { setData(previous); setError(getErrorMessage(reason, 'Notifications could not be marked read.')) }
+    finally { setBusy(false) }
+  }
   async function remove(item: NotificationItem) {
     setDeletingId(item.notificationId); setError('')
-    try { await notificationApi.remove(item.notificationId); await load() }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'The notification could not be deleted.') }
+    try { await notificationApi.remove(item.notificationId); await load(true) }
+    catch (reason) { setError(getErrorMessage(reason, 'The notification could not be deleted.')) }
     finally { setDeletingId(null) }
   }
   async function removeAll() {
     setBusy(true); setError('')
-    try { await notificationApi.removeAll(); setShowDeleteAllConfirm(false); await load() }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'The notifications could not be deleted.') }
+    try { await notificationApi.removeAll(); setShowDeleteAllConfirm(false); await load(true) }
+    catch (reason) { setError(getErrorMessage(reason, 'The notifications could not be deleted.')) }
     finally { setBusy(false) }
   }
   return <>
-    <PageHeader eyebrow="Activity center" title="Notifications" description="Due reminders, reservation updates, printing progress, schedules, and announcements." action={<div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={() => void load()}><RefreshCw size={16} /> Refresh</Button><Button disabled={busy || !data?.unreadCount} onClick={() => void readAll()}><CheckCircle2 size={16} /> Mark all read</Button><Button variant="secondary" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700" disabled={busy || !data?.items.length} onClick={() => setShowDeleteAllConfirm(true)}><Trash2 size={16}/> Delete all</Button></div>} />
+    <PageHeader eyebrow="Activity center" title="Notifications" description="Due reminders, reservation updates, printing progress, schedules, and announcements." action={<div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={loading || busy} onClick={() => void load()}><RefreshCw size={16} /> {loading ? 'Refreshing…' : 'Refresh'}</Button><Button disabled={busy || loading || !data?.unreadCount} onClick={() => void readAll()}><CheckCircle2 size={16} /> Mark all read</Button><Button variant="secondary" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700" disabled={busy || loading || !data?.items.length} onClick={() => setShowDeleteAllConfirm(true)}><Trash2 size={16}/> Delete all</Button></div>} />
     {error ? <div role="alert" className="mb-5 flex gap-2 rounded-xl bg-[#FFF200] p-4 font-bold text-[#003399]"><AlertTriangle size={18} />{error}</div> : null}
     <div className="mb-5 grid gap-4 xl:grid-cols-[1fr_1.5fr]">
       <SectionCard className="p-5"><h2 className="font-display text-lg font-bold text-[#003399]">Library schedule</h2><p className="mt-1 text-xs text-[#003399]/60">Asia/Manila campus time</p><div className="mt-4 grid grid-cols-2 gap-2 text-sm">{schedule?.weekly.map((entry) => <div key={entry.dayOfWeek} className="rounded-xl bg-[#003399]/5 p-3"><p className="font-bold text-[#003399]">{days[entry.dayOfWeek]}</p><p className="mt-1 text-xs text-[#003399]/65">{entry.isOpen ? `${String(entry.opensAt).slice(0,5)} - ${String(entry.closesAt).slice(0,5)}` : 'Closed'}</p></div>)}</div></SectionCard>
@@ -84,7 +102,7 @@ export function NotificationCenterPage() {
               <Trash2 size={17}/>
             </button>
           </div>
-        }) : <div className="p-12 text-center font-semibold text-[#003399]">No notifications yet.</div>}
+        }) : <div className="p-12 text-center font-semibold text-[#003399]">{loading ? 'Loading notifications…' : 'No notifications yet.'}</div>}
       </div>
     </SectionCard>
     {showDeleteAllConfirm ? <div className="fixed inset-0 z-[120] flex items-center justify-center bg-[#003399]/65 p-4 backdrop-blur-sm">
