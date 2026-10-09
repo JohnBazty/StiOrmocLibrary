@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit'
+import { SYSTEM_NAME, SYSTEM_SHORT_NAME } from '../../config/branding.ts'
 import { createBrandedTablePdf, type PdfTableColumn } from '../reports/branded-table-pdf.ts'
 import { receiptVerificationCode, type ReceiptVerificationData } from './fine-receipt-verification.ts'
 
@@ -45,7 +46,7 @@ export function createFineReceiptPdf(receipt: Receipt) {
   const document = new PDFDocument({ size: 'A4', margin: 42 })
   const blue = '#003399'; const yellow = '#FFF200'; const width = document.page.width - 84
   document.rect(0, 0, document.page.width, 94).fill(blue)
-  document.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(19).text('STI ORMOC SMART LIBRARY', 42, 25)
+  document.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(12).text(SYSTEM_NAME, 42, 24, { width, lineBreak: false })
   document.fillColor(yellow).fontSize(10).text('OFFICIAL CASH FINE RECEIPT', 42, 53)
   document.fillColor('#FFFFFF').font('Helvetica').fontSize(8).text('Cash payment recorded by authorized library personnel', 42, 70)
 
@@ -94,6 +95,6 @@ export function createFineReceiptPdf(receipt: Receipt) {
     y+=78
   }
   document.moveTo(42,document.page.height-92).lineTo(document.page.width-42,document.page.height-92).strokeColor(blue).strokeOpacity(0.3).stroke().strokeOpacity(1)
-  document.fillColor(blue).font('Helvetica').fontSize(8).text('This digital receipt is generated from the immutable SmartLib cash-payment ledger. Reprints contain the same receipt number and verification code.',42,document.page.height-76,{width,align:'center'})
+  document.fillColor(blue).font('Helvetica').fontSize(8).text(`This digital receipt is generated from the immutable ${SYSTEM_SHORT_NAME} cash-payment ledger. Reprints contain the same receipt number and verification code.`,42,document.page.height-76,{width,align:'center'})
   document.end(); return document
 }

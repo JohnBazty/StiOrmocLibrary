@@ -1,6 +1,6 @@
 # Title
 
-**MySQL → Supabase (PostgreSQL) conversion for STI Ormoc Smart Library**
+**MySQL → Supabase (PostgreSQL) conversion for STI College Ormoc Integrated Library Management System**
 
 ## Why
 
@@ -11,7 +11,7 @@ Product PDFs and `agent.md` historically name MySQL as the baseline; those docs 
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-09-25 |
+| **Date last updated** | 2026-10-09 |
 | **Status** | `inprogress` |
 
 Allowed status values: `planned` → `inprogress` → `built`.
@@ -64,8 +64,8 @@ Custom `MySqlSessionStore` (`apps/api/src/core/mysql-session-store.js`) on table
 | Item | Count / path |
 | --- | --- |
 | MySQL baseline | `database/mysql56-schema.sql` |
-| MySQL reference migrations | **42** (`001`…`042`); next MySQL number **`043`** if needed; the active database remains Supabase Postgres |
-| Postgres drafts | `database/supabase/` including `005_main_product_gapfill.sql` for MAIN 033–040 |
+| MySQL reference migrations | **46 files** (`001`…`046`); next MySQL number **`047`**; the active database remains Supabase Postgres |
+| Postgres drafts | `database/supabase/` through `016_configurable_borrowing_policies.sql`; next `017` |
 | Views | `borrow_records`, `book_titles` |
 | Seed files | None |
 
@@ -250,6 +250,7 @@ The deployed app URL and its production `DATABASE_URL` have not been verified he
 | 2026-09-25 | Added server-side Supabase Storage for new print documents and corrected PostgreSQL printing and borrow-cart queries; verified live student and admin flows. | Agent Alpha |
 | 2026-09-25 | Migrated the four retained historical print PDFs to private Supabase Storage, kept local originals, and verified production downloads for every retained print document. | Agent Alpha |
 | 2026-09-25 | Corrected PostgreSQL admin checkout and bulk book row-lock queries and added public Supabase Storage for new covers; checked rollback-only database flows and a live image upload. | Agent Alpha |
+| 2026-10-09 | Added branding-only MySQL migration `045` and Supabase migration `015`; no database structures or API response shapes changed. | Agent Alpha |
 
 ---
 

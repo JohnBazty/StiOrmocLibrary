@@ -1,6 +1,6 @@
 # Book cart and checkout
 
-SmartLib keeps cart state in browser session storage for navigation continuity, but treats it only as a display selection. `POST /api/v1/borrow/submit-request` revalidates identity, role, capacity, copy condition, availability, and reservation ownership inside one MySQL transaction.
+The system keeps cart state in browser session storage for navigation continuity, but treats it only as a display selection. `POST /api/v1/borrow/submit-request` revalidates identity, role, capacity, copy condition, availability, and reservation ownership inside one MySQL transaction.
 
 ## Transaction lifecycle
 

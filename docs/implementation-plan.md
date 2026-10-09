@@ -1,4 +1,4 @@
-# STI Ormoc Smart Library - Implementation Plan
+# STI College Ormoc Integrated Library Management System - Implementation Plan
 
 ## Detailed module plans
 
@@ -6,7 +6,7 @@
 
 ## 1. System goal
 
-Create a mobile-responsive Smart Library Management System for STI College Ormoc that replaces manual library workflows with one coherent digital platform. The feature interface remains backed by realistic mock operational data while the secure MySQL-backed authentication foundation is now implemented.
+Create a mobile-responsive integrated library management system for STI College Ormoc that replaces manual library workflows with one coherent digital platform. The feature interface remains backed by realistic mock operational data while the secure MySQL-backed authentication foundation is now implemented.
 
 The production target remains a React frontend, a Node.js and Express modular-monolith API, and a MySQL database using the MySQL 5.6-compatible schema baseline.
 

@@ -1,5 +1,5 @@
 -- ============================================================================
--- STI Ormoc Smart Library — Supabase / Postgres schema drafts
+-- STI College Ormoc Integrated Library Management System — Supabase / Postgres schema drafts
 -- ============================================================================
 -- Status: drafts from MySQL baseline + migrations via tools/ai/mysql_to_pg.py,
 --         plus curated MAIN product gap-fill for migrations 033–040.

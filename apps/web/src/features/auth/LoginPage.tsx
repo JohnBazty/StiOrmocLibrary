@@ -55,14 +55,14 @@ export function LoginPage() {
       <div className="absolute right-4 top-4 z-20 sm:right-6 sm:top-6"><ThemeToggle /></div>
       <section className="relative hidden overflow-hidden bg-[#003399] p-12 text-[#FFFFFF] lg:flex lg:flex-col lg:justify-between">
         <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full border-[70px] border-[#FFF200]/10" />
-        <div className="relative flex items-center gap-3"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FFF200] text-[#003399]"><LibraryBig /></span><div><p className="font-display text-lg font-black">STI ORMOC</p><p className="text-xs font-bold uppercase tracking-[.18em] text-[#FFFFFF]/70">Smart Library</p></div></div>
-        <div className="relative max-w-xl"><span className="inline-flex rounded-full border border-[#FFF200]/40 bg-[#FFF200]/10 px-4 py-2 text-xs font-bold uppercase tracking-[.16em] text-[#FFF200]">Secure campus access</span><h1 className="mt-7 font-display text-5xl font-black leading-tight">STI Ormoc Smart Library</h1></div>
+        <div className="relative flex items-center gap-3"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FFF200] text-[#003399]"><LibraryBig /></span><div><p className="font-display text-lg font-black">STI College Ormoc</p><p className="text-xs font-bold uppercase tracking-[.18em] text-[#FFFFFF]/70">ILMS</p></div></div>
+        <div className="relative max-w-xl"><span className="inline-flex rounded-full border border-[#FFF200]/40 bg-[#FFF200]/10 px-4 py-2 text-xs font-bold uppercase tracking-[.16em] text-[#FFF200]">Secure campus access</span><h1 className="mt-7 font-display text-5xl font-black leading-tight"><span className="block">STI College Ormoc</span><span className="mt-2 block text-3xl leading-snug sm:text-4xl">Integrated Library Management System</span></h1></div>
         <div className="relative flex items-center gap-3 text-sm text-[#FFFFFF]/70"><ShieldCheck className="text-[#FFF200]" /><span>Role-protected access with short-lived security tokens</span></div>
       </section>
 
       <section className="flex items-center justify-center p-5 sm:p-10">
         <div className="w-full max-w-md">
-          <div className="mb-8 flex items-center gap-3 lg:hidden"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#FFF200] text-[#003399]"><LibraryBig /></span><div><p className="font-display font-black text-[#003399]">STI ORMOC</p><p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#003399]/60">Smart Library</p></div></div>
+          <div className="mb-8 flex items-center gap-3 lg:hidden"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#FFF200] text-[#003399]"><LibraryBig /></span><div><p className="font-display font-black text-[#003399]">STI College Ormoc</p><p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#003399]/60">ILMS</p></div></div>
           <p className="text-xs font-black uppercase tracking-[.18em] text-[#003399]/55">Welcome back</p><h2 className="mt-2 font-display text-4xl font-black tracking-tight text-[#003399]">Login</h2>
           {message ? <div role="alert" className="mt-6 rounded-xl border border-[#003399] bg-[#FFF200] px-4 py-3 text-sm font-semibold text-[#003399]">{message}</div> : null}
           <form className="mt-7 space-y-5" onSubmit={submit} noValidate>

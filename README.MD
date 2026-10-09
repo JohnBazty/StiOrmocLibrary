@@ -1,6 +1,6 @@
-# STI Ormoc Smart Library
+# STI College Ormoc Integrated Library Management System
 
-SmartLib is a web-based library management system for STI College Ormoc. It combines a React administration and user portal with a modular-monolith Node.js API. The active local and deployed database is Supabase Postgres; the MySQL schema remains a rollback reference. See [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md).
+The STI College Ormoc Integrated Library Management System is a web-based library platform for STI College Ormoc. It combines a React administration and user portal with a modular-monolith Node.js API. The active local and deployed database is Supabase Postgres; the MySQL schema remains a rollback reference. See [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md).
 
 This guide explains how to prepare a Windows development computer, run and test the system, and prepare a production build. Its MySQL setup sections document the retained rollback environment.
 
