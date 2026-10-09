@@ -1,4 +1,4 @@
-# STI Ormoc Smart Library — Agent Protocol
+# STI College Ormoc Integrated Library Management System — Agent Protocol
 
 This file is the shared working agreement for AI agents on this repository.
 It is stored under `.cursor/` so it is versioned and visible when the project is pushed to GitHub.
@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-09-25 (README + AGENTS entry points) |
+| **Date last updated** | 2026-10-09 (public system branding) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---
@@ -98,10 +98,10 @@ Always know and document:
 | Item | Value |
 | --- | --- |
 | Migrations directory | `database/migrations/` |
-| Latest migration | `20260923_040_printing_digital_receipts.sql` |
-| Latest number | `040` |
-| **Next available number** | **`041`** |
-| Supabase / Postgres drafts | `database/supabase/` (`001`–`005`, including `005_main_product_gapfill.sql`) — apply with `npm run db:supabase -w @sti-library/api` when `DATABASE_URL` is set |
+| Latest migration | `20261009_045_rename_system_brand.sql` |
+| Latest number | `045` |
+| **Next available number** | **`046`** |
+| Supabase / Postgres drafts | `database/supabase/` (through `015_rename_system_brand.sql`; next `016`) — apply with `npm run db:supabase -w @sti-library/api` when `DATABASE_URL` is set |
 
 Naming pattern in this repo:
 
@@ -160,3 +160,4 @@ Prefer simple, readable scripts under a clear folder (for example `tools/` or `s
 | 2026-09-25 | Surfaced Start session as the first agent section in `README.md` and as the first stop in `AGENTS.md`, so new agent chats read the protocol before other work. |
 | 2026-09-25 | Supabase conversion started: dual MySQL/Postgres driver, `database/supabase/` drafts, tracker notes for parallel Postgres tree. See `docs/supabase-migration-plan.md`. |
 | 2026-09-25 | Cutover ported into GitHub main: MySQL tracker advanced to `040` / next `041`; added `005_main_product_gapfill.sql` for MAIN product tables. |
+| 2026-10-09 | Added branding migrations `045` and Supabase `015`; tracker advanced to MySQL `045` / next `046` and Supabase next `016`. |

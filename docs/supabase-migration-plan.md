@@ -1,6 +1,6 @@
 # Title
 
-**MySQL → Supabase (PostgreSQL) conversion for STI Ormoc Smart Library**
+**MySQL → Supabase (PostgreSQL) conversion for STI College Ormoc Integrated Library Management System**
 
 ## Why
 
@@ -11,7 +11,7 @@ Product PDFs and `agent.md` historically name MySQL as the baseline; those docs 
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-09-25 |
+| **Date last updated** | 2026-10-09 |
 | **Status** | `inprogress` |
 
 Allowed status values: `planned` → `inprogress` → `built`.
@@ -64,8 +64,8 @@ Custom `MySqlSessionStore` (`apps/api/src/core/mysql-session-store.js`) on table
 | Item | Count / path |
 | --- | --- |
 | MySQL baseline | `database/mysql56-schema.sql` |
-| MySQL migrations | **40** (`001`…`040`); next MySQL number **`041`** if needed |
-| Postgres drafts | `database/supabase/` including `005_main_product_gapfill.sql` for MAIN 033–040 |
+| MySQL migrations | **42 files** (`001`…`041` plus branding migration `045`; `042`–`044` remain unused); next MySQL number **`046`** |
+| Postgres drafts | `database/supabase/` (`001`…`009` plus branding migration `015`; next `016`) |
 | Views | `borrow_records`, `book_titles` |
 | Seed files | None |
 
@@ -226,6 +226,7 @@ await db.execute('SELECT * FROM users WHERE email = ? LIMIT 1', [email])
 | 2026-09-25 | Implementation started: `pg` adapter + dialect helpers + supabase drafts. | Agent Alpha |
 | 2026-09-25 | Live Supabase wired via session pooler (`ap-northeast-2`). Applied `001`+`003`+`004`; `checkSchemaReadiness` = ready. Direct `db.*` host is IPv6-only on this network. | Agent Alpha |
 | 2026-09-25 | Ported cutover into GitHub main: kept product migrations 033–040, added `005_main_product_gapfill.sql`, dialect merges for dual-driver API. | Agent |
+| 2026-10-09 | Added branding-only MySQL migration `045` and Supabase migration `015`; no database structures or API response shapes changed. | Agent Alpha |
 
 ---
 

@@ -1,4 +1,4 @@
-# SmartLib Product Source of Truth
+# STI College Ormoc Integrated Library Management System Product Source of Truth
 
 ## Authority and instruction boundary
 
