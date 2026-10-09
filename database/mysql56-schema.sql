@@ -1,5 +1,5 @@
 -- ============================================================================
--- STI Ormoc Smart Library Management System
+-- STI College Ormoc Integrated Library Management System
 -- MySQL 5.6-compatible database schema
 -- Engine: InnoDB | Character set: utf8
 -- ============================================================================
@@ -915,7 +915,7 @@ CREATE TABLE IF NOT EXISTS `library_operating_schedule` (
 
 CREATE TABLE IF NOT EXISTS `library_profile_settings` (
   `settings_id` TINYINT UNSIGNED NOT NULL,
-  `library_name` VARCHAR(150) NOT NULL DEFAULT 'STI Ormoc Smart Library',
+  `library_name` VARCHAR(150) NOT NULL DEFAULT 'STI College Ormoc Integrated Library Management System',
   `seat_capacity` SMALLINT UNSIGNED NOT NULL DEFAULT 80,
   `information_text` VARCHAR(500) DEFAULT NULL,
   `map_asset_path` VARCHAR(255) DEFAULT NULL,
@@ -932,7 +932,7 @@ CREATE TABLE IF NOT EXISTS `library_profile_settings` (
 INSERT IGNORE INTO `library_profile_settings`
   (`settings_id`, `library_name`, `seat_capacity`, `information_text`)
 VALUES
-  (1, 'STI Ormoc Smart Library', 80, 'Borrow books, access research, request printing, and study in the library.');
+  (1, 'STI College Ormoc Integrated Library Management System', 80, 'Borrow books, access research, request printing, and study in the library.');
 
 INSERT IGNORE INTO `library_operating_schedule` (`day_of_week`,`is_open`,`opens_at`,`closes_at`) VALUES
   (1,1,'07:00:00','17:00:00'),(2,1,'07:00:00','17:00:00'),(3,1,'07:00:00','17:00:00'),
@@ -1368,4 +1368,4 @@ INSERT IGNORE INTO floor_plan_state (id,draft)
 VALUES (1,'{"areas":[{"id":"main","name":"Main Library","width":1200,"height":800,"background":null}],"objects":[]}');
 
 -- End of schema.
-SELECT 'STI Ormoc Smart Library schema created successfully.' AS `schema_status`;
+SELECT 'STI College Ormoc Integrated Library Management System schema created successfully.' AS `schema_status`;

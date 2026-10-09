@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit'
+import { SYSTEM_NAME } from '../../config/branding.ts'
 
 const BLUE = '#003399'
 const YELLOW = '#FFF200'
@@ -35,7 +36,10 @@ export function createBrandedTablePdf<Row extends object>(rows: AsyncIterable<Ro
   function pageHeader() {
     pageNumber += 1
     document.rect(0, 0, document.page.width, 66).fill(BLUE)
-    document.fillColor(WHITE).fontSize(17).font('Helvetica-Bold').text('STI ORMOC SMART LIBRARY', pageMargin, 17)
+    document.fillColor(WHITE).fontSize(11.5).font('Helvetica-Bold').text(SYSTEM_NAME, pageMargin, 14, {
+      width: document.page.width - pageMargin * 2 - 92,
+      lineBreak: false,
+    })
     document.fillColor(YELLOW).fontSize(9).text(options.title, pageMargin, 37)
     document.fillColor(WHITE).font('Helvetica').fontSize(6.5).text(options.subtitle, pageMargin, 51)
     document.fillColor(YELLOW).font('Helvetica-Bold').fontSize(7).text(`PAGE ${pageNumber}`, document.page.width - 110, 27, {

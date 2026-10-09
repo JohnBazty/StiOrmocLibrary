@@ -1,6 +1,6 @@
 # MySQL Server and Workbench Setup on Windows
 
-This tutorial prepares a local MySQL database for the STI Ormoc Smart Library project. It covers installing MySQL Server and MySQL Workbench, configuring the server, creating the project database and application account, testing permissions, and preparing the future Prisma connection.
+This tutorial prepares a local MySQL database for the STI College Ormoc Integrated Library Management System project. It covers installing MySQL Server and MySQL Workbench, configuring the server, creating the project database and application account, testing permissions, and preparing the future Prisma connection.
 
 > MySQL Workbench is the graphical client used to manage a database. MySQL Server is the service that stores the data. You need both.
 

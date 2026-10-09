@@ -2,7 +2,7 @@
 
 ## Product definition
 
-The STI Ormoc Smart Library Management System is a campus platform for students, faculty, librarians, and administrators. It unifies resource discovery and day-to-day library operations that were previously handled through logbooks, index cards, physical queues, and manually maintained records.
+The STI College Ormoc Integrated Library Management System is a campus platform for students, faculty, librarians, and administrators. It unifies resource discovery and day-to-day library operations that were previously handled through logbooks, index cards, physical queues, and manually maintained records.
 
 The product covers:
 

@@ -6,7 +6,7 @@
 CREATE SCHEMA IF NOT EXISTS public;
 
 -- ============================================================================
--- STI Ormoc Smart Library Management System
+-- STI College Ormoc Integrated Library Management System
 -- MySQL 5.6-compatible database schema
 -- Engine: InnoDB | Character set: utf8
 -- ============================================================================
@@ -838,7 +838,7 @@ FROM borrow_transactions bt;
 
 
 -- End of schema.
-SELECT 'STI Ormoc Smart Library schema created successfully.' AS schema_status;
+SELECT 'STI College Ormoc Integrated Library Management System schema created successfully.' AS schema_status;
 
 
 -- Recreated indexes
