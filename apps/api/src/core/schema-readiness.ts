@@ -13,6 +13,7 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   research_inventory_audit_events: ['research_inventory_audit_event_id', 'research_inventory_id', 'barcode_snapshot', 'event_type', 'action_reason', 'created_at'],
   reservations: ['reservation_id', 'user_id', 'material_id', 'book_title_id', 'accession_id', 'assigned_physical_copy_id', 'reservation_status', 'reserved_at', 'pickup_deadline'],
   borrow_transactions: ['transaction_id', 'user_id', 'material_id', 'physical_copy_id', 'reservation_id', 'request_group_id', 'borrowed_at', 'due_at', 'returned_at', 'reported_lost_at', 'lost_confirmed_at', 'transaction_status'],
+  circulation_override_events: ['override_event_id', 'borrow_transaction_id', 'borrower_user_id', 'physical_copy_id', 'approved_by_user_id', 'warning_codes', 'override_reason', 'preflight_decision_id', 'approved_at'],
   admin_notifications: ['admin_notification_id', 'event_type', 'reservation_id', 'borrow_transaction_id', 'book_title_id', 'created_at'],
   library_closed_days: ['closed_date', 'reason', 'created_at'],
   library_operating_schedule: ['day_of_week', 'is_open', 'opens_at', 'closes_at'],

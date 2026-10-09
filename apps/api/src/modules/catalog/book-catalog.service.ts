@@ -11,7 +11,7 @@ import {
 } from './book-catalog.repository.ts'
 import { parseBookCatalogFilters, parseBookTitleId } from './book-catalog.validation.ts'
 
-export type CatalogViewer = { accountId: number; role: 'Admin' | 'Librarian' | 'Student' | 'Faculty' }
+export type CatalogViewer = { accountId: number; role: 'Admin' | 'Student' | 'Faculty' }
 
 export function createBookCatalogService(database: Pool = db) {
   return {

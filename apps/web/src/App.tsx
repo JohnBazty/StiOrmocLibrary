@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import { PortalLayout } from './layouts/PortalLayout'
 import { UserAttendancePage } from './features/attendance/UserAttendancePage'
 import {
@@ -17,7 +17,6 @@ import { AuthenticatedHome, ProtectedRoute } from './features/auth/ProtectedRout
 import { LoginPage } from './features/auth/LoginPage'
 import { RegistrationPage } from './features/auth/RegistrationPage'
 import { AdminLoginPage } from './features/auth/AdminLoginPage'
-import { RoleDashboardPage } from './features/auth/RoleDashboardPage'
 import { InventoryDashboard } from './features/inventory/InventoryDashboard'
 import { BookCatalog } from './features/catalog/BookCatalog'
 import { ResearchCatalog } from './features/catalog/ResearchCatalog'
@@ -45,7 +44,8 @@ export default function App() {
       <Route path="/" element={<AuthenticatedHome />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegistrationPage />} />
-      <Route path="/admin/login" element={<AdminLoginPage />} />
+      <Route path="/staff" element={<AdminLoginPage />} />
+      <Route path="/admin/login" element={<Navigate to="/staff" replace />} />
 
       <Route element={<ProtectedRoute roles={['Student']} />}>
         <Route element={<PortalLayout role="student" />}>
@@ -85,10 +85,8 @@ export default function App() {
         </Route>
       </Route>
 
-      <Route element={<ProtectedRoute roles={['Librarian']} />}>
-        <Route path="/librarian/dashboard" element={<RoleDashboardPage role="Librarian" />} />
-        <Route path="/librarian/floor-plan" element={<FloorPlanImagePage />} />
-      </Route>
+      <Route path="/librarian/dashboard" element={<Navigate to="/admin/dashboard" replace />} />
+      <Route path="/librarian/floor-plan" element={<Navigate to="/admin/floor-plan" replace />} />
       <Route element={<ProtectedRoute roles={['Faculty']} />}>
         <Route element={<PortalLayout role="faculty" />}>
           <Route path="/faculty/dashboard" element={<UserDashboardPage />} />

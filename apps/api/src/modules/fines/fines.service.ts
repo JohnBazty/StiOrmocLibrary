@@ -13,7 +13,7 @@ function insertIgnoreNotification(sql: string) {
 export type FineActor = { accountId?: number; role?: string }
 
 function requireStaff(actor: FineActor) {
-  if (!['Admin', 'Librarian'].includes(String(actor.role))) throw new HttpError(403, 'FINES_STAFF_ONLY', 'Only authorized staff can manage fines.')
+  if (String(actor.role) !== 'Admin') throw new HttpError(403, 'FINES_STAFF_ONLY', 'Only authorized staff can manage fines.')
 }
 
 function actorAccountId(actor: FineActor) {
@@ -249,7 +249,7 @@ export function createFinesService(database: Pool = db) {
     )
     const receipt = rows[0]
     if (!receipt) throw new HttpError(404, 'FINE_RECEIPT_NOT_FOUND', 'The payment receipt was not found.')
-    if (actor && !['Admin','Librarian'].includes(String(actor.role))) {
+    if (actor && String(actor.role) !== 'Admin') {
       const userId = await linkedUserId(database, actorAccountId(actor))
       if (Number(receipt.user_id) !== userId) throw new HttpError(403, 'FINE_RECEIPT_NOT_OWNED', 'You cannot access another user’s receipt.')
     }

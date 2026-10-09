@@ -38,7 +38,7 @@ test('routes staff and library users to their permitted dashboards', () => {
 
 test('routes each authenticated role to its canonical React workspace', () => {
   assert.equal(webDashboardForRole(ROLES.SYSTEM_ADMINISTRATOR), '/admin/dashboard')
-  assert.equal(webDashboardForRole(ROLES.LIBRARIAN), '/librarian/dashboard')
+  assert.equal(webDashboardForRole(ROLES.LIBRARIAN), '/admin/dashboard')
   assert.equal(webDashboardForRole(ROLES.FACULTY), '/faculty/dashboard')
   assert.equal(webDashboardForRole(ROLES.STUDENT), '/student/dashboard')
 })

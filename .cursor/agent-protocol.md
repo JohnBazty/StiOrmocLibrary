@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-09-26 (Phase 3 deployed; migration tracker updated) |
+| **Date last updated** | 2026-10-09 (circulation preflight overrides; migration tracker `044` / Supabase `014`) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---
@@ -98,10 +98,10 @@ Always know and document:
 | Item | Value |
 | --- | --- |
 | Migrations directory | `database/migrations/` |
-| Latest migration | `20260926_041_phase3_archive_floor_image.sql` |
-| Latest number | `041` |
-| **Next available number** | **`042`** |
-| Supabase / Postgres files | `database/supabase/` through applied `010_phase3_archive_floor_image.sql`; next **011**. The tracked `007` is present in the live ledger. Reconcile the `002`/`005` ledger gaps before whole-directory replay. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set. |
+| Latest migration | `20261009_044_circulation_preflight_overrides.sql` |
+| Latest number | `044` |
+| **Next available number** | **`045`** |
+| Supabase / Postgres files | `database/supabase/` through `014_circulation_preflight_overrides.sql`; next **015**. Earlier files through `012` remain in tree; reconcile ledger gaps before whole-directory replay. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set. |
 
 Naming pattern in this repo:
 

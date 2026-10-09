@@ -15,7 +15,7 @@ export function parseAttendanceFilters(query: Record<string, unknown>): Attendan
   if(period==='monthly'&&(!Number.isInteger(year)||year!<2000||!Number.isInteger(month)||month!<1||month!>12)) throw new HttpError(422,'INVALID_ATTENDANCE_MONTH','Select a valid month and year.')
   if(period==='semester'&&(!Number.isSafeInteger(academicTermId)||academicTermId!<1)) throw new HttpError(422,'ACADEMIC_TERM_REQUIRED','Select an academic term for a semester report.')
   const role=String(query.role??''),purpose=String(query.purpose??''),presence=String(query.presence??'')
-  if(role&&!['Admin','Librarian','Student','Faculty'].includes(role)) throw new HttpError(422,'INVALID_ATTENDANCE_ROLE','Choose a valid account role.')
+  if(role&&!['Admin','Student','Faculty'].includes(role)) throw new HttpError(422,'INVALID_ATTENDANCE_ROLE','Choose a valid account role.')
   if(presence&&!['inside','exited'].includes(presence)) throw new HttpError(422,'INVALID_ATTENDANCE_PRESENCE','Choose a valid presence state.')
   return {period,date,weekStart,year,month,academicTermId,q:String(query.q??'').trim().slice(0,150),role,purpose:purpose.slice(0,50),presence,page,limit}
 }

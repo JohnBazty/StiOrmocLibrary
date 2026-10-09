@@ -29,8 +29,8 @@ test('authorized Admin streams a CSV attachment with inventory rows', async () =
   assert.match(response.text, /Database Systems/)
 })
 
-test('authorized Librarian streams a valid PDF attachment', async () => {
-  const response = await request(appFor('Librarian')).get('/api/reports/catalog/inventory.pdf').buffer(true)
+test('authorized Admin streams a valid PDF attachment', async () => {
+  const response = await request(appFor('Admin')).get('/api/reports/catalog/inventory.pdf').buffer(true)
   assert.equal(response.status, 200)
   assert.match(response.headers['content-type'], /application\/pdf/)
   assert.match(response.headers['content-disposition'], /sti-library-inventory\.pdf/)

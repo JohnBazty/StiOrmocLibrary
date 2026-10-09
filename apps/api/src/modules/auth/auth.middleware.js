@@ -1,6 +1,6 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { env } from '../../config/env.js'
-import { dashboardForRole } from './auth.constants.js'
+import { dashboardForRole, toEffectiveRole } from './auth.constants.js'
 import { bearerToken, ensureActiveJwtAccount, verifyAccessToken } from './jwt-auth.middleware.ts'
 import { db } from '../../config/db.js'
 
@@ -105,8 +105,8 @@ export function requireAuth(request, response, next) {
 export function requireRoles(...allowedRoles) {
   return (request, response, next) => {
     const role = request.session?.user?.role || response.locals.authenticatedUser?.role
-    const normalizedRole = role === 'Admin' ? 'System Administrator' : role
-    if (!normalizedRole || !allowedRoles.includes(normalizedRole)) {
+    const effectiveRole = toEffectiveRole(role)
+    if (!effectiveRole || !allowedRoles.includes(effectiveRole)) {
       if (isApiRequest(request)) {
         return response.status(403).json({ success: false, code: 'FORBIDDEN', message: 'You do not have permission to access this resource.' })
       }

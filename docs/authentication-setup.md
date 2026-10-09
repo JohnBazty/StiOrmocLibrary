@@ -17,7 +17,7 @@ The Express application now provides a server-rendered vanilla HTML/CSS/JavaScri
 - login rate limiting and security headers
 - server-side role guards for dashboards and feature APIs
 
-Public registration cannot grant the Librarian role. The role remains visible for an authenticated System Administrator workflow, and the backend rejects anonymous Librarian creation.
+Public registration cannot grant the Admin (Librarian) role. Staff accounts are provisioned with role `Admin` only; the backend rejects anonymous staff creation.
 
 ## 1. Prepare MySQL
 
@@ -66,13 +66,12 @@ For local HTTP development, keep `NODE_ENV=development`. In production, set `NOD
 The included account utility hashes the password with bcrypt and inserts the user through prepared statements. It asks for the password interactively so the password is not saved in shell history.
 
 ```powershell
-npm.cmd run auth:create-user -w @sti-library/api -- --email admin@ormoc.sti.edu.ph --role "System Administrator" --id ADMIN-001 --name "Campus Administrator"
+npm.cmd run auth:create-user -w @sti-library/api -- --email admin@ormoc.sti.edu.ph --role Admin --id ADMIN-001 --name "Campus Librarian"
 ```
 
 Valid role values are:
 
-- `System Administrator`
-- `Librarian`
+- `Admin` (Librarian / Super Admin)
 - `Student`
 - `Faculty`
 
@@ -94,10 +93,9 @@ Expected routing:
 
 | Role | Destination |
 | --- | --- |
-| System Administrator | `/admin/dashboard` |
-| Librarian | `/admin/dashboard` |
-| Student | `/user/dashboard` |
-| Faculty | `/user/dashboard` |
+| Admin (Librarian) | `/admin/dashboard` via `/staff` |
+| Student | `/student/dashboard` |
+| Faculty | `/faculty/dashboard` |
 
 Test these security cases before deployment:
 
@@ -105,7 +103,7 @@ Test these security cases before deployment:
 2. An incorrect email/password returns one generic credentials error.
 3. A deactivated user receives the required librarian-coordination warning.
 4. A Student or Faculty cannot open `/admin/dashboard`.
-5. An Administrator or Librarian cannot open `/user/dashboard`.
+5. An Admin cannot open `/student/dashboard` or `/faculty/dashboard`.
 6. Login/logout requests without a valid CSRF token are rejected.
 7. Logout removes the server session, clears the cookie, and returns to `/login?logout=1`.
 

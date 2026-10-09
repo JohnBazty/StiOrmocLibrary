@@ -6,9 +6,9 @@ The API is mid-cutover to Supabase PostgreSQL. See [supabase-migration-plan.md](
 
 - When `DATABASE_URL` (postgresql://…) is set, the runtime uses `pg` against drafts under [database/supabase/](../database/supabase/).
 - When unset, the runtime uses local MySQL via `mysql2` and the MySQL tree below (rollback / offline path).
-- The MySQL baseline and ordered migrations remain the historical product contract. Latest MySQL reference migration: `20260926_042_phase2_user_management.sql`. Next MySQL number if needed: **`043`**. MySQL is not the active database.
+- The MySQL baseline and ordered migrations remain the historical product contract. Latest MySQL reference migration: `20261009_044_circulation_preflight_overrides.sql`. Next MySQL number if needed: **`045`**. MySQL is not the active database.
 - Additive MAIN product tables for Postgres land in `database/supabase/005_main_product_gapfill.sql` (033–040).
-- The 2026-09-25 historical data cutover copied local MySQL rows into Supabase after applying Postgres 008–009. Hosted users/accounts were preserved, and the pre-cutover hosted snapshot is in schema `mysql_cutover_backup_20260925100301`. Postgres 010 adds book archive actor and floor image version metadata. Postgres 011 adds account authentication versions and management audit events. Next Postgres migration number: **012**. See the cutover record in the migration plan.
+- The 2026-09-25 historical data cutover copied local MySQL rows into Supabase after applying Postgres 008–009. Hosted users/accounts were preserved, and the pre-cutover hosted snapshot is in schema `mysql_cutover_backup_20260925100301`. Postgres 010 adds book archive actor and floor image version metadata. Postgres 011 adds account authentication versions and management audit events. Postgres 013 consolidates Librarian into Admin. Postgres 014 adds `circulation_override_events` for checkout warning audits. Next Postgres migration number: **015**. See the cutover record in the migration plan.
 
 ## Target requirements versus current baseline
 
@@ -61,8 +61,8 @@ printers --< ink_repository
 
 ### Identity and access
 
-- `roles`: currently System Administrator, Librarian, Student, and Faculty. The target model also requires restricted Library Staff/Student Assistant access.
-- `users`: institutional ID, JWT-compatible `school_id`, profile, normalized `role_id`, JWT-facing `user_role`, hashed password, education data, and activation state. `System Administrator` maps to `Admin` at the JWT boundary.
+- `roles`: canonical authorization values are **Admin**, **Student**, and **Faculty**. Admin is the Librarian/Super Admin identity (approved consolidation; see `docs/admin-librarian-role-consolidation-plan.md`). Legacy `System Administrator` and `Librarian` role names are migration aliases only (`20261009_043` / Supabase `013`). The target model still separately requires a future restricted Library Staff/Student Assistant role.
+- `users`: institutional ID, JWT-compatible `school_id`, profile, normalized `role_id`, JWT-facing `user_role` (`Admin` \| `Student` \| `Faculty`), hashed password, education data, and activation state. During the compatibility window only, trusted auth boundaries still normalize legacy staff aliases to `Admin`.
 - `accounts`: normalized credential identity keyed by unique `school_id`, with contact number, bcrypt password hash, explicit JWT-facing role, and Active/Deactivated/Archived lifecycle. A nullable unique `user_id` is the backward-compatible bridge for identities imported from `users`.
 - `student_profiles`: one-to-one student academic extension containing first/last name, program or strand, and year/grade level. It never stores credentials or authorization state.
 - `auth_sessions`: expiring server-side session payloads keyed by an opaque session ID.
@@ -116,6 +116,7 @@ Phase 3 migration MySQL `041` / Supabase `010` adds nullable `titles.archived_by
 ### Circulation
 
 - `borrow_transactions`: pending, borrowed, returned, and overdue activity.
+- `circulation_override_events`: append-only staff confirmation audit for checkout warnings (MySQL `044` / Supabase `014`). Does not alter `borrow_transactions`.
 - `reservations`: material waiting list and expiry status.
 - `fines`: one fine record per borrowing transaction.
 - `clearance_statuses`: one current standing row per user.

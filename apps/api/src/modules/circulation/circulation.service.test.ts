@@ -5,7 +5,7 @@ import { HttpError } from '../../core/http-error.ts'
 import { createCirculationService } from './circulation.service.ts'
 
 function checkoutPool(role: 'Student' | 'Faculty', activeCount = 0, readyClaim: boolean | 'cart' = false, condition = 'Good') {
-  const state = { commits: 0, rollbacks: 0, borrowInserts: 0, queueCompactions: 0, notifications: 0 }
+  const state = { commits: 0, rollbacks: 0, borrowInserts: 0, queueCompactions: 0, notifications: 0, overrideInserts: 0 }
   const connection = {
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() {},
     async execute(sql: string) {
@@ -14,9 +14,12 @@ function checkoutPool(role: 'Student' | 'Faculty', activeCount = 0, readyClaim: 
       if (sql.includes('FROM physical_copies pc INNER JOIN titles')) return [[{ physical_copy_id: 20, title_id: 10, material_id: 30, accession_number: 'ACC-20', barcode: 'BOOK-20', condition_status: condition, availability_status: 'Available', lifecycle_status: 'Active', title: 'Clean Code', material_type: 'Book' }]]
       if (sql.includes('SELECT transaction_id, user_id, transaction_status')) return [readyClaim ? [{ transaction_id: 54, user_id: 7, transaction_status: 'Pending', request_group_id: 'group-1', reservation_id: readyClaim === true ? 99 : null }] : []]
       if (sql.includes('FROM reservations') && sql.includes('ORDER BY queue_position')) return [readyClaim === true ? [{ reservation_id: 99, user_id: 7, queue_position: 1, reservation_status: 'ready_for_pickup' }] : []]
+      if (sql.includes('SELECT queue_position FROM reservations')) return [[{ queue_position: 1 }]]
       if (sql.includes('COUNT(DISTINCT activity.title_id)')) return [[{ active_count: activeCount, target_already_active: 0 }]]
+      if (sql.includes("transaction_status IN ('Borrowed','Overdue')")) return [[{ active_count: 0 }]]
       if (sql.includes('FROM library_closed_days')) return [[]]
       if (sql.includes('INSERT INTO borrow_transactions')) { state.borrowInserts += 1; return [{ insertId: 55, affectedRows: 1 }] }
+      if (sql.includes('INSERT INTO circulation_override_events')) { state.overrideInserts += 1; return [{ insertId: 1, affectedRows: 1 }] }
       if (sql.includes('UPDATE borrow_transactions')) return [{ affectedRows: 1 }]
       if (sql.includes("UPDATE reservations SET reservation_status = 'claimed'")) return [{ affectedRows: 1 }]
       if (sql.includes('UPDATE reservations SET queue_position')) { state.queueCompactions += 1; return [{ affectedRows: 1 }] }
@@ -43,19 +46,43 @@ test('faculty checkout bypasses the cap and commits synchronized availability an
   assert.equal(state.borrowInserts, 1); assert.equal(state.notifications, 2); assert.equal(state.commits, 1); assert.equal(state.rollbacks, 0)
 })
 
-test('checkout accepts a damaged copy when its manual availability is Available', async () => {
+test('damaged Available checkout requires confirmation and writes an override audit row', async () => {
   const { state, database } = checkoutPool('Student', 0, false, 'Damaged')
-  const result = await createCirculationService(database).confirmCheckout(1, { barcode: 'book-20', school_id: 'sti-7' })
+  const service = createCirculationService(database)
+  await assert.rejects(service.confirmCheckout(1, { barcode: 'book-20', school_id: 'sti-7' }), (error: unknown) => {
+    assert.ok(error instanceof HttpError)
+    assert.equal(error.code, 'CIRCULATION_CONFIRMATION_REQUIRED')
+    return true
+  })
+  assert.equal(state.rollbacks, 1)
+  const preflight = await service.preflightCheckout(1, { barcode: 'book-20', school_id: 'sti-7', flow: 'walk_in' })
+  assert.equal(preflight.decision, 'confirmation_required')
+  assert.ok(preflight.preflightToken)
+  const result = await service.confirmCheckout(1, {
+    barcode: 'book-20',
+    school_id: 'sti-7',
+    preflightToken: preflight.preflightToken,
+    overrideReason: 'Cover is worn but pages and binding are usable.',
+  })
   assert.equal(result.transactionId, 55)
   assert.equal(state.borrowInserts, 1)
+  assert.equal(state.overrideInserts, 1)
   assert.equal(state.commits, 1)
-  assert.equal(state.rollbacks, 0)
+})
+
+test('preflight performs no database writes', async () => {
+  const { state, database } = checkoutPool('Student', 0)
+  const result = await createCirculationService(database).preflightCheckout(1, { barcode: 'book-20', school_id: 'sti-7', flow: 'walk_in' })
+  assert.equal(result.decision, 'ready')
+  assert.equal(state.borrowInserts, 0)
+  assert.equal(state.commits, 0)
+  assert.equal(state.overrideInserts, 0)
 })
 
 test('physical desk fulfillment activates only the matching ready reservation claim', async () => {
   const { state, database } = checkoutPool('Student', 1, true)
   const result = await createCirculationService(database, () => new Date(2026, 7, 24, 14, 0))
-    .fulfillClaim({ accountId: 1, role: 'Librarian' }, { barcode: 'book-20', school_id: 'sti-7' })
+    .fulfillClaim({ accountId: 1, role: 'Admin' }, { barcode: 'book-20', school_id: 'sti-7' })
   assert.equal(result.transactionId, 54)
   assert.equal(result.status, 'Borrowed')
   assert.equal(state.borrowInserts, 0)
@@ -65,7 +92,7 @@ test('physical desk fulfillment activates only the matching ready reservation cl
 test('physical desk fulfillment accepts an online-cart pending claim without a reservation link', async () => {
   const { state, database } = checkoutPool('Student', 1, 'cart')
   const result = await createCirculationService(database, () => new Date(2026, 7, 24, 14, 0))
-    .fulfillClaim({ accountId: 1, role: 'Librarian' }, { barcode: 'book-20', school_id: 'sti-7' })
+    .fulfillClaim({ accountId: 1, role: 'Admin' }, { barcode: 'book-20', school_id: 'sti-7' })
   assert.equal(result.transactionId, 54)
   assert.equal(result.status, 'Borrowed')
   assert.equal(state.commits, 1)
@@ -111,7 +138,7 @@ test('librarian cancellation releases a pending physical copy and commits the au
     },
   }
   const result = await createCirculationService({ getConnection: async () => connection } as unknown as Pool, () => new Date('2026-08-24T10:00:00+08:00'))
-    .cancelRequest({ accountId: 3, role: 'Librarian' }, 41, { reason: 'Student cancelled verbally.' })
+    .cancelRequest({ accountId: 3, role: 'Admin' }, 41, { reason: 'Student cancelled verbally.' })
   assert.equal(result.status, 'Cancelled')
   assert.equal(result.copyAvailability, 'Available')
   assert.equal(state.copyStatus, 'Available'); assert.equal(state.materialStatus, 'Available')

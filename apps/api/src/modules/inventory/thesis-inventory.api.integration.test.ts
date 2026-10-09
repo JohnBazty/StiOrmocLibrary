@@ -30,7 +30,7 @@ test('Student and Faculty roles cannot access thesis inventory administration', 
 })
 
 test('manager receives field-level 422 before database access for invalid audit condition', async () => {
-  const response = await request(appForRole('Librarian')).post('/api/inventory/thesis/audit').send({ barcode: 'TH-1', condition_state: 'missing' })
+  const response = await request(appForRole('Admin')).post('/api/inventory/thesis/audit').send({ barcode: 'TH-1', condition_state: 'missing' })
   assert.equal(response.status, 422)
   assert.equal(response.body.code, 'THESIS_INVENTORY_VALIDATION_FAILED')
   assert.ok(response.body.details.errors.condition_state)

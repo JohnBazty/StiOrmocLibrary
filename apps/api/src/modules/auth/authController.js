@@ -1,7 +1,7 @@
 import bcrypt from 'bcrypt'
 import { db } from '../../config/db.js'
 import { env } from '../../config/env.js'
-import { ALL_ROLES, dashboardForRole, webDashboardForRole } from './auth.constants.js'
+import { ALL_ROLES, dashboardForRole, toEffectiveRole, webDashboardForRole } from './auth.constants.js'
 import { createCsrfToken, sessionCookie } from './auth.middleware.js'
 import { createAuthSessionRepository } from './auth-session.repository.ts'
 import { validateLoginInput } from './auth.validation.js'
@@ -51,7 +51,9 @@ export function createLoginController({
         return response.status(403).json({ success: false, code: 'ACCOUNT_DEACTIVATED', message: DEACTIVATED_MESSAGE })
       }
 
-      if (!ALL_ROLES.includes(user.role_name)) {
+      // Compatibility: roles table may still say System Administrator / Librarian.
+      const effectiveRole = toEffectiveRole(user.role_name)
+      if (!ALL_ROLES.includes(effectiveRole)) {
         return response.status(403).json({ success: false, code: 'ROLE_NOT_AUTHORIZED', message: 'Your assigned role is not authorized to access this system.' })
       }
 
@@ -63,7 +65,7 @@ export function createLoginController({
         id: userId,
         fullName: user.full_name,
         email: user.email,
-        role: user.role_name,
+        role: effectiveRole,
       }
       request.session.lastActivity = Date.now()
       request.session.authVersion = authVersion
@@ -74,7 +76,7 @@ export function createLoginController({
       return response.json({
         success: true,
         message: 'Login successful.',
-        redirect: new URL(webDashboardForRole(user.role_name), env.webOrigin).toString(),
+        redirect: new URL(webDashboardForRole(effectiveRole), env.webOrigin).toString(),
         user: request.session.user,
       })
     } catch (error) {

@@ -11,7 +11,7 @@ import { createActiveJwtAccountGuard, verifyAccessToken } from './jwt-auth.middl
 import type { AuthSessionRepository } from './auth-session.repository.ts'
 
 const redirects: Record<JwtRole, string> = {
-  Admin: '/admin/dashboard', Librarian: '/librarian/dashboard', Faculty: '/faculty/dashboard', Student: '/student/dashboard',
+  Admin: '/admin/dashboard', Faculty: '/faculty/dashboard', Student: '/student/dashboard',
 }
 
 function stubSessions(authVersion = 2): AuthSessionRepository & { calls: { accountIds: number[]; clearedUsers: number[] } } {
@@ -28,7 +28,7 @@ function stubSessions(authVersion = 2): AuthSessionRepository & { calls: { accou
   }
 }
 
-test('authenticates all four roles, signs the required claims, and returns the correct redirect', async () => {
+test('authenticates canonical roles, signs the required claims, and returns the correct redirect', async () => {
   let id = 0
   for (const role of Object.keys(redirects) as JwtRole[]) {
     id += 1
@@ -53,6 +53,55 @@ test('authenticates all four roles, signs the required claims, and returns the c
     assert.deepEqual(sessions.calls.accountIds, [id])
     assert.deepEqual(sessions.calls.clearedUsers, [id + 100])
   }
+})
+
+test('Admin login normalizes a legacy Librarian account row to Admin', async () => {
+  const sessions = stubSessions(3)
+  const database = { execute: async () => [[{
+    account_id: 21, user_id: 121, school_id: 'LIB-2026-0001', password_hash: 'bcrypt-hash',
+    role: 'Librarian', account_status: 'Active', first_name: 'Campus', last_name: 'Librarian',
+  }]] } as never
+  const service = createJwtAuthService(database, { compare: async () => true } as never, jwt, sessions)
+  const result = await service.login({ login_as: 'Admin', school_id: 'LIB-2026-0001', password: 'correct-password' })
+  assert.equal(result.user.role, 'Admin')
+  assert.equal(result.redirect, '/admin/dashboard')
+  const claims = jwt.verify(result.token, env.jwt.secret, {
+    algorithms: ['HS256'], issuer: env.jwt.issuer, audience: env.jwt.audience,
+  }) as jwt.JwtPayload
+  assert.equal(claims.role, 'Admin')
+})
+
+test('rejects client login_as Librarian so staff must use Admin', async () => {
+  const service = createJwtAuthService({ execute: async () => { throw new Error('must not query') } } as never, { compare: async () => false } as never, jwt, stubSessions())
+  await assert.rejects(
+    service.login({ login_as: 'Librarian', school_id: 'LIB-2026-0001', password: 'correct-password' }),
+    (error: unknown) => error instanceof HttpError && error.status === 422 && error.code === 'AUTH_VALIDATION_FAILED',
+  )
+})
+
+test('legacy Librarian bearer tokens normalize to Admin at verification', () => {
+  const token = jwt.sign(
+    { accountId: 9, userId: 9, schoolId: 'LIB-9', role: 'Librarian', authVersion: 2 },
+    env.jwt.secret,
+    { algorithm: 'HS256', expiresIn: 900, issuer: env.jwt.issuer, audience: env.jwt.audience, subject: '9' },
+  )
+  const identity = verifyAccessToken(token)
+  assert.equal(identity.role, 'Admin')
+})
+
+test('active-account guard accepts Admin token against a legacy Librarian DB role', async () => {
+  const token = jwt.sign({ accountId: 9, schoolId: 'LIB-9', role: 'Admin', authVersion: 2 }, env.jwt.secret, {
+    algorithm: 'HS256', issuer: env.jwt.issuer, audience: env.jwt.audience, expiresIn: 900,
+  })
+  const identity = verifyAccessToken(token)
+  const guard = createActiveJwtAccountGuard({
+    execute: async () => [[{ account_status: 'Active', auth_version: 2, school_id: 'LIB-9', role: 'Librarian', user_status: 'Active' }]],
+  } as never)
+  const outcome = await new Promise<{ next?: boolean; code?: string }>((resolve) => {
+    const response = { locals: { authenticatedUser: identity }, status: () => response, json: (body: { code: string }) => resolve(body) }
+    guard({} as never, response as never, () => resolve({ next: true }))
+  })
+  assert.equal(outcome.next, true)
 })
 
 test('rejects invalid credentials without revealing whether the account exists', async () => {

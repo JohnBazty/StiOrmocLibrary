@@ -1,8 +1,9 @@
 import type { JwtRole } from './jwt-auth.service.ts'
+import { toCanonicalRole } from './role-normalization.ts'
 
 export type FieldErrors = Record<string, string>
 
-const ROLES = new Set<JwtRole>(['Admin', 'Librarian', 'Student', 'Faculty'])
+const LOGIN_ROLES = new Set<JwtRole>(['Admin', 'Student', 'Faculty'])
 const SCHOOL_ID_PATTERN = /^[A-Z0-9][A-Z0-9._-]{2,49}$/
 const CONTACT_PATTERN = /^\+?[0-9 ()-]{7,30}$/
 
@@ -14,10 +15,12 @@ export function normalizeSchoolId(value: unknown) {
   return typeof value === 'string' ? value.trim().toUpperCase() : ''
 }
 
+/** Normalize client login_as / registration role. Legacy staff names are not accepted from clients. */
 export function normalizeRole(value: unknown): JwtRole | '' {
   if (typeof value !== 'string') return ''
   const candidate = value.trim().toLowerCase()
-  return ([...ROLES].find((role) => role.toLowerCase() === candidate) ?? '') as JwtRole | ''
+  const match = [...LOGIN_ROLES].find((role) => role.toLowerCase() === candidate)
+  return match ?? ''
 }
 
 export function validateAccountRegistration(body: unknown) {
@@ -64,18 +67,35 @@ export function validateAccountRegistration(body: unknown) {
   }
 }
 
+export type LoginPortal = 'user' | 'staff'
+
+const PORTALS = new Set<LoginPortal>(['user', 'staff'])
+
+export function normalizePortal(value: unknown): LoginPortal | '' {
+  if (typeof value !== 'string') return ''
+  const candidate = value.trim().toLowerCase()
+  return PORTALS.has(candidate as LoginPortal) ? candidate as LoginPortal : ''
+}
+
 export function validateRoleLogin(body: unknown) {
   const input = body && typeof body === 'object' ? body as Record<string, unknown> : {}
   const schoolId = normalizeSchoolId(input.school_id)
-  const role = normalizeRole(input.login_as)
+  const portal = normalizePortal(input.portal)
+  const rawLoginAs = typeof input.login_as === 'string' ? input.login_as.trim() : ''
+  // Reject client-supplied legacy staff role names; only Admin is a valid staff login_as.
+  const legacyStaffRequested = toCanonicalRole(rawLoginAs) === 'Admin' && !LOGIN_ROLES.has(rawLoginAs as JwtRole)
+  const role = legacyStaffRequested ? '' : normalizeRole(input.login_as)
   const password = typeof input.password === 'string' ? input.password : ''
   const errors: FieldErrors = {}
 
-  if (!role) errors.login_as = 'Select a valid login role.'
+  // portal=user|staff: role is detected from the account after password check.
+  // login_as remains supported for older clients and the staff page.
+  if (!portal && !role) errors.login_as = 'Select a valid login role.'
+  if (portal === 'staff' && role && role !== 'Admin') errors.login_as = 'Select a valid login role.'
   if (!schoolId) errors.school_id = 'School ID is required.'
   else if (!SCHOOL_ID_PATTERN.test(schoolId)) errors.school_id = 'Enter a valid school ID.'
   if (!password) errors.password = 'Password is required.'
   else if (password.length > 72) errors.password = 'Password must not exceed 72 characters.'
 
-  return { schoolId, role, password, errors, isValid: Object.keys(errors).length === 0 }
+  return { schoolId, portal, role, password, errors, isValid: Object.keys(errors).length === 0 }
 }
