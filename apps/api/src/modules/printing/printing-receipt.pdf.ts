@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit'
+import { SYSTEM_NAME, SYSTEM_SHORT_NAME } from '../../config/branding.ts'
 
 export type PrintingReceipt = {
   print_receipt_id: number
@@ -32,7 +33,7 @@ export function createPrintingReceiptPdf(receipt: PrintingReceipt) {
   const blue = '#003399'; const yellow = '#FFF200'; const white = '#FFFFFF'; const width = document.page.width - 84
 
   document.rect(0, 0, document.page.width, 94).fill(blue)
-  document.fillColor(white).font('Helvetica-Bold').fontSize(19).text('STI ORMOC SMART LIBRARY', 42, 25)
+  document.fillColor(white).font('Helvetica-Bold').fontSize(12).text(SYSTEM_NAME, 42, 24, { width, lineBreak: false })
   const legacy = receipt.document_label !== 'Payment Record'
   document.fillColor(yellow).fontSize(10).text(legacy ? 'OFFICIAL PRINTING SERVICE RECEIPT' : 'PRINTING PAYMENT RECORD — NOT A TAX INVOICE', 42, 53)
   document.fillColor(white).font('Helvetica').fontSize(8).text('Cash printing payment recorded by authorized library personnel', 42, 70)
@@ -74,7 +75,7 @@ export function createPrintingReceiptPdf(receipt: PrintingReceipt) {
   document.fillColor(yellow).font('Helvetica-Bold').fontSize(18).text(money(receipt.amount_received),document.page.width-235,y+30,{width:175})
 
   document.moveTo(42,document.page.height-92).lineTo(document.page.width-42,document.page.height-92).strokeColor(blue).strokeOpacity(0.3).stroke().strokeOpacity(1)
-  document.fillColor(blue).font('Helvetica').fontSize(8).text(legacy ? 'This receipt belongs only to the SmartLib Printing Service. It is separate from fines, fine-payment receipts, and clearance balances.' : 'This payment record confirms cash collection for printing. It is not a tax invoice.',42,document.page.height-76,{width,align:'center'})
+  document.fillColor(blue).font('Helvetica').fontSize(8).text(legacy ? `This receipt belongs only to the ${SYSTEM_SHORT_NAME} Printing Service. It is separate from fines, fine-payment receipts, and clearance balances.` : 'This payment record confirms cash collection for printing. It is not a tax invoice.',42,document.page.height-76,{width,align:'center'})
   document.end()
   return document
 }

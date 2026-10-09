@@ -47,7 +47,7 @@ export function AddMultipleCopiesModal({ categories, onCreated, onClose }: {
         publisher: result.publisher ?? current.publisher,
         publicationYear: result.publicationYear ? String(result.publicationYear) : current.publicationYear,
       }))
-      const source = result.source === 'local_catalog' ? 'SmartLib catalog' : result.source === 'google_books' ? 'Google Books' : 'Open Library'
+      const source = result.source === 'local_catalog' ? 'local library catalog' : result.source === 'google_books' ? 'Google Books' : 'Open Library'
       setLookupStatus({ state: 'found', message: `Book information found from ${source}. Review the details before saving.` })
     } catch (reason) {
       if (controller.signal.aborted) return

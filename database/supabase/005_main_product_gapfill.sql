@@ -10,7 +10,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- 033 library profile
 CREATE TABLE IF NOT EXISTS library_profile_settings (
   settings_id SMALLINT NOT NULL,
-  library_name VARCHAR(150) NOT NULL DEFAULT 'STI Ormoc Smart Library',
+  library_name VARCHAR(150) NOT NULL DEFAULT 'STI College Ormoc Integrated Library Management System',
   seat_capacity INTEGER NOT NULL DEFAULT 80,
   information_text VARCHAR(500) DEFAULT NULL,
   map_asset_path VARCHAR(255) DEFAULT NULL,
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS library_profile_settings (
 CREATE INDEX IF NOT EXISTS idx_library_profile_updater ON library_profile_settings (updated_by_user_id);
 
 INSERT INTO library_profile_settings (settings_id, library_name, seat_capacity, information_text)
-VALUES (1, 'STI Ormoc Smart Library', 80, 'Borrow books, access research, request printing, and study in the library.')
+VALUES (1, 'STI College Ormoc Integrated Library Management System', 80, 'Borrow books, access research, request printing, and study in the library.')
 ON CONFLICT (settings_id) DO NOTHING;
 
 -- 034 notification soft-delete

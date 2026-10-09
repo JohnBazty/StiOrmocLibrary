@@ -1,12 +1,12 @@
-# STI Ormoc Smart Library
+# STI College Ormoc Integrated Library Management System
 
-SmartLib is a web-based library management system for STI College Ormoc. It combines a React administration and user portal with a modular-monolith Node.js API. The active local and deployed database is Supabase Postgres; the MySQL schema remains a rollback reference. See [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md).
+The STI College Ormoc Integrated Library Management System is a web-based library platform for STI College Ormoc. It combines a React administration and user portal with a modular-monolith Node.js API. The active local and deployed database is Supabase Postgres; the MySQL schema remains a rollback reference. See [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md).
 
 This guide explains how to prepare a Windows development computer, run and test the system, and prepare a production build. Its MySQL setup sections document the retained rollback environment.
 
 ## AI agents — read this first
 
-1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) (start-session protocol, plan statuses, MySQL reference migration tracker: latest **047** prepared locally, next **048**; Supabase product files applied through **016**, next **017**).
+1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) (start-session protocol, plan statuses, MySQL reference migration tracker: latest **048**, next **049**; Supabase branding migration **017**, next **018**).
 2. Read [AGENTS.md](AGENTS.md) and [agent.md](agent.md).
 3. Database cutover status: [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md).
 

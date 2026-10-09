@@ -1,4 +1,4 @@
-# SmartLib Inventory Management Implementation
+# STI College Ormoc Integrated Library Management System Inventory Management Implementation
 
 ## Module boundary
 

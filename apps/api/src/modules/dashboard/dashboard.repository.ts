@@ -1,4 +1,5 @@
 import type { Pool, RowDataPacket } from 'mysql2/promise'
+import { SYSTEM_NAME } from '../../config/branding.ts'
 import { db } from '../../config/db.js'
 import {
   isPostgres,
@@ -54,7 +55,7 @@ export class DashboardRepository {
     )
     const profile = profileRows[0] ?? {}
     return {
-      name: String(profile.library_name ?? 'STI Ormoc Smart Library'),
+      name: String(profile.library_name ?? SYSTEM_NAME),
       seatCapacity: Math.max(1, number(profile.seat_capacity || 80)),
       information: profile.information_text ? String(profile.information_text) : null,
       mapPath: profile.map_asset_path ? String(profile.map_asset_path) : null,

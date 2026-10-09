@@ -64,8 +64,8 @@ Custom `MySqlSessionStore` (`apps/api/src/core/mysql-session-store.js`) on table
 | Item | Count / path |
 | --- | --- |
 | MySQL baseline | `database/mysql56-schema.sql` |
-| MySQL reference migrations | **47** (`001`…`047`); next MySQL number **`048`**; `043`–`047` are prepared locally and unapplied; the active database remains Supabase Postgres |
-| Postgres drafts | `database/supabase/` including `005_main_product_gapfill.sql` for MAIN 033–040 |
+| MySQL reference migrations | **48** (`001`…`048`); next MySQL number **`049`**; `043`–`048` are prepared locally and unapplied; the active database remains Supabase Postgres |
+| Postgres drafts | `database/supabase/` through branding migration `017_rename_system_brand.sql`; next `018` |
 | Views | `borrow_records`, `book_titles` |
 | Seed files | None |
 
@@ -251,6 +251,7 @@ The deployed app URL and its production `DATABASE_URL` have not been verified he
 | 2026-09-25 | Implementation started: `pg` adapter + dialect helpers + supabase drafts. | Agent Alpha |
 | 2026-09-25 | Live Supabase wired via session pooler (`ap-northeast-2`). Applied `001`+`003`+`004`; `checkSchemaReadiness` = ready. Direct `db.*` host is IPv6-only on this network. | Agent Alpha |
 | 2026-09-25 | Ported cutover into GitHub main: kept product migrations 033–040, added `005_main_product_gapfill.sql`, dialect merges for dual-driver API. | Agent |
+| 2026-10-09 | Added branding-only MySQL migration `048` and Supabase migration `017`; no database structures or API response shapes changed. | Agent Alpha |
 | 2026-09-25 | Verified hosted connection and audited live migration ledger and row counts. Started source MySQL access check; no hosted schema or data changes made. | Agent Alpha |
 | 2026-09-25 | Applied Postgres 008–009, migrated local MySQL history into Supabase with a pre-cutover backup, verified counts and local registration/login. | Agent Alpha |
 | 2026-09-25 | Switched Vercel's Supabase URL to transaction pooling after session pool exhaustion, bounded each function's `pg` pool, and verified linked-student routes on production. | Agent Alpha |
