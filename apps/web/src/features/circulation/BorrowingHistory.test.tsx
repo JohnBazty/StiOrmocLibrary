@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BorrowingHistory } from './BorrowingHistory'
 
-const api = vi.hoisted(() => ({ history: vi.fn(), cancelRequest: vi.fn() }))
+const api = vi.hoisted(() => ({ history: vi.fn(), cancelRequest: vi.fn(), preflightRenewal: vi.fn(), submitRenewal: vi.fn() }))
 const clearance = vi.hoisted(() => ({ reportLost: vi.fn() }))
 const catalogApi = vi.hoisted(() => ({ fetchBookOverview: vi.fn(), fetchCatalogCopyAsset: vi.fn() }))
 vi.mock('./circulation-api', () => ({ circulationApi: api }))
@@ -76,6 +76,42 @@ describe('BorrowingHistory', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Submit lost report' }))
     await waitFor(() => expect(clearance.reportLost).toHaveBeenCalledWith(21))
     expect(await screen.findByText('Clean Code was reported lost. Library staff have been notified.')).toBeTruthy()
+  })
+
+  it('renews an eligible loan with one stable request key and refreshes history', async () => {
+    api.history.mockResolvedValue({
+      summary: { role: 'Student', activeLoans: 1, activeReservations: 0, activeStackCount: 1, loanLimit: 2, remainingLoanSlots: 1, nextDueAt: '2026-10-11T08:59:00', dueCutoffLabel: '8:59 AM' },
+      items: [{
+        transactionId: 31, titleId: 5, title: 'Clean Code', author: 'Robert C. Martin', coverImagePath: null, accessionNumber: 'ACC-1', barcode: 'BOOK-1',
+        borrowDate: '2026-10-10T10:00:00', initialDueAt: '2026-10-11T08:59:00', dueDate: '2026-10-11T08:59:00', returnDate: null,
+        status: 'Borrowed', lostReportStatus: null, renewalCount: 0, maxRenewals: 1, remainingRenewals: 1, lastRenewalStatus: null,
+        lastRenewalDecisionSummary: null, lastRenewalAt: null, lastRenewalDecisionSource: null, canRequestRenewal: true,
+      }],
+      pagination: { page: 1, limit: 25, total: 1, totalPages: 1 },
+    })
+    api.preflightRenewal.mockResolvedValue({
+      transactionId: 31, currentDueAt: '2026-10-11T08:59:00', proposedDueAt: '2026-10-12T08:59:00',
+      renewalCount: 0, maxRenewals: 1, remainingRenewals: 1, policyVersionId: 4, blockers: [], canRequestRenewal: true,
+    })
+    api.submitRenewal
+      .mockRejectedValueOnce(new Error('Temporary connection problem.'))
+      .mockResolvedValue({
+        renewalRequestId: 8, requestKey: 'returned-key', transactionId: 31, status: 'Approved', decisionCode: 'RENEWAL_APPROVED',
+        decisionSummary: 'The loan was renewed successfully.', decisionSource: 'System', staffNote: null,
+        previousDueAt: '2026-10-11T08:59:00', newDueAt: '2026-10-12T08:59:00', renewalNumber: 1, maxRenewals: 1,
+        remainingRenewals: 0, policyVersionId: 4, requestedAt: '2026-10-10T10:00:00', decidedAt: '2026-10-10T10:00:00',
+        blockers: [], idempotent: false,
+      })
+    render(<BorrowingHistory />)
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Request renewal' }))[0]!)
+    expect(await screen.findByText('Proposed due')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm renewal' }))
+    expect(await screen.findByText('Temporary connection problem.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm renewal' }))
+    await waitFor(() => expect(api.submitRenewal).toHaveBeenCalledTimes(2))
+    expect(api.submitRenewal.mock.calls[0]?.[1]).toBe(api.submitRenewal.mock.calls[1]?.[1])
+    expect(await screen.findByText(/Clean Code was renewed until/)).toBeTruthy()
+    expect(api.history.mock.calls.length).toBeGreaterThan(1)
   })
 })
 

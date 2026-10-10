@@ -6,7 +6,7 @@ This guide explains how to prepare a Windows development computer, run and test 
 
 ## AI agents — read this first
 
-1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) (start-session protocol, plan statuses, MySQL reference migration tracker: latest **046**, next **047**; Supabase: latest **016**, next **017**).
+1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) (start-session protocol, plan statuses, MySQL reference migration tracker: latest **047**, next **048**; Supabase: latest **017**, next **018**).
 2. Read [AGENTS.md](AGENTS.md) and [agent.md](agent.md).
 3. Database cutover status: [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md).
 

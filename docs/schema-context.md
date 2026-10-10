@@ -6,9 +6,9 @@ The API is mid-cutover to Supabase PostgreSQL. See [supabase-migration-plan.md](
 
 - When `DATABASE_URL` (postgresql://…) is set, the runtime uses `pg` against drafts under [database/supabase/](../database/supabase/).
 - When unset, the runtime uses local MySQL via `mysql2` and the MySQL tree below (rollback / offline path).
-- The MySQL baseline and ordered migrations remain the historical product contract. Latest MySQL reference migration: `20261009_046_configurable_borrowing_policies.sql` (after branding `045` and preflight `044`). Next MySQL number if needed: **`047`**. MySQL is not the active database.
+- The MySQL baseline and ordered migrations remain the historical product contract. Latest MySQL reference migration: `20261010_047_loan_renewals.sql` (after borrowing policies `046`). Next MySQL number if needed: **`048`**. MySQL is not the active database.
 - Additive MAIN product tables for Postgres land in `database/supabase/005_main_product_gapfill.sql` (033–040).
-- The 2026-09-25 historical data cutover copied local MySQL rows into Supabase after applying Postgres 008–009. Hosted users/accounts were preserved, and the pre-cutover hosted snapshot is in schema `mysql_cutover_backup_20260925100301`. Postgres 010 adds book archive actor and floor image version metadata. Postgres 011 adds account authentication versions and management audit events. Postgres 013 consolidates Librarian into Admin. Postgres 014 adds `circulation_override_events` for checkout warning audits. Postgres 015 renames system branding. Postgres 016 adds immutable `borrowing_policy_versions` / material rules and policy FKs on loans and reservations. Next Postgres migration number: **017**. See the cutover record in the migration plan.
+- The 2026-09-25 historical data cutover copied local MySQL rows into Supabase after applying Postgres 008–009. Hosted users/accounts were preserved, and the pre-cutover hosted snapshot is in schema `mysql_cutover_backup_20260925100301`. Postgres 010 adds book archive actor and floor image version metadata. Postgres 011 adds account authentication versions and management audit events. Postgres 013 consolidates Librarian into Admin. Postgres 014 adds `circulation_override_events` for checkout warning audits. Postgres 015 renames system branding. Postgres 016 adds immutable `borrowing_policy_versions` / material rules and policy FKs on loans and reservations. Postgres 017 adds loan renewal state and immutable renewal decisions. Next Postgres migration number: **018**. See the cutover record in the migration plan.
 
 Migration `20261009_045_rename_system_brand.sql` and Supabase migration `015_rename_system_brand.sql` change only the public `library_profiles.library_name` default and replace the existing row only when it still has the previous default. Database structures, relationships, routes, stored sessions, and technical `SmartLib` identifiers are unchanged.
 
@@ -117,7 +117,8 @@ Phase 3 migration MySQL `041` / Supabase `010` adds nullable `titles.archived_by
 
 ### Circulation
 
-- `borrow_transactions`: pending, borrowed, returned, and overdue activity.
+- `borrow_transactions`: pending, borrowed, returned, and overdue activity; includes `initial_due_at` and `renewal_count`.
+- `loan_renewal_requests`: immutable Approved/Rejected renewal decisions (MySQL `047` / Supabase `017`).
 - `circulation_override_events`: append-only staff confirmation audit for checkout warnings (MySQL `044` / Supabase `014`). Does not alter `borrow_transactions`.
 - `reservations`: material waiting list and expiry status.
 - `fines`: one fine record per borrowing transaction.
@@ -131,6 +132,8 @@ Borrowing triggers enforce:
 - Due time is calculated by the API from the active policy's operating-day count and cutoff (Legacy: next operating day at 08:59).
 - Material availability updates when borrowing and returning records change.
 - `borrowing_policy_versions` and `borrowing_policy_material_rules` are append-only; Admin publishes new versions via `POST /api/v1/admin/borrowing-policies`.
+
+Migration MySQL `047` / Supabase `017` adds the original due date and renewal count to each borrowing transaction plus immutable approved/rejected rows in `loan_renewal_requests`. Borrower and Admin-on-behalf requests are decided immediately in one transaction after locking the loan and same-title reservation queue. Renewal checks use the active versioned policy and live account, reservation, fine, lost-book, copy, title, and operating-calendar data. Approved requests extend from the current due date, while rejected requests preserve it; request keys make retries idempotent.
 
 The reservation migration expands the queue lifecycle to `pending`, `approved`, `ready_for_pickup`, `claimed`, `cancelled`, and `expired`. `material_id` remains the requested catalog/circulation material and nullable `accession_id` identifies the physical `materials` row held for pickup. Ready reservations have a pickup deadline; expiration clears the accession and restores Reserved inventory to Available in one transaction.
 

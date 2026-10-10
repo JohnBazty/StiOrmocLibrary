@@ -7,6 +7,8 @@ type Controller = ReturnType<typeof createCirculationController>
 export function createUserCirculationRouter(controller: Controller = circulationController) {
   const router = Router()
   router.get('/history', controller.history)
+  router.get('/:transactionId/renewals/preflight', controller.preflightRenewal)
+  router.post('/:transactionId/renewals', controller.submitRenewal)
   return router
 }
 
@@ -28,6 +30,8 @@ export function createAdminCirculationRouter(controller: Controller = circulatio
   router.get('/borrowing/monitor', controller.monitor)
   router.post('/borrowing/preflight', controller.preflightCheckout)
   router.post('/borrowing/confirm-checkout', controller.confirmCheckout)
+  router.get('/borrowing/:transactionId/renewals/preflight', controller.preflightRenewal)
+  router.post('/borrowing/:transactionId/renewals', controller.staffRenewal)
   router.put('/borrowing/:transactionId/return', controller.returnBook)
   router.post('/borrowing/:transactionId/calculate-penalty', controller.calculatePenalty)
   router.get('/notifications', controller.notifications)

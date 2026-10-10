@@ -22,6 +22,7 @@
 --   011_phase2_user_management.sql          — account auth versions and Admin management audit
 --   015_rename_system_brand.sql             — public library name branding
 --   016_configurable_borrowing_policies.sql — immutable borrowing policy versions
+--   017_loan_renewals.sql — initial_due_at, renewal_count, loan_renewal_requests
 -- Next Postgres schema number: 017. Apply reviewed files individually.
 --
 -- MySQL tree under database/mysql56-schema.sql and database/migrations/ remains

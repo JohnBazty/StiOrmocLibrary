@@ -10,6 +10,8 @@ const api = vi.hoisted(() => ({
   returnBook: vi.fn(),
   calculatePenalty: vi.fn(),
   cancelRequest: vi.fn(),
+  preflightRenewal: vi.fn(),
+  staffRenewal: vi.fn(),
 }))
 vi.mock('./circulation-api', () => ({ circulationApi: api }))
 
@@ -202,6 +204,45 @@ describe('AdminCirculationMonitor', () => {
       blockers: [], warnings: [], alerts: [], preflightToken: 'token',
     })
     await waitFor(() => expect(api.confirmCheckout).toHaveBeenCalledTimes(1))
+  })
+
+  it('requires a staff note and renews an eligible borrowed item on behalf of the borrower', async () => {
+    api.monitor.mockResolvedValue({
+      ...monitor,
+      items: [{
+        ...monitor.items[0],
+        initialDueAt: '2026-08-24T08:59:00',
+        renewalCount: 0,
+        maxRenewals: 1,
+        remainingRenewals: 1,
+        lastRenewalStatus: 'Rejected',
+        lastRenewalDecisionSummary: 'A reservation was waiting.',
+        lastRenewalAt: '2026-08-23T11:00:00',
+        lastRenewalDecisionSource: 'System',
+        canRequestRenewal: true,
+      }],
+    })
+    api.preflightRenewal.mockResolvedValue({
+      transactionId: 4, currentDueAt: '2026-08-24T08:59:00', proposedDueAt: '2026-08-25T08:59:00',
+      renewalCount: 0, maxRenewals: 1, remainingRenewals: 1, policyVersionId: 4, blockers: [], canRequestRenewal: true,
+    })
+    api.staffRenewal.mockResolvedValue({
+      renewalRequestId: 9, requestKey: 'staff-key', transactionId: 4, status: 'Approved', decisionCode: 'RENEWAL_APPROVED',
+      decisionSummary: 'The loan was renewed successfully.', decisionSource: 'Staff', staffNote: 'Borrower requested at the circulation desk.',
+      previousDueAt: '2026-08-24T08:59:00', newDueAt: '2026-08-25T08:59:00', renewalNumber: 1, maxRenewals: 1,
+      remainingRenewals: 0, policyVersionId: 4, requestedAt: '2026-08-23T12:00:00', decidedAt: '2026-08-23T12:00:00',
+      blockers: [], idempotent: false,
+    })
+    render(<AdminCirculationMonitor />)
+    expect(await screen.findByText('Last renewal: System')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Renew on behalf' }))
+    await waitFor(() => expect(api.preflightRenewal).toHaveBeenCalledWith(4, true))
+    const confirmButton = screen.getByRole('button', { name: 'Confirm staff renewal' })
+    expect((confirmButton as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText(/staff note/i), { target: { value: 'Borrower requested at the circulation desk.' } })
+    fireEvent.click(confirmButton)
+    await waitFor(() => expect(api.staffRenewal).toHaveBeenCalledWith(4, expect.any(String), 'Borrower requested at the circulation desk.'))
+    expect(await screen.findByText(/Database Systems was renewed for A Student until/)).toBeTruthy()
   })
 })
 

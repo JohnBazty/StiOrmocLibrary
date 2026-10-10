@@ -10,7 +10,7 @@ Renewal management will let a borrower request one additional operating day befo
 
 - **Date created:** 2026-10-10
 - **Date last updated:** 2026-10-10
-- **Status:** `planned` (approved; build starts on explicit command)
+- **Status:** `inprogress` (API + web built locally; hosted migration/`017` acceptance remain)
 - **Active database:** Supabase PostgreSQL
 - **Branch:** `feat/renewal-management`
 - **Planned migration numbers:** Supabase `017` and MySQL rollback reference `047` after borrowing-policy consumes `016` / `046`
@@ -343,8 +343,8 @@ The feature is complete only when:
 - [x] Schema, API, interface, concurrency, notification, test, and rollout plan drafted.
 - [x] Plan approved by Ethan.
 - [x] Build-ready implementation plan published (`docs/renewal-management-implementation-plan.md`).
-- [ ] Status changed to `inprogress` before implementation begins.
-- [ ] Postgres and MySQL rollback migration numbers confirmed at build time (`017` / `047` after policies merge).
+- [x] Status changed to `inprogress` before implementation begins.
+- [x] Postgres and MySQL rollback migration numbers confirmed at build time (`017` / `047` after policies merge).
 - [ ] Implementation completed and hosted acceptance passed.
 - [ ] Status changed to `built` and change log updated.
 
@@ -352,3 +352,4 @@ The feature is complete only when:
 
 - **2026-10-10:** Initial plan created with status `planned`. Chose immediate API decisions, shared policy/preflight enforcement, immutable approved and rejected request records, operating-day extension from the current deadline, and renewal-aware notification deduplication.
 - **2026-10-10:** Ethan approved. Added branch `feat/renewal-management`, locked migrations to Supabase `017` / MySQL `047` after policies consume `016` / `046`, and linked the build-ready implementation plan.
+- **2026-10-10:** Completed the local API slice, including borrower/Admin routes, transaction-safe decisions, renewal history fields, schema readiness, initial due-date writes, and service tests. The full API suite, type check, and production build pass; web work and hosted acceptance remain.

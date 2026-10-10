@@ -21,8 +21,9 @@ import {
   type CheckoutFlow,
 } from './circulation-preflight.ts'
 import { createBorrowingPolicyService } from './borrowing-policy.service.ts'
-import { roleBookLimit } from './borrowing-policy.types.ts'
+import { isMaterialBorrowable, roleBookLimit } from './borrowing-policy.types.ts'
 import { formatDueCutoffLabel } from './due-date.ts'
+import { createRenewalService, type RenewalActor } from './renewal.service.ts'
 import {
   positiveCirculationId,
   validateBorrowCart,
@@ -199,6 +200,7 @@ async function compactQueue(connection: PoolConnection, titleId: number, removed
 
 export function createCirculationService(database: Pool = db, clock: () => Date = () => new Date()) {
   const policyService = createBorrowingPolicyService(database, clock)
+  const renewalService = createRenewalService(database, clock)
   return {
     async history(accountIdValue: unknown, query: Record<string, unknown>) {
       const accountId = positiveCirculationId(accountIdValue, 'accountId')
@@ -211,12 +213,21 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
       const policy = await policyService.resolveActive(database, clock())
       const [[rows], [countRows], [activityRows]] = await Promise.all([
         database.execute<RowDataPacket[]>(
-          `SELECT bt.transaction_id, bt.borrowed_at, bt.due_at, bt.returned_at,
+          `SELECT bt.transaction_id, bt.borrowed_at, bt.due_at, bt.initial_due_at, bt.renewal_count, bt.returned_at,
               CASE WHEN bt.transaction_status = 'Borrowed' AND bt.due_at < NOW() THEN 'Overdue' ELSE bt.transaction_status END AS transaction_status,
               t.title_id, COALESCE(t.title, m.title) AS title, COALESCE(credits.author, m.author, 'Unknown author') AS author,
               t.cover_image_path,
               pc.accession_number, COALESCE(pc.barcode, m.barcode) AS barcode,
-              lbr.report_status AS lost_report_status
+              lbr.report_status AS lost_report_status, m.material_type, pc.condition_status,
+              pc.lifecycle_status AS copy_lifecycle_status, t.lifecycle_status AS title_lifecycle_status,
+              (SELECT rr.status FROM loan_renewal_requests rr WHERE rr.transaction_id = bt.transaction_id ORDER BY rr.created_at DESC, rr.renewal_request_id DESC LIMIT 1) AS last_renewal_status,
+              (SELECT rr.decision_summary FROM loan_renewal_requests rr WHERE rr.transaction_id = bt.transaction_id ORDER BY rr.created_at DESC, rr.renewal_request_id DESC LIMIT 1) AS last_renewal_decision_summary,
+              (SELECT rr.decided_at FROM loan_renewal_requests rr WHERE rr.transaction_id = bt.transaction_id ORDER BY rr.created_at DESC, rr.renewal_request_id DESC LIMIT 1) AS last_renewal_at,
+              (SELECT rr.decision_source FROM loan_renewal_requests rr WHERE rr.transaction_id = bt.transaction_id ORDER BY rr.created_at DESC, rr.renewal_request_id DESC LIMIT 1) AS last_renewal_decision_source,
+              (SELECT COUNT(*) FROM reservations r WHERE r.book_title_id = t.title_id AND r.user_id <> bt.user_id AND r.reservation_status IN ('pending','approved','ready_for_pickup')) AS waiting_renewals,
+              (SELECT COUNT(*) FROM fines f WHERE f.user_id = bt.user_id AND f.payment_status IN ('Accruing','Unpaid','Partially Paid')) AS blocking_fines,
+              (SELECT COUNT(*) FROM lost_book_reports loss WHERE loss.user_id = bt.user_id AND loss.report_status = 'Confirmed' AND loss.payment_status = 'Unpaid') AS blocking_lost_charges,
+              (SELECT COUNT(*) FROM lost_book_reports report WHERE report.transaction_id = bt.transaction_id AND report.report_status IN ('Pending','Confirmed')) AS blocking_lost_reports
              FROM borrow_transactions bt INNER JOIN materials m ON m.material_id = bt.material_id
              LEFT JOIN physical_copies pc ON pc.physical_copy_id = bt.physical_copy_id OR (bt.physical_copy_id IS NULL AND pc.material_id = bt.material_id)
              LEFT JOIN titles t ON t.title_id = pc.title_id
@@ -244,10 +255,38 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
           loanLimit, remainingLoanSlots: loanLimit === null ? null : Math.max(0, loanLimit - activeStack),
           nextDueAt: activity.next_due_at ?? null, dueCutoffLabel: formatDueCutoffLabel(policy.dueTimeCutoff),
           policyVersionId: policy.versionId },
-        items: rows.map((row) => ({ transactionId: Number(row.transaction_id), titleId: row.title_id ? Number(row.title_id) : null, title: row.title ?? 'Catalog title unavailable', author: row.author,
-          coverImagePath: row.cover_image_path ? String(row.cover_image_path) : null,
-          accessionNumber: row.accession_number ?? null, barcode: row.barcode ?? null, borrowDate: row.borrowed_at, dueDate: row.due_at,
-          returnDate: row.returned_at, status: String(row.transaction_status), lostReportStatus: row.lost_report_status ? String(row.lost_report_status) : null })),
+        items: rows.map((row) => {
+          const renewalCount = Number(row.renewal_count ?? 0)
+          const status = String(row.transaction_status)
+          const dueAt = row.due_at ? new Date(row.due_at) : null
+          const canRequestRenewal = status === 'Borrowed'
+            && dueAt !== null
+            && clock() < dueAt
+            && renewalCount < policy.maxRenewals
+            && isMaterialBorrowable(policy, String(row.material_type))
+            && row.condition_status !== 'Lost'
+            && row.copy_lifecycle_status !== 'Archived'
+            && row.title_lifecycle_status !== 'Archived'
+            && Number(row.waiting_renewals ?? 0) === 0
+            && Number(row.blocking_fines ?? 0) === 0
+            && Number(row.blocking_lost_charges ?? 0) === 0
+            && Number(row.blocking_lost_reports ?? 0) === 0
+          return {
+            transactionId: Number(row.transaction_id), titleId: row.title_id ? Number(row.title_id) : null,
+            title: row.title ?? 'Catalog title unavailable', author: row.author,
+            coverImagePath: row.cover_image_path ? String(row.cover_image_path) : null,
+            accessionNumber: row.accession_number ?? null, barcode: row.barcode ?? null,
+            borrowDate: row.borrowed_at, initialDueAt: row.initial_due_at ?? row.due_at, dueDate: row.due_at,
+            returnDate: row.returned_at, status, lostReportStatus: row.lost_report_status ? String(row.lost_report_status) : null,
+            renewalCount, maxRenewals: policy.maxRenewals,
+            remainingRenewals: Math.max(0, policy.maxRenewals - renewalCount),
+            lastRenewalStatus: row.last_renewal_status ? String(row.last_renewal_status) : null,
+            lastRenewalDecisionSummary: row.last_renewal_decision_summary ? String(row.last_renewal_decision_summary) : null,
+            lastRenewalAt: row.last_renewal_at ?? null,
+            lastRenewalDecisionSource: row.last_renewal_decision_source ? String(row.last_renewal_decision_source) : null,
+            canRequestRenewal,
+          }
+        }),
         pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) },
       }
     },
@@ -499,14 +538,28 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
 
     async monitor(query: Record<string, unknown>) {
       const filters = validateHistoryQuery(query); const offset = (filters.page - 1) * filters.limit
+      const policy = await policyService.resolveActive(database, clock())
       const fromSql = `FROM borrow_transactions bt INNER JOIN users u ON u.user_id = bt.user_id
         INNER JOIN roles ro ON ro.role_id = u.role_id INNER JOIN materials m ON m.material_id = bt.material_id
+        LEFT JOIN accounts acc ON acc.user_id = bt.user_id
         LEFT JOIN physical_copies pc ON pc.physical_copy_id = bt.physical_copy_id OR (bt.physical_copy_id IS NULL AND pc.material_id = bt.material_id)
         LEFT JOIN titles t ON t.title_id = pc.title_id`
       const [[rows], [summaryRows], [countRows]] = await Promise.all([
         database.execute<RowDataPacket[]>(
-          `SELECT bt.transaction_id, u.full_name, u.school_id, ro.role_name, COALESCE(t.title, m.title) AS title,
-             pc.accession_number, COALESCE(pc.barcode, m.barcode) AS barcode, bt.created_at AS requested_at, bt.borrowed_at, bt.due_at, bt.returned_at,
+          `SELECT bt.transaction_id, u.full_name, u.school_id, ro.role_name, u.account_status AS user_account_status,
+             acc.account_status AS normalized_account_status, COALESCE(t.title, m.title) AS title,
+             pc.accession_number, COALESCE(pc.barcode, m.barcode) AS barcode, bt.created_at AS requested_at,
+             bt.borrowed_at, bt.due_at, bt.initial_due_at, bt.renewal_count, bt.returned_at,
+             m.material_type, pc.condition_status, pc.lifecycle_status AS copy_lifecycle_status,
+             t.lifecycle_status AS title_lifecycle_status,
+             (SELECT rr.status FROM loan_renewal_requests rr WHERE rr.transaction_id = bt.transaction_id ORDER BY rr.created_at DESC, rr.renewal_request_id DESC LIMIT 1) AS last_renewal_status,
+             (SELECT rr.decision_summary FROM loan_renewal_requests rr WHERE rr.transaction_id = bt.transaction_id ORDER BY rr.created_at DESC, rr.renewal_request_id DESC LIMIT 1) AS last_renewal_decision_summary,
+             (SELECT rr.decided_at FROM loan_renewal_requests rr WHERE rr.transaction_id = bt.transaction_id ORDER BY rr.created_at DESC, rr.renewal_request_id DESC LIMIT 1) AS last_renewal_at,
+             (SELECT rr.decision_source FROM loan_renewal_requests rr WHERE rr.transaction_id = bt.transaction_id ORDER BY rr.created_at DESC, rr.renewal_request_id DESC LIMIT 1) AS last_renewal_decision_source,
+             (SELECT COUNT(*) FROM reservations r WHERE r.book_title_id = t.title_id AND r.user_id <> bt.user_id AND r.reservation_status IN ('pending','approved','ready_for_pickup')) AS waiting_renewals,
+             (SELECT COUNT(*) FROM fines f WHERE f.user_id = bt.user_id AND f.payment_status IN ('Accruing','Unpaid','Partially Paid')) AS blocking_fines,
+             (SELECT COUNT(*) FROM lost_book_reports loss WHERE loss.user_id = bt.user_id AND loss.report_status = 'Confirmed' AND loss.payment_status = 'Unpaid') AS blocking_lost_charges,
+             (SELECT COUNT(*) FROM lost_book_reports report WHERE report.transaction_id = bt.transaction_id AND report.report_status IN ('Pending','Confirmed')) AS blocking_lost_reports,
              CASE WHEN bt.transaction_status = 'Borrowed' AND bt.due_at < NOW() THEN 'Overdue' ELSE bt.transaction_status END AS transaction_status
            ${fromSql} ORDER BY ${isPostgres
              ? `CASE (CASE WHEN bt.transaction_status = 'Borrowed' AND bt.due_at < NOW() THEN 'Overdue' ELSE bt.transaction_status END) WHEN 'Overdue' THEN 1 WHEN 'Borrowed' THEN 2 WHEN 'Pending' THEN 3 WHEN 'Returned' THEN 4 ELSE 5 END`
@@ -532,9 +585,38 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
       const summary = summaryRows[0] ?? {}; const total = Number(countRows[0]?.total ?? 0)
       return {
         summary: { pendingClaims: Number(summary.pending_claims ?? 0), activeLoans: Number(summary.active_loans ?? 0), overdueLoans: Number(summary.overdue_loans ?? 0), returnedToday: Number(summary.returned_today ?? 0), dueToday: Number(summary.due_today ?? 0) },
-        items: rows.map((row) => ({ transactionId: Number(row.transaction_id), userName: row.full_name, schoolId: row.school_id, role: row.role_name,
-          title: row.title, accessionNumber: row.accession_number ?? null, barcode: row.barcode, requestedAt: row.requested_at, borrowDate: row.borrowed_at,
-          dueDate: row.due_at, returnDate: row.returned_at, status: String(row.transaction_status) })),
+        items: rows.map((row) => {
+          const renewalCount = Number(row.renewal_count ?? 0)
+          const status = String(row.transaction_status)
+          const dueAt = row.due_at ? new Date(row.due_at) : null
+          const canRequestRenewal = status === 'Borrowed'
+            && dueAt !== null
+            && clock() < dueAt
+            && row.user_account_status === 'Active'
+            && row.normalized_account_status === 'Active'
+            && renewalCount < policy.maxRenewals
+            && isMaterialBorrowable(policy, String(row.material_type))
+            && row.condition_status !== 'Lost'
+            && row.copy_lifecycle_status !== 'Archived'
+            && row.title_lifecycle_status !== 'Archived'
+            && Number(row.waiting_renewals ?? 0) === 0
+            && Number(row.blocking_fines ?? 0) === 0
+            && Number(row.blocking_lost_charges ?? 0) === 0
+            && Number(row.blocking_lost_reports ?? 0) === 0
+          return {
+            transactionId: Number(row.transaction_id), userName: row.full_name, schoolId: row.school_id,
+            role: row.role_name, title: row.title, accessionNumber: row.accession_number ?? null,
+            barcode: row.barcode, requestedAt: row.requested_at, borrowDate: row.borrowed_at,
+            initialDueAt: row.initial_due_at ?? row.due_at, dueDate: row.due_at,
+            returnDate: row.returned_at, status, renewalCount, maxRenewals: policy.maxRenewals,
+            remainingRenewals: Math.max(0, policy.maxRenewals - renewalCount),
+            lastRenewalStatus: row.last_renewal_status ? String(row.last_renewal_status) : null,
+            lastRenewalDecisionSummary: row.last_renewal_decision_summary ? String(row.last_renewal_decision_summary) : null,
+            lastRenewalAt: row.last_renewal_at ?? null,
+            lastRenewalDecisionSource: row.last_renewal_decision_source ? String(row.last_renewal_decision_source) : null,
+            canRequestRenewal,
+          }
+        }),
         pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) },
       }
     },
@@ -628,17 +710,19 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
           transactionId = pendingClaim.transactionId
           await connection.execute(
             `UPDATE borrow_transactions
-                SET processed_by_user_id = ?, borrowed_at = ?, due_at = ?, borrowing_policy_version_id = ?,
+                SET processed_by_user_id = ?, borrowed_at = ?, due_at = ?, initial_due_at = ?,
+                    borrowing_policy_version_id = ?,
                     transaction_status = 'Borrowed', updated_at = NOW()
               WHERE transaction_id = ?`,
-            [processedByUserId, borrowedAt, dueAt, policy.versionId, transactionId],
+            [processedByUserId, borrowedAt, dueAt, dueAt, policy.versionId, transactionId],
           )
         } else {
           const [insert] = await connection.execute<ResultSetHeader>(
             `INSERT INTO borrow_transactions
-               (user_id, material_id, physical_copy_id, borrowing_policy_version_id, processed_by_user_id, borrowed_at, due_at, transaction_status, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 'Borrowed', NOW())`,
-            [context.borrower.userId, context.copy.materialId, context.copy.physicalCopyId, policy.versionId, processedByUserId, borrowedAt, dueAt],
+               (user_id, material_id, physical_copy_id, borrowing_policy_version_id, processed_by_user_id,
+                borrowed_at, due_at, initial_due_at, transaction_status, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Borrowed', NOW())`,
+            [context.borrower.userId, context.copy.materialId, context.copy.physicalCopyId, policy.versionId, processedByUserId, borrowedAt, dueAt, dueAt],
           )
           transactionId = Number(insert.insertId)
         }
@@ -713,6 +797,18 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
       }
       const actorAccountId = positiveCirculationId(actor.accountId, 'actorAccountId')
       return createCirculationService(database, clock).confirmCheckout(actorAccountId, body, true)
+    },
+
+    async preflightRenewal(actor: RenewalActor, transactionIdValue: unknown) {
+      return renewalService.preflight(transactionIdValue, actor)
+    },
+
+    async submitRenewal(actor: RenewalActor, transactionIdValue: unknown, body: unknown) {
+      return renewalService.submit(transactionIdValue, actor, body)
+    },
+
+    async staffRenewal(actor: RenewalActor, transactionIdValue: unknown, body: unknown) {
+      return renewalService.submit(transactionIdValue, actor, body)
     },
 
     async returnBook(actorAccountIdValue: unknown, transactionIdValue: unknown) {
