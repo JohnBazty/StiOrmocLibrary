@@ -16,6 +16,8 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   borrowing_policy_versions: ['borrowing_policy_version_id', 'effective_on', 'student_max_active_books', 'faculty_max_active_books', 'borrowing_days', 'due_time_cutoff', 'max_renewals', 'renewal_extension_days', 'student_max_active_reservations', 'faculty_max_active_reservations', 'change_reason', 'created_at'],
   borrowing_policy_material_rules: ['borrowing_policy_version_id', 'material_type', 'is_borrowable'],
   circulation_override_events: ['override_event_id', 'borrow_transaction_id', 'borrower_user_id', 'physical_copy_id', 'approved_by_user_id', 'warning_codes', 'override_reason', 'preflight_decision_id', 'approved_at'],
+  circulation_cases: ['case_id', 'case_type', 'transaction_id', 'physical_copy_id', 'borrower_user_id', 'status', 'opened_at', 'updated_at', 'resolved_at', 'policy_version_id', 'threshold_days_snapshot', 'lost_book_report_id'],
+  circulation_case_events: ['event_id', 'case_id', 'event_type', 'actor_user_id', 'from_status', 'to_status', 'reason', 'notes', 'created_at'],
   admin_notifications: ['admin_notification_id', 'event_type', 'reservation_id', 'borrow_transaction_id', 'book_title_id', 'created_at'],
   library_closed_days: ['closed_date', 'reason', 'created_at'],
   library_operating_schedule: ['day_of_week', 'is_open', 'opens_at', 'closes_at'],

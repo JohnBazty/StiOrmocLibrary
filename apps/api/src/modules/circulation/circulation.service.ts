@@ -11,6 +11,7 @@ import {
 } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { calculateOperatingFine, loadFineContext } from '../fines/fine-calculator.ts'
+import { lockInventoryCopy, recordInventoryAudit } from '../inventory/inventory.repository.ts'
 import {
   assertTokenMatchesEvaluation,
   evaluateCheckoutRules,
@@ -22,6 +23,7 @@ import {
 } from './circulation-preflight.ts'
 import { createBorrowingPolicyService } from './borrowing-policy.service.ts'
 import { roleBookLimit } from './borrowing-policy.types.ts'
+import { createCirculationCaseService } from './circulation-case.service.ts'
 import { formatDueCutoffLabel } from './due-date.ts'
 import {
   positiveCirculationId,
@@ -32,6 +34,7 @@ import {
   validatePreflight,
   type BorrowCartInput,
 } from './circulation.validation.ts'
+import { validateReportDamage } from './circulation-case.validation.ts'
 
 const ACTIVE_LOANS = "('Pending','Borrowed','Overdue')"
 const ACTIVE_RESERVATIONS = "('pending','approved','ready_for_pickup')"
@@ -199,6 +202,7 @@ async function compactQueue(connection: PoolConnection, titleId: number, removed
 
 export function createCirculationService(database: Pool = db, clock: () => Date = () => new Date()) {
   const policyService = createBorrowingPolicyService(database, clock)
+  const caseService = createCirculationCaseService(database, clock)
   return {
     async history(accountIdValue: unknown, query: Record<string, unknown>) {
       const accountId = positiveCirculationId(accountIdValue, 'accountId')
@@ -239,15 +243,27 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
       const total = Number(countRows[0]?.total ?? 0)
       const loanLimit = roleBookLimit(policy, role)
       const activeStack = activeLoans + activeReservations
+      const caseSummaries = await caseService.publicSummariesForTransactions(
+        userId,
+        rows.map((row) => Number(row.transaction_id)),
+      )
       return {
         summary: { role, activeLoans, activeReservations, activeStackCount: activeStack,
           loanLimit, remainingLoanSlots: loanLimit === null ? null : Math.max(0, loanLimit - activeStack),
           nextDueAt: activity.next_due_at ?? null, dueCutoffLabel: formatDueCutoffLabel(policy.dueTimeCutoff),
           policyVersionId: policy.versionId },
-        items: rows.map((row) => ({ transactionId: Number(row.transaction_id), titleId: row.title_id ? Number(row.title_id) : null, title: row.title ?? 'Catalog title unavailable', author: row.author,
-          coverImagePath: row.cover_image_path ? String(row.cover_image_path) : null,
-          accessionNumber: row.accession_number ?? null, barcode: row.barcode ?? null, borrowDate: row.borrowed_at, dueDate: row.due_at,
-          returnDate: row.returned_at, status: String(row.transaction_status), lostReportStatus: row.lost_report_status ? String(row.lost_report_status) : null })),
+        items: rows.map((row) => {
+          const transactionId = Number(row.transaction_id)
+          const caseSummary = caseSummaries.get(transactionId) ?? null
+          return {
+            transactionId, titleId: row.title_id ? Number(row.title_id) : null, title: row.title ?? 'Catalog title unavailable', author: row.author,
+            coverImagePath: row.cover_image_path ? String(row.cover_image_path) : null,
+            accessionNumber: row.accession_number ?? null, barcode: row.barcode ?? null, borrowDate: row.borrowed_at, dueDate: row.due_at,
+            returnDate: row.returned_at, status: String(row.transaction_status),
+            lostReportStatus: row.lost_report_status ? String(row.lost_report_status) : null,
+            caseSummary,
+          }
+        }),
         pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) },
       }
     },
@@ -716,13 +732,32 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
     },
 
     async returnBook(actorAccountIdValue: unknown, transactionIdValue: unknown) {
-      const actorAccountId = positiveCirculationId(actorAccountIdValue, 'actorAccountId'); const transactionId = positiveCirculationId(transactionIdValue, 'transactionId')
+      return this.completeReturn(actorAccountIdValue, transactionIdValue, { holdCopyForDamageCase: false })
+    },
+
+    async reportDamage(actorAccountIdValue: unknown, transactionIdValue: unknown, body: unknown) {
+      const input = validateReportDamage(body)
+      return this.completeReturn(actorAccountIdValue, transactionIdValue, {
+        holdCopyForDamageCase: true,
+        observedCondition: input.observedCondition,
+        description: input.description,
+      })
+    },
+
+    async completeReturn(
+      actorAccountIdValue: unknown,
+      transactionIdValue: unknown,
+      options: { holdCopyForDamageCase: boolean; observedCondition?: string; description?: string },
+    ) {
+      const actorAccountId = positiveCirculationId(actorAccountIdValue, 'actorAccountId')
+      const transactionId = positiveCirculationId(transactionIdValue, 'transactionId')
       const connection = await database.getConnection()
       try {
-        await connection.beginTransaction(); await actorUserId(connection, actorAccountId)
+        await connection.beginTransaction()
+        const staffUserId = await actorUserId(connection, actorAccountId)
         const [rows] = await connection.execute<RowDataPacket[]>(
           `SELECT bt.transaction_id, bt.user_id, bt.material_id, bt.physical_copy_id, bt.due_at, bt.transaction_status,
-                  pc.title_id, pc.accession_number, t.title FROM borrow_transactions bt
+                  pc.title_id, pc.accession_number, pc.barcode, pc.condition_status, t.title FROM borrow_transactions bt
              INNER JOIN physical_copies pc ON pc.physical_copy_id = bt.physical_copy_id INNER JOIN titles t ON t.title_id = pc.title_id
             WHERE bt.transaction_id = ? LIMIT 1 FOR UPDATE`, [transactionId],
         )
@@ -730,9 +765,25 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         if (!loan) throw new HttpError(404, 'CIRCULATION_TRANSACTION_NOT_FOUND', 'The borrowing transaction was not found.')
         if (!['Borrowed', 'Overdue'].includes(String(loan.transaction_status))) throw new HttpError(422, 'CIRCULATION_RETURN_INVALID', 'Only active or overdue transactions can be returned.')
         const returnedAt = clock()
+        let damageCaseId: number | null = null
+        if (options.holdCopyForDamageCase) {
+          const opened = await caseService.openDamageCaseLocked(connection, {
+            transactionId,
+            physicalCopyId: Number(loan.physical_copy_id),
+            borrowerUserId: Number(loan.user_id),
+            actorUserId: staffUserId,
+            baselineCondition: loan.condition_status ? String(loan.condition_status) : null,
+            observedCondition: options.observedCondition ?? 'Damaged',
+            description: options.description ?? 'Damage reported at return.',
+            openedAt: returnedAt,
+          })
+          damageCaseId = opened.case.caseId
+        }
         await connection.execute("UPDATE borrow_transactions SET transaction_status = 'Returned', returned_at = ?, updated_at = NOW() WHERE transaction_id = ?", [returnedAt, transactionId])
-        if(loan.transaction_status==='Overdue'&&loan.due_at){
-          const due=new Date(loan.due_at);const context=await loadFineContext(connection,due,returnedAt);const charge=calculateOperatingFine(due,returnedAt,context.policy,context.calendar)
+        if (loan.transaction_status === 'Overdue' && loan.due_at) {
+          const due = new Date(loan.due_at)
+          const context = await loadFineContext(connection, due, returnedAt)
+          const charge = calculateOperatingFine(due, returnedAt, context.policy, context.calendar)
           await connection.execute(
             isPostgres
               ? `INSERT INTO fines(transaction_id,user_id,fine_type,fine_amount,payment_status,calculation_basis,overdue_units,rate_applied,maximum_cap_applied,applied_date,finalized_at,notes,updated_at)
@@ -741,42 +792,118 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
               : `INSERT INTO fines(transaction_id,user_id,fine_type,fine_amount,payment_status,calculation_basis,overdue_units,rate_applied,maximum_cap_applied,applied_date,finalized_at,notes,updated_at)
              VALUES (?,?,'Overdue',?,'Unpaid',?,?,?,?,NOW(),?,'Finalized when the book was returned',NOW())
              ON DUPLICATE KEY UPDATE fine_amount=VALUES(fine_amount),payment_status=IF(payment_status IN ('Paid','Waived','Voided'),payment_status,'Unpaid'),calculation_basis=VALUES(calculation_basis),overdue_units=VALUES(overdue_units),rate_applied=VALUES(rate_applied),maximum_cap_applied=VALUES(maximum_cap_applied),finalized_at=VALUES(finalized_at),notes=VALUES(notes),updated_at=NOW()`,
-            [transactionId,loan.user_id,charge.amount,charge.basis,charge.units,charge.rate,charge.capApplied?context.policy.maximumPenalty:null,returnedAt],
+            [transactionId, loan.user_id, charge.amount, charge.basis, charge.units, charge.rate, charge.capApplied ? context.policy.maximumPenalty : null, returnedAt],
           )
         }
-        const [waitRows] = await connection.execute<RowDataPacket[]>(
-          `SELECT reservation_id, user_id, queue_position FROM reservations WHERE book_title_id = ? AND reservation_status IN ('pending','approved') ORDER BY queue_position ASC, reserved_at ASC, reservation_id ASC LIMIT 1 FOR UPDATE`, [loan.title_id],
-        )
-        const nextReservation = waitRows[0]
-        if (nextReservation) {
-          const pickupDeadline = new Date(returnedAt.getTime() + 24 * 60 * 60 * 1000)
-          await connection.execute(`UPDATE reservations SET reservation_status = 'ready_for_pickup', accession_id = ?, assigned_physical_copy_id = ?, pickup_deadline = ?, updated_at = NOW() WHERE reservation_id = ?`, [loan.material_id, loan.physical_copy_id, pickupDeadline, nextReservation.reservation_id])
+
+        let nextReservation: RowDataPacket | null = null
+        let copyAvailability = 'Available'
+        if (options.holdCopyForDamageCase) {
+          const locked = await lockInventoryCopy(connection, String(loan.barcode))
+          if (!locked) throw new HttpError(404, 'CIRCULATION_COPY_NOT_FOUND', 'The physical copy was not found for damage intake.')
+          const observed = options.observedCondition ?? 'Damaged'
           await connection.execute(
-            isPostgres
-              ? `INSERT INTO borrow_transactions
-               (user_id, material_id, physical_copy_id, reservation_id, request_group_id, transaction_status, created_at)
-             VALUES (?, ?, ?, ?, ?, 'Pending', NOW())
-             ON CONFLICT (reservation_id) DO UPDATE SET material_id = ${excluded('material_id')}, physical_copy_id = ${excluded('physical_copy_id')},
-               transaction_status = 'Pending', cancelled_at = NULL, cancelled_by_user_id = NULL,
-               cancellation_reason = NULL, updated_at = NOW()`
-              : `INSERT INTO borrow_transactions
-               (user_id, material_id, physical_copy_id, reservation_id, request_group_id, transaction_status, created_at)
-             VALUES (?, ?, ?, ?, ?, 'Pending', NOW())
-             ON DUPLICATE KEY UPDATE material_id = VALUES(material_id), physical_copy_id = VALUES(physical_copy_id),
-               transaction_status = 'Pending', cancelled_at = NULL, cancelled_by_user_id = NULL,
-               cancellation_reason = NULL, updated_at = NOW()`,
-            [nextReservation.user_id, loan.material_id, loan.physical_copy_id, nextReservation.reservation_id, randomUUID()],
+            "UPDATE physical_copies SET condition_status = ?, availability_status = 'Unavailable', row_version = row_version + 1, updated_at = NOW() WHERE physical_copy_id = ?",
+            [observed, loan.physical_copy_id],
           )
-          await connection.execute("UPDATE physical_copies SET availability_status = 'Reserved', row_version = row_version + 1, updated_at = NOW() WHERE physical_copy_id = ?", [loan.physical_copy_id])
-          await connection.execute("UPDATE materials SET availability_status = 'Reserved', updated_at = NOW() WHERE material_id = ?", [loan.material_id])
-          await connection.execute(`INSERT INTO notifications (user_id, message_title, message_body, trigger_type, is_read) VALUES (?, 'Reservation ready for pickup', ?, 'Reservation Arrival', 0)`, [nextReservation.user_id, `${loan.title} is ready for pickup. Claim it before the pickup deadline.`])
+          await connection.execute(
+            "UPDATE materials SET availability_status = 'Unavailable', updated_at = NOW() WHERE material_id = ?",
+            [loan.material_id],
+          )
+          await recordInventoryAudit(connection, locked, 'Condition Changed', { userId: staffUserId, label: 'Admin' }, observed, locked.availability_status)
+          const afterCondition = { ...locked, condition_status: observed }
+          await recordInventoryAudit(connection, afterCondition, 'Availability Changed', { userId: staffUserId, label: 'Admin' }, observed, 'Unavailable')
+          copyAvailability = 'Unavailable'
+          const [altCopyRows] = await connection.execute<RowDataPacket[]>(
+            `SELECT pc.physical_copy_id, pc.material_id, pc.accession_number
+               FROM physical_copies pc
+              WHERE pc.title_id = ? AND pc.physical_copy_id <> ?
+                AND pc.lifecycle_status = 'Active'
+                AND pc.availability_status = 'Available'
+                AND pc.condition_status NOT IN ('Lost', 'Damaged')
+              ORDER BY pc.physical_copy_id ASC LIMIT 1 FOR UPDATE`,
+            [loan.title_id, loan.physical_copy_id],
+          )
+          const alternate = altCopyRows[0]
+          if (alternate) {
+            const [waitRows] = await connection.execute<RowDataPacket[]>(
+              `SELECT reservation_id, user_id FROM reservations
+                WHERE book_title_id = ? AND reservation_status IN ('pending','approved')
+                ORDER BY queue_position ASC, reserved_at ASC, reservation_id ASC LIMIT 1 FOR UPDATE`,
+              [loan.title_id],
+            )
+            nextReservation = waitRows[0] ?? null
+            if (nextReservation) {
+              const pickupDeadline = new Date(returnedAt.getTime() + 24 * 60 * 60 * 1000)
+              await connection.execute(
+                `UPDATE reservations SET reservation_status = 'ready_for_pickup', accession_id = ?, assigned_physical_copy_id = ?, pickup_deadline = ?, updated_at = NOW() WHERE reservation_id = ?`,
+                [alternate.material_id, alternate.physical_copy_id, pickupDeadline, nextReservation.reservation_id],
+              )
+              await connection.execute(
+                isPostgres
+                  ? `INSERT INTO borrow_transactions
+                   (user_id, material_id, physical_copy_id, reservation_id, request_group_id, transaction_status, created_at)
+                 VALUES (?, ?, ?, ?, ?, 'Pending', NOW())
+                 ON CONFLICT (reservation_id) DO UPDATE SET material_id = ${excluded('material_id')}, physical_copy_id = ${excluded('physical_copy_id')},
+                   transaction_status = 'Pending', cancelled_at = NULL, cancelled_by_user_id = NULL,
+                   cancellation_reason = NULL, updated_at = NOW()`
+                  : `INSERT INTO borrow_transactions
+                   (user_id, material_id, physical_copy_id, reservation_id, request_group_id, transaction_status, created_at)
+                 VALUES (?, ?, ?, ?, ?, 'Pending', NOW())
+                 ON DUPLICATE KEY UPDATE material_id = VALUES(material_id), physical_copy_id = VALUES(physical_copy_id),
+                   transaction_status = 'Pending', cancelled_at = NULL, cancelled_by_user_id = NULL,
+                   cancellation_reason = NULL, updated_at = NOW()`,
+                [nextReservation.user_id, alternate.material_id, alternate.physical_copy_id, nextReservation.reservation_id, randomUUID()],
+              )
+              await connection.execute("UPDATE physical_copies SET availability_status = 'Reserved', row_version = row_version + 1, updated_at = NOW() WHERE physical_copy_id = ?", [alternate.physical_copy_id])
+              await connection.execute("UPDATE materials SET availability_status = 'Reserved', updated_at = NOW() WHERE material_id = ?", [alternate.material_id])
+              await connection.execute(`INSERT INTO notifications (user_id, message_title, message_body, trigger_type, is_read) VALUES (?, 'Reservation ready for pickup', ?, 'Reservation Arrival', 0)`, [nextReservation.user_id, `${loan.title} is ready for pickup. Claim it before the pickup deadline.`])
+            }
+          }
         } else {
-          await connection.execute("UPDATE physical_copies SET availability_status = 'Available', row_version = row_version + 1, updated_at = NOW() WHERE physical_copy_id = ?", [loan.physical_copy_id])
-          await connection.execute("UPDATE materials SET availability_status = 'Available', updated_at = NOW() WHERE material_id = ?", [loan.material_id])
+          const [waitRows] = await connection.execute<RowDataPacket[]>(
+            `SELECT reservation_id, user_id, queue_position FROM reservations WHERE book_title_id = ? AND reservation_status IN ('pending','approved') ORDER BY queue_position ASC, reserved_at ASC, reservation_id ASC LIMIT 1 FOR UPDATE`, [loan.title_id],
+          )
+          nextReservation = waitRows[0] ?? null
+          if (nextReservation) {
+            const pickupDeadline = new Date(returnedAt.getTime() + 24 * 60 * 60 * 1000)
+            await connection.execute(`UPDATE reservations SET reservation_status = 'ready_for_pickup', accession_id = ?, assigned_physical_copy_id = ?, pickup_deadline = ?, updated_at = NOW() WHERE reservation_id = ?`, [loan.material_id, loan.physical_copy_id, pickupDeadline, nextReservation.reservation_id])
+            await connection.execute(
+              isPostgres
+                ? `INSERT INTO borrow_transactions
+                 (user_id, material_id, physical_copy_id, reservation_id, request_group_id, transaction_status, created_at)
+               VALUES (?, ?, ?, ?, ?, 'Pending', NOW())
+               ON CONFLICT (reservation_id) DO UPDATE SET material_id = ${excluded('material_id')}, physical_copy_id = ${excluded('physical_copy_id')},
+                 transaction_status = 'Pending', cancelled_at = NULL, cancelled_by_user_id = NULL,
+                 cancellation_reason = NULL, updated_at = NOW()`
+                : `INSERT INTO borrow_transactions
+                 (user_id, material_id, physical_copy_id, reservation_id, request_group_id, transaction_status, created_at)
+               VALUES (?, ?, ?, ?, ?, 'Pending', NOW())
+               ON DUPLICATE KEY UPDATE material_id = VALUES(material_id), physical_copy_id = VALUES(physical_copy_id),
+                 transaction_status = 'Pending', cancelled_at = NULL, cancelled_by_user_id = NULL,
+                 cancellation_reason = NULL, updated_at = NOW()`,
+              [nextReservation.user_id, loan.material_id, loan.physical_copy_id, nextReservation.reservation_id, randomUUID()],
+            )
+            await connection.execute("UPDATE physical_copies SET availability_status = 'Reserved', row_version = row_version + 1, updated_at = NOW() WHERE physical_copy_id = ?", [loan.physical_copy_id])
+            await connection.execute("UPDATE materials SET availability_status = 'Reserved', updated_at = NOW() WHERE material_id = ?", [loan.material_id])
+            await connection.execute(`INSERT INTO notifications (user_id, message_title, message_body, trigger_type, is_read) VALUES (?, 'Reservation ready for pickup', ?, 'Reservation Arrival', 0)`, [nextReservation.user_id, `${loan.title} is ready for pickup. Claim it before the pickup deadline.`])
+            copyAvailability = 'Reserved'
+          } else {
+            await connection.execute("UPDATE physical_copies SET availability_status = 'Available', row_version = row_version + 1, updated_at = NOW() WHERE physical_copy_id = ?", [loan.physical_copy_id])
+            await connection.execute("UPDATE materials SET availability_status = 'Available', updated_at = NOW() WHERE material_id = ?", [loan.material_id])
+            copyAvailability = 'Available'
+          }
         }
-        await connection.execute(`INSERT INTO admin_notifications (event_type, actor_user_id, borrow_transaction_id, book_title_id, message_title, message_body) VALUES ('return_completed', ?, ?, ?, 'Return completed', ?)`, [loan.user_id, transactionId, loan.title_id, `${loan.title} was returned${nextReservation ? ' and assigned to the next reservation' : ''}.`])
+        await connection.execute(`INSERT INTO admin_notifications (event_type, actor_user_id, borrow_transaction_id, book_title_id, message_title, message_body) VALUES ('return_completed', ?, ?, ?, 'Return completed', ?)`, [loan.user_id, transactionId, loan.title_id, `${loan.title} was returned${options.holdCopyForDamageCase ? ' with a damage case' : nextReservation ? ' and assigned to the next reservation' : ''}.`])
         await connection.commit()
-        return { transactionId, status: 'Returned', returnedAt, nextReservationId: nextReservation ? Number(nextReservation.reservation_id) : null, copyAvailability: nextReservation ? 'Reserved' : 'Available' }
+        return {
+          transactionId,
+          status: 'Returned',
+          returnedAt,
+          nextReservationId: nextReservation ? Number(nextReservation.reservation_id) : null,
+          copyAvailability,
+          damageCaseId,
+        }
       } catch (error) { await connection.rollback(); throw error } finally { connection.release() }
     },
 

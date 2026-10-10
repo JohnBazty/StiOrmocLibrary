@@ -23,6 +23,19 @@ function utcDate(value:string){const [year,month,day]=value.split('-').map(Numbe
 function nextDate(value:string){const date=utcDate(value);date.setUTCDate(date.getUTCDate()+1);return date.toISOString().slice(0,10)}
 function operatingDay(value:string,calendar:FineCalendar){const date=utcDate(value);const day=((date.getUTCDay()+6)%7)+1;return calendar.openDays.has(day)&&!calendar.closedDates.has(value)}
 
+/** Completed campus operating days after due time (Asia/Manila), matching daily fine day counting. */
+export function countOperatingDaysAfter(dueAt: Date, evaluatedAt: Date, calendar: FineCalendar = { openDays: DEFAULT_OPEN_DAYS, closedDates: new Set() }) {
+  if (evaluatedAt <= dueAt) return 0
+  const dueDate = manilaDate(dueAt)
+  const evaluatedDate = manilaDate(evaluatedAt)
+  if (dueDate === evaluatedDate) return 0
+  let units = 0
+  for (let date = nextDate(dueDate); date <= evaluatedDate; date = nextDate(date)) {
+    if (operatingDay(date, calendar)) units += 1
+  }
+  return units
+}
+
 export function calculateOperatingFine(dueAt:Date,evaluatedAt:Date,policy:FinePolicy=DEFAULT_POLICY,calendar:FineCalendar={openDays:DEFAULT_OPEN_DAYS,closedDates:new Set()}){
   if(evaluatedAt<=dueAt)return{amount:0,rawAmount:0,units:0,rate:policy.hourlyRate,basis:'Hourly' as const,capApplied:false}
   const dueDate=manilaDate(dueAt);const evaluatedDate=manilaDate(evaluatedAt)

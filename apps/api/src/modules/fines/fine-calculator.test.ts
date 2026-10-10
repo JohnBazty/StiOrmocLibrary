@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { calculateOperatingFine } from './fine-calculator.ts'
+import { calculateOperatingFine, countOperatingDaysAfter } from './fine-calculator.ts'
 
 const policy={hourlyRate:2,dailyRate:10,maximumPenalty:30}
 test('same-day overdue fines round up started hours',()=>{
@@ -9,4 +9,9 @@ test('same-day overdue fines round up started hours',()=>{
 test('daily fines exclude closed dates and apply the configured cap',()=>{
   const result=calculateOperatingFine(new Date('2026-09-01T08:59:00+08:00'),new Date('2026-09-07T10:00:00+08:00'),policy,{openDays:new Set([1,2,3,4,5,6]),closedDates:new Set(['2026-09-03'])})
   assert.deepEqual(result,{amount:30,rawAmount:40,units:4,rate:10,basis:'Daily',capApplied:true})
+})
+test('long-overdue operating days match daily fine day counting', () => {
+  const calendar = { openDays: new Set([1, 2, 3, 4, 5, 6]), closedDates: new Set(['2026-09-03']) }
+  assert.equal(countOperatingDaysAfter(new Date('2026-09-01T08:59:00+08:00'), new Date('2026-09-01T12:00:00+08:00'), calendar), 0)
+  assert.equal(countOperatingDaysAfter(new Date('2026-09-01T08:59:00+08:00'), new Date('2026-09-07T10:00:00+08:00'), calendar), 4)
 })
