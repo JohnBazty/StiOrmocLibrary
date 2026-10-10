@@ -15,6 +15,8 @@ Activate only after the API with `POST /api/internal/jobs/:jobName` is deployed 
 Replace Vault secret names if yours differ. Run in the Supabase SQL editor as a privileged role.
 
 ```sql
+-- pg_net signature on this project: http_post(url, body, params, headers, timeout_milliseconds)
+
 -- reservation-expiration
 SELECT cron.schedule(
   'job-reservation-expiration',
@@ -22,11 +24,13 @@ SELECT cron.schedule(
   $$
   SELECT net.http_post(
     url := (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'job_runner_base_url') || '/reservation-expiration',
+    body := '{}'::jsonb,
+    params := '{}'::jsonb,
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
       'X-Job-Runner-Secret', (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'job_runner_secret')
     ),
-    body := '{}'::jsonb
+    timeout_milliseconds := 55000
   );
   $$
 );
@@ -38,11 +42,13 @@ SELECT cron.schedule(
   $$
   SELECT net.http_post(
     url := (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'job_runner_base_url') || '/circulation-overdue',
+    body := '{}'::jsonb,
+    params := '{}'::jsonb,
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
       'X-Job-Runner-Secret', (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'job_runner_secret')
     ),
-    body := '{}'::jsonb
+    timeout_milliseconds := 55000
   );
   $$
 );
@@ -54,11 +60,13 @@ SELECT cron.schedule(
   $$
   SELECT net.http_post(
     url := (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'job_runner_base_url') || '/notifications',
+    body := '{}'::jsonb,
+    params := '{}'::jsonb,
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
       'X-Job-Runner-Secret', (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'job_runner_secret')
     ),
-    body := '{}'::jsonb
+    timeout_milliseconds := 55000
   );
   $$
 );

@@ -265,8 +265,9 @@ Update when marking `built`:
 - [x] Ethan approves D1–D5 (2026-10-10). Hosted Cron/Vault permissions confirmed at activation.
 - [x] Add schema (`048` / `019`), runner module, protected routes, Admin status.
 - [x] Bound overdue cursor + notification queries; add unit tests.
-- [ ] Apply hosted `019`, set `JOB_RUNNER_SECRET`, activate Supabase Cron schedules, verify after idle/deployment.
-- [ ] Update schema-context / agent-protocol / roadmap and mark this plan `built` after live verification.
+- [x] Apply hosted `019`; enable `pg_cron` / `pg_net`; store Vault `job_runner_base_url` + `job_runner_secret`.
+- [ ] Set `JOB_RUNNER_SECRET` on Vercel team `ssl19` production, deploy PR job-runner code, smoke `POST /api/internal/jobs/*`.
+- [ ] Activate three Cron schedules; verify `last_success_at` after idle/deploy; mark plan `built`.
 
 ## Change log
 
@@ -276,3 +277,4 @@ Update when marking `built`:
 | 2026-10-10 | Expanded to ready-to-build: verified tree change points, D1–D5 defaults, concrete schema/API/module phases, overdue cursor fairness, notification bounds, Admin dashboard surface, and ops activation gate. |
 | 2026-10-10 | Ethan approved D1–D5 as written. Plan remains `planned` until build starts. |
 | 2026-10-10 | Build started: status `inprogress`. Added MySQL `048` / Supabase `019`, job-runner module, internal + Admin routes, overdue cursor, notification bounds, Admin dashboard panel, runbook. |
+| 2026-10-10 | Hosted activation partial: `019` applied, extensions on, Vault secrets created. Blocked on Vercel `ssl19` access (set secret + deploy). Cron intentionally not scheduled until production job routes exist. |

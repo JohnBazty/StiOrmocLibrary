@@ -101,7 +101,7 @@ Always know and document:
 | Latest migration | `20261010_048_durable_job_runner.sql` |
 | Latest number | `048` |
 | **Next available number** | **`049`** |
-| Supabase / Postgres files | Hosted ledger includes `017_loan_renewals.sql`, `017_circulation_cases.sql`, and `018_stocktake_sessions.sql`. Tree also has `019_durable_job_runner.sql` (apply on hosted before Cron). Next new Supabase file number after apply: **020**. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set. |
+| Supabase / Postgres files | Hosted ledger includes `017_loan_renewals.sql`, `017_circulation_cases.sql`, `018_stocktake_sessions.sql`, and applied `019_durable_job_runner.sql`. Next new Supabase file number: **020**. `pg_cron` / `pg_net` enabled; Vault holds `job_runner_base_url` / `job_runner_secret`. Cron schedules pending production deploy + `JOB_RUNNER_SECRET` on Vercel team `ssl19`. |
 
 Naming pattern in this repo:
 
@@ -166,3 +166,4 @@ Prefer simple, readable scripts under a clear folder (for example `tools/` or `s
 | 2026-10-09 | Configurable borrowing policies: MySQL `046` / Supabase `016`; tracker advanced to MySQL next `047` and Supabase next `017`. |
 | 2026-10-10 | Circulation cases (long overdue / damage): MySQL `047` / Supabase `017_circulation_cases.sql` applied on hosted. Ledger already had `017_loan_renewals.sql` and `018_stocktake_sessions.sql`; next Supabase file **019**. MySQL next `048`. |
 | 2026-10-10 | Durable job runner (T1) build started: MySQL `048_durable_job_runner` / Supabase `019_durable_job_runner.sql` authored; next MySQL `049`, next Supabase after apply **020**. |
+| 2026-10-10 | Hosted: applied `019_durable_job_runner.sql`; enabled `pg_cron` + `pg_net`; created Vault secrets. Cron not scheduled yet — production API still lacks job routes; Vercel env needs team `ssl19` access. |
