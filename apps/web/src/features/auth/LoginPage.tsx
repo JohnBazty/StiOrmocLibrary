@@ -72,7 +72,6 @@ export function LoginPage() {
             <button disabled={busy} className="flex h-13 w-full items-center justify-center rounded-xl bg-[#003399] px-5 text-sm font-black text-[#FFFFFF] shadow-lg shadow-[#003399]/15 transition hover:bg-[#003399]/90 disabled:cursor-wait disabled:opacity-60">{busy ? 'Verifying account…' : 'Log In'}</button>
           </form>
           <p className="mt-7 text-center text-sm text-[#003399]/70">Don&apos;t have an account? <Link to="/register" className="font-black text-[#003399] underline decoration-[#FFF200] decoration-4 underline-offset-4">Register as Student</Link></p>
-          <div className="mt-6 border-t border-[#003399]/10 pt-6 text-center"><Link to="/staff" className="inline-flex items-center gap-2 rounded-xl border border-[#003399]/20 px-4 py-2.5 text-xs font-black text-[#003399] hover:bg-[#FFF200]"><ShieldCheck size={15} /> Librarian / Admin Login</Link></div>
         </div>
       </section>
     </main>

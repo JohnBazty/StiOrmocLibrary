@@ -14,7 +14,7 @@ describe('authentication pages', () => {
     expect(screen.getByLabelText('School ID')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Log In' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Register as Student' }).getAttribute('href')).toBe('/register')
-    expect(screen.getByRole('link', { name: 'Librarian / Admin Login' }).getAttribute('href')).toBe('/staff')
+    expect(screen.queryByRole('link', { name: 'Librarian / Admin Login' })).toBeNull()
   })
 
   it('shows every field required by normalized student registration', () => {
