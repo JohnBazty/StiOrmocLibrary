@@ -3,7 +3,7 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ThemeToggle } from '../theme/ThemeToggle'
 import { AuthenticationError, login } from './auth-api'
-import { clearAccessToken, getCurrentClaims, saveAccessToken } from './auth-storage'
+import { clearAccessToken, dashboardForRole, getCurrentClaims, saveAccessToken } from './auth-storage'
 
 const SCHOOL_ID = /^[A-Z0-9][A-Z0-9._-]{2,49}$/
 
@@ -37,10 +37,10 @@ export function AdminLoginPage() {
 
     setBusy(true); setErrors({}); setMessage('')
     try {
-      const result = await login(normalizedSchoolId, 'Admin', password)
-      if (result.user.role !== 'Admin') throw new AuthenticationError('This account cannot access the Administration Portal.', 'ADMIN_ROLE_REQUIRED')
+      const result = await login(normalizedSchoolId, password, 'staff')
+      if (result.user.role !== 'Admin' && result.user.role !== 'Librarian' && result.user.role !== 'Staff') throw new AuthenticationError('This account cannot access the Staff Portal.', 'STAFF_ROLE_REQUIRED')
       saveAccessToken(result.token)
-      navigate('/admin/dashboard', { replace: true })
+      navigate(dashboardForRole(result.user.role), { replace: true })
     } catch (error) {
       const authError = error instanceof AuthenticationError ? error : new AuthenticationError('Unable to open the Administration Portal right now.')
       setErrors(authError.errors)
