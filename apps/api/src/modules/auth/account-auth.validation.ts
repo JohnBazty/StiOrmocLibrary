@@ -2,6 +2,7 @@ import type { JwtRole } from './jwt-auth.service.ts'
 import { toCanonicalRole } from './role-normalization.ts'
 
 export type FieldErrors = Record<string, string>
+export type LoginPortal = 'user' | 'staff'
 
 const LOGIN_ROLES = new Set<JwtRole>(['Admin', 'Student', 'Faculty'])
 const SCHOOL_ID_PATTERN = /^[A-Z0-9][A-Z0-9._-]{2,49}$/
@@ -21,6 +22,12 @@ export function normalizeRole(value: unknown): JwtRole | '' {
   const candidate = value.trim().toLowerCase()
   const match = [...LOGIN_ROLES].find((role) => role.toLowerCase() === candidate)
   return match ?? ''
+}
+
+export function normalizePortal(value: unknown): LoginPortal | '' {
+  if (typeof value !== 'string') return ''
+  const candidate = value.trim().toLowerCase()
+  return candidate === 'user' || candidate === 'staff' ? candidate : ''
 }
 
 export function validateAccountRegistration(body: unknown) {
@@ -67,16 +74,6 @@ export function validateAccountRegistration(body: unknown) {
   }
 }
 
-export type LoginPortal = 'user' | 'staff'
-
-const PORTALS = new Set<LoginPortal>(['user', 'staff'])
-
-export function normalizePortal(value: unknown): LoginPortal | '' {
-  if (typeof value !== 'string') return ''
-  const candidate = value.trim().toLowerCase()
-  return PORTALS.has(candidate as LoginPortal) ? candidate as LoginPortal : ''
-}
-
 export function validateRoleLogin(body: unknown) {
   const input = body && typeof body === 'object' ? body as Record<string, unknown> : {}
   const schoolId = normalizeSchoolId(input.school_id)
@@ -90,7 +87,8 @@ export function validateRoleLogin(body: unknown) {
 
   // portal=user|staff: role is detected from the account after password check.
   // login_as remains supported for older clients and the staff page.
-  if (!portal && !role) errors.login_as = 'Select a valid login role.'
+  if (input.portal !== undefined && !portal) errors.portal = 'Select a valid login portal.'
+  else if (!portal && !role) errors.login_as = 'Select a valid login role.'
   if (portal === 'staff' && role && role !== 'Admin') errors.login_as = 'Select a valid login role.'
   if (!schoolId) errors.school_id = 'School ID is required.'
   else if (!SCHOOL_ID_PATTERN.test(schoolId)) errors.school_id = 'Enter a valid school ID.'
