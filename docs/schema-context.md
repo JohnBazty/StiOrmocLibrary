@@ -105,6 +105,16 @@ Migration `20260820_009_research_thesis_inventory.sql` adds the independent phys
 
 Migration `20260821_012_inventory_removal_lifecycle.sql` adds an Active/Archived lifecycle to bound research inventory and extends both book-copy and thesis audit histories with Archived/Deleted events and action reasons. Hard deletion is limited to never-used inventory rows; audit snapshots survive deletion through nullable `ON DELETE SET NULL` parent references. Any circulation, reservation, or audit history requires archive fallback, while active loans and reservations block both operations.
 
+Migration MySQL `047` / Supabase `018` adds Admin stocktake sessions:
+
+- `stocktake_sessions`: scoped count session with `scope_kind` (`shelf`, `category`, `room`, `collection`), `asset_kind`, frozen `scope_snapshot`, and status (`in_progress`, `closed`, `reviewed`, `cancelled`).
+- `stocktake_expected_items`: immutable expected asset snapshots at session start, plus close-time lifecycle/loan/row-version snapshots.
+- `stocktake_scans`: append-only scans with unique per-session `request_key`, observed shelf/compartment, and lookup snapshot.
+- `stocktake_discrepancies`: deterministic `finding_key` findings (`missing`, `wrong_location`, `unknown`, and related codes) with open/resolved/dismissed/blocked status.
+- `stocktake_resolution_events`: append-only resolution history with actor, reason, and optional inventory/floor-plan audit references.
+
+Closing a session freezes findings only; it never marks Lost, changes availability, moves a shelf, or charges a borrower. Items with stocktake expected/scan history take the archive path instead of hard delete.
+
 Research conditions use lowercase `good`, `fair`, `for_repair`, `damaged`, and `lost`. Non-Lost changes preserve availability. Lost alone is forced to `unavailable` by both the transactional service and MySQL triggers. Manual availability accepts only `available` or `unavailable`; a Lost record cannot be republished until its condition is changed. Before any condition or availability mutation, the service resolves and locks the optional legacy `materials` row through the unique barcode, then blocks Borrowed/Overdue transactions with 422. Migration `20260820_010_research_inventory_circulation_sync.sql` synchronizes Lost/manual availability to that circulation row without adding a title-table foreign key; Lost also cancels pending/approved/ready pickup assignments. Student catalog reads use `availability_status='available'`. Thesis summaries, registers, CSV, and PDF reports query only `research_inventory`; book reports remain separate.
 
 New publication requests now write `titles`, `authors`, `research_records`, and one independently accessioned `research_inventory` row in the same transaction. Migration `20260820_011_backfill_published_research_inventory.sql` makes older publications visible by retaining their unique `research_code` as the initial accession and barcode; it does not delete or reinterpret their normalized catalog metadata.
