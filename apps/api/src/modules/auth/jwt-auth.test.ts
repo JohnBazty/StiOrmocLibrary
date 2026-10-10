@@ -120,6 +120,39 @@ test('rejects valid credentials when login_as does not match the stored role', a
   assert.deepEqual(queryValues, ['STI-2026-0042', 'Faculty'])
 })
 
+test('user portal detects a Student account without a selected role', async () => {
+  let queryValues: unknown[] = []
+  const database = { execute: async (_sql: string, values: unknown[]) => {
+    queryValues = values
+    return [[{
+      account_id: 42, user_id: 99, school_id: 'STI-2026-0042', password_hash: 'bcrypt-hash',
+      role: 'Student', account_status: 'Active', first_name: 'Ada', last_name: 'Lovelace',
+    }]]
+  } } as never
+  const service = createJwtAuthService(database, { compare: async () => true } as never, jwt)
+
+  const result = await service.login({ portal: 'user', school_id: 'STI-2026-0042', password: 'CorrectHorse1' })
+
+  assert.equal(result.user.role, 'Student')
+  assert.deepEqual(queryValues, ['STI-2026-0042'])
+})
+
+test('user portal rejects staff credentials without revealing the stored role', async () => {
+  const database = { execute: async () => [[{
+    account_id: 1, user_id: 1, school_id: 'ADMIN-001', password_hash: 'bcrypt-hash',
+    role: 'Admin', account_status: 'Active', linked_status: 'Active',
+  }]] } as never
+  const service = createJwtAuthService(database, { compare: async () => true } as never, jwt)
+
+  await assert.rejects(
+    service.login({ portal: 'user', school_id: 'ADMIN-001', password: 'CorrectHorse1' }),
+    (error: unknown) => error instanceof HttpError
+      && error.status === 401
+      && error.code === 'INVALID_CREDENTIALS'
+      && error.message === 'Invalid school ID or password.',
+  )
+})
+
 test('blocks a Student bearer token from the Admin dashboard data endpoint', async () => {
   const token = jwt.sign(
     { userId: 77, schoolId: 'STI-2026-0077', role: 'Student' }, env.jwt.secret,

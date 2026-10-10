@@ -32,12 +32,14 @@ export type RegistrationResult = {
   account: { id: number; schoolId: string; role: 'Student'; firstName: string; lastName: string }
 }
 
-export async function login(schoolId: string, role: AuthRole, password: string): Promise<LoginResult> {
+export type LoginPortal = 'user' | 'staff'
+
+export async function login(schoolId: string, password: string, portal: LoginPortal = 'user'): Promise<LoginResult> {
   clearAccessToken()
   const response = await fetch('/api/v1/auth/login', {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ login_as: role, school_id: schoolId, password }),
+    body: JSON.stringify({ portal, school_id: schoolId, password }),
   })
   if (!(response.headers.get('content-type') ?? '').includes('application/json')) {
     throw new AuthenticationError('The authentication service returned an unexpected response.', 'NON_JSON_RESPONSE')
