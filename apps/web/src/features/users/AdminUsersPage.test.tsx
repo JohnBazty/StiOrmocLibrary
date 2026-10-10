@@ -45,8 +45,10 @@ describe('AdminUsersPage', () => {
     expect(screen.queryByLabelText('Role')).toBeNull()
   })
 
-  it('shows Librarians account records without management actions', async () => {
-    identity.role = 'Librarian'
+  it('shows Faculty account records without student management actions', async () => {
+    const faculty = { ...student, id: 9, role: 'Faculty', school_id: 'FAC-9', full_name: 'Test Faculty' }
+    api.directory.mockResolvedValue({ rows: [faculty], pagination: { page: 1, limit: 25, total: 1, total_pages: 1 } })
+    api.detail.mockResolvedValue({ ...detail, ...faculty, first_name: 'Test', last_name: 'Faculty' })
     render(<AdminUsersPage />)
     fireEvent.click(await screen.findByRole('button', { name: 'View' }))
     await screen.findByRole('dialog', { name: 'Account record' })

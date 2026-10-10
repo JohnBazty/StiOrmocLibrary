@@ -8,20 +8,36 @@ import { HttpError } from '../../core/http-error.ts'
 import { jwtProtectedRouter } from './jwt-auth.routes.ts'
 import { createJwtAuthService, type JwtRole } from './jwt-auth.service.ts'
 import { createActiveJwtAccountGuard, verifyAccessToken } from './jwt-auth.middleware.ts'
+import type { AuthSessionRepository } from './auth-session.repository.ts'
 
 const redirects: Record<JwtRole, string> = {
-  Admin: '/admin/dashboard', Librarian: '/librarian/dashboard', Faculty: '/faculty/dashboard', Student: '/student/dashboard',
+  Admin: '/admin/dashboard', Faculty: '/faculty/dashboard', Student: '/student/dashboard',
 }
 
-test('authenticates all four roles, signs the required claims, and returns the correct redirect', async () => {
+function stubSessions(authVersion = 2): AuthSessionRepository & { calls: { accountIds: number[]; clearedUsers: number[] } } {
+  const calls = { accountIds: [] as number[], clearedUsers: [] as number[] }
+  return {
+    calls,
+    async incrementAuthVersionForAccount(accountId) {
+      calls.accountIds.push(accountId)
+      return authVersion
+    },
+    async incrementAuthVersionForUser() { return authVersion },
+    async clearOtherSessions() {},
+    async clearAllSessionsForUser(userId) { calls.clearedUsers.push(userId) },
+  }
+}
+
+test('authenticates canonical roles, signs the required claims, and returns the correct redirect', async () => {
   let id = 0
   for (const role of Object.keys(redirects) as JwtRole[]) {
     id += 1
+    const sessions = stubSessions(5)
     const database = { execute: async () => [[{
-      account_id: id, school_id: `STI-2026-${String(id).padStart(4, '0')}`,
+      account_id: id, user_id: id + 100, school_id: `STI-2026-${String(id).padStart(4, '0')}`,
       first_name: role, last_name: 'User', password_hash: 'bcrypt-hash', role, account_status: 'Active',
     }]] } as never
-    const service = createJwtAuthService(database, { compare: async () => true } as never, jwt)
+    const service = createJwtAuthService(database, { compare: async () => true } as never, jwt, sessions)
     const result = await service.login({ login_as: role, school_id: `STI-2026-${String(id).padStart(4, '0')}`, password: 'correct-password' })
     const claims = jwt.verify(result.token, env.jwt.secret, {
       algorithms: ['HS256'], issuer: env.jwt.issuer, audience: env.jwt.audience,
@@ -33,20 +49,74 @@ test('authenticates all four roles, signs the required claims, and returns the c
     assert.equal(claims.userId, id)
     assert.equal(claims.schoolId, `STI-2026-${String(id).padStart(4, '0')}`)
     assert.equal(claims.role, role)
+    assert.equal(claims.authVersion, 5)
+    assert.deepEqual(sessions.calls.accountIds, [id])
+    assert.deepEqual(sessions.calls.clearedUsers, [id + 100])
   }
 })
 
+test('Admin login normalizes a legacy Librarian account row to Admin', async () => {
+  const sessions = stubSessions(3)
+  const database = { execute: async () => [[{
+    account_id: 21, user_id: 121, school_id: 'LIB-2026-0001', password_hash: 'bcrypt-hash',
+    role: 'Librarian', account_status: 'Active', first_name: 'Campus', last_name: 'Librarian',
+  }]] } as never
+  const service = createJwtAuthService(database, { compare: async () => true } as never, jwt, sessions)
+  const result = await service.login({ login_as: 'Admin', school_id: 'LIB-2026-0001', password: 'correct-password' })
+  assert.equal(result.user.role, 'Admin')
+  assert.equal(result.redirect, '/admin/dashboard')
+  const claims = jwt.verify(result.token, env.jwt.secret, {
+    algorithms: ['HS256'], issuer: env.jwt.issuer, audience: env.jwt.audience,
+  }) as jwt.JwtPayload
+  assert.equal(claims.role, 'Admin')
+})
+
+test('rejects client login_as Librarian so staff must use Admin', async () => {
+  const service = createJwtAuthService({ execute: async () => { throw new Error('must not query') } } as never, { compare: async () => false } as never, jwt, stubSessions())
+  await assert.rejects(
+    service.login({ login_as: 'Librarian', school_id: 'LIB-2026-0001', password: 'correct-password' }),
+    (error: unknown) => error instanceof HttpError && error.status === 422 && error.code === 'AUTH_VALIDATION_FAILED',
+  )
+})
+
+test('legacy Librarian bearer tokens normalize to Admin at verification', () => {
+  const token = jwt.sign(
+    { accountId: 9, userId: 9, schoolId: 'LIB-9', role: 'Librarian', authVersion: 2 },
+    env.jwt.secret,
+    { algorithm: 'HS256', expiresIn: 900, issuer: env.jwt.issuer, audience: env.jwt.audience, subject: '9' },
+  )
+  const identity = verifyAccessToken(token)
+  assert.equal(identity.role, 'Admin')
+})
+
+test('active-account guard accepts Admin token against a legacy Librarian DB role', async () => {
+  const token = jwt.sign({ accountId: 9, schoolId: 'LIB-9', role: 'Admin', authVersion: 2 }, env.jwt.secret, {
+    algorithm: 'HS256', issuer: env.jwt.issuer, audience: env.jwt.audience, expiresIn: 900,
+  })
+  const identity = verifyAccessToken(token)
+  const guard = createActiveJwtAccountGuard({
+    execute: async () => [[{ account_status: 'Active', auth_version: 2, school_id: 'LIB-9', role: 'Librarian', user_status: 'Active' }]],
+  } as never)
+  const outcome = await new Promise<{ next?: boolean; code?: string }>((resolve) => {
+    const response = { locals: { authenticatedUser: identity }, status: () => response, json: (body: { code: string }) => resolve(body) }
+    guard({} as never, response as never, () => resolve({ next: true }))
+  })
+  assert.equal(outcome.next, true)
+})
+
 test('rejects invalid credentials without revealing whether the account exists', async () => {
+  const sessions = stubSessions()
   const database = { execute: async () => [[{
     account_id: 1, school_id: 'STI-2026-0001', first_name: 'Student', last_name: 'User',
     password_hash: 'bcrypt-hash', role: 'Student', account_status: 'Active',
   }]] } as never
-  const service = createJwtAuthService(database, { compare: async () => false } as never, jwt)
+  const service = createJwtAuthService(database, { compare: async () => false } as never, jwt, sessions)
 
   await assert.rejects(
     service.login({ login_as: 'Student', school_id: 'STI-2026-0001', password: 'wrong-password' }),
     (error: unknown) => error instanceof HttpError && error.status === 401 && error.code === 'INVALID_CREDENTIALS',
   )
+  assert.deepEqual(sessions.calls.accountIds, [])
 })
 
 test('registration hashes the password and commits separate account and student profile rows', async () => {
@@ -67,7 +137,7 @@ test('registration hashes the password and commits separate account and student 
   }
   const database = { execute: async () => [[]], getConnection: async () => connection } as never
   const passwordHasher = { hash: async () => '$2b$12$secure-hash', compare: async () => false } as never
-  const service = createJwtAuthService(database, passwordHasher, jwt)
+  const service = createJwtAuthService(database, passwordHasher, jwt, stubSessions())
 
   const result = await service.register({
     school_id: ' sti-2026-0091 ', first_name: ' Ada ', last_name: ' Lovelace ',
@@ -94,7 +164,7 @@ test('duplicate school ID is rejected with 422 before hashing or opening a trans
   } as never
   const service = createJwtAuthService(database, {
     hash: async () => { hashed = true; return 'unexpected' }, compare: async () => false,
-  } as never, jwt)
+  } as never, jwt, stubSessions())
 
   await assert.rejects(
     service.register({
@@ -111,7 +181,7 @@ test('duplicate school ID is rejected with 422 before hashing or opening a trans
 test('rejects valid credentials when login_as does not match the stored role', async () => {
   let queryValues: unknown[] = []
   const database = { execute: async (_sql: string, values: unknown[]) => { queryValues = values; return [[]] } } as never
-  const service = createJwtAuthService(database, { compare: async () => false } as never, jwt)
+  const service = createJwtAuthService(database, { compare: async () => false } as never, jwt, stubSessions())
 
   await assert.rejects(
     service.login({ login_as: 'Faculty', school_id: 'STI-2026-0042', password: 'CorrectHorse1' }),
@@ -129,7 +199,7 @@ test('user portal detects a Student account without a selected role', async () =
       role: 'Student', account_status: 'Active', first_name: 'Ada', last_name: 'Lovelace',
     }]]
   } } as never
-  const service = createJwtAuthService(database, { compare: async () => true } as never, jwt)
+  const service = createJwtAuthService(database, { compare: async () => true } as never, jwt, stubSessions())
 
   const result = await service.login({ portal: 'user', school_id: 'STI-2026-0042', password: 'CorrectHorse1' })
 
@@ -171,7 +241,7 @@ test('rejects login when the linked operational user is deactivated', async () =
     account_id: 1, school_id: 'STI-2026-0001', password_hash: 'bcrypt-hash',
     role: 'Student', account_status: 'Active', linked_status: 'Deactivated',
   }]] } as never
-  const service = createJwtAuthService(database, { compare: async () => true } as never, jwt)
+  const service = createJwtAuthService(database, { compare: async () => true } as never, jwt, stubSessions())
   await assert.rejects(
     service.login({ login_as: 'Student', school_id: 'STI-2026-0001', password: 'correct-password' }),
     (error: unknown) => error instanceof HttpError && error.status === 403 && error.code === 'ACCOUNT_DEACTIVATED',
@@ -194,4 +264,20 @@ test('old bearer tokens are rejected after a status change or activation version
     })
     assert.equal(outcome.code, 'ACCOUNT_ACCESS_REVOKED')
   }
+})
+
+test('login bumps auth_version and signs the new JWT with that version', async () => {
+  const sessions = stubSessions(4)
+  const database = { execute: async () => [[{
+    account_id: 42, user_id: 99, school_id: 'STI-2026-0042', password_hash: 'bcrypt-hash',
+    role: 'Student', account_status: 'Active', first_name: 'Ada', last_name: 'Lovelace',
+  }]] } as never
+  const service = createJwtAuthService(database, { compare: async () => true } as never, jwt, sessions)
+  const result = await service.login({ login_as: 'Student', school_id: 'STI-2026-0042', password: 'correct-password' })
+  const claims = jwt.verify(result.token, env.jwt.secret, {
+    algorithms: ['HS256'], issuer: env.jwt.issuer, audience: env.jwt.audience,
+  }) as jwt.JwtPayload
+  assert.equal(claims.authVersion, 4)
+  assert.deepEqual(sessions.calls.accountIds, [42])
+  assert.deepEqual(sessions.calls.clearedUsers, [99])
 })

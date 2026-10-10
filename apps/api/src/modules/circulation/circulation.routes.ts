@@ -26,6 +26,7 @@ export function createCirculationRequestRouter(controller: Controller = circulat
 export function createAdminCirculationRouter(controller: Controller = circulationController) {
   const router = Router()
   router.get('/borrowing/monitor', controller.monitor)
+  router.post('/borrowing/preflight', controller.preflightCheckout)
   router.post('/borrowing/confirm-checkout', controller.confirmCheckout)
   router.put('/borrowing/:transactionId/return', controller.returnBook)
   router.post('/borrowing/:transactionId/calculate-penalty', controller.calculatePenalty)

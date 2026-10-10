@@ -11,8 +11,27 @@ import {
 } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { calculateOperatingFine, loadFineContext } from '../fines/fine-calculator.ts'
-import { nextOperatingDueDate } from './due-date.ts'
-import { positiveCirculationId, validateBorrowCart, validateCancellation, validateCheckout, validateHistoryQuery, type BorrowCartInput } from './circulation.validation.ts'
+import {
+  assertTokenMatchesEvaluation,
+  evaluateCheckoutRules,
+  signPreflightToken,
+  sortedWarningCodes,
+  throwFirstBlocker,
+  type CheckoutEvaluationContext,
+  type CheckoutFlow,
+} from './circulation-preflight.ts'
+import { createBorrowingPolicyService } from './borrowing-policy.service.ts'
+import { roleBookLimit } from './borrowing-policy.types.ts'
+import { formatDueCutoffLabel } from './due-date.ts'
+import {
+  positiveCirculationId,
+  validateBorrowCart,
+  validateCancellation,
+  validateCheckout,
+  validateHistoryQuery,
+  validatePreflight,
+  type BorrowCartInput,
+} from './circulation.validation.ts'
 
 const ACTIVE_LOANS = "('Pending','Borrowed','Overdue')"
 const ACTIVE_RESERVATIONS = "('pending','approved','ready_for_pickup')"
@@ -30,17 +49,128 @@ async function actorUserId(connection: PoolConnection, accountId: number) {
   return rows[0]?.user_id ? Number(rows[0].user_id) : null
 }
 
-async function lockBorrower(connection: PoolConnection, userId: number | null, schoolId: string | null) {
+async function findBorrower(connection: PoolConnection, userId: number | null, schoolId: string | null, forUpdate: boolean) {
   const [rows] = await connection.execute<OperationalUser[]>(
     `SELECT u.user_id, u.full_name, u.institutional_id, u.school_id,
             ro.role_name, u.account_status
        FROM users u INNER JOIN roles ro ON ro.role_id = u.role_id
-      WHERE ${userId ? 'u.user_id = ?' : 'u.school_id = ?'} LIMIT 1 FOR UPDATE`, [userId ?? schoolId],
+      WHERE ${userId ? 'u.user_id = ?' : 'u.school_id = ?'} LIMIT 1${forUpdate ? ' FOR UPDATE' : ''}`, [userId ?? schoolId],
   )
-  const borrower = rows[0]
+  return rows[0] ?? null
+}
+
+async function lockBorrower(connection: PoolConnection, userId: number | null, schoolId: string | null) {
+  const borrower = await findBorrower(connection, userId, schoolId, true)
   if (!borrower) throw new HttpError(404, 'CIRCULATION_BORROWER_NOT_FOUND', 'The borrower account was not found.')
   if (borrower.account_status !== 'Active') throw new HttpError(422, 'CIRCULATION_ACCOUNT_BLOCKED', 'This account is not active and cannot borrow materials.')
   return borrower
+}
+
+async function loadCheckoutEvaluationContext(
+  connection: PoolConnection,
+  input: { barcode: string; schoolId: string | null; userId: number | null; reservationId: number | null },
+  flow: CheckoutFlow,
+  borrowedAt: Date,
+  forUpdate: boolean,
+): Promise<CheckoutEvaluationContext> {
+  const lockSuffix = forUpdate ? ` FOR UPDATE${isPostgres ? ' OF pc, t' : ''}` : ''
+  const loanLock = forUpdate ? ' FOR UPDATE' : ''
+  const reservationLock = forUpdate ? ' FOR UPDATE' : ''
+  const borrower = await findBorrower(connection, input.userId, input.schoolId, forUpdate)
+  const [copyRows] = await connection.execute<RowDataPacket[]>(
+    `SELECT pc.physical_copy_id, pc.title_id, pc.material_id, pc.accession_number, pc.barcode, pc.condition_status,
+            pc.availability_status, pc.lifecycle_status, t.title, m.material_type
+       FROM physical_copies pc INNER JOIN titles t ON t.title_id = pc.title_id LEFT JOIN materials m ON m.material_id = pc.material_id
+      WHERE pc.barcode = ? LIMIT 1${lockSuffix}`, [input.barcode],
+  )
+  const copy = copyRows[0] ?? null
+  let openLoan: CheckoutEvaluationContext['openLoan'] = null
+  let queueHead: CheckoutEvaluationContext['queueHead'] = null
+  let studentActiveTitleCount = 0
+  let targetTitleAlreadyActive = false
+  let borrowerActiveOrOverdueCount = 0
+  if (copy) {
+    const [openRows] = await connection.execute<RowDataPacket[]>(
+      `SELECT transaction_id, user_id, transaction_status, request_group_id, reservation_id
+         FROM borrow_transactions
+        WHERE (physical_copy_id = ? OR material_id = ?) AND transaction_status IN ${ACTIVE_LOANS}
+        ORDER BY transaction_id ASC LIMIT 1${loanLock}`,
+      [copy.physical_copy_id, copy.material_id],
+    )
+    if (openRows[0]) {
+      openLoan = {
+        transactionId: Number(openRows[0].transaction_id),
+        userId: Number(openRows[0].user_id),
+        status: String(openRows[0].transaction_status),
+        reservationId: openRows[0].reservation_id ? Number(openRows[0].reservation_id) : null,
+        requestGroupId: openRows[0].request_group_id ? String(openRows[0].request_group_id) : null,
+      }
+    }
+    const [queueRows] = await connection.execute<RowDataPacket[]>(
+      `SELECT reservation_id, user_id, queue_position, reservation_status FROM reservations
+        WHERE book_title_id = ? AND reservation_status IN ${WAITING_RESERVATIONS}
+        ORDER BY queue_position ASC, reserved_at ASC, reservation_id ASC LIMIT 1${reservationLock}`, [copy.title_id],
+    )
+    if (queueRows[0]) {
+      queueHead = {
+        reservationId: Number(queueRows[0].reservation_id),
+        userId: Number(queueRows[0].user_id),
+        status: String(queueRows[0].reservation_status),
+      }
+    }
+  }
+  if (borrower) {
+    if (copy) {
+      const [capacityRows] = await connection.execute<RowDataPacket[]>(
+        `SELECT COUNT(DISTINCT activity.title_id) AS active_count, ${isPostgres ? 'COUNT(*) FILTER (WHERE activity.title_id = ?) > 0' : 'MAX(activity.title_id = ?)'} AS target_already_active FROM (
+           SELECT pc_active.title_id FROM borrow_transactions bt INNER JOIN physical_copies pc_active ON pc_active.physical_copy_id = bt.physical_copy_id
+            WHERE bt.user_id = ? AND bt.transaction_status IN ${ACTIVE_LOANS}
+           UNION ALL SELECT r.book_title_id FROM reservations r WHERE r.user_id = ? AND r.reservation_status IN ${ACTIVE_RESERVATIONS} AND r.book_title_id IS NOT NULL
+         ) activity`, [copy.title_id, borrower.user_id, borrower.user_id],
+      )
+      studentActiveTitleCount = Number(capacityRows[0]?.active_count ?? 0)
+      targetTitleAlreadyActive = Boolean(capacityRows[0]?.target_already_active)
+    }
+    const [activeLoanRows] = await connection.execute<RowDataPacket[]>(
+      `SELECT COUNT(*) AS active_count FROM borrow_transactions
+        WHERE user_id = ? AND transaction_status IN ('Borrowed','Overdue')`,
+      [borrower.user_id],
+    )
+    borrowerActiveOrOverdueCount = Number(activeLoanRows[0]?.active_count ?? 0)
+  }
+  const closedDates = await closedDateSet(connection, borrowedAt)
+  return {
+    flow,
+    borrower: {
+      found: Boolean(borrower),
+      userId: borrower ? Number(borrower.user_id) : null,
+      schoolId: borrower ? String(borrower.school_id) : null,
+      name: borrower ? String(borrower.full_name) : null,
+      role: borrower ? String(borrower.role_name) : null,
+      accountStatus: borrower ? String(borrower.account_status) : null,
+    },
+    copy: {
+      found: Boolean(copy),
+      physicalCopyId: copy ? Number(copy.physical_copy_id) : null,
+      barcode: copy ? String(copy.barcode) : null,
+      accessionNumber: copy ? String(copy.accession_number) : null,
+      title: copy ? String(copy.title) : null,
+      condition: copy ? String(copy.condition_status) : null,
+      availability: copy ? String(copy.availability_status) : null,
+      lifecycleStatus: copy ? String(copy.lifecycle_status) : null,
+      materialId: copy?.material_id ? Number(copy.material_id) : null,
+      materialType: copy?.material_type ? String(copy.material_type) : null,
+      titleId: copy ? Number(copy.title_id) : null,
+    },
+    openLoan,
+    queueHead,
+    selectedReservationId: input.reservationId,
+    studentActiveTitleCount,
+    targetTitleAlreadyActive,
+    borrowerActiveOrOverdueCount,
+    borrowedAt,
+    closedDates,
+  }
 }
 
 async function closedDateSet(connection: PoolConnection, borrowedAt: Date) {
@@ -68,6 +198,7 @@ async function compactQueue(connection: PoolConnection, titleId: number, removed
 }
 
 export function createCirculationService(database: Pool = db, clock: () => Date = () => new Date()) {
+  const policyService = createBorrowingPolicyService(database, clock)
   return {
     async history(accountIdValue: unknown, query: Record<string, unknown>) {
       const accountId = positiveCirculationId(accountIdValue, 'accountId')
@@ -77,6 +208,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
       if (!identity?.user_id) throw new HttpError(422, 'CIRCULATION_PROFILE_NOT_LINKED', 'This login account is not linked to a circulation profile.')
       const userId = Number(identity.user_id)
       const offset = (filters.page - 1) * filters.limit
+      const policy = await policyService.resolveActive(database, clock())
       const [[rows], [countRows], [activityRows]] = await Promise.all([
         database.execute<RowDataPacket[]>(
           `SELECT bt.transaction_id, bt.borrowed_at, bt.due_at, bt.returned_at,
@@ -105,10 +237,13 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
       const activity = activityRows[0] ?? {}; const role = String(identity.role)
       const activeLoans = Number(activity.active_loans ?? 0); const activeReservations = Number(activity.active_reservations ?? 0)
       const total = Number(countRows[0]?.total ?? 0)
+      const loanLimit = roleBookLimit(policy, role)
+      const activeStack = activeLoans + activeReservations
       return {
-        summary: { role, activeLoans, activeReservations, activeStackCount: activeLoans + activeReservations,
-          loanLimit: role === 'Student' ? 2 : null, remainingLoanSlots: role === 'Student' ? Math.max(0, 2 - activeLoans - activeReservations) : null,
-          nextDueAt: activity.next_due_at ?? null, dueCutoffLabel: '8:59 AM' },
+        summary: { role, activeLoans, activeReservations, activeStackCount: activeStack,
+          loanLimit, remainingLoanSlots: loanLimit === null ? null : Math.max(0, loanLimit - activeStack),
+          nextDueAt: activity.next_due_at ?? null, dueCutoffLabel: formatDueCutoffLabel(policy.dueTimeCutoff),
+          policyVersionId: policy.versionId },
         items: rows.map((row) => ({ transactionId: Number(row.transaction_id), titleId: row.title_id ? Number(row.title_id) : null, title: row.title ?? 'Catalog title unavailable', author: row.author,
           coverImagePath: row.cover_image_path ? String(row.cover_image_path) : null,
           accessionNumber: row.accession_number ?? null, barcode: row.barcode ?? null, borrowDate: row.borrowed_at, dueDate: row.due_at,
@@ -152,12 +287,15 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
             activeCount,
           })
         }
-        if (borrower.role_name === 'Student' && activeCount + input.titleIds.length > 2) {
-          throw new HttpError(422, 'STUDENT_BORROW_LIMIT_REACHED', 'Transaction Blocked: Students cannot exceed 2 books', {
+        const policy = await policyService.resolveActive(connection, clock())
+        const bookLimit = roleBookLimit(policy, String(borrower.role_name))
+        if (bookLimit !== null && activeCount + input.titleIds.length > bookLimit) {
+          throw new HttpError(422, 'STUDENT_BORROW_LIMIT_REACHED', `Transaction Blocked: ${borrower.role_name} cannot exceed ${bookLimit} books`, {
             activeCount,
             incomingCount: input.titleIds.length,
             projectedCount: activeCount + input.titleIds.length,
-            limit: 2,
+            limit: bookLimit,
+            policyVersionId: policy.versionId,
           })
         }
 
@@ -280,7 +418,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
       const actor = actorValue && typeof actorValue === 'object' ? actorValue as { accountId?: unknown; role?: unknown } : {}
       const actorAccountId = positiveCirculationId(actor.accountId, 'actorAccountId')
       const actorRole = String(actor.role ?? '')
-      if (!['Student', 'Faculty', 'Admin', 'Librarian'].includes(actorRole)) {
+      if (!['Student', 'Faculty', 'Admin'].includes(actorRole)) {
         throw new HttpError(403, 'CIRCULATION_CANCEL_FORBIDDEN', 'Your role cannot cancel borrowing requests.')
       }
       const transactionId = positiveCirculationId(transactionIdValue, 'transactionId')
@@ -305,7 +443,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         )
         const request = rows[0]
         if (!request) throw new HttpError(404, 'BORROW_REQUEST_NOT_FOUND', 'The pending borrow request was not found.')
-        const staffOverride = ['Admin', 'Librarian'].includes(actorRole)
+        const staffOverride = actorRole === 'Admin'
         if (!staffOverride && (!cancellingUserId || Number(request.user_id) !== cancellingUserId)) {
           throw new HttpError(403, 'BORROW_REQUEST_NOT_OWNED', 'You can cancel only your own pending borrow request.')
         }
@@ -401,99 +539,177 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
       }
     },
 
+    async preflightCheckout(actorAccountIdValue: unknown, body: unknown) {
+      const actorAccountId = positiveCirculationId(actorAccountIdValue, 'actorAccountId')
+      const input = validatePreflight(body)
+      const connection = await database.getConnection()
+      try {
+        const borrowedAt = clock()
+        const policy = await policyService.resolveActive(connection, borrowedAt)
+        const context = await loadCheckoutEvaluationContext(connection, input, input.flow, borrowedAt, false)
+        const evaluation = evaluateCheckoutRules(context, policy)
+        const payload = {
+          decision: evaluation.decision,
+          expiresAt: null as string | null,
+          borrower: context.borrower.found ? {
+            userId: context.borrower.userId,
+            schoolId: context.borrower.schoolId,
+            name: context.borrower.name,
+            role: context.borrower.role,
+          } : null,
+          copy: context.copy.found ? {
+            physicalCopyId: context.copy.physicalCopyId,
+            barcode: context.copy.barcode,
+            accessionNumber: context.copy.accessionNumber,
+            title: context.copy.title,
+            condition: context.copy.condition,
+            availability: context.copy.availability,
+          } : null,
+          dueAt: evaluation.dueAt,
+          policyVersionId: policy.versionId,
+          policyDisplayName: `Policy ${policy.versionId}`,
+          policyEffectiveOn: policy.effectiveOn,
+          dueCutoffLabel: formatDueCutoffLabel(policy.dueTimeCutoff),
+          blockers: evaluation.blockers.map(({ code, message }) => ({ code, message })),
+          warnings: evaluation.warnings.map(({ code, message }) => ({ code, message })),
+          alerts: evaluation.alerts.map(({ code, message }) => ({ code, message })),
+          preflightToken: null as string | null,
+        }
+        if (evaluation.decision !== 'blocked' && context.borrower.userId && context.copy.physicalCopyId) {
+          const signed = signPreflightToken({
+            accountId: actorAccountId,
+            borrowerUserId: context.borrower.userId,
+            physicalCopyId: context.copy.physicalCopyId,
+            reservationId: evaluation.fulfilledReservationId,
+            flow: input.flow,
+            warningCodes: sortedWarningCodes(evaluation.warnings),
+            policyVersionId: policy.versionId,
+          })
+          payload.preflightToken = signed.token
+          payload.expiresAt = signed.expiresAt.toISOString()
+        }
+        return payload
+      } finally {
+        connection.release()
+      }
+    },
+
     async confirmCheckout(actorAccountIdValue: unknown, body: unknown, requirePendingDeskClaim = false) {
-      const actorAccountId = positiveCirculationId(actorAccountIdValue, 'actorAccountId'); const input = validateCheckout(body)
+      const actorAccountId = positiveCirculationId(actorAccountIdValue, 'actorAccountId')
+      const input = validateCheckout(body)
+      const flow: CheckoutFlow = requirePendingDeskClaim ? 'claim' : 'walk_in'
       const connection = await database.getConnection()
       try {
         await connection.beginTransaction()
         const processedByUserId = await actorUserId(connection, actorAccountId)
-        const borrower = await lockBorrower(connection, input.userId, input.schoolId)
-        const [copyRows] = await connection.execute<RowDataPacket[]>(
-          `SELECT pc.physical_copy_id, pc.title_id, pc.material_id, pc.accession_number, pc.barcode, pc.condition_status,
-                  pc.availability_status, pc.lifecycle_status, t.title, m.material_type
-             FROM physical_copies pc INNER JOIN titles t ON t.title_id = pc.title_id LEFT JOIN materials m ON m.material_id = pc.material_id
-            WHERE pc.barcode = ? LIMIT 1 FOR UPDATE${isPostgres ? ' OF pc, t' : ''}`, [input.barcode],
-        )
-        const copy = copyRows[0]
-        if (!copy || copy.lifecycle_status !== 'Active') throw new HttpError(404, 'CIRCULATION_COPY_NOT_FOUND', 'No active physical copy matches this barcode.')
-        if (copy.material_type && copy.material_type !== 'Book') throw new HttpError(422, 'RESEARCH_VIEW_ONLY', 'Research and thesis records cannot be borrowed.')
-        if (!copy.material_id) throw new HttpError(422, 'CIRCULATION_COPY_NOT_LINKED', 'This copy is not linked to the circulation material ledger.')
-        if (String(copy.condition_status) === 'Lost' || copy.availability_status === 'Unavailable') throw new HttpError(422, 'CIRCULATION_COPY_UNAVAILABLE', 'This physical copy is unavailable for checkout.')
-        const [openRows] = await connection.execute<RowDataPacket[]>(
-          `SELECT transaction_id, user_id, transaction_status, request_group_id, reservation_id
-             FROM borrow_transactions
-            WHERE (physical_copy_id = ? OR material_id = ?) AND transaction_status IN ${ACTIVE_LOANS}
-            ORDER BY transaction_id ASC LIMIT 1 FOR UPDATE`,
-          [copy.physical_copy_id, copy.material_id],
-        )
-        const pendingClaim = openRows[0]?.transaction_status === 'Pending' ? openRows[0] : null
-        if (openRows[0] && !pendingClaim) throw new HttpError(422, 'CIRCULATION_COPY_ALREADY_BORROWED', 'This physical copy already has an active borrowing transaction.')
-        if (pendingClaim && Number(pendingClaim.user_id) !== Number(borrower.user_id)) {
-          throw new HttpError(422, 'CIRCULATION_COPY_PENDING_FOR_ANOTHER_USER', 'This copy is held for another user’s pending claim request.')
+        const borrowedAt = clock()
+        const policy = await policyService.resolveActive(connection, borrowedAt)
+        const context = await loadCheckoutEvaluationContext(connection, input, flow, borrowedAt, true)
+        const evaluation = evaluateCheckoutRules(context, policy)
+        if (evaluation.decision === 'blocked') throwFirstBlocker(evaluation, roleBookLimit(policy, context.borrower.role))
+        if (!context.borrower.userId || !context.copy.physicalCopyId || !context.copy.materialId || !context.copy.titleId) {
+          throw new HttpError(422, 'CIRCULATION_VALIDATION_FAILED', 'Checkout context is incomplete.')
         }
-        const [queueRows] = await connection.execute<RowDataPacket[]>(
-          `SELECT reservation_id, user_id, queue_position, reservation_status FROM reservations
-            WHERE book_title_id = ? AND reservation_status IN ${WAITING_RESERVATIONS}
-            ORDER BY queue_position ASC, reserved_at ASC, reservation_id ASC LIMIT 1 FOR UPDATE`, [copy.title_id],
-        )
-        const queueHead = queueRows[0]
-        if (requirePendingDeskClaim && !pendingClaim) {
-          throw new HttpError(422, 'CIRCULATION_PENDING_CLAIM_NOT_FOUND', 'This borrower and barcode do not match a pending counter claim.')
-        }
-        if (requirePendingDeskClaim && pendingClaim?.reservation_id && (!queueHead
-          || Number(queueHead.reservation_id) !== Number(pendingClaim.reservation_id)
-          || queueHead.reservation_status !== 'ready_for_pickup')) {
-          throw new HttpError(422, 'CIRCULATION_RESERVATION_CLAIM_NOT_READY', 'The linked reservation is not ready for physical pickup verification.')
-        }
-        if (queueHead && Number(queueHead.user_id) !== Number(borrower.user_id)) throw new HttpError(422, 'CIRCULATION_QUEUE_PRIORITY_LOCKED', 'This title is reserved for the first user in the waiting queue.')
-        if (input.reservationId && (!queueHead || Number(queueHead.reservation_id) !== input.reservationId)) throw new HttpError(422, 'CIRCULATION_RESERVATION_NOT_FIRST', 'The selected reservation is not currently first in the queue.')
-        if (borrower.role_name === 'Student') {
-          const [capacityRows] = await connection.execute<RowDataPacket[]>(
-            `SELECT COUNT(DISTINCT activity.title_id) AS active_count, ${isPostgres ? 'COUNT(*) FILTER (WHERE activity.title_id = ?) > 0' : 'MAX(activity.title_id = ?)'} AS target_already_active FROM (
-               SELECT pc_active.title_id FROM borrow_transactions bt INNER JOIN physical_copies pc_active ON pc_active.physical_copy_id = bt.physical_copy_id
-                WHERE bt.user_id = ? AND bt.transaction_status IN ${ACTIVE_LOANS}
-               UNION ALL SELECT r.book_title_id FROM reservations r WHERE r.user_id = ? AND r.reservation_status IN ${ACTIVE_RESERVATIONS} AND r.book_title_id IS NOT NULL
-             ) activity`, [copy.title_id, borrower.user_id, borrower.user_id],
-          )
-          const activeCount = Number(capacityRows[0]?.active_count ?? 0); const alreadyActive = Boolean(capacityRows[0]?.target_already_active)
-          if (activeCount >= 2 && !alreadyActive) throw new HttpError(422, 'STUDENT_BORROW_LIMIT_REACHED', 'Transaction Blocked: Students cannot exceed 2 books', { activeCount, limit: 2 })
-        }
-        const borrowedAt = clock(); const dueAt = nextOperatingDueDate(borrowedAt, await closedDateSet(connection, borrowedAt))
+        const confirmation = assertTokenMatchesEvaluation({
+          token: input.preflightToken,
+          overrideReason: input.overrideReason,
+          accountId: actorAccountId,
+          borrowerUserId: context.borrower.userId,
+          physicalCopyId: context.copy.physicalCopyId,
+          reservationId: evaluation.fulfilledReservationId,
+          flow,
+          evaluation,
+          activePolicyVersionId: policy.versionId,
+        })
+        const dueAt = evaluation.dueAt
+        const pendingClaim = evaluation.pendingClaim
         let transactionId: number
         if (pendingClaim) {
-          transactionId = Number(pendingClaim.transaction_id)
+          transactionId = pendingClaim.transactionId
           await connection.execute(
             `UPDATE borrow_transactions
-                SET processed_by_user_id = ?, borrowed_at = ?, due_at = ?, transaction_status = 'Borrowed', updated_at = NOW()
+                SET processed_by_user_id = ?, borrowed_at = ?, due_at = ?, borrowing_policy_version_id = ?,
+                    transaction_status = 'Borrowed', updated_at = NOW()
               WHERE transaction_id = ?`,
-            [processedByUserId, borrowedAt, dueAt, transactionId],
+            [processedByUserId, borrowedAt, dueAt, policy.versionId, transactionId],
           )
         } else {
           const [insert] = await connection.execute<ResultSetHeader>(
-            `INSERT INTO borrow_transactions (user_id, material_id, physical_copy_id, processed_by_user_id, borrowed_at, due_at, transaction_status, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, 'Borrowed', NOW())`, [borrower.user_id, copy.material_id, copy.physical_copy_id, processedByUserId, borrowedAt, dueAt],
+            `INSERT INTO borrow_transactions
+               (user_id, material_id, physical_copy_id, borrowing_policy_version_id, processed_by_user_id, borrowed_at, due_at, transaction_status, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'Borrowed', NOW())`,
+            [context.borrower.userId, context.copy.materialId, context.copy.physicalCopyId, policy.versionId, processedByUserId, borrowedAt, dueAt],
           )
           transactionId = Number(insert.insertId)
         }
-        const fulfilledReservation = pendingClaim?.reservation_id && queueHead
-          && Number(queueHead.reservation_id) === Number(pendingClaim.reservation_id) ? queueHead : null
-        if (fulfilledReservation) {
-          await connection.execute(`UPDATE reservations SET reservation_status = 'claimed', accession_id = ?, assigned_physical_copy_id = ?, pickup_deadline = NULL, updated_at = NOW() WHERE reservation_id = ?`, [copy.material_id, copy.physical_copy_id, queueHead.reservation_id])
-          await compactQueue(connection, Number(copy.title_id), Number(queueHead.queue_position))
+        if (evaluation.fulfilledReservationId && context.queueHead) {
+          const [queueRows] = await connection.execute<RowDataPacket[]>(
+            `SELECT queue_position FROM reservations WHERE reservation_id = ? LIMIT 1`,
+            [evaluation.fulfilledReservationId],
+          )
+          const queuePosition = Number(queueRows[0]?.queue_position ?? 1)
+          await connection.execute(
+            `UPDATE reservations SET reservation_status = 'claimed', accession_id = ?, assigned_physical_copy_id = ?, pickup_deadline = NULL, updated_at = NOW() WHERE reservation_id = ?`,
+            [context.copy.materialId, context.copy.physicalCopyId, evaluation.fulfilledReservationId],
+          )
+          await compactQueue(connection, context.copy.titleId, queuePosition)
         }
-        await connection.execute("UPDATE physical_copies SET availability_status = 'Borrowed', row_version = row_version + 1, updated_at = NOW() WHERE physical_copy_id = ?", [copy.physical_copy_id])
-        await connection.execute("UPDATE materials SET availability_status = 'Borrowed', updated_at = NOW() WHERE material_id = ?", [copy.material_id])
-        await connection.execute(`INSERT INTO notifications (user_id, message_title, message_body, trigger_type, is_read) VALUES (?, 'Borrow confirmed', ?, 'Due Date', 0)`, [borrower.user_id, `${copy.title} is due at 8:59 AM on ${dueAt.toLocaleDateString('en-CA')}.`])
-        await connection.execute(`INSERT INTO admin_notifications (event_type, actor_user_id, reservation_id, borrow_transaction_id, book_title_id, message_title, message_body) VALUES ('checkout_confirmed', ?, ?, ?, ?, 'Checkout confirmed', ?)`, [borrower.user_id, fulfilledReservation?.reservation_id ?? null, transactionId, copy.title_id, `${borrower.full_name} borrowed ${copy.title}.`])
+        await connection.execute("UPDATE physical_copies SET availability_status = 'Borrowed', row_version = row_version + 1, updated_at = NOW() WHERE physical_copy_id = ?", [context.copy.physicalCopyId])
+        await connection.execute("UPDATE materials SET availability_status = 'Borrowed', updated_at = NOW() WHERE material_id = ?", [context.copy.materialId])
+        await connection.execute(
+          `INSERT INTO notifications (user_id, message_title, message_body, trigger_type, is_read) VALUES (?, 'Borrow confirmed', ?, 'Due Date', 0)`,
+          [context.borrower.userId, `${context.copy.title} is due at 8:59 AM on ${dueAt.toLocaleDateString('en-CA')}.`],
+        )
+        await connection.execute(
+          `INSERT INTO admin_notifications (event_type, actor_user_id, reservation_id, borrow_transaction_id, book_title_id, message_title, message_body) VALUES ('checkout_confirmed', ?, ?, ?, ?, 'Checkout confirmed', ?)`,
+          [context.borrower.userId, evaluation.fulfilledReservationId, transactionId, context.copy.titleId, `${context.borrower.name} borrowed ${context.copy.title}.`],
+        )
+        if (confirmation.overrideReason && confirmation.decisionId && confirmation.warningCodes.length > 0 && processedByUserId) {
+          await connection.execute(
+            `INSERT INTO circulation_override_events
+              (borrow_transaction_id, borrower_user_id, physical_copy_id, approved_by_user_id, warning_codes, override_reason, preflight_decision_id, approved_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              transactionId,
+              context.borrower.userId,
+              context.copy.physicalCopyId,
+              processedByUserId,
+              JSON.stringify(confirmation.warningCodes),
+              confirmation.overrideReason,
+              confirmation.decisionId,
+              borrowedAt,
+            ],
+          )
+        }
         await connection.commit()
-        return { transactionId, requestGroupId: pendingClaim?.request_group_id ?? null, borrower: { userId: Number(borrower.user_id), name: borrower.full_name, schoolId: borrower.school_id, role: borrower.role_name }, copy: { physicalCopyId: Number(copy.physical_copy_id), title: copy.title, accessionNumber: copy.accession_number, barcode: copy.barcode }, status: 'Borrowed', borrowedAt, dueAt, dueCutoff: '8:59 AM' }
+        return {
+          transactionId,
+          requestGroupId: pendingClaim?.requestGroupId ?? null,
+          borrower: {
+            userId: context.borrower.userId,
+            name: context.borrower.name,
+            schoolId: context.borrower.schoolId,
+            role: context.borrower.role,
+          },
+          copy: {
+            physicalCopyId: context.copy.physicalCopyId,
+            title: context.copy.title,
+            accessionNumber: context.copy.accessionNumber,
+            barcode: context.copy.barcode,
+          },
+          status: 'Borrowed' as const,
+          borrowedAt,
+          dueAt,
+          dueCutoff: '8:59 AM',
+          alerts: evaluation.alerts.map(({ code, message }) => ({ code, message })),
+        }
       } catch (error) { await connection.rollback(); throw error } finally { connection.release() }
     },
 
     async fulfillClaim(actorValue: unknown, body: unknown) {
       const actor = actorValue && typeof actorValue === 'object' ? actorValue as { accountId?: unknown; role?: unknown } : {}
-      if (!['Admin', 'System Administrator', 'Librarian'].includes(String(actor.role ?? ''))) {
-        throw new HttpError(403, 'CIRCULATION_FORBIDDEN', 'Only an administrator or librarian may fulfill a counter claim.')
+      if (String(actor.role ?? '') !== 'Admin') {
+        throw new HttpError(403, 'CIRCULATION_FORBIDDEN', 'Only an Admin may fulfill a counter claim.')
       }
       const actorAccountId = positiveCirculationId(actor.accountId, 'actorAccountId')
       return createCirculationService(database, clock).confirmCheckout(actorAccountId, body, true)

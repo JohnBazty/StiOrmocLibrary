@@ -6,9 +6,11 @@ The API is mid-cutover to Supabase PostgreSQL. See [supabase-migration-plan.md](
 
 - When `DATABASE_URL` (postgresql://…) is set, the runtime uses `pg` against drafts under [database/supabase/](../database/supabase/).
 - When unset, the runtime uses local MySQL via `mysql2` and the MySQL tree below (rollback / offline path).
-- The MySQL baseline and ordered migrations remain the historical product contract. Latest MySQL reference migration: `20261009_045_rename_system_brand.sql`. Next MySQL number if needed: **`046`**. MySQL is not the active database.
+- The MySQL baseline and ordered migrations remain the historical product contract. Latest MySQL reference migration: `20261009_046_configurable_borrowing_policies.sql` (after branding `045` and preflight `044`). Next MySQL number if needed: **`047`**. MySQL is not the active database.
 - Additive MAIN product tables for Postgres land in `database/supabase/005_main_product_gapfill.sql` (033–040).
-- The 2026-09-25 historical data cutover copied local MySQL rows into Supabase after applying Postgres 008–009. Hosted users/accounts were preserved, and the pre-cutover hosted snapshot is in schema `mysql_cutover_backup_20260925100301`. Postgres 010 adds book archive actor and floor image version metadata. Postgres 011 adds account authentication versions and management audit events. Postgres 015 renames system branding. Next Postgres migration number: **016**. See the cutover record in the migration plan.
+- The 2026-09-25 historical data cutover copied local MySQL rows into Supabase after applying Postgres 008–009. Hosted users/accounts were preserved, and the pre-cutover hosted snapshot is in schema `mysql_cutover_backup_20260925100301`. Postgres 010 adds book archive actor and floor image version metadata. Postgres 011 adds account authentication versions and management audit events. Postgres 013 consolidates Librarian into Admin. Postgres 014 adds `circulation_override_events` for checkout warning audits. Postgres 015 renames system branding. Postgres 016 adds immutable `borrowing_policy_versions` / material rules and policy FKs on loans and reservations. Next Postgres migration number: **017**. See the cutover record in the migration plan.
+
+Migration `20261009_045_rename_system_brand.sql` and Supabase migration `015_rename_system_brand.sql` change only the public `library_profiles.library_name` default and replace the existing row only when it still has the previous default. Database structures, relationships, routes, stored sessions, and technical `SmartLib` identifiers are unchanged.
 
 ## Target requirements versus current baseline
 
@@ -61,15 +63,15 @@ printers --< ink_repository
 
 ### Identity and access
 
-- `roles`: currently System Administrator, Librarian, Student, and Faculty. The target model also requires restricted Library Staff/Student Assistant access.
-- `users`: institutional ID, JWT-compatible `school_id`, profile, normalized `role_id`, JWT-facing `user_role`, hashed password, education data, and activation state. `System Administrator` maps to `Admin` at the JWT boundary.
+- `roles`: canonical authorization values are **Admin**, **Student**, and **Faculty**. Admin is the Librarian/Super Admin identity (approved consolidation; see `docs/admin-librarian-role-consolidation-plan.md`). Legacy `System Administrator` and `Librarian` role names are migration aliases only (`20261009_043` / Supabase `013`). The target model still separately requires a future restricted Library Staff/Student Assistant role.
+- `users`: institutional ID, JWT-compatible `school_id`, profile, normalized `role_id`, JWT-facing `user_role` (`Admin` \| `Student` \| `Faculty`), hashed password, education data, and activation state. During the compatibility window only, trusted auth boundaries still normalize legacy staff aliases to `Admin`.
 - `accounts`: normalized credential identity keyed by unique `school_id`, with contact number, bcrypt password hash, explicit JWT-facing role, and Active/Deactivated/Archived lifecycle. A nullable unique `user_id` is the backward-compatible bridge for identities imported from `users`.
 - `student_profiles`: one-to-one student academic extension containing first/last name, program or strand, and year/grade level. It never stores credentials or authorization state.
 - `auth_sessions`: expiring server-side session payloads keyed by an opaque session ID.
 
 Accounts should be deactivated through `account_status`; do not delete users with operational history.
 
-Phase 2 migration MySQL `042` (rollback reference) / applied Supabase `011` adds `auth_version` to both `accounts` and `users` and `account_management_events` with the affected account, actor, action, old/new status or changed field names, reason, and time. Admin Student account changes update the linked identity rows in one transaction; status changes increment both versions. Every protected JWT request checks the current account status and version, and legacy session requests check the linked operational user and account state. Archived accounts remain in the directory and keep their operational history. Archive is blocked by open loans or reservations.
+Phase 2 migration MySQL `042` (rollback reference) / applied Supabase `011` adds `auth_version` to both `accounts` and `users` and `account_management_events` with the affected account, actor, action, old/new status or changed field names, reason, and time. Admin Student account changes update the linked identity rows in one transaction; status changes increment both versions. Successful JWT and cookie logins also increment `auth_version` (and cookie login deletes other `auth_sessions` rows for that user) so only the newest device remains authenticated. Every protected JWT request checks the current account status and version, and legacy session requests check the linked operational user and account state. Archived accounts remain in the directory and keep their operational history. Archive is blocked by open loans or reservations.
 Expired rows in `auth_sessions` are periodically removed by the API session store.
 Migration `20260816_005_jwt_role_authentication.sql` adds the unique `school_id` and indexed four-value `user_role` compatibility fields without replacing normalized roles or server-side sessions.
 Migration `20260820_007_normalized_accounts_authentication.sql` adds `accounts` and `student_profiles`, backfills existing user credentials into linked account rows, and leaves all operational `users.user_id` foreign keys unchanged. New mobile-style student registration writes only the normalized account/profile pair; downstream operational enrollment can link an account to a user through `accounts.user_id` when those workflows are introduced.
@@ -116,6 +118,7 @@ Phase 3 migration MySQL `041` / Supabase `010` adds nullable `titles.archived_by
 ### Circulation
 
 - `borrow_transactions`: pending, borrowed, returned, and overdue activity.
+- `circulation_override_events`: append-only staff confirmation audit for checkout warnings (MySQL `044` / Supabase `014`). Does not alter `borrow_transactions`.
 - `reservations`: material waiting list and expiry status.
 - `fines`: one fine record per borrowing transaction.
 - `clearance_statuses`: one current standing row per user.
@@ -123,10 +126,11 @@ Phase 3 migration MySQL `041` / Supabase `010` adds nullable `titles.archived_by
 Borrowing triggers enforce:
 
 - One active borrower per material.
-- A maximum of two Borrowed/Overdue materials for Student users.
+- Active book and reservation limits, loan length, and due-time cutoff come from `borrowing_policy_versions` (Legacy seed: Student 2, Faculty unlimited, 1 operating day, 08:59). Finalized loans store `borrowing_policy_version_id`.
 - No active-count limit for Faculty, Librarian, or System Administrator roles.
-- Due time at 8:59 AM on the calendar day following `borrowed_at`.
+- Due time is calculated by the API from the active policy's operating-day count and cutoff (Legacy: next operating day at 08:59).
 - Material availability updates when borrowing and returning records change.
+- `borrowing_policy_versions` and `borrowing_policy_material_rules` are append-only; Admin publishes new versions via `POST /api/v1/admin/borrowing-policies`.
 
 The reservation migration expands the queue lifecycle to `pending`, `approved`, `ready_for_pickup`, `claimed`, `cancelled`, and `expired`. `material_id` remains the requested catalog/circulation material and nullable `accession_id` identifies the physical `materials` row held for pickup. Ready reservations have a pickup deadline; expiration clears the accession and restores Reserved inventory to Available in one transaction.
 

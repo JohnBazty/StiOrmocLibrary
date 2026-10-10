@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-10-09 (public system branding) |
+| **Date last updated** | 2026-10-09 (public system branding and configurable borrowing policies; MySQL `046` / next `047`; Supabase `016` / next `017`) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---
@@ -98,10 +98,10 @@ Always know and document:
 | Item | Value |
 | --- | --- |
 | Migrations directory | `database/migrations/` |
-| Latest migration | `20261009_045_rename_system_brand.sql` |
-| Latest number | `045` |
-| **Next available number** | **`046`** |
-| Supabase / Postgres files | `database/supabase/` through branding migration `015_rename_system_brand.sql`; next **016**. The tracked `007` is present in the live ledger. Reconcile the `002`/`005` ledger gaps before whole-directory replay. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set. |
+| Latest migration | `20261009_046_configurable_borrowing_policies.sql` |
+| Latest number | `046` |
+| **Next available number** | **`047`** |
+| Supabase / Postgres files | `database/supabase/` through `016_configurable_borrowing_policies.sql`; next **017**. Earlier files through `015` remain in tree; reconcile ledger gaps before whole-directory replay. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set. |
 
 Naming pattern in this repo:
 
@@ -162,4 +162,5 @@ Prefer simple, readable scripts under a clear folder (for example `tools/` or `s
 | 2026-09-25 | Cutover ported into GitHub main: MySQL tracker advanced to `040` / next `041`; added `005_main_product_gapfill.sql` for MAIN product tables. |
 | 2026-09-26 | Phase 3 archive and image migration added: MySQL reference `041` / next `042`, Supabase applied `010` / next `011`. Phase 3 P1–P3, A9, and F1 deployed; R1 excluded as requested. |
 | 2026-09-26 | Phase 2 item 1 account management deployed: MySQL reference `042` / next `043`, Supabase applied `011` / next `012`. Student lifecycle and audit flows passed production acceptance. Item 2 awaits user approval. |
-| 2026-10-09 | Added branding migrations `045` and Supabase `015`; tracker advanced to MySQL next `046` and Supabase next `016`. |
+| 2026-10-09 | Added branding migrations `045` and Supabase `015`; tracker advanced to MySQL `045` / next `046` and Supabase next `016`. |
+| 2026-10-09 | Configurable borrowing policies: MySQL `046` / Supabase `016`; tracker advanced to MySQL next `047` and Supabase next `017`. |

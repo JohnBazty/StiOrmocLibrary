@@ -6,7 +6,7 @@ This guide explains how to prepare a Windows development computer, run and test 
 
 ## AI agents — read this first
 
-1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) (start-session protocol, plan statuses, MySQL migration tracker: latest **045**, next **046**; Supabase: branding migration **015**, next **016**).
+1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) (start-session protocol, plan statuses, MySQL reference migration tracker: latest **046**, next **047**; Supabase: latest **016**, next **017**).
 2. Read [AGENTS.md](AGENTS.md) and [agent.md](agent.md).
 3. Database cutover status: [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md).
 
@@ -18,7 +18,7 @@ This guide explains how to prepare a Windows development computer, run and test 
 4. [Configure MySQL](#configure-mysql)
 5. [Configure environment variables](#configure-environment-variables)
 6. [Initialize the database](#initialize-the-database)
-7. [Create a System Administrator](#create-a-system-administrator)
+7. [Create an Admin (Librarian)](#create-an-admin-librarian)
 8. [Run the application](#run-the-application)
 9. [Verify the installation](#verify-the-installation)
 10. [Common development commands](#common-development-commands)
@@ -268,21 +268,21 @@ FROM schema_migrations
 ORDER BY migration_name;
 ```
 
-## Create a System Administrator
+## Create an Admin (Librarian)
 
-The dedicated administrator portal is located at `/admin/login`. It requires an `Admin` identity in the normalized `accounts` table.
+The dedicated staff portal is located at `/staff` (`/admin/login` redirects there). It requires an `Admin` identity in the normalized `accounts` table. Admin is the Librarian/Super Admin authorization role.
 
 ### 1. Create the secure credential
 
 Run the interactive account utility:
 
 ```powershell
-npm run auth:create-user -w @sti-library/api -- --email admin@ormoc.sti.edu.ph --role "System Administrator" --id ADMIN-001 --name "Campus Administrator"
+npm run auth:create-user -w @sti-library/api -- --email admin@ormoc.sti.edu.ph --role Admin --id ADMIN-001 --name "Campus Librarian"
 ```
 
 The command prompts for the password without displaying it. Passwords must contain 8–72 characters and are hashed with bcrypt before storage.
 
-Use a real authorized institutional address ending in `@ormoc.sti.edu.ph`. Change `ADMIN-001` to the administrator's official school or staff identifier.
+Use a real authorized institutional address ending in `@ormoc.sti.edu.ph`. Change `ADMIN-001` to the librarian's official school or staff identifier.
 
 ### 2. Synchronize the normalized login identity
 
@@ -330,7 +330,7 @@ Students may register through:
 http://localhost:5173/register
 ```
 
-Public registration always creates an active Student account. Administrative and Librarian privileges must never be accepted from a public registration form.
+Public registration always creates an active Student account. Admin (Librarian) privileges must never be accepted from a public registration form.
 
 ## Run the application
 
@@ -624,7 +624,7 @@ StiOrmocLibrary/
 - [ ] Create the `sti_library_app` MySQL account.
 - [ ] Copy and configure `apps/api/.env`.
 - [ ] Run `db:schema` and `db:migrate`.
-- [ ] Create and synchronize a System Administrator account.
+- [ ] Create and synchronize an Admin (Librarian) account.
 - [ ] Run `npm run dev`.
 - [ ] Confirm `/api/health` reports a ready schema.
 - [ ] Sign in through `/admin/login`.

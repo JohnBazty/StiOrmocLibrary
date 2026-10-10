@@ -100,13 +100,12 @@ Use role-based authorization on the server for every protected endpoint.
 
 - `student`: catalog, own borrowing history, reservations, attendance, print requests, notifications, and clearance; subject to the two-active-loan rule.
 - `faculty`: the same self-service areas, exempt from the Student loan cap under the documented policy.
-- `library_staff`: restricted operational access for borrowing/return scans, print queues, and GCash verification; no destructive deletion or policy/settings access.
-- `librarian`: the library Super Admin with full policy, catalog, circulation, inventory, attendance, printing, fines, archive, clearance, user-state, and reporting controls.
-- `system_admin`: technical/system administration kept distinct from the Librarian's library-policy role.
+- `library_staff`: future restricted operational access for borrowing/return scans, print queues, and GCash verification; no destructive deletion or policy/settings access (not introduced by the Admin/Librarian consolidation).
+- `Admin` (authorization value): the Librarian/Super Admin with full policy, catalog, circulation, inventory, attendance, printing, fines, archive, clearance, user-state, and reporting controls. This is the only stored/issued administrative role after consolidation (see `docs/admin-librarian-role-consolidation-plan.md`).
 
 Never trust role, fine amount, due date, book availability, or print cost values sent by the client. Calculate and enforce these on the server.
 
-Authentication requests must use an approved institutional `@ormoc.sti.edu.ph` or `@sti.edu` domain, prepared MySQL statements, CSRF protection, session fixation prevention, and a 30-minute idle timeout. Every state-changing authenticated API request must carry the session's CSRF token. Anonymous registration may create Student and Faculty accounts only; Librarian creation requires an authenticated System Administrator. Do not replace the MySQL-backed session store with Express MemoryStore in production.
+Authentication requests must use an approved institutional `@ormoc.sti.edu.ph` or `@sti.edu` domain, prepared MySQL statements, CSRF protection, session fixation prevention, and a 30-minute idle timeout. Every state-changing authenticated API request must carry the session's CSRF token. Anonymous registration may create Student accounts only (Faculty remains staff-provisioned per product rules); staff Admin accounts are created by existing Admins, not by public registration. Do not replace the MySQL-backed session store with Express MemoryStore in production.
 
 ## Business Rules to Preserve
 

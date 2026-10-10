@@ -82,8 +82,8 @@ export async function registerStudent(input: StudentRegistrationInput): Promise<
 }
 
 function normalizeSessionRole(role: string): AuthRole | null {
-  if (role === 'System Administrator' || role === 'Admin') return 'Admin'
-  if (role === 'Librarian' || role === 'Faculty' || role === 'Student') return role
+  if (role === 'System Administrator' || role === 'Librarian' || role === 'Admin') return 'Admin'
+  if (role === 'Faculty' || role === 'Student') return role
   return null
 }
 

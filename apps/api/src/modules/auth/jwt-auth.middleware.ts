@@ -3,6 +3,7 @@ import type { NextFunction, Request, Response } from 'express'
 import { env } from '../../config/env.js'
 import { db } from '../../config/db.js'
 import type { JwtRole } from './jwt-auth.service.ts'
+import { toCanonicalRole } from './role-normalization.ts'
 
 export type AuthenticatedJwtUser = { id: number; accountId: number; schoolId: string; role: JwtRole; authVersion: number }
 
@@ -18,12 +19,13 @@ export function verifyAccessToken(token: string): AuthenticatedJwtUser {
   }) as JwtPayload
   const id = Number(decoded.accountId ?? decoded.userId ?? decoded.sub)
   const schoolId = typeof decoded.schoolId === 'string' ? decoded.schoolId : ''
-  const role = decoded.role
+  // Compatibility: accept legacy Librarian / System Administrator claims and normalize to Admin.
+  const role = toCanonicalRole(decoded.role)
   const authVersion = Number(decoded.authVersion ?? 1)
-  if (!Number.isSafeInteger(id) || id < 1 || !schoolId || !Number.isSafeInteger(authVersion) || authVersion < 1 || !['Admin', 'Librarian', 'Student', 'Faculty'].includes(role)) {
+  if (!Number.isSafeInteger(id) || id < 1 || !schoolId || !Number.isSafeInteger(authVersion) || authVersion < 1 || !role) {
     throw new Error('Token claims are invalid.')
   }
-  return { id, accountId: id, schoolId, role: role as JwtRole, authVersion }
+  return { id, accountId: id, schoolId, role, authVersion }
 }
 
 /** Check current state on every request so older bearer tokens stop working immediately. */
@@ -36,8 +38,10 @@ export function createActiveJwtAccountGuard(database: Pick<typeof db, 'execute'>
        FROM accounts a LEFT JOIN users u ON u.user_id=a.user_id WHERE a.account_id=?`, [identity.accountId],
   ).then(([rows]) => {
     const account = (rows as Array<Record<string, unknown>>)[0]
+    const accountRole = toCanonicalRole(account?.role)
     if (!account || account.account_status !== 'Active' || (account.user_status && account.user_status !== 'Active')
-      || Number(account.auth_version) !== identity.authVersion || account.school_id !== identity.schoolId || account.role !== identity.role) {
+      || Number(account.auth_version) !== identity.authVersion || account.school_id !== identity.schoolId
+      || accountRole !== identity.role) {
       response.status(401).json({ success: false, code: 'ACCOUNT_ACCESS_REVOKED', message: 'Your account access changed. Please sign in again.' })
       return
     }

@@ -16,7 +16,7 @@ The Vite development server proxies `/api` to the Express server on port 4000.
 
 ## Book catalog and overview
 
-All `/api/v1/catalog` routes require a valid Bearer JWT. Catalog reads allow Admin, Librarian, Student, and Faculty accounts.
+All `/api/v1/catalog` routes require a valid Bearer JWT. Catalog reads allow Admin, Student, and Faculty accounts.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
@@ -26,10 +26,10 @@ All `/api/v1/catalog` routes require a valid Bearer JWT. Catalog reads allow Adm
 | `POST` | `/api/v1/catalog/books/:titleId/reservations` | Submit a Student or Faculty wait-list request through the circulation compatibility bridge. |
 | `GET` | `/api/v1/catalog/research` | Search active view-only research by title, authors, adviser, department, and year. |
 | `GET` | `/api/v1/catalog/research/:titleId` | Complete read-only research metadata, shelf access, and abstract. |
-| `POST` | `/api/v1/admin/books/add-bulk` | Admin/Librarian-only transactional multi-copy registration; returns one QR image and Code 128 label image per accessioned copy. |
-| `POST` | `/api/v1/admin/catalog/bulk-entry` | Canonical Admin/Librarian bulk-entry contract used by the database-driven catalog modal; preserves the older `/admin/books/add-bulk` alias. |
+| `POST` | `/api/v1/admin/books/add-bulk` | Admin-only transactional multi-copy registration; returns one QR image and Code 128 label image per accessioned copy. |
+| `POST` | `/api/v1/admin/catalog/bulk-entry` | Canonical Admin bulk-entry contract used by the database-driven catalog modal; preserves the older `/admin/books/add-bulk` alias. |
 | `PATCH` | `/api/v1/admin/catalog/titles/:titleId/category` | Admin-only title reassignment. Requires `targetCategoryId` and `expectedRowVersion`; atomically moves the active book copies or linked research inventory to the target category's managed shelf and records an audit event. |
-| `GET` | `/api/v1/admin/books/assets/:id` | Admin/Librarian-only physical-copy metadata with QR and barcode image data. |
+| `GET` | `/api/v1/admin/books/assets/:id` | Admin-only physical-copy metadata with QR and barcode image data. |
 | `GET` | `/api/v1/admin/books/assets/:id/barcode.png` | Download one high-density Code 128 PNG attachment. |
 | `GET` | `/api/v1/admin/books/assets/:id/qr.png` | Download one high-density QR PNG attachment. |
 | `GET` | `/api/v1/catalog/copies/:barcode` | Authenticated barcode-only copy inspection for cart/catalog views; deliberately omits QR data. |
@@ -54,12 +54,12 @@ The list endpoint accepts any combination of `q`, `title`, `author`, `isbn`, `ca
 | `GET` | `/api/dashboard/student` | Dashboard | Student summary and recommendations |
 | `GET` | `/api/dashboard/admin` | Dashboard | KPIs, attendance, demand, and recent activity |
 | `GET` | `/api/v1/dashboard` | Dashboard | Student/Faculty personalized live overview: account standing, occupancy, loans, reservations, printing, notifications, schedule, history, and recommendations |
-| `GET` | `/api/v1/admin/dashboard` | Dashboard | Admin/Librarian live operational KPIs, attendance, demand, circulation, activity, and occupancy |
+| `GET` | `/api/v1/admin/dashboard` | Dashboard | Admin live operational KPIs, attendance, demand, circulation, activity, and occupancy |
 | `GET` | `/api/v1/admin/dashboard/summary.pdf` | Dashboard | Download the current admin operational summary as a branded PDF |
 | `GET` | `/api/catalog/books` | Catalog | Current mock book-title listing |
-| `POST` | `/api/catalog/books` | Catalog | Transactionally create a normalized title and physical copy; Librarian/System Administrator only |
+| `POST` | `/api/catalog/books` | Catalog | Transactionally create a normalized title and physical copy; Admin only |
 | `GET` | `/api/catalog/research` | Catalog | Current mock research and thesis listing |
-| `POST` | `/api/catalog/research` | Catalog | Transactionally create validated thesis metadata and optional physical manuscript copy; Librarian/System Administrator only |
+| `POST` | `/api/catalog/research` | Catalog | Transactionally create validated thesis metadata and optional physical manuscript copy; Admin only |
 | `GET` | `/api/circulation` | Circulation | Borrow and return transactions |
 | `GET` | `/api/reservations` | Reservations | Waiting-list records |
 | `GET` | `/api/fines` | Fines | Fine and payment-status records |
@@ -128,7 +128,7 @@ Keep endpoint paths and response objects stable while replacing the mock arrays 
 
 ## Catalog validation and physical-copy safeguards
 
-Book and thesis creation require an authenticated CSRF token and Librarian or System Administrator role. Thesis metadata validates Title, one or more Authors, Adviser, Year Published, Abstract, Research Code, and Department/Program before beginning the insert transaction.
+Book and thesis creation require an authenticated CSRF token and Admin role. Thesis metadata validates Title, one or more Authors, Adviser, Year Published, Abstract, Research Code, and Department/Program before beginning the insert transaction.
 
 Physical-copy archive/delete routes lock the `physical_copies` row and matching `borrow_transactions` rows with `FOR UPDATE`. A `Borrowed` or `Overdue` transaction returns:
 
@@ -156,46 +156,59 @@ The response status is `422 Unprocessable Entity`. A copy with completed borrowi
 | `PUT` | `/api/v1/reservations/:reservationId/cancel` | Student, Faculty | Cancel an owned waiting request and realign the queue. |
 | `GET` | `/api/v1/borrowing/history` | Student, Faculty | Read personal capacity and borrowing history. |
 | `POST` | `/api/v1/borrow/submit-request` | Student, Faculty | Atomically assign available copies and create a grouped pending-claim request from `title_ids`. |
-| `GET` | `/api/v1/admin/reservations` | Admin, Librarian | Read the contextual reservation queue. |
-| `POST` | `/api/v1/admin/borrowing/confirm-checkout` | Admin, Librarian | Confirm a barcode checkout. |
-| `GET` | `/api/v1/admin/borrowing/monitor` | Admin, Librarian | Read active, due, overdue, and returned records. |
-| `PUT` | `/api/v1/admin/borrowing/:transactionId/return` | Admin, Librarian | Complete a return and advance the queue. |
-| `POST` | `/api/v1/admin/borrowing/:transactionId/calculate-penalty` | Admin, Librarian | Persist the current overdue calculation. |
-| `GET` | `/api/v1/admin/notifications` | Admin, Librarian | Read shared circulation/reservation alerts. |
+| `GET` | `/api/v1/admin/reservations` | Admin | Read the contextual reservation queue. |
+| `POST` | `/api/v1/admin/borrowing/preflight` | Admin | Preview checkout blockers, warnings, and alerts without writing. Includes active `policyVersionId` and binds it into the preflight token. |
+| `POST` | `/api/v1/admin/borrowing/confirm-checkout` | Admin | Confirm a walk-in barcode checkout. Re-resolves policy under locks; returns `CIRCULATION_POLICY_CHANGED` if the token policy version is stale. |
+| `GET` | `/api/v1/admin/borrowing/monitor` | Admin | Read active, due, overdue, and returned records. |
+| `PUT` | `/api/v1/admin/borrowing/:transactionId/return` | Admin | Complete a return and advance the queue. |
+| `POST` | `/api/v1/admin/borrowing/:transactionId/calculate-penalty` | Admin | Persist the current overdue calculation. |
+| `GET` | `/api/v1/admin/borrowing-policies` | Admin | Active, scheduled, and historical immutable borrowing policy versions. |
+| `GET` | `/api/v1/admin/borrowing-policies/:versionId` | Admin | One immutable policy version with material rules. |
+| `POST` | `/api/v1/admin/borrowing-policies` | Admin | Publish a new immutable policy version (no update/delete). |
+| `GET` | `/api/v1/admin/notifications` | Admin | Read shared circulation/reservation alerts. |
+
+### POST `/api/v1/admin/borrowing/preflight`
+
+Admin-only checkout preview. Accepts `{ "barcode": "...", "school_id": "...", "flow": "claim" | "walk_in" }`. Returns HTTP 200 with `decision` of `ready`, `confirmation_required`, or `blocked`, plus blockers, warnings, alerts, due date, and a short-lived `preflightToken` when not blocked. Business-rule blockers stay on HTTP 200 with `decision: "blocked"`.
+
+### POST `/api/v1/admin/borrowing/confirm-checkout` and `/api/v1/circulation/fulfill-claim`
+
+Final checkout accepts optional `{ "preflightToken": "...", "overrideReason": "..." }` in addition to barcode and school ID. When warnings exist (currently Damaged + Available), the API requires a valid preflight token and a 10–500 character reason, or returns `CIRCULATION_CONFIRMATION_REQUIRED`. Final checkout rechecks rules under row locks. Confirmed warnings write an append-only `circulation_override_events` row in the same transaction.
+
 ### POST `/api/v1/circulation/fulfill-claim`
 
-Admin/Librarian-only physical desk checkpoint. Accepts `{ "school_id": "...", "barcode": "..." }`. The selected borrower and barcode must match a linked `Pending` claim whose reservation is `ready_for_pickup`. On success the loan becomes `Borrowed`, the reservation becomes `claimed`, and the due time is fixed to 8:59 AM on the next operating day.
+Admin-only physical desk checkpoint for pending claims (`flow: "claim"`). Accepts `{ "school_id": "...", "barcode": "..." }` plus optional preflight confirmation fields. The selected borrower and barcode must match a linked `Pending` claim. On success the loan becomes `Borrowed`, a linked ready reservation becomes `claimed`, and the due time is fixed to 8:59 AM on the next operating day.
 
 ## Admin attendance and active users (JWT)
 
 | Method | Endpoint | Roles | Purpose |
 |---|---|---|---|
-| `GET` | `/api/v1/admin/attendance/academic-terms` | Admin, Librarian | List configured semester date ranges. |
-| `GET` | `/api/v1/admin/attendance/summary` | Admin, Librarian | Aggregate visits, unique visitors, current presence, peak hour, and average duration. |
-| `GET` | `/api/v1/admin/attendance/analytics` | Admin, Librarian | Hourly, daily, and weekday/hour peak-utilization data using exact check-in timestamps. |
-| `GET` | `/api/v1/admin/attendance/logs` | Admin, Librarian | Paginated attendance logs filtered daily, weekly, monthly, or by academic term. |
-| `GET` | `/api/v1/admin/attendance/report.pdf` | Admin, Librarian | Stream a branded PDF using the same active filters as the dashboard. |
-| `GET` | `/api/v1/admin/attendance/capacity` | Admin, Librarian | Read live occupancy, configured capacity, available spaces, and over-capacity state. |
-| `PATCH` | `/api/v1/admin/attendance/capacity` | Admin, Librarian | Update maximum occupancy with a required audit reason. |
-| `POST` | `/api/v1/admin/attendance/scan/resolve` | Admin, Librarian | Validate a permanent QR and return safe identity/current-presence information. |
-| `POST` | `/api/v1/admin/attendance/scan/check-in` | Admin, Librarian | Atomically enforce capacity, record exact entry/purpose, and return a role-specific confirmation. |
-| `POST` | `/api/v1/admin/attendance/scan/check-out` | Admin, Librarian | Close the visitor's current open attendance record. |
-| `GET` | `/api/v1/attendance/pass` | Student, Faculty, Admin, Librarian | Return the authenticated user's pass metadata, summary, and history without exposing the raw credential. |
-| `GET` | `/api/v1/attendance/pass.png` | Student, Faculty, Admin, Librarian | Render the permanent QR PNG; `?download=1` returns a downloadable filename. |
-| `GET` | `/api/v1/admin/users/summary` | Admin, Librarian | Count active Student, Faculty, and staff accounts. |
-| `GET` | `/api/v1/admin/users/programs` | Admin, Librarian | List program/unit values for active-account filtering. |
-| `GET` | `/api/v1/admin/users/active` | Admin, Librarian | Paginated read-only directory where `accounts.account_status = 'Active'`. |
+| `GET` | `/api/v1/admin/attendance/academic-terms` | Admin | List configured semester date ranges. |
+| `GET` | `/api/v1/admin/attendance/summary` | Admin | Aggregate visits, unique visitors, current presence, peak hour, and average duration. |
+| `GET` | `/api/v1/admin/attendance/analytics` | Admin | Hourly, daily, and weekday/hour peak-utilization data using exact check-in timestamps. |
+| `GET` | `/api/v1/admin/attendance/logs` | Admin | Paginated attendance logs filtered daily, weekly, monthly, or by academic term. |
+| `GET` | `/api/v1/admin/attendance/report.pdf` | Admin | Stream a branded PDF using the same active filters as the dashboard. |
+| `GET` | `/api/v1/admin/attendance/capacity` | Admin | Read live occupancy, configured capacity, available spaces, and over-capacity state. |
+| `PATCH` | `/api/v1/admin/attendance/capacity` | Admin | Update maximum occupancy with a required audit reason. |
+| `POST` | `/api/v1/admin/attendance/scan/resolve` | Admin | Validate a permanent QR and return safe identity/current-presence information. |
+| `POST` | `/api/v1/admin/attendance/scan/check-in` | Admin | Atomically enforce capacity, record exact entry/purpose, and return a role-specific confirmation. |
+| `POST` | `/api/v1/admin/attendance/scan/check-out` | Admin | Close the visitor's current open attendance record. |
+| `GET` | `/api/v1/attendance/pass` | Student, Faculty, Admin | Return the authenticated user's pass metadata, summary, and history without exposing the raw credential. |
+| `GET` | `/api/v1/attendance/pass.png` | Student, Faculty, Admin | Render the permanent QR PNG; `?download=1` returns a downloadable filename. |
+| `GET` | `/api/v1/admin/users/summary` | Admin | Count active Student, Faculty, and staff accounts. |
+| `GET` | `/api/v1/admin/users/programs` | Admin | List program/unit values for active-account filtering. |
+| `GET` | `/api/v1/admin/users/active` | Admin | Paginated read-only directory where `accounts.account_status = 'Active'`. |
 ### ISBN metadata lookup
 
-`GET /api/v1/admin/books/isbn/:isbn` is restricted to Admin and Librarian JWTs. It validates ISBN-10/ISBN-13 checksums, searches the local `titles`/`authors` catalog first, then queries Google Books and Open Library through fixed server-side endpoints. The response supplies only `title`, `author`, `publisher`, and `publicationYear` for the bulk-entry autofill workflow. Catalog creation remains a separate explicit transaction, and cover, copies, category, call number, and shelf location are never populated by the lookup.
+`GET /api/v1/admin/books/isbn/:isbn` is restricted to Admin JWTs. It validates ISBN-10/ISBN-13 checksums, searches the local `titles`/`authors` catalog first, then queries Google Books and Open Library through fixed server-side endpoints. The response supplies only `title`, `author`, `publisher`, and `publicationYear` for the bulk-entry autofill workflow. Catalog creation remains a separate explicit transaction, and cover, copies, category, call number, and shelf location are never populated by the lookup.
 
 ## Library floor plan (JWT)
 
 | Method | Endpoint | Roles | Purpose |
 |---|---|---|---|
-| `GET` | `/api/v1/floor-plan` | Admin, Librarian, Student, Faculty | Read only the published layout, live categories, managed shelf totals, and each shelf's column/row dimensions. |
-| `GET` | `/api/v1/floor-plan/books` | Admin, Librarian, Student, Faculty | Search physical book copies and return the call number plus exact shelf column/row used for location highlighting. |
-| `GET` | `/api/v1/floor-plan/locations` | Admin, Librarian, Student, Faculty | List current managed and category-default shelf labels for catalog entry. |
+| `GET` | `/api/v1/floor-plan` | Admin, Student, Faculty | Read only the published layout, live categories, managed shelf totals, and each shelf's column/row dimensions. |
+| `GET` | `/api/v1/floor-plan/books` | Admin, Student, Faculty | Search physical book copies and return the call number plus exact shelf column/row used for location highlighting. |
+| `GET` | `/api/v1/floor-plan/locations` | Admin, Student, Faculty | List current managed and category-default shelf labels for catalog entry. |
 | `GET` | `/api/v1/floor-plan/editor` | Admin | Read the private draft plus the current published layout. |
 | `PUT` | `/api/v1/floor-plan/draft` | Admin | Save a validated draft using the current revision. |
 | `POST` | `/api/v1/floor-plan/publish` | Admin | Atomically publish a validated draft and create a version snapshot. |

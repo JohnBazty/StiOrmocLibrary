@@ -57,11 +57,11 @@ export class UsersRepository {
          COUNT(*) FILTER (WHERE account_status='Archived') archived_accounts,
          COUNT(*) FILTER (WHERE role='Student' AND account_status='Active') student_accounts,
          COUNT(*) FILTER (WHERE role='Faculty' AND account_status='Active') faculty_accounts,
-         COUNT(*) FILTER (WHERE role IN ('Admin','Librarian') AND account_status='Active') staff_accounts`
+         COUNT(*) FILTER (WHERE role='Admin' AND account_status='Active') staff_accounts`
       : `SUM(account_status='Active') active_accounts,SUM(account_status='Deactivated') deactivated_accounts,
          SUM(account_status='Archived') archived_accounts,SUM(role='Student' AND account_status='Active') student_accounts,
          SUM(role='Faculty' AND account_status='Active') faculty_accounts,
-         SUM(role IN ('Admin','Librarian') AND account_status='Active') staff_accounts`
+         SUM(role='Admin' AND account_status='Active') staff_accounts`
     const [rows] = await this.pool.execute<RowDataPacket[]>(`SELECT ${counts} FROM accounts`)
     return rows[0]
   }

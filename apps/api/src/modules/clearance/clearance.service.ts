@@ -24,7 +24,7 @@ async function linkedUserId(executor: Pool | PoolConnection, accountId: number) 
 }
 
 function requireStaff(actor: ClearanceActor) {
-  if (!['Admin', 'Librarian'].includes(String(actor.role))) throw new HttpError(403, 'CLEARANCE_STAFF_ONLY', 'Only authorized staff can manage clearance records.')
+  if (String(actor.role) !== 'Admin') throw new HttpError(403, 'CLEARANCE_STAFF_ONLY', 'Only authorized staff can manage clearance records.')
 }
 
 export function createClearanceService(database: Pool = db) {

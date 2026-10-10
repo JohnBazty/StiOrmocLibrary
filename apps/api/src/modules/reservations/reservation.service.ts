@@ -2,6 +2,8 @@ import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { db } from '../../config/db.js'
 import { forUpdate, isPostgres } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
+import { createBorrowingPolicyService } from '../circulation/borrowing-policy.service.ts'
+import { roleBookLimit, roleReservationLimit } from '../circulation/borrowing-policy.types.ts'
 import { parseQueueFilters, positiveId, validateReservationRequest, validateStatusAdjustment, type ReservationStatus } from './reservation.validation.ts'
 import { queryReservationQueue } from './reservation-query.repository.ts'
 import { cancelPendingCounterClaim, createPendingCounterClaim } from './reservation-claim.repository.ts'
@@ -63,7 +65,8 @@ function activeBorrowConflictError(conflict: ActiveBorrowConflict, forAdmin = fa
   })
 }
 
-export function createReservationService(database: Pool = db) {
+export function createReservationService(database: Pool = db, clock: () => Date = () => new Date()) {
+  const policyService = createBorrowingPolicyService(database, clock)
   return {
     queue: (query: Record<string, unknown>) => queryReservationQueue(database, parseQueueFilters(query)),
 
@@ -179,15 +182,17 @@ export function createReservationService(database: Pool = db) {
         )
         if (duplicates[0]) throw new HttpError(422, 'DUPLICATE_ACTIVE_RESERVATION', 'You already have an active reservation for this title.')
 
-        if (user.role_name === 'Student' && material.material_type === 'Book') {
+        const policy = await policyService.resolveActive(connection, clock())
+        if (material.material_type === 'Book') {
           const [activeRows] = await connection.execute<RowDataPacket[]>(
-            `SELECT COUNT(DISTINCT COALESCE(active.title_id, -active.material_id)) AS active_count
+            `SELECT COUNT(DISTINCT COALESCE(active.title_id, -active.material_id)) AS active_count,
+                    COUNT(DISTINCT CASE WHEN active.source = 'reservation' THEN COALESCE(active.title_id, -active.material_id) END) AS reservation_count
                FROM (
-                 SELECT r.material_id, COALESCE(r.book_title_id, rpc.title_id) AS title_id
+                 SELECT r.material_id, COALESCE(r.book_title_id, rpc.title_id) AS title_id, 'reservation' AS source
                    FROM reservations r LEFT JOIN physical_copies rpc ON rpc.material_id = r.material_id
                   WHERE r.user_id = ? AND r.reservation_status IN ${ACTIVE_STATUSES}
                  UNION ALL
-                 SELECT bt.material_id, bpc.title_id
+                 SELECT bt.material_id, bpc.title_id, 'loan' AS source
                    FROM borrow_transactions bt LEFT JOIN physical_copies bpc
                      ON bpc.physical_copy_id = bt.physical_copy_id
                      OR (bt.physical_copy_id IS NULL AND bpc.material_id = bt.material_id)
@@ -196,8 +201,18 @@ export function createReservationService(database: Pool = db) {
               WHERE am.material_type = 'Book'`, [userId, userId],
           )
           const activeCount = Number(activeRows[0]?.active_count ?? 0)
-          if (activeCount >= 2) {
-            throw new HttpError(422, 'STUDENT_BORROW_LIMIT_REACHED', 'Transaction Blocked: Students cannot exceed 2 books', { activeCount, limit: 2 })
+          const reservationCount = Number(activeRows[0]?.reservation_count ?? 0)
+          const bookLimit = roleBookLimit(policy, String(user.role_name))
+          const reservationLimit = roleReservationLimit(policy, String(user.role_name))
+          if (bookLimit !== null && activeCount >= bookLimit) {
+            throw new HttpError(422, 'STUDENT_BORROW_LIMIT_REACHED', `Transaction Blocked: ${user.role_name} cannot exceed ${bookLimit} books`, {
+              activeCount, limit: bookLimit, policyVersionId: policy.versionId,
+            })
+          }
+          if (reservationLimit !== null && reservationCount >= reservationLimit) {
+            throw new HttpError(422, 'STUDENT_BORROW_LIMIT_REACHED', `Transaction Blocked: ${user.role_name} cannot exceed ${reservationLimit} active reservations`, {
+              activeCount: reservationCount, limit: reservationLimit, policyVersionId: policy.versionId,
+            })
           }
         }
 
@@ -217,9 +232,10 @@ export function createReservationService(database: Pool = db) {
         )
         const queuePosition = Number(queueRows[0]?.next_position ?? 1)
         const [insert] = await connection.execute<ResultSetHeader>(
-          `INSERT INTO reservations (user_id, material_id, book_title_id, accession_id, assigned_physical_copy_id, queue_position,
-             reservation_status, reserved_at, pickup_deadline, created_at)
-           VALUES (?, ?, ?, NULL, NULL, ?, 'pending', NOW(), NULL, NOW())`, [userId, materialId, material.title_id ?? null, queuePosition],
+          `INSERT INTO reservations (user_id, material_id, book_title_id, accession_id, assigned_physical_copy_id,
+             borrowing_policy_version_id, queue_position, reservation_status, reserved_at, pickup_deadline, created_at)
+           VALUES (?, ?, ?, NULL, NULL, ?, ?, 'pending', NOW(), NULL, NOW())`,
+          [userId, materialId, material.title_id ?? null, policy.versionId, queuePosition],
         )
         await connection.execute(
           `INSERT INTO admin_notifications

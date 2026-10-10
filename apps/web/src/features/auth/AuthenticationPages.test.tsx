@@ -7,12 +7,14 @@ import { AdminLoginPage } from './AdminLoginPage'
 import { ThemeProvider } from '../theme/ThemeProvider'
 
 describe('authentication pages', () => {
-  it('shows a user login without a role selector or staff login link', () => {
+  it('shows school ID login without a role dropdown', () => {
     render(<MemoryRouter><ThemeProvider><LoginPage /></ThemeProvider></MemoryRouter>)
     expect(screen.queryByLabelText('Login as')).toBeNull()
+    expect(screen.queryByRole('combobox')).toBeNull()
     expect(screen.getByLabelText('School ID')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Log In' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Register as Student' }).getAttribute('href')).toBe('/register')
-    expect(screen.queryByRole('link', { name: 'System Administrator Login' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Librarian / Admin Login' })).toBeNull()
   })
 
   it('shows every field required by normalized student registration', () => {
@@ -25,10 +27,10 @@ describe('authentication pages', () => {
 
   it('provides a dedicated administrator login without a selectable role', () => {
     render(<MemoryRouter><ThemeProvider><AdminLoginPage /></ThemeProvider></MemoryRouter>)
-    expect(screen.getByRole('heading', { name: 'Administration Portal' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Staff Portal' })).toBeTruthy()
     expect(screen.getByLabelText('Administrator School ID')).toBeTruthy()
     expect(screen.queryByLabelText('Login as')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Open Administration Portal' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open Admin Workspace' })).toBeTruthy()
   })
 })
 

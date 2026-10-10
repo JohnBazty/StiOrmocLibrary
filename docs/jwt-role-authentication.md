@@ -55,7 +55,6 @@ The service normalizes the school ID, validates every required field, performs a
 
 - `GET /api/v1/auth/me`
 - `GET /api/v1/admin/dashboard` — Admin only
-- `GET /api/v1/librarian/dashboard` — Librarian only
 - `GET /api/v1/faculty/dashboard` — Faculty only
 - `GET /api/v1/student/dashboard` — Student only
 
@@ -67,10 +66,11 @@ The login page performs usability validation, submits credentials to the API, va
 
 | Role | Dashboard |
 |---|---|
-| Admin | `/admin/dashboard` |
-| Librarian | `/librarian/dashboard` |
+| Admin (Librarian) | `/admin/dashboard` (staff entrance `/staff`) |
 | Faculty | `/faculty/dashboard` |
 | Student | `/student/dashboard` |
+
+Legacy `/librarian/dashboard` and `/librarian/floor-plan` bookmarks redirect to the Admin equivalents.
 
 React route guards reject missing, expired, or mismatched roles before rendering a protected view. This client check is only a user-experience boundary; the API independently verifies the JWT signature, issuer, audience, expiry, and role before returning protected data.
 

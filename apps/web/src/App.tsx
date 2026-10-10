@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import { PortalLayout } from './layouts/PortalLayout'
 import { UserAttendancePage } from './features/attendance/UserAttendancePage'
 import {
@@ -17,7 +17,6 @@ import { AuthenticatedHome, ProtectedRoute } from './features/auth/ProtectedRout
 import { LoginPage } from './features/auth/LoginPage'
 import { RegistrationPage } from './features/auth/RegistrationPage'
 import { AdminLoginPage } from './features/auth/AdminLoginPage'
-import { RoleDashboardPage } from './features/auth/RoleDashboardPage'
 import { InventoryDashboard } from './features/inventory/InventoryDashboard'
 import { BookCatalog } from './features/catalog/BookCatalog'
 import { ResearchCatalog } from './features/catalog/ResearchCatalog'
@@ -34,6 +33,7 @@ import { StudentClearancePage } from './features/clearance/StudentClearancePage'
 import { AdminClearancePage } from './features/clearance/AdminClearancePage'
 import { AdminFinesPage } from './features/fines/AdminFinesPage'
 import { StudentFinesPage } from './features/fines/StudentFinesPage'
+import { AdminBorrowingPoliciesPage } from './features/borrowing-policies/AdminBorrowingPoliciesPage'
 
 function NotFound() {
   return <div className="flex min-h-screen items-center justify-center bg-[#003399]/5 p-6 text-center"><div><p className="text-sm font-bold text-[#003399]">404</p><h1 className="mt-2 font-display text-3xl font-bold text-[#003399]">This shelf is empty.</h1><p className="mt-2 text-sm text-[#003399]/65">The page you requested is not part of the library system.</p><a href="/" className="mt-5 inline-flex rounded-xl bg-[#003399] px-4 py-2.5 text-sm font-bold text-[#FFFFFF]">Return to library</a></div></div>
@@ -45,7 +45,8 @@ export default function App() {
       <Route path="/" element={<AuthenticatedHome />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegistrationPage />} />
-      <Route path="/admin/login" element={<AdminLoginPage />} />
+      <Route path="/staff" element={<AdminLoginPage />} />
+      <Route path="/admin/login" element={<Navigate to="/staff" replace />} />
 
       <Route element={<ProtectedRoute roles={['Student']} />}>
         <Route element={<PortalLayout role="student" />}>
@@ -71,6 +72,7 @@ export default function App() {
           <Route path="/admin/book-archive" element={<BookArchivePage />} />
           <Route path="/admin/categories" element={<CategoryManagementPage />} />
           <Route path="/admin/circulation" element={<AdminCirculationMonitor />} />
+          <Route path="/admin/borrowing-policies" element={<AdminBorrowingPoliciesPage />} />
           <Route path="/admin/reservations" element={<AdminReservationQueuePage />} />
           <Route path="/admin/fines" element={<AdminFinesPage />} />
           <Route path="/admin/inventory" element={<InventoryDashboard />} />
@@ -85,10 +87,8 @@ export default function App() {
         </Route>
       </Route>
 
-      <Route element={<ProtectedRoute roles={['Librarian']} />}>
-        <Route path="/librarian/dashboard" element={<RoleDashboardPage role="Librarian" />} />
-        <Route path="/librarian/floor-plan" element={<FloorPlanImagePage />} />
-      </Route>
+      <Route path="/librarian/dashboard" element={<Navigate to="/admin/dashboard" replace />} />
+      <Route path="/librarian/floor-plan" element={<Navigate to="/admin/floor-plan" replace />} />
       <Route element={<ProtectedRoute roles={['Faculty']} />}>
         <Route element={<PortalLayout role="faculty" />}>
           <Route path="/faculty/dashboard" element={<UserDashboardPage />} />

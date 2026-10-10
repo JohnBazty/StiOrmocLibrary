@@ -13,8 +13,8 @@ function appFor(role: string) {
   const service = { addBulk: async () => ({ titleId: 8, createdTitle: true, numberOfCopies: 2, copies: [{ barcode: 'STIORMOC2026000142' }, { barcode: 'STIORMOC2026000143' }] }) }
   const controller = createBulkBookController(service as never)
   const isbn = createIsbnLookupController({ lookup: async (value: unknown) => ({ isbn: String(value), title: 'Clean Code', author: 'Robert C. Martin', publisher: 'Prentice Hall', publicationYear: 2008, source: 'local_catalog' }) } as never)
-  app.use('/api/v1/admin/books', requireJwtRoles('Admin', 'Librarian'), createBulkBookRouter(controller, undefined, isbn))
-  app.use('/api/v1/admin/catalog', requireJwtRoles('Admin', 'Librarian'), createBulkCatalogEntryRouter(controller))
+  app.use('/api/v1/admin/books', requireJwtRoles('Admin'), createBulkBookRouter(controller, undefined, isbn))
+  app.use('/api/v1/admin/catalog', requireJwtRoles('Admin'), createBulkCatalogEntryRouter(controller))
   return app
 }
 

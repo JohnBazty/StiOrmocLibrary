@@ -2,7 +2,7 @@ import { MapPin } from 'lucide-react'
 import { getCurrentIdentity } from '../auth/auth-storage'
 export function ViewLocationButton({titleId,copyId,barcode,availableOnly=false}:{titleId:number;copyId?:number;barcode?:string|null;availableOnly?:boolean}){
   const role=getCurrentIdentity()?.role
-  const prefix=role==='Faculty'?'/faculty':role==='Admin'?'/admin':role==='Librarian'?'/librarian':'/student'
+  const prefix=role==='Faculty'?'/faculty':role==='Admin'?'/admin':'/student'
   const params=new URLSearchParams({titleId:String(titleId)})
   if(copyId)params.set('copyId',String(copyId));else if(barcode)params.set('barcode',barcode)
   if(availableOnly)params.set('available','true')

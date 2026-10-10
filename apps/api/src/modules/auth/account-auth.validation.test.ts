@@ -35,11 +35,11 @@ test('login validator requires an explicit supported role, school ID, and passwo
   assert.ok(invalid.errors.password)
 })
 
-test('login validator accepts a user or staff portal without a selected role', () => {
-  for (const portal of ['user', 'staff']) {
-    const result = validateRoleLogin({ portal, school_id: 'STI-2026-1234', password: 'LibraryPass9' })
-    assert.equal(result.isValid, true)
-    assert.equal(result.portal, portal)
-    assert.equal(result.role, '')
-  }
+test('login validator accepts portal without login_as', () => {
+  const user = validateRoleLogin({ portal: 'user', school_id: 'STI-2026-0001', password: 'LibraryPass9' })
+  const staff = validateRoleLogin({ portal: 'staff', school_id: 'ADMIN-001', password: 'LibraryPass9' })
+  assert.equal(user.isValid, true)
+  assert.equal(user.portal, 'user')
+  assert.equal(staff.isValid, true)
+  assert.equal(staff.portal, 'staff')
 })

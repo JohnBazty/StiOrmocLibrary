@@ -1,6 +1,6 @@
 # Title
 
-**MySQL → Supabase (PostgreSQL) conversion for STI Ormoc Smart Library**
+**MySQL → Supabase (PostgreSQL) conversion for STI College Ormoc Integrated Library Management System**
 
 ## Why
 
@@ -11,7 +11,7 @@ Product PDFs and `agent.md` historically name MySQL as the baseline; those docs 
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-09-25 |
+| **Date last updated** | 2026-10-09 |
 | **Status** | `inprogress` |
 
 Allowed status values: `planned` → `inprogress` → `built`.
@@ -64,8 +64,8 @@ Custom `MySqlSessionStore` (`apps/api/src/core/mysql-session-store.js`) on table
 | Item | Count / path |
 | --- | --- |
 | MySQL baseline | `database/mysql56-schema.sql` |
-| MySQL reference migrations | **43 files** (`001`…`042` plus branding migration `045`); next MySQL number **`046`**; the active database remains Supabase Postgres |
-| Postgres drafts | `database/supabase/` through branding migration `015_rename_system_brand.sql`; next `016` |
+| MySQL reference migrations | **46 files** (`001`…`046`); next MySQL number **`047`**; the active database remains Supabase Postgres |
+| Postgres drafts | `database/supabase/` through `016_configurable_borrowing_policies.sql`; next `017` |
 | Views | `borrow_records`, `book_titles` |
 | Seed files | None |
 

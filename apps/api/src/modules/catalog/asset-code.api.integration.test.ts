@@ -34,7 +34,7 @@ function fakeDatabase() {
 test('Admin can inspect and download research inventory codes', async () => {
   const app = express()
   const assets = createAssetCodeController(createAssetCodeService(fakeDatabase()))
-  app.use('/api/v1/admin/research', authenticated('Admin'), requireJwtRoles('Admin', 'Librarian'), createResearchAssetRouter(assets))
+  app.use('/api/v1/admin/research', authenticated('Admin'), requireJwtRoles('Admin'), createResearchAssetRouter(assets))
   const response = await request(app).get('/api/v1/admin/research/assets/31')
   assert.equal(response.status, 200)
   assert.equal(response.body.data.researchInventoryId, 31)
@@ -58,7 +58,7 @@ test('Admin barcode download returns a generated PNG attachment', async () => {
   const app = express()
   const assets = createAssetCodeController(createAssetCodeService(fakeDatabase()))
   const bulk = { addBulk: (_request: express.Request, response: express.Response) => response.status(501).end() }
-  app.use('/api/v1/admin/books', authenticated('Admin'), requireJwtRoles('Admin', 'Librarian'), createBulkBookRouter(bulk as never, assets))
+  app.use('/api/v1/admin/books', authenticated('Admin'), requireJwtRoles('Admin'), createBulkBookRouter(bulk as never, assets))
   const response = await request(app).get('/api/v1/admin/books/assets/21/barcode.png')
   assert.equal(response.status, 200)
   assert.match(response.headers['content-type'], /^image\/png/)
@@ -74,7 +74,7 @@ test('Student cannot inspect or download administrative QR assets', async () => 
   const app = express()
   const assets = createAssetCodeController(createAssetCodeService(fakeDatabase()))
   const bulk = { addBulk: (_request: express.Request, response: express.Response) => response.status(501).end() }
-  app.use('/api/v1/admin/books', authenticated('Student'), requireJwtRoles('Admin', 'Librarian'), createBulkBookRouter(bulk as never, assets))
+  app.use('/api/v1/admin/books', authenticated('Student'), requireJwtRoles('Admin'), createBulkBookRouter(bulk as never, assets))
   const response = await request(app).get('/api/v1/admin/books/assets/21/qr.png')
   assert.equal(response.status, 403)
   assert.equal(response.body.code, 'JWT_ROLE_FORBIDDEN')

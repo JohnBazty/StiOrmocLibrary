@@ -7,7 +7,7 @@ function token(payload: Record<string, unknown>) {
 }
 
 describe('normalized authentication API client', () => {
-  it('submits the portal, school_id, and password to the versioned endpoint', async () => {
+  it('submits portal, school_id, and password to the versioned endpoint', async () => {
     const accessToken = token({ userId: 2, accountId: 2, schoolId: 'ADMIN-001', role: 'Admin', exp: Math.floor(Date.now() / 1000) + 900 })
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _options?: RequestInit) => new Response(JSON.stringify({
       success: true,

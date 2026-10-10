@@ -27,8 +27,7 @@ CREATE TABLE IF NOT EXISTS `roles` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 INSERT INTO `roles` (`role_name`, `description`) VALUES
-  ('System Administrator', 'Full system configuration and user-management access'),
-  ('Librarian', 'Library operations, catalog, circulation, printing, and reports'),
+  ('Admin', 'Librarian / Super Admin with full library configuration and operations access'),
   ('Student', 'Student catalog, borrowing, reservations, attendance, and printing access'),
   ('Faculty', 'Faculty catalog, circulation, reservations, attendance, and printing access')
 ON DUPLICATE KEY UPDATE
@@ -37,7 +36,7 @@ ON DUPLICATE KEY UPDATE
 CREATE TABLE IF NOT EXISTS `users` (
   `user_id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `role_id` TINYINT UNSIGNED NOT NULL,
-  `user_role` ENUM('Admin', 'Librarian', 'Student', 'Faculty') NOT NULL,
+  `user_role` ENUM('Admin', 'Student', 'Faculty') NOT NULL,
   `institutional_id` VARCHAR(50) NOT NULL,
   `school_id` VARCHAR(50) NOT NULL,
   `full_name` VARCHAR(150) NOT NULL,
@@ -69,7 +68,7 @@ CREATE TABLE IF NOT EXISTS `accounts` (
   `school_id` VARCHAR(50) NOT NULL,
   `contact_number` VARCHAR(30) DEFAULT NULL,
   `password_hash` VARCHAR(255) NOT NULL,
-  `role` ENUM('Student', 'Faculty', 'Librarian', 'Admin') NOT NULL,
+  `role` ENUM('Student', 'Faculty', 'Admin') NOT NULL,
   `account_status` ENUM('Active', 'Deactivated', 'Archived') NOT NULL DEFAULT 'Active',
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT NULL,
@@ -222,9 +221,64 @@ CREATE TABLE IF NOT EXISTS `research_inventory_audit_events` (
 
 -- ============================================================================
 -- 3. AUTOMATED CIRCULATION AND RESERVATIONS
--- Students are limited to two simultaneous Borrowed/Overdue materials.
--- Faculty and staff roles are not limited by the database trigger.
+-- Active book/reservation limits and due dates come from borrowing_policy_versions.
+-- Triggers keep structural integrity; the API supplies due_at and policy version.
 -- ============================================================================
+
+CREATE TABLE IF NOT EXISTS `borrowing_policy_versions` (
+  `borrowing_policy_version_id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `effective_on` DATE NOT NULL,
+  `student_max_active_books` INT UNSIGNED NOT NULL,
+  `faculty_max_active_books` INT UNSIGNED DEFAULT NULL,
+  `borrowing_days` INT UNSIGNED NOT NULL,
+  `due_time_cutoff` TIME NOT NULL,
+  `max_renewals` INT UNSIGNED NOT NULL,
+  `renewal_extension_days` INT UNSIGNED NOT NULL,
+  `student_max_active_reservations` INT UNSIGNED NOT NULL,
+  `faculty_max_active_reservations` INT UNSIGNED DEFAULT NULL,
+  `block_renewal_if_overdue` TINYINT(1) NOT NULL DEFAULT 1,
+  `block_renewal_if_unpaid_fines` TINYINT(1) NOT NULL DEFAULT 1,
+  `block_renewal_if_reserved` TINYINT(1) NOT NULL DEFAULT 1,
+  `long_overdue_after_days` INT UNSIGNED DEFAULT NULL,
+  `change_reason` VARCHAR(500) NOT NULL,
+  `created_by_user_id` BIGINT UNSIGNED DEFAULT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`borrowing_policy_version_id`),
+  KEY `idx_borrowing_policy_effective` (`effective_on`, `borrowing_policy_version_id`),
+  CONSTRAINT `fk_borrowing_policy_created_by`
+    FOREIGN KEY (`created_by_user_id`) REFERENCES `users` (`user_id`)
+    ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS `borrowing_policy_material_rules` (
+  `borrowing_policy_version_id` BIGINT UNSIGNED NOT NULL,
+  `material_type` VARCHAR(40) NOT NULL,
+  `is_borrowable` TINYINT(1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`borrowing_policy_version_id`, `material_type`),
+  CONSTRAINT `fk_borrowing_policy_material_version`
+    FOREIGN KEY (`borrowing_policy_version_id`) REFERENCES `borrowing_policy_versions` (`borrowing_policy_version_id`)
+    ON UPDATE CASCADE ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+INSERT INTO `borrowing_policy_versions` (
+  `borrowing_policy_version_id`, `effective_on`, `student_max_active_books`, `faculty_max_active_books`,
+  `borrowing_days`, `due_time_cutoff`, `max_renewals`, `renewal_extension_days`,
+  `student_max_active_reservations`, `faculty_max_active_reservations`,
+  `block_renewal_if_overdue`, `block_renewal_if_unpaid_fines`, `block_renewal_if_reserved`,
+  `long_overdue_after_days`, `change_reason`, `created_by_user_id`
+)
+SELECT 1, '2000-01-01', 2, NULL, 1, '08:59:00', 1, 1, 2, NULL, 1, 1, 1, NULL,
+  'Legacy baseline reflecting behavior before configurable borrowing policies.', NULL
+FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM `borrowing_policy_versions` WHERE `borrowing_policy_version_id` = 1);
+
+INSERT INTO `borrowing_policy_material_rules` (`borrowing_policy_version_id`, `material_type`, `is_borrowable`)
+SELECT 1, 'Book', 1 FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM `borrowing_policy_material_rules` WHERE `borrowing_policy_version_id` = 1 AND `material_type` = 'Book');
+
+INSERT INTO `borrowing_policy_material_rules` (`borrowing_policy_version_id`, `material_type`, `is_borrowable`)
+SELECT 1, 'Thesis/Manuscript', 0 FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM `borrowing_policy_material_rules` WHERE `borrowing_policy_version_id` = 1 AND `material_type` = 'Thesis/Manuscript');
 
 CREATE TABLE IF NOT EXISTS `borrow_transactions` (
   `transaction_id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -232,6 +286,7 @@ CREATE TABLE IF NOT EXISTS `borrow_transactions` (
   `material_id` BIGINT UNSIGNED NOT NULL,
   `physical_copy_id` BIGINT UNSIGNED DEFAULT NULL,
   `reservation_id` BIGINT UNSIGNED DEFAULT NULL,
+  `borrowing_policy_version_id` BIGINT UNSIGNED DEFAULT NULL,
   `request_group_id` CHAR(36) DEFAULT NULL,
   `processed_by_user_id` BIGINT UNSIGNED DEFAULT NULL,
   `borrowed_at` DATETIME DEFAULT NULL,
@@ -253,6 +308,7 @@ CREATE TABLE IF NOT EXISTS `borrow_transactions` (
   KEY `idx_borrow_request_group` (`request_group_id`, `transaction_status`),
   KEY `idx_borrow_user_queue` (`user_id`, `transaction_status`, `created_at`, `transaction_id`),
   KEY `idx_borrow_due_at` (`due_at`),
+  KEY `idx_borrow_policy_version` (`borrowing_policy_version_id`),
   KEY `idx_borrow_lost_status` (`user_id`, `lost_confirmed_at`, `transaction_status`),
   KEY `idx_borrow_processed_by` (`processed_by_user_id`),
   KEY `idx_borrow_cancelled_by` (`cancelled_by_user_id`, `cancelled_at`),
@@ -265,12 +321,37 @@ CREATE TABLE IF NOT EXISTS `borrow_transactions` (
   CONSTRAINT `fk_borrow_physical_copy`
     FOREIGN KEY (`physical_copy_id`) REFERENCES `physical_copies` (`physical_copy_id`)
     ON UPDATE CASCADE ON DELETE RESTRICT,
+  CONSTRAINT `fk_borrow_policy_version`
+    FOREIGN KEY (`borrowing_policy_version_id`) REFERENCES `borrowing_policy_versions` (`borrowing_policy_version_id`)
+    ON UPDATE CASCADE ON DELETE RESTRICT,
   CONSTRAINT `fk_borrow_processed_by`
     FOREIGN KEY (`processed_by_user_id`) REFERENCES `users` (`user_id`)
     ON UPDATE CASCADE ON DELETE SET NULL,
   CONSTRAINT `fk_borrow_cancelled_by`
     FOREIGN KEY (`cancelled_by_user_id`) REFERENCES `users` (`user_id`)
     ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS `circulation_override_events` (
+  `override_event_id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `borrow_transaction_id` BIGINT UNSIGNED NOT NULL,
+  `borrower_user_id` BIGINT UNSIGNED NOT NULL,
+  `physical_copy_id` BIGINT UNSIGNED NOT NULL,
+  `approved_by_user_id` BIGINT UNSIGNED NOT NULL,
+  `warning_codes` TEXT NOT NULL,
+  `override_reason` VARCHAR(500) NOT NULL,
+  `preflight_decision_id` VARCHAR(64) NOT NULL,
+  `approved_at` DATETIME NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`override_event_id`),
+  KEY `idx_circ_override_transaction` (`borrow_transaction_id`),
+  KEY `idx_circ_override_borrower` (`borrower_user_id`, `approved_at`),
+  KEY `idx_circ_override_staff` (`approved_by_user_id`, `approved_at`),
+  KEY `idx_circ_override_approved_at` (`approved_at`),
+  CONSTRAINT `fk_circ_override_transaction` FOREIGN KEY (`borrow_transaction_id`) REFERENCES `borrow_transactions` (`transaction_id`) ON UPDATE CASCADE ON DELETE RESTRICT,
+  CONSTRAINT `fk_circ_override_borrower` FOREIGN KEY (`borrower_user_id`) REFERENCES `users` (`user_id`) ON UPDATE CASCADE ON DELETE RESTRICT,
+  CONSTRAINT `fk_circ_override_copy` FOREIGN KEY (`physical_copy_id`) REFERENCES `physical_copies` (`physical_copy_id`) ON UPDATE CASCADE ON DELETE RESTRICT,
+  CONSTRAINT `fk_circ_override_approver` FOREIGN KEY (`approved_by_user_id`) REFERENCES `users` (`user_id`) ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE IF NOT EXISTS `reservations` (
@@ -280,6 +361,7 @@ CREATE TABLE IF NOT EXISTS `reservations` (
   `book_title_id` BIGINT UNSIGNED DEFAULT NULL,
   `accession_id` BIGINT UNSIGNED DEFAULT NULL,
   `assigned_physical_copy_id` BIGINT UNSIGNED DEFAULT NULL,
+  `borrowing_policy_version_id` BIGINT UNSIGNED DEFAULT NULL,
   `queue_position` INT UNSIGNED NOT NULL,
   `reservation_status` ENUM('pending', 'approved', 'ready_for_pickup', 'claimed', 'cancelled', 'expired') NOT NULL DEFAULT 'pending',
   `reserved_at` DATETIME NOT NULL,
@@ -294,6 +376,7 @@ CREATE TABLE IF NOT EXISTS `reservations` (
   KEY `idx_reservation_accession_status` (`accession_id`, `reservation_status`),
   KEY `idx_reservation_title_queue` (`book_title_id`, `reservation_status`, `queue_position`, `reserved_at`),
   KEY `idx_reservation_assigned_copy` (`assigned_physical_copy_id`, `reservation_status`),
+  KEY `idx_reservation_policy_version` (`borrowing_policy_version_id`),
   CONSTRAINT `fk_reservation_user`
     FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`)
     ON UPDATE CASCADE ON DELETE RESTRICT,
@@ -308,7 +391,10 @@ CREATE TABLE IF NOT EXISTS `reservations` (
     ON UPDATE CASCADE ON DELETE RESTRICT,
   CONSTRAINT `fk_reservations_assigned_copy`
     FOREIGN KEY (`assigned_physical_copy_id`) REFERENCES `physical_copies` (`physical_copy_id`)
-    ON UPDATE CASCADE ON DELETE SET NULL
+    ON UPDATE CASCADE ON DELETE SET NULL,
+  CONSTRAINT `fk_reservation_policy_version`
+    FOREIGN KEY (`borrowing_policy_version_id`) REFERENCES `borrowing_policy_versions` (`borrowing_policy_version_id`)
+    ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 ALTER TABLE `borrow_transactions`
@@ -1038,14 +1124,48 @@ SET NEW.`availability_status` = IF(
   'Unavailable', NEW.`availability_status`
 )$$
 
+DROP TRIGGER IF EXISTS `trg_borrowing_policy_versions_no_update`$$
+CREATE TRIGGER `trg_borrowing_policy_versions_no_update`
+BEFORE UPDATE ON `borrowing_policy_versions`
+FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT = 'Published borrowing policy versions are immutable.';
+END$$
+
+DROP TRIGGER IF EXISTS `trg_borrowing_policy_versions_no_delete`$$
+CREATE TRIGGER `trg_borrowing_policy_versions_no_delete`
+BEFORE DELETE ON `borrowing_policy_versions`
+FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT = 'Published borrowing policy versions cannot be deleted.';
+END$$
+
+DROP TRIGGER IF EXISTS `trg_borrowing_policy_material_rules_no_update`$$
+CREATE TRIGGER `trg_borrowing_policy_material_rules_no_update`
+BEFORE UPDATE ON `borrowing_policy_material_rules`
+FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT = 'Published borrowing policy material rules are immutable.';
+END$$
+
+DROP TRIGGER IF EXISTS `trg_borrowing_policy_material_rules_no_delete`$$
+CREATE TRIGGER `trg_borrowing_policy_material_rules_no_delete`
+BEFORE DELETE ON `borrowing_policy_material_rules`
+FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT = 'Published borrowing policy material rules cannot be deleted.';
+END$$
+
 DROP TRIGGER IF EXISTS `trg_borrow_before_insert`$$
 CREATE TRIGGER `trg_borrow_before_insert`
 BEFORE INSERT ON `borrow_transactions`
 FOR EACH ROW
 BEGIN
-  DECLARE v_role_name VARCHAR(50);
   DECLARE v_account_status VARCHAR(20);
-  DECLARE v_active_user_count INT DEFAULT 0;
   DECLARE v_active_material_count INT DEFAULT 0;
   DECLARE v_locked_material_id BIGINT UNSIGNED;
 
@@ -1054,17 +1174,19 @@ BEGIN
       SET NEW.`borrowed_at` = NOW();
     END IF;
 
-    -- Strict one-day loan period with an 8:59 AM cutoff on the next day.
-    SET NEW.`due_at` = TIMESTAMP(
-      DATE_ADD(DATE(NEW.`borrowed_at`), INTERVAL 1 DAY),
-      '08:59:00'
-    );
+    IF NEW.`due_at` IS NULL THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Active loans require an application-supplied due_at.';
+    END IF;
 
-    -- Lock the user and material rows to serialize competing borrow attempts.
-    SELECT r.`role_name`, u.`account_status`
-      INTO v_role_name, v_account_status
+    IF NEW.`borrowing_policy_version_id` IS NULL THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Active loans require a borrowing_policy_version_id.';
+    END IF;
+
+    SELECT u.`account_status`
+      INTO v_account_status
       FROM `users` u
-      INNER JOIN `roles` r ON r.`role_id` = u.`role_id`
       WHERE u.`user_id` = NEW.`user_id`
       FOR UPDATE;
 
@@ -1089,24 +1211,6 @@ BEGIN
       SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT = 'Material already has an active borrow transaction.';
     END IF;
-
-    IF v_role_name = 'Student' THEN
-      SELECT COUNT(*)
-        INTO v_active_user_count
-        FROM `borrow_transactions`
-        WHERE `user_id` = NEW.`user_id`
-          AND `transaction_status` IN ('Borrowed', 'Overdue');
-
-      IF v_active_user_count >= 2 THEN
-        SIGNAL SQLSTATE '45000'
-          SET MESSAGE_TEXT = 'Student borrowing limit exceeded: maximum of two active materials.';
-      END IF;
-    END IF;
-  ELSEIF NEW.`borrowed_at` IS NOT NULL THEN
-    SET NEW.`due_at` = TIMESTAMP(
-      DATE_ADD(DATE(NEW.`borrowed_at`), INTERVAL 1 DAY),
-      '08:59:00'
-    );
   END IF;
 END$$
 
@@ -1115,26 +1219,36 @@ CREATE TRIGGER `trg_borrow_before_update`
 BEFORE UPDATE ON `borrow_transactions`
 FOR EACH ROW
 BEGIN
-  DECLARE v_role_name VARCHAR(50);
   DECLARE v_account_status VARCHAR(20);
-  DECLARE v_active_user_count INT DEFAULT 0;
   DECLARE v_active_material_count INT DEFAULT 0;
   DECLARE v_locked_material_id BIGINT UNSIGNED;
+
+  IF OLD.`borrowing_policy_version_id` IS NOT NULL
+     AND NEW.`borrowing_policy_version_id` IS NOT NULL
+     AND OLD.`borrowing_policy_version_id` <> NEW.`borrowing_policy_version_id`
+     AND OLD.`transaction_status` IN ('Borrowed', 'Overdue', 'Returned') THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'borrowing_policy_version_id cannot change after a loan is finalized.';
+  END IF;
 
   IF NEW.`transaction_status` IN ('Borrowed', 'Overdue') THEN
     IF NEW.`borrowed_at` IS NULL THEN
       SET NEW.`borrowed_at` = NOW();
     END IF;
 
-    SET NEW.`due_at` = TIMESTAMP(
-      DATE_ADD(DATE(NEW.`borrowed_at`), INTERVAL 1 DAY),
-      '08:59:00'
-    );
+    IF NEW.`due_at` IS NULL THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Active loans require an application-supplied due_at.';
+    END IF;
 
-    SELECT r.`role_name`, u.`account_status`
-      INTO v_role_name, v_account_status
+    IF NEW.`borrowing_policy_version_id` IS NULL THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Active loans require a borrowing_policy_version_id.';
+    END IF;
+
+    SELECT u.`account_status`
+      INTO v_account_status
       FROM `users` u
-      INNER JOIN `roles` r ON r.`role_id` = u.`role_id`
       WHERE u.`user_id` = NEW.`user_id`
       FOR UPDATE;
 
@@ -1160,25 +1274,6 @@ BEGIN
       SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT = 'Material already has another active borrow transaction.';
     END IF;
-
-    IF v_role_name = 'Student' THEN
-      SELECT COUNT(*)
-        INTO v_active_user_count
-        FROM `borrow_transactions`
-        WHERE `user_id` = NEW.`user_id`
-          AND `transaction_status` IN ('Borrowed', 'Overdue')
-          AND `transaction_id` <> NEW.`transaction_id`;
-
-      IF v_active_user_count >= 2 THEN
-        SIGNAL SQLSTATE '45000'
-          SET MESSAGE_TEXT = 'Student borrowing limit exceeded: maximum of two active materials.';
-      END IF;
-    END IF;
-  ELSEIF NEW.`borrowed_at` IS NOT NULL THEN
-    SET NEW.`due_at` = TIMESTAMP(
-      DATE_ADD(DATE(NEW.`borrowed_at`), INTERVAL 1 DAY),
-      '08:59:00'
-    );
   END IF;
 END$$
 

@@ -21,3 +21,33 @@ export type CirculationMonitorData = {
   }>
   pagination: { page: number; limit: number; total: number; totalPages: number }
 }
+
+export type CheckoutFlow = 'claim' | 'walk_in'
+export type PreflightDecision = 'ready' | 'confirmation_required' | 'blocked'
+export type PreflightFinding = { code: string; message: string }
+
+export type CheckoutPreflightData = {
+  decision: PreflightDecision
+  expiresAt: string | null
+  borrower: { userId: number; schoolId: string; name: string; role: string } | null
+  copy: {
+    physicalCopyId: number
+    barcode: string
+    accessionNumber: string
+    title: string
+    condition: string
+    availability: string
+  } | null
+  dueAt: string
+  blockers: PreflightFinding[]
+  warnings: PreflightFinding[]
+  alerts: PreflightFinding[]
+  preflightToken: string | null
+}
+
+export type CheckoutConfirmationInput = {
+  barcode: string
+  schoolId: string
+  preflightToken?: string | null
+  overrideReason?: string | null
+}

@@ -21,7 +21,7 @@ inventoryPreviewRouter.post('/session', (request, response, next) => {
       id: null,
       fullName: 'admin_authenticated',
       email: '',
-      role: 'System Administrator',
+      role: 'Admin',
     }
     request.session.csrfToken = createCsrfToken()
     request.session.lastActivity = Date.now()

@@ -112,7 +112,7 @@ export function BorrowingHistory() {
     {error ? <div role="alert" className="mb-5 flex items-center gap-3 rounded-xl bg-[#FFF200] px-4 py-3 font-semibold text-[#003399]"><AlertTriangle size={18} />{error}</div> : null}
     {notice ? <div role="status" className="mb-5 flex items-center justify-between rounded-xl bg-[#003399] px-4 py-3 font-semibold text-[#FFFFFF]"><span>{notice}</span><button aria-label="Dismiss" onClick={() => setNotice('')}><X size={17} /></button></div> : null}
     <div className="mb-5 grid gap-3 sm:grid-cols-3">
-      <StatCard label="Remaining loan slots" value={summary?.remainingLoanSlots === null ? 'Unlimited' : `${summary?.remainingLoanSlots ?? 0} / 2`} icon={BookOpen} tone="blue" />
+      <StatCard label="Remaining loan slots" value={summary?.remainingLoanSlots === null || summary?.loanLimit === null || summary?.loanLimit === undefined ? 'Unlimited' : `${summary?.remainingLoanSlots ?? 0} / ${summary.loanLimit}`} icon={BookOpen} tone="blue" />
       <StatCard label="Active loans" value={summary?.activeLoans ?? 0} icon={CalendarClock} tone="blue" />
       <StatCard label="Next deadline" value={summary?.nextDueAt ? formatDate(summary.nextDueAt) : 'No active due date'} icon={CalendarClock} tone="orange" />
     </div>

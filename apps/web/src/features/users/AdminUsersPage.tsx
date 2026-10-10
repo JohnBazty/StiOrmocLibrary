@@ -89,7 +89,7 @@ export function AdminUsersPage() {
     <SectionCard className="mb-5 p-4"><div className="grid gap-3 md:grid-cols-5">
       <label className={`${field} flex items-center gap-2`}><Search size={15} /><input aria-label="Search users" className="w-full outline-none" placeholder="Name, ID, or email" value={filters.q} onChange={event => update({ q: event.target.value })} /></label>
       <select aria-label="Account status" className={field} value={filters.status} onChange={event => update({ status: event.target.value })}><option value="">All statuses</option><option>Active</option><option>Deactivated</option><option>Archived</option></select>
-      <select aria-label="User role" className={field} value={filters.role} onChange={event => update({ role: event.target.value })}><option value="">All roles</option>{['Student', 'Faculty', 'Librarian', 'Admin'].map(role => <option key={role}>{role}</option>)}</select>
+      <select aria-label="User role" className={field} value={filters.role} onChange={event => update({ role: event.target.value })}><option value="">All roles</option>{['Student', 'Faculty', 'Admin'].map(role => <option key={role}>{role}</option>)}</select>
       <select aria-label="Program" className={field} value={filters.program} onChange={event => update({ program: event.target.value })}><option value="">All programs</option>{programs.map(program => <option key={program}>{program}</option>)}</select>
       <select aria-label="Clearance" className={field} value={filters.clearance} onChange={event => update({ clearance: event.target.value })}><option value="">All clearance states</option><option>Cleared</option><option>Not Cleared</option></select>
     </div></SectionCard>
