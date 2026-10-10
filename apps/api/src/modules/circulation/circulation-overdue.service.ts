@@ -4,13 +4,32 @@ import { caseIf, excluded, isPostgres } from '../../config/sql-dialect.js'
 import { calculateOperatingFine, countOperatingDaysAfter, loadFineContext } from '../fines/fine-calculator.ts'
 import { openLongOverdueCaseInTransaction } from './circulation-case.service.ts'
 
+export type OverdueProgressCursor = {
+  dueAt: string
+  transactionId: number
+}
+
 export function overdueCharge(dueAt: Date, evaluatedAt: Date) {
   const { amount, units, rate, basis } = calculateOperatingFine(dueAt, evaluatedAt)
   return { amount, units, rate, basis }
 }
 
-export async function escalateOverdueTransactions(database: Pool = db, now: Date = new Date(), batchSize = 100) {
+function cursorPredicate(cursor: OverdueProgressCursor | null) {
+  if (!cursor) return { sql: '', params: [] as Array<string | number | Date> }
+  return {
+    sql: ` AND (bt.due_at > ? OR (bt.due_at = ? AND bt.transaction_id > ?))`,
+    params: [cursor.dueAt, cursor.dueAt, cursor.transactionId] as Array<string | number | Date>,
+  }
+}
+
+export async function escalateOverdueTransactions(
+  database: Pool = db,
+  now: Date = new Date(),
+  batchSize = 100,
+  cursor: OverdueProgressCursor | null = null,
+) {
   const limit = Math.min(Math.max(Math.trunc(batchSize), 1), 500)
+  const cursorFilter = cursorPredicate(cursor)
   const connection = await database.getConnection()
   try {
     await connection.beginTransaction()
@@ -23,8 +42,10 @@ export async function escalateOverdueTransactions(database: Pool = db, now: Date
          LEFT JOIN titles t ON t.title_id = pc.title_id
         WHERE bt.transaction_status IN ('Borrowed','Overdue') AND bt.lost_confirmed_at IS NULL
           AND bt.due_at IS NOT NULL AND bt.due_at < ?
+          ${cursorFilter.sql}
         ORDER BY bt.due_at ASC, bt.transaction_id ASC LIMIT ${limit}
-        ${isPostgres ? 'FOR UPDATE OF bt' : 'FOR UPDATE'}`, [now],
+        ${isPostgres ? 'FOR UPDATE OF bt' : 'FOR UPDATE'}`,
+      [now, ...cursorFilter.params],
     )
     const earliest = rows.reduce((value, row) => Math.min(value, new Date(row.due_at).getTime()), now.getTime())
     const context = await loadFineContext(connection, new Date(earliest), now)
@@ -124,8 +145,15 @@ export async function escalateOverdueTransactions(database: Pool = db, now: Date
       if (opened.created) longOverdueCasesOpened += 1
     }
 
+    const nextCursor: OverdueProgressCursor | null = rows.length < limit
+      ? null
+      : {
+          dueAt: new Date(rows[rows.length - 1].due_at).toISOString(),
+          transactionId: Number(rows[rows.length - 1].transaction_id),
+        }
+
     await connection.commit()
-    return { evaluatedCount: rows.length, newlyOverdue, longOverdueCasesOpened }
+    return { evaluatedCount: rows.length, newlyOverdue, longOverdueCasesOpened, nextCursor }
   } catch (error) {
     await connection.rollback()
     throw error

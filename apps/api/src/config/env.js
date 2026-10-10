@@ -11,6 +11,7 @@ const configuredSecret = process.env.SESSION_SECRET?.trim()
 const configuredJwtSecret = process.env.JWT_SECRET?.trim()
 const configuredReportIntegritySecret = process.env.REPORT_INTEGRITY_SECRET?.trim()
 const configuredAttendanceQrSecret = process.env.ATTENDANCE_QR_SECRET?.trim()
+const configuredJobRunnerSecret = process.env.JOB_RUNNER_SECRET?.trim() || ''
 
 if (isProduction && (!configuredSecret || configuredSecret.length < 32)) {
   throw new Error('SESSION_SECRET must contain at least 32 characters in production.')
@@ -23,6 +24,9 @@ if (isProduction && (!configuredReportIntegritySecret || configuredReportIntegri
 }
 if (isProduction && (!configuredAttendanceQrSecret || configuredAttendanceQrSecret.length < 32)) {
   throw new Error('ATTENDANCE_QR_SECRET must contain at least 32 characters in production.')
+}
+if (isProduction && (!configuredJobRunnerSecret || configuredJobRunnerSecret.length < 32)) {
+  throw new Error('JOB_RUNNER_SECRET must contain at least 32 characters in production.')
 }
 
 const developmentJwtSecret = configuredJwtSecret || configuredSecret || randomBytes(48).toString('hex')
@@ -119,4 +123,5 @@ export const env = Object.freeze({
     historyLimit: 3,
     resetTokenTtlSeconds: Math.max(300, Math.min(900, Number(process.env.PASSWORD_RESET_TOKEN_TTL_SECONDS ?? 600))),
   },
+  jobRunnerSecret: configuredJobRunnerSecret,
 })

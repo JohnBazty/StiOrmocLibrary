@@ -53,6 +53,8 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   library_profile_settings: ['settings_id', 'library_name', 'seat_capacity', 'updated_by_user_id'],
   library_capacity_changes: ['capacity_change_id', 'previous_capacity', 'new_capacity', 'change_reason', 'changed_at'],
   attendance_qr_credentials: ['credential_id', 'user_id', 'public_id', 'secret_hash', 'credential_status', 'issued_at'],
+  scheduled_job_state: ['job_name', 'lease_token', 'lease_expires_at', 'last_started_at', 'last_success_at', 'last_failure_at', 'last_outcome', 'progress_cursor', 'updated_at'],
+  scheduled_job_runs: ['run_id', 'job_name', 'started_at', 'finished_at', 'outcome', 'result_json', 'error_code', 'error_message'],
 }
 
 export type SchemaReadiness = { ready: boolean; missingTables: string[]; missingColumns: string[] }

@@ -2,15 +2,17 @@ import { Activity, BookCopy, BookOpen, CalendarDays, Download, LibraryBig, Phili
 import { useCallback, useEffect, useState } from 'react'
 import { Button, PageHeader, SectionCard, StatCard, StatusBadge, TableShell } from '../../components/ui'
 import { dashboardApi } from './dashboard-api'
-import type { AdminDashboardData } from './types'
+import type { AdminDashboardData, ScheduledJobStatus } from './types'
 
 const peso=(value:number)=>new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP'}).format(value)
 const count=(value:number)=>new Intl.NumberFormat('en-PH').format(value)
 const first=(name:string)=>name.trim().split(/\s+/)[0]||'Administrator'
+const jobLabel=(name:string)=>({ 'reservation-expiration':'Reservation expiration','circulation-overdue':'Circulation overdue','notifications':'Notifications' }[name]??name)
+const healthLabel=(health:ScheduledJobStatus['health'])=>({ healthy:'Healthy', failed:'Failed', stale:'Stale' }[health])
 
 export function AdminDashboardPage(){
-  const[data,setData]=useState<AdminDashboardData|null>(null);const[error,setError]=useState('');const[loading,setLoading]=useState(true);const[exporting,setExporting]=useState(false)
-  const load=useCallback(async()=>{setLoading(true);setError('');try{setData(await dashboardApi.admin())}catch(value){setError(value instanceof Error?value.message:'The dashboard could not be loaded.')}finally{setLoading(false)}},[])
+  const[data,setData]=useState<AdminDashboardData|null>(null);const[jobs,setJobs]=useState<ScheduledJobStatus[]>([]);const[error,setError]=useState('');const[loading,setLoading]=useState(true);const[exporting,setExporting]=useState(false)
+  const load=useCallback(async()=>{setLoading(true);setError('');try{const[dashboard,jobList]=await Promise.all([dashboardApi.admin(),dashboardApi.jobs().catch(()=>[] as ScheduledJobStatus[])]);setData(dashboard);setJobs(jobList)}catch(value){setError(value instanceof Error?value.message:'The dashboard could not be loaded.')}finally{setLoading(false)}},[])
   useEffect(()=>{void load()},[load])
   const exportPdf=async()=>{setExporting(true);setError('');try{await dashboardApi.downloadAdminSummary()}catch(value){setError(value instanceof Error?value.message:'The PDF could not be generated.')}finally{setExporting(false)}}
   if(!data&&loading)return <DashboardLoading />
@@ -20,9 +22,11 @@ export function AdminDashboardPage(){
     ['Total books',count(k.totalBooks),BookCopy,'blue'],['Active borrowed',count(k.activeBorrowed),BookOpen,'violet'],['Available books',count(k.availableBooks),LibraryBig,'emerald'],['Overdue books',count(k.overdueBooks),CalendarDays,'red'],
     ['Active users',count(k.activeUsers),Users,'cyan'],['Daily attendance',count(k.dailyAttendance),UserCheck,'blue'],['Reservations',count(k.activeReservations),CalendarDays,'violet'],['Outstanding fines',peso(k.outstandingFines),PhilippinePeso,'orange'],
   ] as const
+  const unhealthyJobs=jobs.filter((item)=>item.health!=='healthy')
   return <>
     <PageHeader eyebrow="Library operations" title={`Good day, ${first(data.staff.name)}`} action={<div className="flex gap-2"><Button variant="secondary" disabled={loading} onClick={()=>void load()}><RefreshCw size={15}/>{loading?'Refreshing…':'Refresh'}</Button><Button disabled={exporting} onClick={()=>void exportPdf()}><Download size={15}/>{exporting?'Preparing…':'Export summary'}</Button></div>}/>
     {error?<div role="alert" className="mb-5 rounded-2xl bg-[#FFF200] px-4 py-3 text-sm font-semibold text-[#003399]">{error}</div>:null}
+    {unhealthyJobs.length?<div role="alert" className="mb-5 rounded-2xl bg-[#FFF200] px-4 py-3 text-sm font-semibold text-[#003399]">Scheduled job attention needed: {unhealthyJobs.map((item)=>`${jobLabel(item.jobName)} (${healthLabel(item.health)})`).join(', ')}.</div>:null}
     <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">{cards.map(([label,value,icon,tone])=><StatCard key={label} label={label} value={value} icon={icon} tone={tone}/>)}</div>
     <div className="grid gap-5 xl:grid-cols-[1.2fr_.8fr]">
       <SectionCard className="p-5"><div className="flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-wider text-[#003399]/45">Visitor analytics</p><h2 className="mt-1 font-display text-lg font-bold text-[#003399]">Weekly attendance</h2></div><span className="text-xs font-semibold text-[#003399]/55">Asia/Manila</span></div><div className="mt-8 flex h-52 items-end gap-3 sm:gap-5">{data.weeklyAttendance.map(item=><div key={item.label} className="flex h-full flex-1 flex-col justify-end gap-2"><div className="relative flex flex-1 items-end rounded-t-lg bg-[#003399]/5"><div style={{height:`${Math.max(item.value?8:0,item.value/max*100)}%`}} className="relative w-full rounded-t-lg bg-[#003399]"><span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-bold text-[#003399]">{item.value}</span></div></div><span className="text-center text-[10px] font-semibold text-[#003399]/45">{item.label}</span></div>)}</div></SectionCard>
@@ -35,6 +39,26 @@ export function AdminDashboardPage(){
     <div className="mt-5 grid gap-5 xl:grid-cols-2">
       <SectionCard className="p-5"><p className="text-xs font-bold uppercase tracking-wider text-[#003399]/45">Attendance purpose today</p><h2 className="mt-1 font-display text-lg font-bold text-[#003399]">Why visitors came in</h2><div className="mt-4 grid gap-3 sm:grid-cols-2">{data.purposeBreakdown.map(item=><Mini key={item.label} label={item.label} value={String(item.value)}/>)}{!data.purposeBreakdown.length?<Empty text="No attendance recorded today."/>:null}</div></SectionCard>
       <SectionCard className="p-5"><p className="text-xs font-bold uppercase tracking-wider text-[#003399]/45">Operational feed</p><h2 className="mt-1 font-display text-lg font-bold text-[#003399]">Recent activity</h2><div className="mt-3 divide-y divide-[#003399]/10">{data.recentActivity.map(item=><div key={item.id} className="py-3"><p className="text-sm font-semibold text-[#003399]">{item.title}</p><p className="mt-1 line-clamp-2 text-xs text-[#003399]/65">{item.message}</p><p className="mt-1 text-[10px] text-[#003399]/45">{item.createdAt}</p></div>)}{!data.recentActivity.length?<Empty text="No recent operational events."/>:null}</div></SectionCard>
+    </div>
+    <div className="mt-5">
+      <TableShell title="Scheduled jobs" subtitle="Reservation expiry, overdue scan, and notification delivery">
+        <table className="w-full min-w-[680px] text-left text-sm">
+          <thead className="bg-[#003399]/5 text-[11px] uppercase tracking-wider text-[#003399]/65">
+            <tr><th className="px-5 py-3">Job</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Last success</th><th className="px-5 py-3">Last outcome</th></tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {jobs.map((item)=>(
+              <tr key={item.jobName}>
+                <td className="px-5 py-4 font-semibold text-[#003399]">{jobLabel(item.jobName)}</td>
+                <td className="px-5 py-4"><span className="text-sm font-bold text-[#003399]">{healthLabel(item.health)}</span>{item.lastErrorCode?<p className="mt-1 text-xs text-[#003399]/65">{item.lastErrorCode}{item.lastErrorMessage?`: ${item.lastErrorMessage}`:''}</p>:null}</td>
+                <td className="px-5 py-4 text-xs text-[#003399]/65">{item.lastSuccessAt?new Date(item.lastSuccessAt).toLocaleString('en-PH'):'Never'}</td>
+                <td className="px-5 py-4 text-xs font-semibold text-[#003399]">{item.lastOutcome??'—'}</td>
+              </tr>
+            ))}
+            {!jobs.length?<tr><td colSpan={4}><Empty text="Scheduled job status is unavailable until the durable job-runner migration is applied."/></td></tr>:null}
+          </tbody>
+        </table>
+      </TableShell>
     </div>
     <p className="mt-4 text-right text-[11px] text-[#003399]/45">Last updated {new Date(data.generatedAt).toLocaleString('en-PH')}</p>
   </>

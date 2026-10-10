@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-10-10 (circulation cases applied on hosted; MySQL `047` / next `048`; Supabase ledger through `018_stocktake_sessions.sql` + `017_circulation_cases.sql`; next **019**) |
+| **Date last updated** | 2026-10-10 (durable job runner in progress; MySQL `048` authored / next `049`; Supabase `019_durable_job_runner.sql` authored — apply on hosted before Cron activation; next **020**) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---
@@ -98,10 +98,10 @@ Always know and document:
 | Item | Value |
 | --- | --- |
 | Migrations directory | `database/migrations/` |
-| Latest migration | `20261010_047_circulation_cases.sql` |
-| Latest number | `047` |
-| **Next available number** | **`048`** |
-| Supabase / Postgres files | Hosted ledger includes `017_loan_renewals.sql`, `017_circulation_cases.sql`, and `018_stocktake_sessions.sql`. Next new Supabase file number: **019**. Earlier files through `015` remain in tree; reconcile ledger gaps before whole-directory replay. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set. |
+| Latest migration | `20261010_048_durable_job_runner.sql` |
+| Latest number | `048` |
+| **Next available number** | **`049`** |
+| Supabase / Postgres files | Hosted ledger includes `017_loan_renewals.sql`, `017_circulation_cases.sql`, and `018_stocktake_sessions.sql`. Tree also has `019_durable_job_runner.sql` (apply on hosted before Cron). Next new Supabase file number after apply: **020**. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set. |
 
 Naming pattern in this repo:
 
@@ -165,3 +165,4 @@ Prefer simple, readable scripts under a clear folder (for example `tools/` or `s
 | 2026-10-09 | Added branding migrations `045` and Supabase `015`; tracker advanced to MySQL `045` / next `046` and Supabase next `016`. |
 | 2026-10-09 | Configurable borrowing policies: MySQL `046` / Supabase `016`; tracker advanced to MySQL next `047` and Supabase next `017`. |
 | 2026-10-10 | Circulation cases (long overdue / damage): MySQL `047` / Supabase `017_circulation_cases.sql` applied on hosted. Ledger already had `017_loan_renewals.sql` and `018_stocktake_sessions.sql`; next Supabase file **019**. MySQL next `048`. |
+| 2026-10-10 | Durable job runner (T1) build started: MySQL `048_durable_job_runner` / Supabase `019_durable_job_runner.sql` authored; next MySQL `049`, next Supabase after apply **020**. |

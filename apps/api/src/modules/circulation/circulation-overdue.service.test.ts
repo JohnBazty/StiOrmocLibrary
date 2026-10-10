@@ -28,8 +28,42 @@ test('overdue escalation atomically updates loan, fine, notification, and cleara
     },
   }
   const result = await escalateOverdueTransactions({ getConnection: async () => connection } as unknown as Pool, new Date(2026, 7, 24, 10, 0))
-  assert.deepEqual(result, { evaluatedCount: 1, newlyOverdue: 1, longOverdueCasesOpened: 0 })
+  assert.equal(result.evaluatedCount, 1)
+  assert.equal(result.newlyOverdue, 1)
+  assert.equal(result.longOverdueCasesOpened, 0)
+  assert.equal(result.nextCursor, null)
   assert.deepEqual(state, { committed: 1, rolledBack: 0, overdue: 1, fine: 1, notification: 1, clearance: 1 })
+})
+
+test('overdue escalation advances cursor when the batch is full', async () => {
+  const dueAt = new Date(2026, 7, 24, 8, 59)
+  const loans = Array.from({ length: 100 }, (_, index) => ({
+    transaction_id: index + 1,
+    user_id: 4,
+    due_at: dueAt,
+    physical_copy_id: 3,
+    borrowing_policy_version_id: 1,
+    title: 'Networks',
+  }))
+  const connection = {
+    async beginTransaction() {}, async commit() {}, async rollback() {}, release() {},
+    async execute(sql: string) {
+      if (sql.includes('borrowing_policy_versions bp')) return [[]]
+      if (sql.includes('FROM borrow_transactions bt') && sql.includes('FOR UPDATE')) return [loans]
+      if (sql.includes('FROM fine_policy_versions')) return [[{ hourly_rate: 2, daily_rate: 10, maximum_penalty: 500 }]]
+      if (sql.includes('FROM library_operating_schedule')) return [[1, 2, 3, 4, 5, 6].map((day_of_week) => ({ day_of_week, is_open: 1 }))]
+      if (sql.includes('FROM library_closed_days')) return [[]]
+      if (sql.startsWith('UPDATE borrow_transactions')) return [{ affectedRows: 0 }]
+      if (sql.includes('INSERT INTO admin_notifications')) return [{ affectedRows: 1 }]
+      if (sql.includes('INSERT INTO fines')) return [{ affectedRows: 1 }]
+      if (sql.includes('INSERT INTO clearance_statuses')) return [{ affectedRows: 1 }]
+      throw new Error(`Unexpected SQL: ${sql}`)
+    },
+  }
+  const result = await escalateOverdueTransactions({ getConnection: async () => connection } as unknown as Pool, new Date(2026, 7, 24, 10, 0), 100)
+  assert.equal(result.evaluatedCount, 100)
+  assert.ok(result.nextCursor)
+  assert.equal(result.nextCursor?.transactionId, 100)
 })
 
 test('long-overdue scan opens one case when operating-day threshold is met', async () => {
