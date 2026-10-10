@@ -17,6 +17,19 @@ export type AdminDashboardData = {
   occupancy: {current:number;capacity:number;peakHour:string|null;averageMinutes:number}
 }
 
+export type ScheduledJobStatus = {
+  jobName: string
+  health: 'healthy' | 'failed' | 'stale'
+  lastSuccessAt: string | null
+  lastFailureAt: string | null
+  lastStartedAt: string | null
+  lastOutcome: 'succeeded' | 'failed' | 'skipped' | null
+  lastErrorCode: string | null
+  lastErrorMessage: string | null
+  lastResult: Record<string, number | string | boolean | null> | null
+  leaseHeld: boolean
+}
+
 export type UserDashboardData = {
   generatedAt: string
   user: {name:string;schoolId:string;program:string|null;role:string}

@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AdminCirculationMonitor } from './AdminCirculationMonitor'
 
 const api = vi.hoisted(() => ({
@@ -8,8 +8,11 @@ const api = vi.hoisted(() => ({
   fulfillClaim: vi.fn(),
   confirmCheckout: vi.fn(),
   returnBook: vi.fn(),
+  reportDamage: vi.fn(),
   calculatePenalty: vi.fn(),
   cancelRequest: vi.fn(),
+  listCases: vi.fn(),
+  resolveCase: vi.fn(),
 }))
 vi.mock('./circulation-api', () => ({ circulationApi: api }))
 
@@ -24,6 +27,10 @@ const monitor = {
 }
 
 describe('AdminCirculationMonitor', () => {
+  beforeEach(() => {
+    api.listCases.mockResolvedValue({ items: [], pagination: { page: 1, limit: 50, total: 0, totalPages: 1 } })
+  })
+
   it('runs ready preflight then walk-in checkout without the warning dialog', async () => {
     api.monitor.mockResolvedValue(monitor)
     api.preflightCheckout.mockResolvedValue({

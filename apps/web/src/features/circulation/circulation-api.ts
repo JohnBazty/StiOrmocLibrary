@@ -4,6 +4,7 @@ import type {
   CheckoutConfirmationInput,
   CheckoutFlow,
   CheckoutPreflightData,
+  CirculationCaseListData,
   CirculationMonitorData,
 } from './types'
 
@@ -46,5 +47,16 @@ export const circulationApi = {
     method: 'POST', body: JSON.stringify(checkoutBody(input)),
   }),
   returnBook: (transactionId: number) => request(`/api/v1/admin/borrowing/${transactionId}/return`, { method: 'PUT' }),
+  reportDamage: (transactionId: number, description: string, observedCondition = 'Damaged') => request(`/api/v1/admin/borrowing/${transactionId}/report-damage`, {
+    method: 'POST', body: JSON.stringify({ description, observedCondition }),
+  }),
   calculatePenalty: (transactionId: number) => request<{ amount: number; currency: string }>(`/api/v1/admin/borrowing/${transactionId}/calculate-penalty`, { method: 'POST' }),
+  listCases: (caseType?: 'Long Overdue' | 'Damage' | 'all') => {
+    const params = new URLSearchParams({ page: '1', limit: '50' })
+    if (caseType && caseType !== 'all') params.set('caseType', caseType)
+    return request<CirculationCaseListData>(`/api/v1/admin/circulation/cases?${params}`)
+  },
+  resolveCase: (caseId: number, reason: string) => request(`/api/v1/admin/circulation/cases/${caseId}/resolve`, {
+    method: 'POST', body: JSON.stringify({ reason }),
+  }),
 }

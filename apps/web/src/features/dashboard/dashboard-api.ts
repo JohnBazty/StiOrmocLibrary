@@ -1,5 +1,5 @@
 import { getAccessToken } from '../auth/auth-storage'
-import type { AdminDashboardData, UserDashboardData } from './types'
+import type { AdminDashboardData, ScheduledJobStatus, UserDashboardData } from './types'
 
 async function request<T>(url:string){
   const headers = new Headers({ Accept:'application/json' }); const token=getAccessToken(); if(token) headers.set('Authorization',`Bearer ${token}`)
@@ -10,6 +10,7 @@ async function request<T>(url:string){
 
 export const dashboardApi={
   admin:()=>request<AdminDashboardData>('/api/v1/admin/dashboard'),
+  jobs:async()=>(await request<{items:ScheduledJobStatus[]}>('/api/v1/admin/jobs')).items,
   user:()=>request<UserDashboardData>('/api/v1/dashboard'),
   async downloadAdminSummary(){
     const headers=new Headers();const token=getAccessToken();if(token)headers.set('Authorization',`Bearer ${token}`)

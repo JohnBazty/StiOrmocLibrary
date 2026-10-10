@@ -45,6 +45,8 @@ async function publishScheduledAnnouncements(database: Pool, now: Date) {
   } catch (error) { await connection.rollback(); throw error } finally { connection.release() }
 }
 
+const NOTIFICATION_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000
+
 export async function generateNotifications(database: Pool = db, now: Date = new Date()) {
   const dueSoonFormat = formatDate('bt.due_at', '%b %e, %Y at %h:%i %p', 'Mon FMDD, YYYY at HH12:MI AM')
   const dueHourFormat = formatDate('bt.due_at', '%h:%i %p', 'HH12:MI AM')
@@ -55,6 +57,7 @@ export async function generateNotifications(database: Pool = db, now: Date = new
   const sourceIdCast = isPostgres
     ? `CAST(${closureSourceId} AS INTEGER)`
     : `CAST(${closureSourceId} AS UNSIGNED)`
+  const lookbackSince = new Date(now.getTime() - NOTIFICATION_LOOKBACK_MS)
 
   const queries: Array<[string, Array<string | number | Date | null>]> = [
     [insertIgnoreNotifications(`INSERT IGNORE INTO notifications
@@ -63,21 +66,24 @@ export async function generateNotifications(database: Pool = db, now: Date = new
              'Due Date','Borrow Transaction',bt.transaction_id,'/student/borrowing','Important',CONCAT('loan:',bt.transaction_id,':due-12h'),NOW(),NOW()
         FROM borrow_transactions bt INNER JOIN materials m ON m.material_id=bt.material_id
         LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id LEFT JOIN titles t ON t.title_id=pc.title_id
-       WHERE bt.transaction_status='Borrowed' AND bt.lost_confirmed_at IS NULL AND bt.due_at>? AND bt.due_at<=${dateAddHours('?', 12)}`), [now, now]],
+       WHERE bt.transaction_status='Borrowed' AND bt.lost_confirmed_at IS NULL AND bt.due_at>? AND bt.due_at<=${dateAddHours('?', 12)}
+       LIMIT 500`), [now, now]],
     [insertIgnoreNotifications(`INSERT IGNORE INTO notifications
         (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
       SELECT bt.user_id, 'Book due within one hour', CONCAT(COALESCE(t.title,m.title),' is due at ',${dueHourFormat},'. Return it before the cutoff to avoid a fine.'),
              'Due Date','Borrow Transaction',bt.transaction_id,'/student/borrowing','Urgent',CONCAT('loan:',bt.transaction_id,':due-1h'),NOW(),NOW()
         FROM borrow_transactions bt INNER JOIN materials m ON m.material_id=bt.material_id
         LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id LEFT JOIN titles t ON t.title_id=pc.title_id
-       WHERE bt.transaction_status='Borrowed' AND bt.lost_confirmed_at IS NULL AND bt.due_at>? AND bt.due_at<=${dateAddHours('?', 1)}`), [now, now]],
+       WHERE bt.transaction_status='Borrowed' AND bt.lost_confirmed_at IS NULL AND bt.due_at>? AND bt.due_at<=${dateAddHours('?', 1)}
+       LIMIT 500`), [now, now]],
     [insertIgnoreNotifications(`INSERT IGNORE INTO notifications
         (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
       SELECT bt.user_id,'Book is overdue',CONCAT(COALESCE(t.title,m.title),' is overdue. Your fine and clearance status have been updated.'),
              'Overdue Penalty','Borrow Transaction',bt.transaction_id,'/student/clearance','Urgent',CONCAT('loan:',bt.transaction_id,':overdue'),NOW(),NOW()
         FROM borrow_transactions bt INNER JOIN materials m ON m.material_id=bt.material_id
         LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id LEFT JOIN titles t ON t.title_id=pc.title_id
-       WHERE bt.transaction_status IN ('Borrowed','Overdue') AND bt.lost_confirmed_at IS NULL AND bt.due_at<=?`), [now]],
+       WHERE bt.transaction_status IN ('Borrowed','Overdue') AND bt.lost_confirmed_at IS NULL AND bt.due_at<=? AND bt.due_at>=?
+       LIMIT 500`), [now, lookbackSince]],
     [insertIgnoreNotifications(`INSERT IGNORE INTO notifications
         (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
       SELECT r.user_id,
@@ -89,7 +95,9 @@ export async function generateNotifications(database: Pool = db, now: Date = new
              'Reservation Arrival','Reservation',r.reservation_id,'/student/reservations',
              CASE WHEN r.reservation_status='ready_for_pickup' THEN 'Urgent' ELSE 'Important' END,
              CONCAT('reservation:',r.reservation_id,':',r.reservation_status),NOW(),NOW()
-        FROM reservations r INNER JOIN materials m ON m.material_id=r.material_id`), []],
+        FROM reservations r INNER JOIN materials m ON m.material_id=r.material_id
+       WHERE r.updated_at >= ?
+       LIMIT 500`), [lookbackSince]],
     [insertIgnoreNotifications(`INSERT IGNORE INTO notifications
         (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
       SELECT pr.user_id, CONCAT('Print request ',LOWER(pr.job_status)),
@@ -97,7 +105,9 @@ export async function generateNotifications(database: Pool = db, now: Date = new
              'Printing Update','Print Request',pr.request_id,'/student/printing',
              CASE WHEN pr.job_status='Ready for Pickup' THEN 'Urgent' ELSE 'Normal' END,
              CONCAT('print:',pr.request_id,':',REPLACE(LOWER(pr.job_status),' ','-')),NOW(),NOW()
-        FROM print_requests pr`), []],
+        FROM print_requests pr
+       WHERE pr.updated_at >= ?
+       LIMIT 500`), [lookbackSince]],
     [insertIgnoreNotifications(`INSERT IGNORE INTO notifications
         (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
       SELECT u.user_id,'Library schedule update',CONCAT('The library is closed on ',${closureLabel},': ',c.reason,'.'),
