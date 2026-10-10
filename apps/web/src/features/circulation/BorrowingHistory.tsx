@@ -1,5 +1,5 @@
 import { ViewLocationButton } from '../floor-plan/ViewLocationButton'
-import { AlertTriangle, BookOpen, CalendarClock, Eye, RefreshCw, X } from 'lucide-react'
+import { AlertTriangle, BookOpen, CalendarClock, CalendarPlus, Eye, RefreshCw, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Button, PageHeader, RecordCard, RecordField, ResponsiveRecords, SectionCard, StatCard, StatusBadge } from '../../components/ui'
 import { circulationApi } from './circulation-api'
@@ -9,6 +9,7 @@ import { CancelBorrowRequestDialog } from './CancelBorrowRequestDialog'
 import { ReportLostDialog } from './ReportLostDialog'
 import { BookCoverThumbnail } from '../catalog/BookCoverThumbnail'
 import { clearanceApi } from '../clearance/clearance-api'
+import { RenewLoanDialog } from './RenewLoanDialog'
 
 function formatDate(value: string | null) {
   if (!value) return '—'
@@ -23,11 +24,13 @@ function ItemActions({
   onDetail,
   onCancel,
   onReport,
+  onRenew,
 }: {
   item: HistoryItem
   onDetail: () => void
   onCancel: () => void
   onReport: () => void
+  onRenew: () => void
 }) {
   return (
     <div className="flex flex-wrap gap-2">
@@ -40,6 +43,11 @@ function ItemActions({
       {item.status === 'Pending' ? (
         <button onClick={onCancel} className="h-9 rounded-lg px-3 text-xs font-bold text-[#003399] hover:bg-[#FFF200]">
           <X size={14} className="inline" /> Cancel request
+        </button>
+      ) : null}
+      {item.canRequestRenewal ? (
+        <button onClick={onRenew} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#003399] px-3 text-xs font-bold text-[#FFFFFF]">
+          <CalendarPlus size={15} /> Request renewal
         </button>
       ) : null}
       {['Borrowed', 'Overdue'].includes(item.status) && !item.lostReportStatus ? (
@@ -61,6 +69,7 @@ export function BorrowingHistory() {
   const [cancelBusy, setCancelBusy] = useState(false)
   const [cancelError, setCancelError] = useState('')
   const [reporting, setReporting] = useState<HistoryItem | null>(null)
+  const [renewing, setRenewing] = useState<HistoryItem | null>(null)
   const [reportBusy, setReportBusy] = useState(false)
   const [reportError, setReportError] = useState('')
   const load = useCallback(async (options?: { silent?: boolean }) => {
@@ -151,7 +160,10 @@ export function BorrowingHistory() {
                     </td>
                     <td className="px-5 py-4 text-[#003399]">{item.author}</td>
                     <td className="px-5 py-4 text-[#003399]">{formatDate(item.borrowDate)}</td>
-                    <td className="px-5 py-4 font-semibold text-[#003399]">{formatDate(item.dueDate)}</td>
+                    <td className="px-5 py-4 font-semibold text-[#003399]">
+                      <p>{formatDate(item.dueDate)}</p>
+                      {typeof item.renewalCount === 'number' ? <p className="mt-1 text-xs font-medium text-[#003399]/65">Renewed {item.renewalCount} of {item.maxRenewals}</p> : null}
+                    </td>
                     <td className="px-5 py-4"><StatusBadge status={item.lostReportStatus ?? item.status} /></td>
                     <td className="px-5 py-4">
                       <div className="flex justify-end">
@@ -160,6 +172,7 @@ export function BorrowingHistory() {
                           onDetail={() => setDetail({ titleId: Number(item.titleId), barcode: item.barcode })}
                           onCancel={() => { setCancelError(''); setCancelling(item) }}
                           onReport={() => { setReportError(''); setReporting(item) }}
+                          onRenew={() => setRenewing(item)}
                         />
                       </div>
                     </td>
@@ -185,6 +198,7 @@ export function BorrowingHistory() {
             <div className="mt-4 grid grid-cols-2 gap-3">
               <RecordField label="Borrowed">{formatDate(item.borrowDate)}</RecordField>
               <RecordField label="Due">{formatDate(item.dueDate)}</RecordField>
+              {typeof item.renewalCount === 'number' ? <RecordField label="Renewal usage">Renewed {item.renewalCount} of {item.maxRenewals}</RecordField> : null}
             </div>
             <div className="mt-4 border-t border-[#003399]/10 pt-3">
               <ItemActions
@@ -192,6 +206,7 @@ export function BorrowingHistory() {
                 onDetail={() => setDetail({ titleId: Number(item.titleId), barcode: item.barcode })}
                 onCancel={() => { setCancelError(''); setCancelling(item) }}
                 onReport={() => { setReportError(''); setReporting(item) }}
+                onRenew={() => setRenewing(item)}
               />
             </div>
           </RecordCard>
@@ -201,5 +216,6 @@ export function BorrowingHistory() {
     {detail ? <BookDetailDrawer titleId={detail.titleId} barcode={detail.barcode} onClose={() => setDetail(null)} /> : null}
     {cancelling ? <CancelBorrowRequestDialog title={cancelling.title} busy={cancelBusy} error={cancelError} onCancel={() => { if (!cancelBusy) setCancelling(null) }} onConfirm={(reason) => void confirmCancellation(reason)} /> : null}
     {reporting ? <ReportLostDialog title={reporting.title} busy={reportBusy} error={reportError} onCancel={() => { if (!reportBusy) setReporting(null) }} onConfirm={() => void reportLost()} /> : null}
+    {renewing ? <RenewLoanDialog transactionId={renewing.transactionId} title={renewing.title} onCancel={() => setRenewing(null)} onSuccess={(decision) => { setRenewing(null); setNotice(`${renewing.title} was renewed until ${formatDate(decision.newDueAt)}.`); window.dispatchEvent(new Event('smartlib:circulation-updated')); void load() }} /> : null}
   </>
 }

@@ -16,6 +16,20 @@ function asyncController(handler: (request: Request, response: Response) => Prom
 export function createCirculationController(service: Service = circulationService) {
   return {
     history: asyncController(async (request, response) => { response.json({ success: true, data: await service.history(authenticatedAccount(response), request.query as Record<string, unknown>) }) }),
+    preflightRenewal: asyncController(async (request, response) => {
+      response.json({
+        success: true,
+        data: await service.preflightRenewal(authenticatedActor(response), request.params.transactionId),
+      })
+    }),
+    submitRenewal: asyncController(async (request, response) => {
+      const data = await service.submitRenewal(authenticatedActor(response), request.params.transactionId, request.body)
+      response.json({ success: true, message: data.decisionSummary, data })
+    }),
+    staffRenewal: asyncController(async (request, response) => {
+      const data = await service.staffRenewal(authenticatedActor(response), request.params.transactionId, request.body)
+      response.json({ success: true, message: data.decisionSummary, data })
+    }),
     submitBorrowRequest: asyncController(async (_request, response) => {
       const data = await service.submitBorrowRequest(authenticatedAccount(response), response.locals.borrowCart)
       response.status(201).json({ success: true, message: 'Borrow request submitted successfully.', data })

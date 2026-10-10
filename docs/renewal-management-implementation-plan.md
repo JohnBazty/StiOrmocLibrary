@@ -8,7 +8,7 @@ Borrowers need one controlled operating-day extension on an active loan. Checkou
 
 - **Date created:** 2026-10-10
 - **Date last updated:** 2026-10-10
-- **Status:** `planned` (approved; wait for explicit build command)
+- **Status:** `inprogress` (API + web built locally; apply migration `017` and hosted acceptance remain)
 - **Branch:** `feat/renewal-management`
 - **Active database:** Supabase PostgreSQL
 - **Migrations after dependency merge:** Supabase `017_loan_renewals.sql`; MySQL `YYYYMMDD_047_loan_renewals.sql`
@@ -145,12 +145,15 @@ Same as the behavioral plan: shared decision service, single due-date update on 
 - [x] Behavioral plan approved by Ethan.
 - [x] Dependency and file map assessed against `main` and policy/preflight branches.
 - [x] Build-ready implementation plan drafted on `feat/renewal-management`.
-- [ ] Dependencies merged (or this branch rebased onto them).
-- [ ] Migration numbers confirmed (`017` / `047` expected).
-- [ ] Status set to `inprogress` on explicit build command.
-- [ ] Slices 1–5 completed.
+- [x] Dependencies merged (or this branch rebased onto them).
+- [x] Migration numbers confirmed (`017` / `047`).
+- [x] Status set to `inprogress` on explicit build command.
+- [x] Slices 1–4 completed (migrations, decision service, API, web).
+- [ ] Slice 5 hosted acceptance (apply Supabase `017`, disposable renewals, docs → `built`).
 - [ ] Status set to `built`.
 
 ## Change log
 
 - **2026-10-10:** Implementation plan created from the approved Complete Renewal Management plan. Locked migrations to post-policy `017`/`047`, removed staff queue / `loan_renewal_events`, and mapped concrete files under the circulation module.
+- **2026-10-10:** Built the borrower and Admin renewal API, transactional decision service, history/monitor renewal fields, schema readiness checks, and checkout initial-due-date writes. The full 273-test API suite, API type check, and production build pass locally; web implementation and hosted acceptance remain.
+- **2026-10-10:** Web borrower Request renewal and Admin Renew on behalf dialogs wired; reminder dedupe keys include renewal sequence; docs/API reference/schema trackers updated. Hosted migration apply and acceptance remain.
