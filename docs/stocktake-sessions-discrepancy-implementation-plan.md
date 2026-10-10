@@ -8,10 +8,10 @@ The inventory screen verifies individual barcodes and records condition changes,
 
 - **Date created:** 2026-10-10
 - **Date last updated:** 2026-10-10
-- **Status:** `planned`
+- **Status:** `inprogress`
 - **Roadmap:** Release 3 in [next-implementation-roadmap.md](next-implementation-roadmap.md)
 - **Active database:** Supabase PostgreSQL; MySQL remains the rollback reference
-- **Migration reservation:** Supabase `018` / MySQL `048` are next in this checkout after renewal migrations `017` / `047`. Verify the target branch and hosted migration ledger before creating or applying stocktake files; never reuse a number.
+- **Migration reservation:** On `feat/stocktake-sessions` (branched from `main`): MySQL `047` / Supabase `018`. Hosted ledger already applied renewals as `017_loan_renewals.sql`, so stocktake uses `018`.
 
 ## Objective, constraints, and assumptions
 
@@ -97,14 +97,14 @@ All new routes require `requireCatalogManager`, so only the canonical `Admin` ro
 
 ## Build order and implementation tracking
 
-- [ ] Confirm renewal `017` / `047` and the hosted migration ledger on the target branch; reserve the actual next PostgreSQL and MySQL numbers.
-- [ ] Add the five tables, indexes, constraints, deletion-history guard, and schema-readiness entries; test both migrations on disposable databases.
-- [ ] Implement scope resolution and immutable expected-item snapshot, including room shelf mapping and research category links.
-- [ ] Implement idempotent scan writes, recognized-item verification audit, classification, close/cancel/review transitions, and read APIs.
-- [ ] Implement review decisions with row locking, transaction-compatible inventory corrections, and append-only resolution events.
-- [ ] Add the React session workflow and API types/client using the existing scanner hook.
-- [ ] Add matching signed CSV and PDF discrepancy exports.
-- [ ] Update `docs/schema-context.md`, `docs/api-reference.md`, migration trackers, and this plan's status/change log when building begins and ends.
+- [x] Confirmed numbers: MySQL `047` in-repo; hosted Supabase next is `018` because `017_loan_renewals.sql` is already applied.
+- [x] Add the five tables, indexes, constraints, deletion-history guard, and schema-readiness entries; apply Supabase `018` after ledger check.
+- [x] Implement scope resolution and immutable expected-item snapshot, including room shelf mapping and research category links.
+- [x] Implement idempotent scan writes, recognized-item verification audit, classification, close/cancel/review transitions, and read APIs.
+- [x] Implement review decisions with row locking and append-only resolution events (dismiss / confirm-at-home; inventory corrections remain on existing inventory screens).
+- [x] Add the React session workflow and API types/client using the existing scanner hook.
+- [x] Add matching signed CSV and PDF discrepancy exports.
+- [x] Update `docs/schema-context.md`, `docs/api-reference.md`, migration trackers, and this plan's status/change log when building begins.
 
 ## Verification and acceptance
 
@@ -118,7 +118,7 @@ All new routes require `requireCatalogManager`, so only the canonical `Admin` ro
 
 ## Risks / notes
 
-- **Migration numbering:** renewal `017` / `047` exist in this branch, but hosted acceptance remains open. Verify the target branch and hosted ledger before naming migrations; do not assume `018` / `048` if another migration lands first.
+- **Migration numbering:** MySQL `047` / Supabase `018`. Hosted renewals already claimed Supabase `017`.
 - **Location authority:** the direct physical-copy shelf patch does not express category-home or floor-plan audit rules. Do not use it as a shortcut for stocktake corrections.
 - **Long counts:** snapshot and close must batch reads/writes while keeping a consistent transaction view and limiting response page sizes. Index session/item and session/barcode lookups.
 - **Concurrent operations:** scan, close, and resolution require session/discrepancy locks and request-key uniqueness. Recheck live restrictions immediately before corrections.
@@ -128,3 +128,6 @@ All new routes require `requireCatalogManager`, so only the canonical `Admin` ro
 
 - **2026-10-10:** Created build-ready Release 3 plan from the product PDFs, roadmap, current inventory/floor-plan code, and migration state. Status `planned`.
 - **2026-10-10:** Corrected the migration note after verifying renewal `017` / `047` are committed on `feat/renewal-management`; their hosted acceptance remains open.
+- **2026-10-10:** Branch `feat/stocktake-sessions` created from `main`; build started. Status `inprogress`. Reserved MySQL `047` / Supabase `017` for this branch.
+- **2026-10-10:** Hosted ledger check found `017_loan_renewals.sql` already applied; renumbered stocktake Supabase file to `018_stocktake_sessions.sql`.
+- **2026-10-10:** Applied `018_stocktake_sessions.sql` to hosted Supabase after ledger check. Local MySQL96 service is stopped/disabled, so MySQL `047` was not applied on this machine. Admin API walkthrough passed on hosted data: shelf count → scan → close → dismiss findings → review → CSV/PDF export.

@@ -117,6 +117,20 @@ The list endpoint accepts any combination of `q`, `title`, `author`, `isbn`, `ca
 | `DELETE` | `/api/inventory/copies/:copyId` | Inventory | Lock and delete a never-circulated eligible copy |
 | `POST` | `/api/inventory/thesis/:researchInventoryId/archive` | Inventory | Archive an idle bound research/thesis copy with a reason |
 | `DELETE` | `/api/inventory/thesis/:researchInventoryId` | Inventory | Delete a never-used bound research/thesis copy |
+| `GET` | `/api/inventory/stocktakes/scope-options` | Inventory | Shelf, category, and published-room options for stocktake create |
+| `GET` | `/api/inventory/stocktakes/scope-preview` | Inventory | Advisory expected-count preview for a scope |
+| `GET` / `POST` | `/api/inventory/stocktakes` | Inventory | List or start Admin stocktake sessions |
+| `GET` | `/api/inventory/stocktakes/:id` | Inventory | Session metadata and summary counts |
+| `GET` | `/api/inventory/stocktakes/:id/expected` | Inventory | Paginated frozen expected items |
+| `GET` | `/api/inventory/stocktakes/:id/scans` | Inventory | Paginated scan history |
+| `GET` | `/api/inventory/stocktakes/:id/discrepancies` | Inventory | Paginated findings |
+| `POST` | `/api/inventory/stocktakes/:id/scans` | Inventory | Record a session scan with observed shelf |
+| `POST` | `/api/inventory/stocktakes/:id/close` | Inventory | Freeze findings for review |
+| `POST` | `/api/inventory/stocktakes/:id/cancel` | Inventory | Cancel an open session with a reason |
+| `POST` | `/api/inventory/stocktakes/:id/review` | Inventory | Mark fully resolved session reviewed |
+| `POST` | `/api/inventory/stocktakes/:id/discrepancies/:discrepancyId/resolve` | Inventory | Dismiss or confirm a finding with reason |
+| `GET` | `/api/inventory/stocktakes/:id/discrepancies.csv` | Inventory | Signed CSV of frozen findings |
+| `GET` | `/api/inventory/stocktakes/:id/discrepancies.pdf` | Inventory | Branded PDF of frozen findings |
 | `GET` | `/api/users` | Users | Demo user records |
 | `GET` | `/api/clearance` | Clearance | Demo user's computed standing |
 | `GET` | `/api/notifications` | Notifications | Student notifications |
