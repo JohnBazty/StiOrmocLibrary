@@ -25,3 +25,34 @@ test('extendOperatingDueDate advances from the current due date by policy days',
   assert.equal(renewed.getHours(), 8)
   assert.equal(renewed.getMinutes(), 59)
 })
+
+test('extendOperatingDueDate skips Sunday after a Saturday due date', () => {
+  const saturdayDue = new Date(2026, 9, 10, 8, 59)
+  const renewed = extendOperatingDueDate(saturdayDue, 1, '08:59:00')
+  assert.equal(renewed.getDay(), 1)
+  assert.equal(renewed.getDate(), 12)
+  assert.equal(renewed.getHours(), 8)
+  assert.equal(renewed.getMinutes(), 59)
+})
+
+test('extendOperatingDueDate skips a closed weekday', () => {
+  const mondayDue = new Date(2026, 9, 12, 8, 59)
+  const renewed = extendOperatingDueDate(mondayDue, 1, '08:59:00', new Set(['2026-10-13']))
+  assert.equal(renewed.getDate(), 14)
+  assert.equal(renewed.getHours(), 8)
+  assert.equal(renewed.getMinutes(), 59)
+})
+
+test('extendOperatingDueDate skips a holiday and a multi-day closure', () => {
+  const mondayDue = new Date(2026, 9, 12, 8, 59)
+  const renewed = extendOperatingDueDate(
+    mondayDue,
+    1,
+    '08:59:00',
+    new Set(['2026-10-13', '2026-10-14', '2026-10-15']),
+  )
+  assert.equal(renewed.getDate(), 16)
+  assert.equal(renewed.getDay(), 5)
+  assert.equal(renewed.getHours(), 8)
+  assert.equal(renewed.getMinutes(), 59)
+})

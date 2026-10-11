@@ -206,6 +206,22 @@ describe('AdminCirculationMonitor', () => {
     await waitFor(() => expect(api.confirmCheckout).toHaveBeenCalledTimes(1))
   })
 
+  it('hides Renew on behalf when canRequestRenewal is false', async () => {
+    api.monitor.mockResolvedValue({
+      ...monitor,
+      items: [{
+        ...monitor.items[0],
+        renewalCount: 1,
+        maxRenewals: 1,
+        remainingRenewals: 0,
+        canRequestRenewal: false,
+      }],
+    })
+    render(<AdminCirculationMonitor />)
+    expect(await screen.findByText('Database Systems')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Renew on behalf' })).toBeNull()
+  })
+
   it('requires a staff note and renews an eligible borrowed item on behalf of the borrower', async () => {
     api.monitor.mockResolvedValue({
       ...monitor,

@@ -9,8 +9,8 @@ Renewal management will let a borrower request one additional operating day befo
 ## Plan metadata
 
 - **Date created:** 2026-10-10
-- **Date last updated:** 2026-10-10
-- **Status:** `inprogress` (API + web built locally; hosted migration/`017` acceptance remain)
+- **Date last updated:** 2026-10-11
+- **Status:** `built`
 - **Active database:** Supabase PostgreSQL
 - **Branch:** `feat/renewal-management`
 - **Planned migration numbers:** Supabase `017` and MySQL rollback reference `047` after borrowing-policy consumes `016` / `046`
@@ -345,11 +345,12 @@ The feature is complete only when:
 - [x] Build-ready implementation plan published (`docs/renewal-management-implementation-plan.md`).
 - [x] Status changed to `inprogress` before implementation begins.
 - [x] Postgres and MySQL rollback migration numbers confirmed at build time (`017` / `047` after policies merge).
-- [ ] Implementation completed and hosted acceptance passed.
-- [ ] Status changed to `built` and change log updated.
+- [x] Implementation completed and hosted acceptance passed.
+- [x] Status changed to `built` and change log updated.
 
 ## Change log
 
 - **2026-10-10:** Initial plan created with status `planned`. Chose immediate API decisions, shared policy/preflight enforcement, immutable approved and rejected request records, operating-day extension from the current deadline, and renewal-aware notification deduplication.
 - **2026-10-10:** Ethan approved. Added branch `feat/renewal-management`, locked migrations to Supabase `017` / MySQL `047` after policies consume `016` / `046`, and linked the build-ready implementation plan.
 - **2026-10-10:** Completed the local API slice, including borrower/Admin routes, transaction-safe decisions, renewal history fields, schema readiness, initial due-date writes, and service tests. The full API suite, type check, and production build pass; web work and hosted acceptance remain.
+- **2026-10-11:** Hosted acceptance passed via disposable Supabase smoke (`smoke:renewal`): first renewal approved, second rejected with `RENEWAL_LIMIT_REACHED`. Status set to `built`.

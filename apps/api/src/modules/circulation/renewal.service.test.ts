@@ -36,7 +36,14 @@ interface FixtureOptions {
   lostReport?: boolean
   accountStatus?: string
   accountRole?: string
+  materialType?: string
+  conditionStatus?: string
+  copyLifecycleStatus?: string
+  titleLifecycleStatus?: string
+  dueAt?: Date
+  closedDates?: string[]
   existingDecision?: Record<string, unknown>
+  loanUpdateAffectedRows?: number
 }
 
 function renewalPool(options: FixtureOptions = {}) {
@@ -50,7 +57,7 @@ function renewalPool(options: FixtureOptions = {}) {
   }
   const actorUserId = options.actorUserId ?? 7
   const loanUserId = options.loanUserId ?? 7
-  const dueAt = new Date('2026-10-12T08:59:00+08:00')
+  const dueAt = options.dueAt ?? new Date('2026-10-12T08:59:00+08:00')
   const connection = {
     async beginTransaction() {},
     async commit() { state.commits += 1 },
@@ -82,12 +89,12 @@ function renewalPool(options: FixtureOptions = {}) {
           transaction_status: options.status ?? 'Borrowed',
           user_account_status: options.accountStatus ?? 'Active',
           normalized_account_status: options.accountStatus ?? 'Active',
-          material_type: 'Book',
+          material_type: options.materialType ?? 'Book',
           title_id: 61,
           title: 'Clean Code',
-          condition_status: 'Good',
-          copy_lifecycle_status: 'Active',
-          title_lifecycle_status: 'Active',
+          condition_status: options.conditionStatus ?? 'Good',
+          copy_lifecycle_status: options.copyLifecycleStatus ?? 'Active',
+          title_lifecycle_status: options.titleLifecycleStatus ?? 'Active',
         }]]
       }
       if (sql.includes('FROM borrowing_policy_versions')) return [[activePolicy]]
@@ -109,7 +116,9 @@ function renewalPool(options: FixtureOptions = {}) {
       if (sql.includes("report_status IN ('Pending','Confirmed')")) {
         return [options.lostReport ? [{ lost_book_report_id: 93 }] : []]
       }
-      if (sql.includes('FROM library_closed_days')) return [[]]
+      if (sql.includes('FROM library_closed_days')) {
+        return [(options.closedDates ?? []).map((closed_date) => ({ closed_date }))]
+      }
       if (sql.includes('FROM library_operating_schedule')) {
         return [[
           { day_of_week: 1, is_open: 1 }, { day_of_week: 2, is_open: 1 },
@@ -125,7 +134,7 @@ function renewalPool(options: FixtureOptions = {}) {
       }
       if (sql.includes('UPDATE borrow_transactions')) {
         state.loanUpdates += 1
-        return [{ affectedRows: 1 }]
+        return [{ affectedRows: options.loanUpdateAffectedRows ?? 1 }]
       }
       if (sql.includes('INTO notifications')) {
         state.notifications += 1
@@ -141,6 +150,24 @@ function renewalPool(options: FixtureOptions = {}) {
       execute: connection.execute.bind(connection),
     } as unknown as Pool,
   }
+}
+
+async function assertRejected(
+  options: FixtureOptions,
+  decisionCode: string,
+  requestKey = `reject-${decisionCode}`,
+  actor = borrowerActor,
+  clockFn: () => Date = clock,
+) {
+  const { state, database } = renewalPool(options)
+  const result = await createRenewalService(database, clockFn).submit(31, actor, { requestKey })
+  assert.equal(result.status, 'Rejected')
+  assert.equal(result.decisionCode, decisionCode)
+  assert.equal(state.decisionInserts, 1)
+  assert.equal(state.loanUpdates, 0)
+  assert.equal(state.notifications, 0)
+  assert.equal(state.commits, 1)
+  return result
 }
 
 const borrowerActor = { accountId: 2, role: 'Student' }
@@ -160,16 +187,144 @@ test('eligible borrower renewal records approval and updates the due date once',
   assert.equal(state.rollbacks, 0)
 })
 
+test('Faculty renewal uses the same one-day operating extension', async () => {
+  const { state, database } = renewalPool({ accountRole: 'Faculty' })
+  const result = await createRenewalService(database, clock).submit(
+    31,
+    { accountId: 2, role: 'Faculty' },
+    { requestKey: 'faculty-renewal-31' },
+  )
+  assert.equal(result.status, 'Approved')
+  assert.equal(new Date(result.newDueAt!).getDate(), 13)
+  assert.equal(new Date(result.newDueAt!).getHours(), 8)
+  assert.equal(new Date(result.newDueAt!).getMinutes(), 59)
+  assert.equal(state.loanUpdates, 1)
+})
+
+test('active loan alone is not blocked by clearance standing when monetary blockers are absent', async () => {
+  const { state, database } = renewalPool({ fine: false, lostCharge: false, lostReport: false })
+  const result = await createRenewalService(database, clock).submit(31, borrowerActor, {
+    requestKey: 'clearance-not-cleared-still-ok',
+  })
+  assert.equal(result.status, 'Approved')
+  assert.equal(result.blockers.length, 0)
+  assert.equal(state.loanUpdates, 1)
+})
+
 test('waiting reservation rejects safely without changing the loan', async () => {
-  const { state, database } = renewalPool({ reservation: true })
-  const result = await createRenewalService(database, clock).submit(31, borrowerActor, requestBody)
-  assert.equal(result.status, 'Rejected')
-  assert.equal(result.decisionCode, 'RENEWAL_RESERVATION_WAITING')
-  assert.equal(result.decisionSummary, 'Another borrower is waiting for this title.')
-  assert.equal(state.decisionInserts, 1)
-  assert.equal(state.loanUpdates, 0)
-  assert.equal(state.notifications, 0)
-  assert.equal(state.commits, 1)
+  await assertRejected({ reservation: true }, 'RENEWAL_RESERVATION_WAITING')
+})
+
+test('outstanding fine rejects safely without changing the loan', async () => {
+  await assertRejected({ fine: true }, 'RENEWAL_OUTSTANDING_FINE')
+})
+
+test('unpaid lost-book charge rejects safely without changing the loan', async () => {
+  await assertRejected({ lostCharge: true }, 'RENEWAL_LOST_CHARGE_UNPAID')
+})
+
+test('open lost-book report rejects safely without changing the loan', async () => {
+  await assertRejected({ lostReport: true }, 'RENEWAL_LOST_REPORT_OPEN')
+})
+
+test('renewal limit reached rejects without changing the loan', async () => {
+  await assertRejected({ renewalCount: 1, approvedCount: 1 }, 'RENEWAL_LIMIT_REACHED')
+})
+
+test('thesis material rejects as ineligible', async () => {
+  await assertRejected({ materialType: 'Thesis/Manuscript' }, 'RENEWAL_MATERIAL_NOT_ELIGIBLE')
+})
+
+test('lost copy rejects as blocked', async () => {
+  await assertRejected({ conditionStatus: 'Lost' }, 'RENEWAL_COPY_BLOCKED')
+})
+
+test('archived copy rejects as blocked', async () => {
+  await assertRejected({ copyLifecycleStatus: 'Archived' }, 'RENEWAL_COPY_BLOCKED')
+})
+
+test('archived title rejects without changing the loan', async () => {
+  await assertRejected({ titleLifecycleStatus: 'Archived' }, 'RENEWAL_TITLE_ARCHIVED')
+})
+
+test('inactive borrower account rejects without changing the loan', async () => {
+  await assertRejected({ accountStatus: 'Deactivated' }, 'RENEWAL_ACCOUNT_INACTIVE')
+})
+
+test('overdue loan status rejects without changing the loan', async () => {
+  await assertRejected({ status: 'Overdue' }, 'RENEWAL_ALREADY_OVERDUE')
+})
+
+test('pending loan rejects as not active', async () => {
+  await assertRejected({ status: 'Pending' }, 'RENEWAL_LOAN_NOT_ACTIVE')
+})
+
+test('returned loan rejects as not active', async () => {
+  await assertRejected({ status: 'Returned' }, 'RENEWAL_LOAN_NOT_ACTIVE')
+})
+
+test('cancelled loan rejects as not active', async () => {
+  await assertRejected({ status: 'Cancelled' }, 'RENEWAL_LOAN_NOT_ACTIVE')
+})
+
+test('request at the due time rejects as already overdue', async () => {
+  const dueAt = new Date('2026-10-12T08:59:00+08:00')
+  await assertRejected(
+    { dueAt },
+    'RENEWAL_ALREADY_OVERDUE',
+    'due-boundary-at',
+    borrowerActor,
+    () => new Date('2026-10-12T08:59:00+08:00'),
+  )
+})
+
+test('request after the due time rejects as already overdue', async () => {
+  const dueAt = new Date('2026-10-12T08:59:00+08:00')
+  await assertRejected(
+    { dueAt },
+    'RENEWAL_ALREADY_OVERDUE',
+    'due-boundary-after',
+    borrowerActor,
+    () => new Date('2026-10-12T09:00:00+08:00'),
+  )
+})
+
+test('configured closed weekday rolls the renewed due date forward', async () => {
+  const { database } = renewalPool({ closedDates: ['2026-10-13'] })
+  const result = await createRenewalService(database, clock).submit(31, borrowerActor, {
+    requestKey: 'closed-weekday-31',
+  })
+  assert.equal(result.status, 'Approved')
+  assert.equal(new Date(result.newDueAt!).getDate(), 14)
+  assert.equal(new Date(result.newDueAt!).getHours(), 8)
+  assert.equal(new Date(result.newDueAt!).getMinutes(), 59)
+})
+
+test('holiday and multi-day closure roll the renewed due date to the next open day', async () => {
+  const { database } = renewalPool({ closedDates: ['2026-10-13', '2026-10-14', '2026-10-15'] })
+  const result = await createRenewalService(database, clock).submit(31, borrowerActor, {
+    requestKey: 'multi-day-closure-31',
+  })
+  assert.equal(result.status, 'Approved')
+  assert.equal(new Date(result.newDueAt!).getDate(), 16)
+  assert.equal(new Date(result.newDueAt!).getDay(), 5)
+  assert.equal(new Date(result.newDueAt!).getHours(), 8)
+  assert.equal(new Date(result.newDueAt!).getMinutes(), 59)
+})
+
+test('Saturday due date skips Sunday when renewing', async () => {
+  const saturdayDue = new Date('2026-10-10T08:59:00+08:00')
+  const { database } = renewalPool({ dueAt: saturdayDue })
+  const result = await createRenewalService(database, () => new Date('2026-10-09T10:00:00+08:00')).submit(
+    31,
+    borrowerActor,
+    { requestKey: 'sunday-skip-31' },
+  )
+  assert.equal(result.status, 'Approved')
+  assert.equal(new Date(result.newDueAt!).getDay(), 1)
+  assert.equal(new Date(result.newDueAt!).getDate(), 12)
+  assert.equal(new Date(result.newDueAt!).getHours(), 8)
+  assert.equal(new Date(result.newDueAt!).getMinutes(), 59)
 })
 
 test('same request key returns the stored decision without another update', async () => {
@@ -201,6 +356,14 @@ test('same request key returns the stored decision without another update', asyn
   assert.equal(state.decisionInserts, 0)
   assert.equal(state.loanUpdates, 0)
   assert.equal(state.commits, 1)
+})
+
+test('second distinct request key rejects when renewal count is already used', async () => {
+  await assertRejected(
+    { renewalCount: 1, approvedCount: 1 },
+    'RENEWAL_LIMIT_REACHED',
+    'second-key-after-approval',
+  )
 })
 
 test('approved-row mismatch fails safely and rolls back', async () => {

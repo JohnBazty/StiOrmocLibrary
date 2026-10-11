@@ -78,6 +78,23 @@ describe('BorrowingHistory', () => {
     expect(await screen.findByText('Clean Code was reported lost. Library staff have been notified.')).toBeTruthy()
   })
 
+  it('hides Request renewal when canRequestRenewal is false', async () => {
+    api.history.mockResolvedValue({
+      summary: { role: 'Student', activeLoans: 1, activeReservations: 0, activeStackCount: 1, loanLimit: 2, remainingLoanSlots: 1, nextDueAt: '2026-10-11T08:59:00', dueCutoffLabel: '8:59 AM' },
+      items: [{
+        transactionId: 31, titleId: 5, title: 'Clean Code', author: 'Robert C. Martin', coverImagePath: null, accessionNumber: 'ACC-1', barcode: 'BOOK-1',
+        borrowDate: '2026-10-10T10:00:00', initialDueAt: '2026-10-11T08:59:00', dueDate: '2026-10-11T08:59:00', returnDate: null,
+        status: 'Borrowed', lostReportStatus: null, renewalCount: 1, maxRenewals: 1, remainingRenewals: 0, lastRenewalStatus: 'Approved',
+        lastRenewalDecisionSummary: 'The loan was renewed successfully.', lastRenewalAt: '2026-10-10T11:00:00', lastRenewalDecisionSource: 'System',
+        canRequestRenewal: false,
+      }],
+      pagination: { page: 1, limit: 25, total: 1, totalPages: 1 },
+    })
+    render(<BorrowingHistory />)
+    expect((await screen.findAllByText('Clean Code')).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('button', { name: 'Request renewal' })).toBeNull()
+  })
+
   it('renews an eligible loan with one stable request key and refreshes history', async () => {
     api.history.mockResolvedValue({
       summary: { role: 'Student', activeLoans: 1, activeReservations: 0, activeStackCount: 1, loanLimit: 2, remainingLoanSlots: 1, nextDueAt: '2026-10-11T08:59:00', dueCutoffLabel: '8:59 AM' },

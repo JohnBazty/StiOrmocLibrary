@@ -28,6 +28,29 @@ test('Student role cannot load or mutate administrative circulation routes', asy
   assert.equal(preflight.status, 403); assert.equal(preflight.body.code, 'JWT_ROLE_FORBIDDEN')
 })
 
+test('Student token cannot call staff renewal and the renewal service is not invoked', async () => {
+  let staffRenewalCalls = 0
+  const service = {
+    staffRenewal: async () => {
+      staffRenewalCalls += 1
+      return { status: 'Approved' }
+    },
+  }
+  const app = express()
+  app.use(express.json())
+  app.use((_request, response, next) => {
+    response.locals.authenticatedUser = { id: 7, accountId: 7, schoolId: 'STI-7', role: 'Student' }
+    next()
+  })
+  app.use('/api/v1/admin', requireJwtRoles('Admin'), createAdminCirculationRouter(createCirculationController(service as never)))
+  const response = await request(app)
+    .post('/api/v1/admin/borrowing/31/renewals')
+    .send({ requestKey: 'student-staff-renewal', staffNote: 'Should not reach the service.' })
+  assert.equal(response.status, 403)
+  assert.equal(response.body.code, 'JWT_ROLE_FORBIDDEN')
+  assert.equal(staffRenewalCalls, 0)
+})
+
 test('Admin can run preflight and blocked decisions return success with structured data', async () => {
   const service = {
     preflightCheckout: async () => ({
