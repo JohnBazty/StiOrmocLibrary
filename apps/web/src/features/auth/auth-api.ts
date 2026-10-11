@@ -36,24 +36,26 @@ export type RegistrationResult = {
   status: 'PendingEmail'
 }
 
-export type LoginPortal = 'user' | 'staff'
+export type LoginPortal = 'user' | 'staff' | 'personnel'
 
 export async function login(schoolId: string, password: string, portal: LoginPortal = 'user'): Promise<LoginResult> {
   clearAccessToken()
+  setSessionIdentity(null)
   const response = await fetch('/api/v1/auth/login', {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ portal, school_id: schoolId, password }),
+    body: JSON.stringify({ portal: portal === 'personnel' ? 'staff' : portal, school_id: schoolId, password }),
   })
   if (!(response.headers.get('content-type') ?? '').includes('application/json')) {
-    throw new AuthenticationError('The authentication service returned an unexpected response.', 'NON_JSON_RESPONSE')
+    throw new AuthenticationError('The library service is temporarily unavailable. Please try again.', 'NON_JSON_RESPONSE')
   }
-  const payload = await response.json() as {
+  const payload = await response.json().catch(() => null) as {
     data?: LoginResult
     message?: string
     code?: string
     details?: { errors?: Record<string, string> }
-  }
+  } | null
+  if (!payload) throw new AuthenticationError('The library service is temporarily unavailable. Please try again.', 'NON_JSON_RESPONSE')
   if (!response.ok || !payload.data) {
     throw new AuthenticationError(payload.message ?? 'Sign in failed.', payload.code, payload.details?.errors)
   }
@@ -103,6 +105,20 @@ export async function resendRegistrationCode(schoolId: string) {
   const payload = await response.json() as { message?: string; code?: string }
   if (!response.ok) throw new AuthenticationError(payload.message ?? 'Unable to resend the code.', payload.code)
 }
+
+async function recoveryRequest<T>(action: string, body: Record<string, string>): Promise<T> {
+  const response = await fetch(`/api/v1/auth/password-recovery/${action}`, {
+    method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  const payload = (response.headers.get('content-type') ?? '').includes('application/json')
+    ? await response.json().catch(() => null) as { data?: T; message?: string; code?: string } | null : null
+  if (!payload) throw new AuthenticationError('Password recovery is temporarily unavailable. Please try again.', 'NON_JSON_RESPONSE')
+  if (!response.ok || !payload.data) throw new AuthenticationError(payload.message ?? 'Password recovery failed.', payload.code)
+  return payload.data
+}
+export const requestPasswordRecovery = (identifier: string) => recoveryRequest<{ challengeId: string; message: string }>('request', { identifier })
+export const verifyPasswordRecovery = (challengeId: string, code: string) => recoveryRequest<{ resetToken: string; expiresIn: number }>('verify', { challenge_id: challengeId, code })
+export const resetPassword = (challengeId: string, token: string, password: string, confirmation: string) => recoveryRequest<{ message: string }>('reset', { challenge_id: challengeId, reset_token: token, password, confirm_password: confirmation })
 
 function normalizeSessionRole(role: string): AuthRole | null {
   if (role === 'System Administrator' || role === 'Admin') return 'Admin'

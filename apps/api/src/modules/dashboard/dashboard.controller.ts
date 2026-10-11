@@ -19,7 +19,7 @@ async function* summaryRows(data: Awaited<ReturnType<typeof dashboardRepository.
     ['Attendance today', data.kpis.dailyAttendance], ['Active reservations', data.kpis.activeReservations],
     ['Outstanding fines', `PHP ${data.kpis.outstandingFines.toFixed(2)}`],
     ['Current occupancy', `${data.occupancy.current} of ${data.occupancy.capacity}`],
-    ['Peak hour today', data.occupancy.peakHour ?? 'No visits yet'], ['Average visit', `${data.occupancy.averageMinutes} minutes`],
+    ['Peak occupied seats today',String(data.occupancy.peakOccupancy??0)],['Busiest arrival hour today', data.occupancy.peakHour ?? 'No visits yet'], ['Average visit', `${data.occupancy.averageMinutes} minutes`],
   ]
   for (const [metric, value] of rows) yield { section: 'Operational summary', metric, value }
   for (const item of data.weeklyAttendance) yield { section: 'Weekly attendance', metric: item.label, value: item.value }

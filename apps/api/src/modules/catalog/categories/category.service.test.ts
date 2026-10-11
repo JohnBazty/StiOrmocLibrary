@@ -112,6 +112,26 @@ test('rolls back and preserves data when deleting a category with active materia
   assert.equal(state.statements.some((sql) => /^DELETE FROM categories/.test(sql)), false)
 })
 
+test('retained historical references prevent deletion and return a useful error', async () => {
+  let committed = false, rolledBack = false
+  const connection = {
+    async beginTransaction() {}, async commit() { committed = true }, async rollback() { rolledBack = true }, release() {},
+    async execute(sql: string) {
+      if (sql.startsWith('DELETE FROM categories')) throw Object.assign(new Error('Referenced by archived title'), { code: '23503' })
+      if (sql.includes('FROM categories WHERE category_id')) return [[{ category_id: 7, category_name: 'History' }]]
+      return [[]]
+    },
+  }
+  await assert.rejects(createCategoryService({ getConnection: async () => connection } as unknown as Pool).remove(7), (error: unknown) => {
+    assert.ok(error instanceof HttpError)
+    assert.equal(error.status, 422)
+    assert.equal(error.code, 'CATEGORY_HAS_HISTORICAL_MATERIALS')
+    return true
+  })
+  assert.equal(committed, false)
+  assert.equal(rolledBack, true)
+})
+
 test('reassigns title and legacy identifiers before deleting the old category in one transaction', async () => {
   const state = { committed: 0, rolledBack: 0, statements: [] as string[] }
   const connection = {

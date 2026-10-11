@@ -1,5 +1,5 @@
 import { Router, type NextFunction, type Request, type Response } from 'express'
-import { requireJwtRoles } from '../auth/jwt-auth.middleware.ts'
+import { requireLibraryPermission } from '../auth/jwt-auth.middleware.ts'
 import { parseActiveUserFilters, parseUserFilters, usersRepository } from './users.repository.ts'
 
 const handle = (fn: (request: Request, response: Response) => Promise<void>) =>
@@ -20,7 +20,7 @@ usersRouter.get('/active', handle(async (request, response) => {
 usersRouter.get('/:accountId', handle(async (request, response) => {
   response.json({ success: true, data: await usersRepository.detail(request.params.accountId) })
 }))
-usersRouter.post('/:accountId/status', requireJwtRoles('Admin'), handle(async (request, response) => {
+usersRouter.post('/:accountId/status', requireLibraryPermission('accounts.manage'), handle(async (request, response) => {
   response.json({ success: true, data: await usersRepository.changeStatus(request.params.accountId, actor(response), request.body ?? {}) })
 }))
 export const adminUsersV1Router = usersRouter

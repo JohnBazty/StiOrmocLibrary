@@ -64,6 +64,10 @@ export async function findCategoryByName(database: Pool | PoolConnection, catego
 }
 
 export async function findManagedShelfByLabel(database: Pool | PoolConnection, shelfLocation: string) {
+  if (isPostgres) {
+    const [rows] = await database.execute<RowDataPacket[]>(`SELECT l.location_id AS id,l.name AS label,COALESCE(s.column_count,1) AS column_count,COALESCE(s.row_count,1) AS row_count FROM catalog_locations l LEFT JOIN floor_plan_shelves s ON s.label=l.name WHERE l.name=? AND l.lifecycle_status='Active' LIMIT 1`,[shelfLocation])
+    return rows[0]??null
+  }
   const [rows] = await database.execute<RowDataPacket[]>(
     'SELECT id, label, column_count, row_count FROM floor_plan_shelves WHERE label = ? LIMIT 1',
     [shelfLocation],
@@ -72,6 +76,10 @@ export async function findManagedShelfByLabel(database: Pool | PoolConnection, s
 }
 
 export async function lockManagedShelfByLabel(connection: PoolConnection, shelfLocation: string) {
+  if (isPostgres) {
+    const [rows] = await connection.execute<RowDataPacket[]>(`SELECT l.location_id AS id,l.name AS label,COALESCE(s.column_count,1) AS column_count,COALESCE(s.row_count,1) AS row_count FROM catalog_locations l LEFT JOIN floor_plan_shelves s ON s.label=l.name WHERE l.name=? AND l.lifecycle_status='Active' LIMIT 1 FOR UPDATE OF l`,[shelfLocation])
+    return rows[0]??null
+  }
   const [rows] = await connection.execute<RowDataPacket[]>(
     'SELECT id, label, column_count, row_count FROM floor_plan_shelves WHERE label = ? LIMIT 1 FOR UPDATE',
     [shelfLocation],

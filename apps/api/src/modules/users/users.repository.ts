@@ -2,6 +2,7 @@ import type { Pool, RowDataPacket } from 'mysql2/promise'
 import { db } from '../../config/db.js'
 import { isPostgres } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
+import { requireLibraryActor } from '../../core/library-permissions.ts'
 
 const statuses = ['Active', 'Deactivated', 'Archived'] as const
 type Status = typeof statuses[number]
@@ -180,6 +181,7 @@ export class UsersRepository {
     const auditReason = reason(body.reason), connection = await this.pool.getConnection()
     try {
       await connection.beginTransaction()
+      await requireLibraryActor(connection, actor, 'accounts.manage')
       const [accounts] = await connection.execute<RowDataPacket[]>('SELECT account_id,user_id,role,account_status FROM accounts WHERE account_id=? FOR UPDATE', [accountId])
       const account = accounts[0]
       if (!account) throw new HttpError(404, 'USER_NOT_FOUND', 'Account not found.')

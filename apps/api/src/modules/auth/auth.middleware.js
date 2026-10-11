@@ -105,7 +105,7 @@ export function requireAuth(request, response, next) {
 export function requireRoles(...allowedRoles) {
   return (request, response, next) => {
     const role = request.session?.user?.role || response.locals.authenticatedUser?.role
-    const normalizedRole = role === 'Admin' ? 'System Administrator' : role
+    const normalizedRole = role === 'Admin' ? 'System Administrator' : role === 'Staff' ? 'Library Staff' : role
     if (!normalizedRole || !allowedRoles.includes(normalizedRole)) {
       if (isApiRequest(request)) {
         return response.status(403).json({ success: false, code: 'FORBIDDEN', message: 'You do not have permission to access this resource.' })

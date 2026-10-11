@@ -1,3 +1,4 @@
+vi.mock('./InLibraryHistory',()=>({InLibraryHistory:()=>null}))
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BorrowingHistory } from './BorrowingHistory'
@@ -11,6 +12,22 @@ vi.mock('../catalog/book-catalog-api', () => catalogApi)
 vi.mock('../catalog/AssetCodeCanvas', () => ({ AssetCodeCanvas: ({ testId }: { testId?: string }) => <canvas data-testid={testId} /> }))
 
 describe('BorrowingHistory', () => {
+  it('does not invent zero capacity or an empty history on failure and recovers with Refresh', async () => {
+    api.history.mockRejectedValueOnce(new Error('The circulation request failed.')).mockResolvedValue({
+      summary: { role: 'Student', activeLoans: 0, activeReservations: 0, activeStackCount: 0, loanLimit: 2, remainingLoanSlots: 2, nextDueAt: null, dueCutoffLabel: '8:59 AM' },
+      items: [], pagination: { page: 1, limit: 25, total: 0, totalPages: 0 },
+    })
+    render(<BorrowingHistory />)
+    await screen.findByRole('alert')
+    expect(screen.queryByText('0 / 2')).toBeNull()
+    expect(screen.queryByText('No active due date')).toBeNull()
+    expect(screen.queryByText('No borrowing transactions have been recorded.')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    await screen.findByText('2 / 2')
+    expect(screen.getByText('No borrowing transactions have been recorded.')).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   it('renders the live student capacity, due cutoff, and transaction lifecycle', async () => {
     api.history.mockResolvedValue({
       summary: { role: 'Student', activeLoans: 1, activeReservations: 0, activeStackCount: 1, loanLimit: 2, remainingLoanSlots: 1, nextDueAt: '2026-08-24T08:59:00', dueCutoffLabel: '8:59 AM' },

@@ -14,7 +14,7 @@ export type AdminDashboardData = {
   popularCategories: Array<{label:string;value:number}>
   recentCirculation: Array<{id:number;userName:string;schoolId:string;title:string;barcode:string;status:string;eventAt:string}>
   recentActivity: Array<{id:number;type:string;title:string;message:string;createdAt:string}>
-  occupancy: {current:number;capacity:number;peakHour:string|null;averageMinutes:number}
+  occupancy: {current:number;capacity:number;peakOccupancy?:number;serviceVisits?:number;state?:string;peakHour:string|null;averageMinutes:number}
 }
 
 export type UserDashboardData = {

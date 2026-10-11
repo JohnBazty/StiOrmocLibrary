@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import express from 'express'
 import request from 'supertest'
-import { requireJwtRoles } from '../auth/jwt-auth.middleware.ts'
+import { requireLibraryPermission } from '../auth/jwt-auth.middleware.ts'
 import { adminNotificationsRouter, listAdminNotifications } from './admin-notifications.routes.ts'
 
 test('Admin notifications combine pending reviews with account history without exposing email or storage paths', async () => {
@@ -25,7 +25,7 @@ test('Admin notifications combine pending reviews with account history without e
 test('Admin notification route rejects Staff access', async () => {
   const app = express()
   app.use((_request, response, next) => { response.locals.authenticatedUser = { role: 'Staff', accountId: 1 }; next() })
-  app.use('/admin/notifications', requireJwtRoles('Admin'), adminNotificationsRouter)
+  app.use('/admin/notifications', requireLibraryPermission('accounts.manage'), adminNotificationsRouter)
   const response = await request(app).get('/admin/notifications')
   assert.equal(response.status, 403)
   assert.equal(response.body.code, 'JWT_ROLE_FORBIDDEN')

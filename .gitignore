@@ -12,3 +12,7 @@ apps/storage/
 apps/api/public/assets/covers/
 .vercel
 .env*
+
+# Local chat attachments and generated previews/deliverables
+/.codex-remote-attachments/
+/output/

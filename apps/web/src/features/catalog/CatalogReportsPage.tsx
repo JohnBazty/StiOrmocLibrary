@@ -1,0 +1,6 @@
+import { useState } from 'react'
+import { Button, PageHeader, SectionCard } from '../../components/ui'
+import { catalogApi } from './catalog-api'
+import type { CatalogFilters } from './types'
+const filters:CatalogFilters={q:'',scope:'all',categoryId:'',author:'',publicationYear:'',availability:''}
+export function CatalogReportsPage(){const [busy,setBusy]=useState(false),[error,setError]=useState('');async function download(format:'csv'|'pdf'){setBusy(true);setError('');try{await catalogApi.downloadInventory(format,filters)}catch(e){setError(e instanceof Error?e.message:'Export failed.')}finally{setBusy(false)}}return <div><PageHeader eyebrow="Library records" title="Reports"/>{error&&<p role="alert" className="mb-4 rounded-xl bg-[#b42318] p-3 text-white">{error}</p>}<SectionCard className="space-y-4 p-5"><h2 className="font-bold text-[#003399] dark:text-white">Catalog inventory export</h2><p className="text-sm text-[#003399] dark:text-white">Export the current catalog inventory. Catalog editing and import review are available in Maintenance.</p><div className="flex flex-wrap gap-3"><Button disabled={busy} onClick={()=>void download('csv')}>Download CSV</Button><Button variant="secondary" disabled={busy} onClick={()=>void download('pdf')}>Download PDF</Button></div></SectionCard></div>}

@@ -1,3 +1,4 @@
+import { attendanceTodaySql as currentDate } from '../attendance/attendance-calendar.ts'
 import type { Pool, RowDataPacket } from 'mysql2/promise'
 import { SYSTEM_NAME } from '../../config/branding.ts'
 import { db } from '../../config/db.js'
@@ -7,13 +8,16 @@ import {
   authorsAggDistinct,
   formatDate,
   formatTime,
-  currentDate,
   weekday,
   hourOf,
   dateAddDays,
   sumEquals,
   sumCondition,
 } from '../../config/sql-dialect.js'
+import { libraryState } from '../attendance/attendance-operations.service.ts'
+import { concurrentAttendanceReport } from '../attendance/attendance-concurrent-report.ts'
+import { parseAttendanceFilters } from '../attendance/attendance.validation.ts'
+import { manilaDate } from '../attendance/attendance-intervals.ts'
 import { HttpError } from '../../core/http-error.ts'
 
 type DashboardActor = { accountId: number; role: string }
@@ -72,7 +76,7 @@ export class DashboardRepository {
     const weekEnd = dateAddDays(weekStart, 5)
     const last30Days = isPostgres ? `NOW() - INTERVAL '30 day'` : `DATE_SUB(NOW(),INTERVAL 30 DAY)`
     const visitMinutes = isPostgres
-      ? `EXTRACT(EPOCH FROM (time_out - time_in))/60`
+      ? `GREATEST(0,EXTRACT(EPOCH FROM (COALESCE(checked_out_at,attendance_date+time_out)-COALESCE(checked_in_at,attendance_date+time_in))))/60`
       : `TIME_TO_SEC(TIMEDIFF(time_out,time_in))/60`
     const [profile, copyResult, operationsResult, attendanceResult, fineResult, weeklyResult, purposeResult, categoriesResult, circulationResult, activityResult, occupancyResult] = await Promise.all([
       this.libraryProfile(),
@@ -117,6 +121,9 @@ export class DashboardRepository {
     const copies = copyResult[0][0] ?? {}, operations = operationsResult[0][0] ?? {}, attendance = attendanceResult[0][0] ?? {}, fine = fineResult[0][0] ?? {}, occupancy = occupancyResult[0][0] ?? {}
     const days = ['Mon','Tue','Wed','Thu','Fri','Sat']
     const byDay = new Map((weeklyResult[0] as RowDataPacket[]).map((row) => [number(row.weekday), number(row.visits)]))
+    const state=isPostgres?await libraryState(this.pool):null
+    const date=manilaDate(new Date())
+    const concurrent=state?await concurrentAttendanceReport(this.pool,parseAttendanceFilters({date}),{from:date,to:date,label:date},state.policy.servicePurposes):null
     const peak = occupancy.peak_hour === null || occupancy.peak_hour === undefined ? null : number(occupancy.peak_hour)
     return {
       generatedAt: new Date().toISOString(), staff: { name: identity.full_name, schoolId: identity.school_id }, profile,
@@ -129,7 +136,7 @@ export class DashboardRepository {
       popularCategories: (categoriesResult[0] as RowDataPacket[]).map((row) => ({ label: String(row.label), value: number(row.value) })),
       recentCirculation: (circulationResult[0] as RowDataPacket[]).map((row) => ({ id: number(row.transaction_id), userName: String(row.full_name), schoolId: String(row.school_id), title: String(row.title), barcode: String(row.barcode), status: String(row.transaction_status), eventAt: String(row.event_at) })),
       recentActivity: (activityResult[0] as RowDataPacket[]).map((row) => ({ id: number(row.admin_notification_id), type: String(row.event_type), title: String(row.message_title), message: String(row.message_body), createdAt: String(row.created_at) })),
-      occupancy: { current: number(occupancy.currently_inside), capacity: profile.seatCapacity, peakHour: peak === null ? null : `${peak % 12 || 12}:00 ${peak < 12 ? 'AM' : 'PM'}`, averageMinutes: number(occupancy.average_minutes) },
+      occupancy: { current: state?.current??number(occupancy.currently_inside), capacity: state?.capacity??profile.seatCapacity, peakOccupancy:concurrent?.peak_occupancy??0,serviceVisits:state?.serviceVisits??0,state:state?.state, peakHour: peak === null ? null : `${peak % 12 || 12}:00 ${peak < 12 ? 'AM' : 'PM'}`, averageMinutes: number(occupancy.average_minutes) },
     }
   }
 
@@ -185,13 +192,14 @@ export class DashboardRepository {
         GROUP BY t.title_id,t.title,t.cover_image_path HAVING COUNT(DISTINCT CASE WHEN pc.availability_status='Available' THEN pc.physical_copy_id END)>0 ORDER BY score DESC,t.title LIMIT 3`, [identity.program ?? '',userId,userId]),
       this.pool.execute<RowDataPacket[]>(`SELECT ${sumCondition(`attendance_date=${currentDate()} AND time_out IS NULL`)} currently_inside FROM attendance_logs`),
     ])
+    const state=isPostgres?await libraryState(this.pool):null
     const summary = summaryResult[0][0] ?? {}, loan = loanResult[0][0], reservation = reservationResult[0][0], print = printResult[0][0], notice = noticeResult[0][0], announcement = announcementResult[0][0], occupancy = occupancyResult[0][0] ?? {}
     const limit = actor.role === 'Student' ? 2 : null
     const computedClearance = number(summary.active_loans) > 0 || money(summary.outstanding_fines) > 0 ? 'Not Cleared' : 'Cleared'
     return {
       generatedAt: new Date().toISOString(), user: { name: identity.full_name, schoolId: identity.school_id, program: identity.program, role: actor.role }, profile,
       summary: { activeLoans: number(summary.active_loans), activeBookCount: number(summary.active_loans)+number(summary.pending_book_requests)+number(summary.active_reservations), borrowingLimit: limit, activeReservations: number(summary.active_reservations), unreadNotifications: number(summary.unread_notifications), outstandingFines: money(summary.outstanding_fines), clearanceStatus: summary.override_status ? String(summary.override_status) : computedClearance },
-      occupancy: { current: number(occupancy.currently_inside), capacity: profile.seatCapacity },
+      occupancy: { current: state?.current??number(occupancy.currently_inside), capacity: state?.capacity??profile.seatCapacity },
       currentLoan: loan ? { id:number(loan.transaction_id),title:String(loan.title),author:String(loan.author),barcode:String(loan.barcode ?? ''),shelfLocation:String(loan.shelf_location ?? ''),status:String(loan.transaction_status),dueAt:String(loan.due_at ?? ''),coverPath:loan.cover_image_path?String(loan.cover_image_path):null } : null,
       reservation: reservation ? { id:number(reservation.reservation_id),title:String(reservation.title),coverPath:reservation.cover_image_path?String(reservation.cover_image_path):null,queuePosition:number(reservation.queue_position),status:String(reservation.reservation_status),pickupDeadline:reservation.pickup_deadline?String(reservation.pickup_deadline):null } : null,
       printRequest: print ? { id:number(print.request_id),fileName:String(print.file_name),copies:number(print.number_of_copies),printType:String(print.print_type),cost:money(print.calculated_cost),status:String(print.job_status),createdAt:String(print.created_at) } : null,

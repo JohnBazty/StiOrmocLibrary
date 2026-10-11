@@ -59,16 +59,12 @@ export function createJwtAuthService(database: Pool = db, passwordHasher = bcryp
 
   return {
     async login(body: unknown) {
-      // Preserve the pre-existing email and login_as contracts while current
-      // clients use school_id with a user or staff portal.
+      // Preserve the pre-existing email-based JWT client while new clients move
+      // to school-ID login with a database-resolved role.
       if (isLegacyEmailLogin(body)) return loginWithLegacyEmail(body)
 
       const validation = validateRoleLogin(body)
       if (!validation.isValid) throw new HttpError(422, 'AUTH_VALIDATION_FAILED', 'Please correct the highlighted fields.', { errors: validation.errors })
-      const roleFilter = validation.portal ? '' : ' AND a.role = ?'
-      const queryValues = validation.portal
-        ? [validation.schoolId]
-        : [validation.schoolId, validation.role]
       const [rows] = await database.execute<RowDataPacket[]>(
         `SELECT a.account_id, a.school_id, a.password_hash, a.role, a.account_status, a.auth_version,
                 u.account_status AS linked_status,
@@ -76,28 +72,23 @@ export function createJwtAuthService(database: Pool = db, passwordHasher = bcryp
            FROM accounts AS a
            LEFT JOIN users AS u ON u.user_id = a.user_id
            LEFT JOIN student_profiles AS sp ON sp.account_id = a.account_id
-          WHERE a.school_id = ?${roleFilter}
+          WHERE a.school_id = ?
           LIMIT 1`,
-        queryValues,
+        [validation.schoolId],
       )
       const account = rows[0]
       if (!account) {
         const requestedRoleFilter = validation.portal === 'user'
           ? "requested_role IN ('Student','Faculty')"
-          : validation.portal === 'staff'
-            ? "requested_role IN ('Admin','Librarian','Staff')"
-            : 'requested_role=?'
-        const requestValues = validation.portal
-          ? [validation.schoolId]
-          : [validation.schoolId, validation.role]
+          : "requested_role IN ('Admin','Librarian','Staff')"
         const [requests] = await database.execute<RowDataPacket[]>(
           `SELECT status,password_hash FROM registration_requests WHERE school_id=? AND ${requestedRoleFilter} LIMIT 1`,
-          requestValues,
+          [validation.schoolId],
         )
         const pendingRequest = requests[0]
         if (pendingRequest?.password_hash && await passwordHasher.compare(validation.password, pendingRequest.password_hash)) {
           if (pendingRequest.status === 'PendingEmail') throw new HttpError(403, 'EMAIL_VERIFICATION_REQUIRED', 'Verify the code sent to your school email before signing in.')
-          if (pendingRequest.status === 'PendingApproval') throw new HttpError(403, 'ACCOUNT_APPROVAL_PENDING', 'Your school email is verified. An administrator must approve your account before you can sign in.')
+          if (pendingRequest.status === 'PendingApproval') throw new HttpError(403, 'ACCOUNT_APPROVAL_PENDING', 'Your school email is verified. The librarian must approve your account before you can sign in.')
         }
       }
       const matches = await passwordHasher.compare(validation.password, account?.password_hash ?? DUMMY_BCRYPT_HASH)

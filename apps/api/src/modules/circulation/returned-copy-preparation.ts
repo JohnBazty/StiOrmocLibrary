@@ -1,0 +1,12 @@
+import { randomUUID } from 'node:crypto'
+import type { PoolConnection,RowDataPacket } from 'mysql2/promise'
+/** A returned copy is assigned for preparation; readiness and its timer are staff actions. */
+export async function prepareReturnedCopy(q:PoolConnection,c:RowDataPacket){
+ const usable=!['Damaged','Lost'].includes(String(c.condition_status))
+ const [waiting]=usable?await q.execute<RowDataPacket[]>(`SELECT reservation_id,user_id FROM reservations WHERE book_title_id=? AND reservation_status IN ('pending','approved') AND assigned_physical_copy_id IS NULL ORDER BY queue_position,reserved_at,reservation_id LIMIT 1 FOR UPDATE`,[c.title_id]):[[]]
+ const next=waiting[0]
+ if(next){await q.execute("UPDATE reservations SET reservation_status='approved',accession_id=?,assigned_physical_copy_id=?,pickup_deadline=NULL,updated_at=NOW() WHERE reservation_id=?",[c.material_id,c.physical_copy_id,next.reservation_id]);await q.execute(`INSERT INTO borrow_transactions(user_id,material_id,physical_copy_id,reservation_id,request_group_id,transaction_status) VALUES (?,?,?,?,?,'Pending') ON CONFLICT (reservation_id) DO UPDATE SET material_id=EXCLUDED.material_id,physical_copy_id=EXCLUDED.physical_copy_id,transaction_status='Pending',updated_at=NOW()`,[next.user_id,c.material_id,c.physical_copy_id,next.reservation_id,randomUUID()]);await q.execute("INSERT INTO notifications(user_id,message_title,message_body,trigger_type,is_read) VALUES (?,'Reservation being prepared',?,'Reservation Arrival',0)",[next.user_id,`${c.title} is assigned for staff preparation. Wait for the Ready for pickup notice.`]);await q.execute("INSERT INTO admin_notifications(event_type,actor_user_id,reservation_id,book_title_id,message_title,message_body) VALUES ('reservation_preparation_required',?,?,?,'Prepare returned copy',?)",[next.user_id,next.reservation_id,c.title_id,`Pull ${c.title}, copy #${c.physical_copy_id}, and mark it ready after preparation.`])}
+ const availability=next?'Reserved':usable?'Available':'Unavailable'
+ await q.execute('UPDATE physical_copies SET availability_status=?,row_version=row_version+1,updated_at=NOW() WHERE physical_copy_id=?',[availability,c.physical_copy_id]);await q.execute('UPDATE materials SET availability_status=?,updated_at=NOW() WHERE material_id=?',[availability,c.material_id])
+ return {nextReservationId:next?Number(next.reservation_id):null,copyAvailability:availability}
+}

@@ -6,7 +6,8 @@ import type { RowDataPacket } from 'mysql2/promise'
 import { db } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
-import { requireJwtRoles } from '../auth/jwt-auth.middleware.ts'
+import { requireLibraryActor } from '../../core/library-permissions.ts'
+import { requireLibraryPermission } from '../auth/jwt-auth.middleware.ts'
 
 const bucket = 'profile-avatars'
 const allowed: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }
@@ -85,7 +86,7 @@ profileAvatarRouter.post('/me', (request, response, next) => upload(request, res
   } finally { connection.release() }
   response.status(201).json({ success: true, data: { status: 'Pending' } })
 }))
-profileAvatarRouter.get('/submissions', requireJwtRoles('Admin'), handle(async (_request, response) => {
+profileAvatarRouter.get('/submissions', requireLibraryPermission('accounts.manage'), handle(async (_request, response) => {
   requireSupabase()
   const [rows] = await db.execute<RowDataPacket[]>(
     `SELECT p.submission_id,p.account_id,p.storage_path,p.submitted_at,a.school_id,
@@ -99,7 +100,7 @@ profileAvatarRouter.get('/submissions', requireJwtRoles('Admin'), handle(async (
     name: row.full_name, submittedAt: row.submitted_at, previewUrl: await signedUrl(String(row.storage_path)),
   }))) })
 }))
-profileAvatarRouter.post('/submissions/:id/review', requireJwtRoles('Admin'), handle(async (request, response) => {
+profileAvatarRouter.post('/submissions/:id/review', requireLibraryPermission('accounts.manage'), handle(async (request, response) => {
   requireSupabase()
   const id = Number(request.params.id)
   const decision = String(request.body?.decision ?? '')
@@ -109,13 +110,14 @@ profileAvatarRouter.post('/submissions/:id/review', requireJwtRoles('Admin'), ha
   const connection = await db.getConnection()
   try {
     await connection.beginTransaction()
+    await requireLibraryActor(connection, accountId(response), 'accounts.manage')
     const [rows] = await connection.execute<RowDataPacket[]>(
       'SELECT submission_id,account_id FROM profile_avatar_submissions WHERE submission_id=? AND status=\'Pending\' FOR UPDATE', [id],
     )
     if (!rows.length) throw new HttpError(409, 'AVATAR_ALREADY_REVIEWED', 'This image is no longer awaiting review.')
     await connection.execute(
       `UPDATE profile_avatar_submissions SET status=?,reviewed_by_account_id=?,reviewed_at=NOW(),review_reason=?
-       WHERE submission_id=?`, [decision === 'approve' ? 'Approved' : 'Rejected', accountId(response), decision === 'approve' ? 'Profile picture approved by Admin.' : 'Profile picture rejected by Admin.', id],
+       WHERE submission_id=?`, [decision === 'approve' ? 'Approved' : 'Rejected', accountId(response), decision === 'approve' ? 'Profile picture approved by the library administrator.' : 'Profile picture rejected by the library administrator.', id],
     )
     await connection.commit()
     response.json({ success: true, data: { id, status: decision === 'approve' ? 'Approved' : 'Rejected' } })

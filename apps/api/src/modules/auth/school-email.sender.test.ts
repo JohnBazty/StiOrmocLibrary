@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { HttpError } from '../../core/http-error.ts'
-import { requireVerificationSender, sendSchoolVerificationCode } from './school-email.sender.ts'
+import { requireVerificationSender, sendSchoolVerificationCode, sendSchoolPasswordResetCode } from './school-email.sender.ts'
 
 const recipient = 'cantay.351061@ormoc.sti.edu.ph'
 
@@ -65,6 +65,7 @@ test('registration code is submitted to Resend for the configured Outlook addres
     assert.equal(sent?.from, 'onboarding@resend.dev')
     assert.deepEqual(sent?.to, [recipient])
     assert.match(String(sent?.text), /123456/)
+    assert.equal(sent?.subject, 'STI College Ormoc ILMS verification code')
   } finally { globalThis.fetch = originalFetch }
 }))
 
@@ -74,5 +75,22 @@ test('failed email delivery is reported without returning the verification code'
     globalThis.fetch = async () => new Response('Rejected', { status: 403 })
     await assert.rejects(sendSchoolVerificationCode(recipient, '987654'),
       (error: unknown) => error instanceof HttpError && error.code === 'EMAIL_DELIVERY_UNAVAILABLE' && !error.message.includes('987654'))
+  } finally { globalThis.fetch = originalFetch }
+}))
+
+test('password recovery uses the saved recipient and recovery-specific email text', () => withTestSender(async () => {
+  const originalFetch = globalThis.fetch
+  let sent: Record<string, unknown> = {}
+  try {
+    globalThis.fetch = async (_url, options) => {
+      sent = JSON.parse(String(options?.body))
+      return new Response('{}', { status: 200 })
+    }
+    await sendSchoolPasswordResetCode(recipient, '123456')
+    assert.deepEqual(sent.to, [recipient])
+    assert.match(String(sent.subject), /password reset/i)
+    assert.equal(sent.subject, 'STI College Ormoc ILMS password reset code')
+    assert.match(String(sent.text), /password has not changed/i)
+    assert.match(String(sent.text), /10 minutes/)
   } finally { globalThis.fetch = originalFetch }
 }))

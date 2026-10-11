@@ -48,12 +48,12 @@ describe('AdminUsersPage', () => {
     expect(screen.getByRole('heading', { name: 'User archive' })).toBeTruthy()
   })
 
-  it('shows Librarians account records without management actions', async () => {
+  it('lets the main Librarian manage status while keeping profiles read-only', async () => {
     identity.role = 'Librarian'
     render(<AdminUsersPage />)
     fireEvent.click(await screen.findByRole('button', { name: 'View record' }))
     await screen.findByRole('dialog', { name: 'Account record' })
-    expect(screen.queryByRole('button', { name: 'Deactivate' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Deactivate' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Save profile' })).toBeNull()
   })
 })

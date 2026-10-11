@@ -12,7 +12,7 @@ userNotificationsV1Router.delete('/:id', notificationController.remove)
 
 export const adminAnnouncementsV1Router = Router()
 adminAnnouncementsV1Router.get('/', notificationController.announcements)
-adminAnnouncementsV1Router.post('/', requireJwtRoles('Librarian'), notificationController.createAnnouncement)
+adminAnnouncementsV1Router.post('/', requireJwtRoles('Librarian', 'Staff'), notificationController.createAnnouncement)
 
 // New clients use the authenticated /api/v1 endpoints above.
 export const notificationsRouter = Router()

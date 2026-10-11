@@ -17,3 +17,11 @@ it('shows Admin review work and profile changes with links to the permitted page
   expect(screen.getByRole('link', { name: 'Review' }).getAttribute('href')).toBe('/admin/approvals')
   expect(screen.getByRole('link', { name: 'View users' }).getAttribute('href')).toBe('/admin/users')
 })
+
+it('shows an access error without falsely reporting an empty inbox', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, json: async () => ({ message: 'Your role cannot access this resource.' }) })))
+  render(<MemoryRouter><AdminNotificationsPage /></MemoryRouter>)
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Your role cannot access this resource.')
+  expect(screen.queryByText('No account or picture approvals are pending.')).toBeNull()
+  expect(screen.queryByText('No recent account changes.')).toBeNull()
+})

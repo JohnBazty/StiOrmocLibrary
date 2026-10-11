@@ -318,15 +318,16 @@ export function createReservationService(database: Pool = db) {
           const [copies] = await connection.execute<RowDataPacket[]>(
             `SELECT candidate.material_id, candidate.barcode, pc.physical_copy_id
                FROM materials candidate INNER JOIN physical_copies pc ON pc.material_id = candidate.material_id
-              WHERE candidate.availability_status = 'Available' AND candidate.material_type = ?
-                AND pc.lifecycle_status = 'Active' AND pc.availability_status = 'Available'
+              WHERE (candidate.availability_status = 'Available'${isPostgres?' OR (candidate.availability_status = \'Reserved\' AND pc.physical_copy_id = ?)':''}) AND candidate.material_type = ?
+                AND pc.lifecycle_status = 'Active' AND (pc.availability_status = 'Available'${isPostgres?' OR (pc.availability_status = \'Reserved\' AND pc.physical_copy_id = ?)':''})
+                AND pc.condition_status NOT IN ('Lost','Damaged')
                 AND ((candidate.isbn IS NOT NULL AND ${nullableText} IS NOT NULL AND candidate.isbn = ?)
                   OR LOWER(TRIM(candidate.title)) = LOWER(TRIM(?)))
                 AND NOT EXISTS (SELECT 1 FROM reservations active
                   WHERE active.accession_id = candidate.material_id
                     AND active.reservation_status = 'ready_for_pickup')
               ORDER BY candidate.material_id ASC LIMIT 1 FOR UPDATE`,
-            [reservation.material_type, reservation.isbn, reservation.isbn, reservation.title],
+            [...(isPostgres?[reservation.assigned_physical_copy_id??null]:[]),reservation.material_type,...(isPostgres?[reservation.assigned_physical_copy_id??null]:[]), reservation.isbn, reservation.isbn, reservation.title],
           )
           const copy = copies[0]
           if (!copy) throw new HttpError(422, 'NO_AVAILABLE_ACCESSION', 'No available physical copy can be assigned to this reservation.')

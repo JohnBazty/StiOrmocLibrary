@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import { ArrowUpRight, MoreHorizontal, Search } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { isValidElement, type ReactNode, type ReactElement } from 'react'
+import { ResponsiveTable } from './ResponsiveTable'
 
 export function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ')
@@ -8,12 +9,12 @@ export function cn(...classes: Array<string | false | null | undefined>) {
 
 export function PageHeader({ eyebrow, title, action }: { eyebrow?: string; title: string; description?: string; action?: ReactNode }) {
   return (
-    <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div>
+    <div className="page-header mb-6 flex min-w-0 flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+      <div className="min-w-0">
         {eyebrow ? <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#003399] dark:text-[#f2f6ff]">{eyebrow}</p> : null}
         <h1 className="font-display text-2xl font-bold tracking-tight text-[#003399] sm:text-3xl dark:text-white">{title}</h1>
       </div>
-      {action}
+      {action && <div className="page-header-actions min-w-0">{action}</div>}
     </div>
   )
 }
@@ -24,11 +25,11 @@ export function Button({ children, variant = 'primary', className, type = 'butto
     secondary: 'border border-[#003399]/15 bg-white text-[#003399] hover:border-[#003399]/15 hover:text-[#003399] dark:border-white/20 dark:bg-[#001a4d] dark:text-[#f2f6ff]',
     ghost: 'text-[#003399]/65 hover:bg-[#003399]/5 hover:text-[#003399] dark:text-white/70 dark:hover:bg-white/10 dark:hover:text-white',
   }
-  return <button type={type} onClick={onClick} disabled={disabled} className={cn('inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-45', variants[variant], className)}>{children}</button>
+  return <button type={type} onClick={onClick} disabled={disabled} className={cn('smartlib-button inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-45', variants[variant], className)}>{children}</button>
 }
 
 export function SectionCard({ children, className }: { children: ReactNode; className?: string }) {
-  return <section className={cn('rounded-2xl border border-[#003399]/10 bg-white shadow-[0_1px_3px_rgba(0,51,153,0.08)] dark:border-white/10 dark:bg-[#001a4d] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]', className)}>{children}</section>
+  return <section className={cn('section-card min-w-0 max-w-full rounded-2xl border border-[#003399]/10 bg-white shadow-[0_1px_3px_rgba(0,51,153,0.08)] dark:border-white/10 dark:bg-[#001a4d] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]', className)}>{children}</section>
 }
 
 const toneClasses: Record<string, string> = {
@@ -98,7 +99,7 @@ export function TableShell({ title, controls, children }: { title: string; subti
         <h2 className="font-display text-base font-bold text-[#003399] dark:text-white">{title}</h2>
         {controls}
       </div>
-      <div className="overflow-x-auto">{children}</div>
+      {isValidElement(children) && children.type === 'table' ? <ResponsiveTable label={title}>{children as ReactElement<{ children?: ReactNode }>}</ResponsiveTable> : <div className="min-w-0 overflow-x-auto">{children}</div>}
     </SectionCard>
   )
 }

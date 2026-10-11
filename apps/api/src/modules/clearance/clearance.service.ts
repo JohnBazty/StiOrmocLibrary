@@ -34,7 +34,7 @@ export function createClearanceService(database: Pool = db) {
   async function aggregateStudents() {
     const [rows] = await database.execute<RowDataPacket[]>(
       `SELECT u.user_id,u.school_id,u.full_name,u.course_or_strand,u.section,u.account_status,
-              COALESCE(loans.active_loans,0) AS active_loans,
+              COALESCE(loans.active_loans,0) ${isPostgres?'+ (SELECT COUNT(*) FROM in_library_uses iu WHERE iu.user_id=u.user_id AND iu.ended_at IS NULL)':''} AS active_loans,
               COALESCE(fines.unpaid_fines,0) AS unpaid_fines,
               COALESCE(losses.unpaid_replacement,0) AS unpaid_replacement,
               active_override.clearance_override_id,active_override.override_status,active_override.reason AS override_reason
@@ -150,6 +150,10 @@ export function createClearanceService(database: Pool = db) {
     ])
     const user = userRows[0]
     if (!user) throw new HttpError(404, 'CLEARANCE_STUDENT_NOT_FOUND', 'The student profile was not found.')
+    if(isPostgres){
+      const [uses]=await database.execute<RowDataPacket[]>(`SELECT -iu.use_id AS transaction_id,t.title,COALESCE(pc.accession_number,ri.accession_number) AS accession_number,CASE WHEN iu.status='Review' THEN 'In-library: hand-back missing' ELSE 'In-library use' END AS transaction_status,iu.started_at AS borrowed_at,iu.hand_back_by AS due_at,0 AS overdue_hours,0 AS current_fine FROM in_library_uses iu LEFT JOIN physical_copies pc ON pc.physical_copy_id=iu.physical_copy_id LEFT JOIN research_inventory ri ON ri.research_inventory_id=iu.research_inventory_id JOIN titles t ON t.title_id=COALESCE(pc.title_id,ri.title_id) WHERE iu.user_id=? AND iu.ended_at IS NULL ORDER BY iu.started_at`,[userId])
+      loanRows.push(...uses)
+    }
     const unpaidFines = fineRows.reduce((sum, row) => sum + Number(row.fine_amount ?? 0), 0)
     const unpaidReplacement = lostRows
       .filter((row) => row.report_status === 'Confirmed' && row.charge_resolution === 'Quoted' && row.payment_status === 'Unpaid')

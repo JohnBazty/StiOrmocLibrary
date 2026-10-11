@@ -14,6 +14,7 @@ function fakeDatabase() {
   }
   const execute = async (sql: string, values: unknown[] = []) => {
     state.writes.push(sql)
+    if (sql.includes('SELECT a.role,a.account_status')) return [[{role:'Librarian',account_status:'Active'}]]
     if (sql.startsWith('SELECT account_id FROM accounts') || sql.startsWith('SELECT user_id FROM users')) return [[]]
     if (sql.startsWith('SELECT request_id FROM registration_requests')) return [[]]
     if (sql.startsWith('INSERT INTO registration_requests')) {

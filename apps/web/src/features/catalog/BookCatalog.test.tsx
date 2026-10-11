@@ -1,114 +1,128 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MemoryRouter } from 'react-router-dom'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { BookCatalog } from './BookCatalog'
-import type { BookCatalogItem } from './book-catalog-types'
+import { LegacyCatalogRedirect } from './LegacyCatalogRedirect'
+import { clearBookCartForTests, readBookCart } from './book-cart-store'
+import { fetchBookCatalog, fetchBookOverview, reserveBookTitle } from './book-catalog-api'
+import { enhancedCatalog } from './enhanced-catalog-api'
 
-const api = vi.hoisted(() => ({
-  fetchBookCatalog: vi.fn(),
-  fetchBookCategories: vi.fn(),
-  fetchBookOverview: vi.fn(),
-  reserveBookTitle: vi.fn(),
-}))
+vi.mock('../auth/auth-storage', () => ({ getCurrentClaims: () => ({ userId: 99, role: 'Student', schoolId: 'TEST-99' }), getCurrentIdentity: () => ({ userId: 99, role: 'Student', schoolId: 'TEST-99' }) }))
+vi.mock('./book-catalog-api', () => ({ fetchBookCatalog: vi.fn(), fetchBookOverview: vi.fn(), reserveBookTitle: vi.fn() }))
+vi.mock('./enhanced-catalog-api', () => ({ enhancedCatalog: { options: vi.fn(), search: vi.fn(), detail: vi.fn() } }))
+vi.mock('./CatalogDetailsPanel', () => ({ catalogInput: 'field', CatalogDetailsPanel: () => <p>Digital files and catalog metadata</p> }))
 
-vi.mock('./book-catalog-api', () => api)
-vi.mock('../auth/auth-storage', () => ({
-  getCurrentClaims: () => ({ userId: 5, schoolId: 'STI-5', role: 'Student', exp: 9999999999 }),
-  getCurrentIdentity: () => ({ userId: 5, schoolId: 'STI-5', role: 'Student', source: 'jwt' }),
-}))
+const record = { id: 42, title: 'Example book', kind: 'Book', author: 'Alex Writer', coverImagePath: '/cover.jpg', available: 1, copyCount: 1, copies: [], programs: [], courses: [], files: [] }
+const overview = { titleId: 42, title: 'Example book', author: 'Alex Writer', isbn: '123', publisher: 'Publisher', publicationYear: 2024, categoryName: 'Computing', shelfLocation: 'A1', callNumber: '001', currentAvailabilityStatus: 'Available', availableCopiesCount: 1, totalCopiesCount: 1, reservableMaterialId: 1, previewBarcode: 'BOOK1' }
+function Location() { const location = useLocation(); return <output data-testid="location">{location.pathname}{location.search}{location.hash}</output> }
+function setup(url = '/student/library') { render(<MemoryRouter initialEntries={[url]}><BookCatalog /><Location /></MemoryRouter>) }
 
-const baseBook: BookCatalogItem = {
-  titleId: 1,
-  title: 'Database Systems',
-  author: 'C. J. Date',
-  isbn: '9780133970777',
-  publisher: 'Pearson',
-  publicationYear: 2019,
-  categoryId: 2,
-  categoryName: 'Database',
-  callNumber: 'QA76.9',
-  shelfLocation: 'Shelf A-1',
-  currentAvailabilityStatus: 'Available',
-  currentConditionStatus: 'Fair',
-  totalCopiesCount: 1,
-  availableCopiesCount: 1,
-  reservableMaterialId: 41,
-  previewBarcode: 'STIORMOC2026000142',
-}
+beforeEach(() => {
+  vi.mocked(fetchBookCatalog).mockResolvedValue({ items: [], viewer: { role: 'Student', activeBookCount: 0, bookLimit: 2 }, pagination: { page: 1, limit: 24, total: 1, totalPages: 1 } })
+  vi.mocked(fetchBookOverview).mockResolvedValue(overview as never)
+  vi.mocked(reserveBookTitle).mockResolvedValue({ reservationId: 1, queuePosition: 3, status: 'pending' })
+  vi.mocked(enhancedCatalog.options).mockResolvedValue({ categories: [], programs: [], courses: [], types: [], locations: [] })
+  vi.mocked(enhancedCatalog.search).mockResolvedValue({ items: [record, { ...record, id: 43, title: 'Research example', kind: 'Research/Thesis' }], pagination: { page: 1, limit: 24, total: 2 } } as never)
+})
+afterEach(() => { cleanup(); clearBookCartForTests(); vi.resetAllMocks() })
 
-function response(book: BookCatalogItem) {
-  return Promise.resolve({
-    items: [book],
-    pagination: { page: 1, limit: 24, total: 1, totalPages: 1 },
-    viewer: { role: 'Student' as const, activeBookCount: 0, bookLimit: 2 },
-  })
-}
-
-describe('BookCatalog availability refresh', () => {
-  it('opens a cover-first overview with catalog details below the image', async () => {
-    const coveredBook = { ...baseBook, coverImagePath: '/api/assets/covers/database-systems.png' }
-    api.fetchBookCategories.mockResolvedValue([{ categoryId: 2, categoryName: 'Database' }])
-    api.fetchBookCatalog.mockImplementation(() => response(coveredBook))
-    api.fetchBookOverview.mockResolvedValue(coveredBook)
-    render(<MemoryRouter><BookCatalog /></MemoryRouter>)
-
-    fireEvent.click(await screen.findByRole('button', { name: 'View details' }))
-
-    const cover = await screen.findByAltText('Database Systems cover') as HTMLImageElement
-    expect(cover.src).toContain('/api/assets/covers/database-systems.png')
-    expect(screen.getByText('ISBN')).toBeTruthy()
-    expect(screen.getByText('Fair')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Generate APA reference' })).toBeTruthy()
-  })
-
-  it('keeps a borrowed title visible and changes its action to Reserve', async () => {
-    api.fetchBookCategories.mockResolvedValue([{ categoryId: 2, categoryName: 'Database' }])
-    api.fetchBookCatalog.mockImplementationOnce(() => response(baseBook))
-    render(<MemoryRouter><BookCatalog /></MemoryRouter>)
-    expect(await screen.findByRole('button', { name: 'Borrow' })).toBeTruthy()
-
-    api.fetchBookCatalog.mockImplementation(() => response({
-      ...baseBook,
-      availableCopiesCount: 0,
-      currentAvailabilityStatus: 'Borrowed',
-    }))
-    window.dispatchEvent(new Event('focus'))
-
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Reserve' })).toBeTruthy())
-    expect(screen.getByText('Database Systems')).toBeTruthy()
-    expect(screen.getByText('Copies: 0 of 1 available')).toBeTruthy()
-  })
-
-  it('shows the backend warning when the student already borrowed the selected title', async () => {
-    api.fetchBookCategories.mockResolvedValue([{ categoryId: 2, categoryName: 'Database' }])
-    api.fetchBookCatalog.mockImplementation(() => response({
-      ...baseBook,
-      availableCopiesCount: 0,
-      currentAvailabilityStatus: 'Borrowed',
-    }))
-    api.reserveBookTitle.mockRejectedValue(new Error('You already borrowed this book. Return it before reserving the same book again.'))
-    render(<MemoryRouter><BookCatalog /></MemoryRouter>)
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Reserve' }))
-
-    expect((await screen.findByRole('alert')).textContent).toContain('You already borrowed this book')
-    expect(api.reserveBookTitle).toHaveBeenCalledWith(baseBook.titleId)
-  })
-
-  it('explains the two-book limit before sending another reservation request', async () => {
-    api.fetchBookCategories.mockResolvedValue([{ categoryId: 2, categoryName: 'Database' }])
-    api.fetchBookCatalog.mockResolvedValue({
-      items: [{ ...baseBook, availableCopiesCount: 0, currentAvailabilityStatus: 'Borrowed' }],
-      pagination: { page: 1, limit: 24, total: 1, totalPages: 1 },
-      viewer: { role: 'Student', activeBookCount: 2, bookLimit: 2 },
-    })
-    render(<MemoryRouter><BookCatalog /></MemoryRouter>)
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Reserve' }))
-
-    expect((await screen.findByRole('alert')).textContent).toContain('already have 2 active book commitments')
-    expect(api.reserveBookTitle).not.toHaveBeenCalled()
-  })
+it('browses covers and filters and adds a book to the same borrow cart without another catalog', async () => {
+  setup()
+  await screen.findByText('Active + selected: 0 / 2')
+  const action = await screen.findByRole('button', { name: 'Borrow book' })
+  expect(screen.getByAltText('Example book book cover').getAttribute('src')).toBe('/cover.jpg')
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search title, author or ISBN' }), { target: { value: 'Computing' } })
+  await waitFor(() => expect(vi.mocked(enhancedCatalog.search).mock.calls.at(-1)?.[0].get('q')).toBe('Computing'))
+  fireEvent.click(action)
+  await screen.findByRole('button', { name: 'In cart' })
+  expect(readBookCart().map(book => book.titleId)).toEqual([42])
+  expect(screen.getByRole('link', { name: 'Book cart (1)' }).getAttribute('href')).toBe('/student/cart')
+  expect(screen.queryByRole('link', { name: 'Borrow book' })).toBeNull()
+  const research = screen.getByRole('heading', { name: 'Research example' }).closest('article')!
+  expect(within(research).queryByRole('button', { name: /Borrow|Reserve/ })).toBeNull()
 })
 
-afterEach(() => { cleanup(); window.sessionStorage.clear(); vi.clearAllMocks() })
+it('preserves student limits when adding from the merged grid', async () => {
+  vi.mocked(fetchBookCatalog).mockResolvedValue({ items: [], viewer: { role: 'Student', activeBookCount: 2, bookLimit: 2 }, pagination: { page: 1, limit: 24, total: 1, totalPages: 1 } })
+  setup()
+  await screen.findByText('Active + selected: 2 / 2')
+  fireEvent.click(await screen.findByRole('button', { name: 'Borrow book' }))
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Transaction Blocked: Students cannot exceed 2 books.')
+  expect(readBookCart()).toEqual([])
+})
+
+it('reserves unavailable books and reports a rejected request', async () => {
+  vi.mocked(enhancedCatalog.search).mockResolvedValue({ items: [{ ...record, available: 0 }], pagination: { page: 1, limit: 24, total: 1 } } as never)
+  vi.mocked(fetchBookOverview).mockResolvedValue({ ...overview, availableCopiesCount: 0, currentAvailabilityStatus: 'Borrowed' } as never)
+  setup()
+  await screen.findByText('Active + selected: 0 / 2')
+  fireEvent.click(await screen.findByRole('button', { name: 'Reserve book' }))
+  await screen.findByText('Reservation submitted. You are number 3 in the queue.')
+  expect(reserveBookTitle).toHaveBeenCalledWith(42)
+  expect(readBookCart()).toEqual([])
+  vi.mocked(reserveBookTitle).mockRejectedValue(new Error('You already have a reservation for this book.'))
+  fireEvent.click(await screen.findByRole('button', { name: 'Reserve book' }))
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'You already have a reservation for this book.')
+})
+
+it('opens selected book details and APA reference, adds to cart and preserves filters when closed', async () => {
+  setup('/student/library?titleId=42&request=1&q=Computing&programId=1')
+  await screen.findByText('Active + selected: 0 / 2')
+  const dialog = await screen.findByRole('dialog')
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Generate APA reference' }))
+  expect(within(dialog).getByRole('textbox', { name: 'APA 7th Edition reference' })).toHaveProperty('value', expect.stringContaining('Example book'))
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Add to cart' }))
+  expect(readBookCart()).toHaveLength(1)
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }))
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(screen.getByTestId('location').textContent).toBe('/student/library?q=Computing&programId=1')
+})
+
+it('redirects the former catalog URL without losing selected title, filters or hash', async () => {
+  render(<MemoryRouter initialEntries={['/faculty/catalog?titleId=42&q=Computing#catalog']}><Routes><Route path="/faculty/catalog" element={<LegacyCatalogRedirect />} /><Route path="/faculty/library" element={<Location />} /></Routes></MemoryRouter>)
+  expect((await screen.findByTestId('location')).textContent).toBe('/faculty/library?titleId=42&q=Computing#catalog')
+})
+
+it('keeps digital-only book details accessible without the physical-copy API', async () => {
+  const digital = { ...record, available: 0, copyCount: 0 }
+  vi.mocked(enhancedCatalog.search).mockResolvedValue({ items: [digital], pagination: { page: 1, limit: 24, total: 1 } } as never)
+  vi.mocked(enhancedCatalog.detail).mockResolvedValue(digital as never)
+  setup()
+  fireEvent.click(await screen.findByRole('button', { name: 'View details' }))
+  await screen.findByRole('dialog')
+  expect(screen.getByText('Digital files and catalog metadata')).toBeTruthy()
+  expect(fetchBookOverview).not.toHaveBeenCalled()
+  expect(screen.queryByRole('button', { name: 'Reserve book' })).toBeNull()
+})
+
+it('uses the faculty cart and does not apply the student two-book cap to faculty', async () => {
+  vi.mocked(fetchBookCatalog).mockResolvedValue({ items: [], viewer: { role: 'Faculty', activeBookCount: 4, bookLimit: null }, pagination: { page: 1, limit: 24, total: 1, totalPages: 1 } })
+  setup('/faculty/library')
+  await screen.findByRole('link', { name: 'Book cart (0)' })
+  await waitFor(() => expect(screen.getByRole('link', { name: 'Book cart (0)' }).getAttribute('href')).toBe('/faculty/cart'))
+  fireEvent.click(await screen.findByRole('button', { name: 'Borrow book' }))
+  await screen.findByRole('button', { name: 'In cart' })
+  expect(readBookCart()).toHaveLength(1)
+})
+
+it('offers reservation in details if availability changed, without submitting it automatically', async () => {
+  vi.mocked(fetchBookOverview).mockResolvedValue({ ...overview, availableCopiesCount: 0, currentAvailabilityStatus: 'Reserved' } as never)
+  setup()
+  await screen.findByText('Active + selected: 0 / 2')
+  fireEvent.click(await screen.findByRole('button', { name: 'Borrow book' }))
+  const dialog = await screen.findByRole('dialog')
+  const reserve = await within(dialog).findByRole('button', { name: 'Reserve book' })
+  expect(reserveBookTitle).not.toHaveBeenCalled()
+  expect(readBookCart()).toEqual([])
+  fireEvent.click(reserve)
+  await within(dialog).findByText('Reservation submitted. You are number 3 in the queue.')
+  expect(reserveBookTitle).toHaveBeenCalledOnce()
+})
+
+it('keeps browsing available but disables requests if borrowing eligibility fails', async () => {
+  vi.mocked(fetchBookCatalog).mockRejectedValue(new Error('Borrowing service unavailable.'))
+  setup()
+  await screen.findByText('Borrowing service unavailable.')
+  expect(await screen.findByRole('button', { name: 'Borrow book' })).toHaveProperty('disabled', true)
+  expect(screen.getByRole('heading', { name: 'Example book' })).toBeTruthy()
+})

@@ -1,11 +1,14 @@
 # Invoice replacement plan for printing and fines
 
 - **Date created:** 2026-09-27
-- **Date last updated:** 2026-09-27
+- **Date last updated:** 2026-09-28
 - **Status:** `planned`
-- **Scope:** Phase 2 item A10; planning only, with no application, database, GitHub, or deployment changes in this step.
+- **Availability:** Archived from active web and API routes until the owner requests reactivation.
+- **Scope:** Phase 2 item A10; retained plan for a future invoice release. The current invoice feature is archived locally.
 
 ## Why
+
+The owner paused invoices on 2026-09-28. The current app keeps printing and fine payment records visible while hiding invoice menus and pages. Invoice API paths return `INVOICES_ARCHIVED`; the service, PDF template, migration, setup, and tables remain in the repository and database for future development. Reactivation requires a reviewed finance-approved flow and explicit release work. At archival, the connected Supabase database had zero issued invoices.
 
 The Student Fines page currently lists OR-numbered PDFs under **Payment records**, and the Student Printing page lists PR-numbered PDFs under **Payment records**. A separate Invoices page exists, but an administrator must enter a payment record ID and issue an invoice manually. This does not deliver the requested experience: after a qualifying payment, the student should see and download an **Invoice** in the place where they paid. The old OR/PR documents must not be renamed to look like newly issued invoices.
 
@@ -50,4 +53,5 @@ The preserved [Final Draft](source/Final-Draft.pdf) covers front-desk printing c
 
 ## Change log
 
+- **2026-09-28:** Archived the unfinished invoice module at the owner's request. Hide its Student, Faculty, and Librarian pages and navigation, disable direct invoice API operations, and remove links to the hidden pages while keeping the implementation and Supabase schema. Existing payment records remain available. No database deletion, push, or deployment.
 - **2026-09-27:** Created a dedicated plan for replacing the OR/PR payment-document views shown on Student Fines and Student Printing with direct, automatic invoice delivery. No implementation or deployment was performed.

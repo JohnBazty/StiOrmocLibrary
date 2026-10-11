@@ -34,6 +34,7 @@ export function normalizeRole(value: unknown): JwtRole | '' {
 export function normalizePortal(value: unknown): LoginPortal | '' {
   if (typeof value !== 'string') return ''
   const candidate = value.trim().toLowerCase()
+  if (candidate === 'personnel') return 'staff'
   return candidate === 'user' || candidate === 'staff' ? candidate : ''
 }
 
@@ -90,17 +91,19 @@ export function validateAccountRegistration(body: unknown) {
 export function validateRoleLogin(body: unknown) {
   const input = body && typeof body === 'object' ? body as Record<string, unknown> : {}
   const schoolId = normalizeSchoolId(input.school_id)
-  const role = normalizeRole(input.login_as)
-  const portal = normalizePortal(input.portal)
+  // login_as is accepted for older clients, but never selects the database role.
+  const legacyRole = normalizeRole(input.login_as)
+  const portal = input.portal === undefined
+    ? (['Admin', 'Librarian', 'Staff'].includes(legacyRole) ? 'staff' : 'user')
+    : normalizePortal(input.portal)
   const password = typeof input.password === 'string' ? input.password : ''
   const errors: FieldErrors = {}
 
-  if (input.portal !== undefined && !portal) errors.portal = 'Select a valid login portal.'
-  else if (!portal && !role) errors.login_as = 'Select a valid login role.'
+  if (!portal) errors.portal = 'Choose a valid sign-in page.'
   if (!schoolId) errors.school_id = 'School ID is required.'
   else if (!SCHOOL_ID_PATTERN.test(schoolId)) errors.school_id = 'Enter a valid school ID.'
   if (!password) errors.password = 'Password is required.'
   else if (password.length > 72) errors.password = 'Password must not exceed 72 characters.'
 
-  return { schoolId, role, portal, password, errors, isValid: Object.keys(errors).length === 0 }
+  return { schoolId, role: legacyRole, portal, password, errors, isValid: Object.keys(errors).length === 0 }
 }

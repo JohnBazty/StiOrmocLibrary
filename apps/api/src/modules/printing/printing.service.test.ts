@@ -5,14 +5,14 @@ import { PDFDocument } from 'pdf-lib'
 import { PrintingRepository } from './printing.repository.ts'
 import { createPrintingService } from './printing.service.ts'
 
-function serviceFixture(selectedRow:Record<string,unknown>){
+function serviceFixture(selectedRow:Record<string,unknown>,acceptingRequests=1){
   const calls:Array<{sql:string;values:unknown[]}>=[]
   const connection={
     beginTransaction:async()=>undefined,commit:async()=>undefined,rollback:async()=>undefined,release:()=>undefined,
     execute:async(sql:string,values:unknown[]=[] )=>{assert.equal((sql.match(/\?/g)??[]).length,values.length,`Prepared value count mismatch in ${sql}`);calls.push({sql,values});if(sql.startsWith('SELECT'))return[[selectedRow],[]];if(sql.includes('INSERT INTO ink_repository'))return[{insertId:9},[]];if(sql.includes('INSERT INTO print_cash_payments'))return[{insertId:21},[]];if(sql.includes('INSERT INTO print_payment_receipts'))return[{insertId:31},[]];return[{},[]]},
   }
   const pool={getConnection:async()=>connection} as unknown as Pool
-  const repository={userBySchoolId:async()=>({user_id:5,account_status:'Active'}),serviceStatus:async()=>({accepting_requests:1}),pricing:async()=>[{print_type:'Monochrome',paper_size:'A4',price_per_page:3}]} as unknown as PrintingRepository
+  const repository={userBySchoolId:async()=>({user_id:5,account_status:'Active'}),serviceStatus:async()=>({accepting_requests:acceptingRequests}),pricing:async()=>[{print_type:'Monochrome',paper_size:'A4',price_per_page:3}]} as unknown as PrintingRepository
   return{service:createPrintingService(pool,repository),calls}
 }
 
@@ -90,4 +90,19 @@ test('quote reads uploaded PDF page count and calculates price on the server',as
   assert.equal(quote.total_sheets,6)
   assert.equal(quote.calculated_cost,18)
   await assert.rejects(service.submit({schoolId:'STUDENT-001'},{number_of_copies:'3',page_count:'1',print_type:'Monochrome',paper_size:'A4'},file),{code:'PRINT_PAGE_COUNT_CHANGED'})
+})
+
+test('paused printing still counts pages and quotes without allowing a submission',async()=>{
+  const document=await PDFDocument.create()
+  document.addPage();document.addPage()
+  const bytes=Buffer.from(await document.save())
+  const file={buffer:bytes,originalname:'paused.pdf',mimetype:'application/pdf',size:bytes.length} as Express.Multer.File
+  const{service,calls}=serviceFixture({},0)
+  const body={number_of_copies:'60',print_type:'Monochrome',paper_size:'A4'}
+  const quote=await service.quote({schoolId:'STUDENT-001'},body,file)
+  assert.equal(quote.page_count,2)
+  assert.equal(quote.total_sheets,120)
+  assert.equal(quote.calculated_cost,360)
+  await assert.rejects(service.submit({schoolId:'STUDENT-001'},body,file),{code:'PRINTING_UNAVAILABLE'})
+  assert.equal(calls.length,0)
 })

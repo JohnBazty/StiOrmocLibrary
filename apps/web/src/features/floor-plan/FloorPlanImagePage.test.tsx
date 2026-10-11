@@ -23,11 +23,29 @@ it('keeps the shelf label visible when no floor image has been uploaded', async 
   expect(screen.queryByText('Publish layout')).toBeNull()
 })
 
-it('lets an Admin publish an image and see the published version', async () => {
-  auth.role = 'Admin'
+it('lets a Librarian publish an image and see the published version', async () => {
+  auth.role = 'Librarian'
   render(<MemoryRouter><FloorPlanImagePage /></MemoryRouter>)
   await screen.findByText('Floor plan image not available yet.')
   fireEvent.change(screen.getByLabelText('Choose image'), { target: { files: [new File(['image'], 'floor.png', { type: 'image/png' })] } })
   await waitFor(() => expect(screen.getByAltText('Current library floor plan')).toBeTruthy())
   expect(screen.getByText('Floor plan image published. Everyone can now view it.')).toBeTruthy()
+})
+
+it.each(['Student', 'Faculty', 'Staff', 'Admin'])('does not offer floor-plan uploads to %s', async role => {
+  auth.role = role
+  render(<MemoryRouter><FloorPlanImagePage /></MemoryRouter>)
+  await screen.findByText('Floor plan image not available yet.')
+  expect(screen.queryByLabelText('Choose image')).toBeNull()
+})
+
+it('handles an empty gateway response and recovers with Refresh', async () => {
+  vi.mocked(fetch).mockResolvedValueOnce(new Response('', { status: 502 }))
+  render(<MemoryRouter><FloorPlanImagePage /></MemoryRouter>)
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'The library service is unavailable. Please try again.')
+  expect(screen.queryByText('Floor plan image not available yet.')).toBeNull()
+  expect(screen.getByText('Unable to load the floor plan. Use Refresh to try again.')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+  await screen.findByText('Floor plan image not available yet.')
+  expect(screen.queryByRole('alert')).toBeNull()
 })

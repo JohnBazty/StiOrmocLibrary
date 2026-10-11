@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { PageHeader, SectionCard } from '../../components/ui'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { Camera, CheckCircle2, Clock3, GraduationCap, ImagePlus, LockKeyhole, Save, ShieldCheck, UserRound, X } from 'lucide-react'
+import { PageHeader } from '../../components/ui'
 import { getAccessToken } from '../auth/auth-storage'
 import { usersApi, type OwnProfile, type ProfileEdit } from './users-api'
+import { notifyProfileUpdated } from './profile-events'
 
 type AvatarState = { currentUrl: string | null; pending: { id: number; submittedAt: string } | null; lastRejection?: { reviewedAt: string; reason: string } | null }
 
@@ -10,8 +12,25 @@ export function ProfileAvatarPage() {
   const [profile, setProfile] = useState<OwnProfile | null>(null)
   const [draft, setDraft] = useState<ProfileEdit>({ first_name: '', last_name: '', program_strand: '', year_grade_level: '' })
   const [file, setFile] = useState<File | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const [operation, setOperation] = useState<'profile' | 'photo' | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [messageError, setMessageError] = useState(true)
+  useEffect(() => {
+    if (!file) { setPreview(null); return }
+    const url = URL.createObjectURL(file)
+    setPreview(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file])
+  function clearPicture() { setFile(null); if (fileInput.current) fileInput.current.value = '' }
+  function selectPicture(selected: File | null) {
+    if (selected && (!['image/png', 'image/jpeg', 'image/webp'].includes(selected.type) || selected.size > 2 * 1024 * 1024)) {
+      clearPicture(); setMessageError(true); setMessage('Choose a PNG, JPEG, or WebP image up to 2 MB.'); return
+    }
+    setFile(selected); setMessage('')
+  }
   const load = useCallback(async () => {
     const response = await fetch('/api/v1/profile/avatar/me', { headers: { Authorization: `Bearer ${getAccessToken() ?? ''}` } })
     const payload = await response.json() as { data?: AvatarState; message?: string }
@@ -24,18 +43,19 @@ export function ProfileAvatarPage() {
     setDraft({ first_name: value.first_name ?? '', last_name: value.last_name ?? '', program_strand: value.program_strand ?? '', year_grade_level: value.year_grade_level ?? '' })
   }).catch(cause => setMessage(cause instanceof Error ? cause.message : 'Unable to load your profile.')) }, [])
   async function saveProfile(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setMessage('')
+    event.preventDefault(); setBusy(true); setOperation('profile'); setMessage(''); setMessageError(true)
     try {
       await usersApi.saveMyProfile(draft)
       setProfile(await usersApi.myProfile())
-      setMessage('Your profile has been updated. Admin can see the change in your account history.')
-    } catch (cause) { setMessage(cause instanceof Error ? cause.message : 'Unable to save your profile.') }
-    finally { setBusy(false) }
+      notifyProfileUpdated()
+      setMessageError(false); setMessage('Your profile has been updated. The librarian can see the change in your account history.')
+    } catch (cause) { setMessageError(true); setMessage(cause instanceof Error ? cause.message : 'Unable to save your profile.') }
+    finally { setBusy(false); setOperation(null) }
   }
   async function submit(event: FormEvent) {
     event.preventDefault()
     if (!file) return
-    setBusy(true); setMessage('')
+    setBusy(true); setOperation('photo'); setMessage(''); setMessageError(true)
     try {
       const form = new FormData(); form.set('image', file)
       const response = await fetch('/api/v1/profile/avatar/me', {
@@ -43,24 +63,49 @@ export function ProfileAvatarPage() {
       })
       const payload = await response.json() as { message?: string }
       if (!response.ok) throw new Error(payload.message ?? 'Unable to upload your picture.')
-      setFile(null); setMessage('Your new picture is awaiting Admin approval.'); await load()
-    } catch (cause) { setMessage(cause instanceof Error ? cause.message : 'Unable to upload your picture.') }
-    finally { setBusy(false) }
+      clearPicture(); setMessageError(false); setMessage('Your new picture is awaiting Librarian approval.'); await load()
+    } catch (cause) { setMessageError(true); setMessage(cause instanceof Error ? cause.message : 'Unable to upload your picture.') }
+    finally { setBusy(false); setOperation(null) }
   }
-  return <><PageHeader eyebrow="My account" title="My profile" description="Edit your profile details and submit a new picture for approval." />
-    {message ? <p role="status" className="mb-4 rounded-xl bg-[#FFF200] p-4 text-[#003399]">{message}</p> : null}
-    <SectionCard className="mb-5 max-w-2xl p-6"><h2 className="font-bold text-[#003399]">Profile details</h2><p className="mt-1 text-sm text-[#003399]/70">Only you can edit these details. Your school email and ID are fixed.</p>
-      {profile ? <form onSubmit={saveProfile} className="mt-4 grid gap-4 sm:grid-cols-2">
-        <label className="text-sm font-bold text-[#003399]">School ID<input value={profile.school_id} readOnly className="mt-1 w-full rounded-xl border p-3 opacity-70" /></label>
-        <label className="text-sm font-bold text-[#003399]">School email<input value={profile.email ?? ''} readOnly className="mt-1 w-full rounded-xl border p-3 opacity-70" /></label>
-        {([['first_name', 'First name'], ['last_name', 'Last name']] as const).map(([key, label]) => <label key={key} className="text-sm font-bold text-[#003399]">{label}<input aria-label={label} required maxLength={100} value={draft[key]} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))} className="mt-1 w-full rounded-xl border p-3" /></label>)}
-        {profile.role === 'Student' && ([['program_strand', 'Program / strand'], ['year_grade_level', 'Year / grade level']] as const).map(([key, label]) => <label key={key} className="text-sm font-bold text-[#003399]">{label}<input aria-label={label} required value={draft[key]} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))} className="mt-1 w-full rounded-xl border p-3" /></label>)}
-        <button disabled={busy} className="rounded-xl bg-[#003399] px-5 py-3 font-bold text-white disabled:opacity-50 sm:col-span-2">Save my profile</button>
-      </form> : <p className="mt-3 text-sm">Loading profile…</p>}
-    </SectionCard>
-    {data?.lastRejection ? <p role="status" className="mb-4 rounded-xl border border-[#003399]/20 p-4 text-[#003399]">Your previous picture was not approved: {data.lastRejection.reason}</p> : null}
-    <SectionCard className="max-w-xl p-6"><div className="flex items-center gap-5">{data?.currentUrl ? <img src={data.currentUrl} alt="Your approved profile picture" className="h-24 w-24 rounded-full object-cover" /> : <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#003399]/10 text-sm text-[#003399]">No picture</div>}<div><p className="font-bold text-[#003399]">Approved picture</p><p className="text-sm text-[#003399]/60">{data?.pending ? 'A replacement is awaiting review.' : 'Upload a new picture below.'}</p></div></div>
-      <form onSubmit={submit} className="mt-6 space-y-4"><label className="block text-sm font-bold text-[#003399]">New picture<input type="file" accept="image/png,image/jpeg,image/webp" onChange={event => setFile(event.target.files?.[0] ?? null)} className="mt-2 block w-full" /></label><p className="text-xs text-[#003399]/60">PNG, JPEG, or WebP up to 2 MB.</p><button disabled={busy || !file} className="rounded-xl bg-[#003399] px-5 py-3 font-bold text-white disabled:opacity-50">{busy ? 'Uploading…' : 'Submit for approval'}</button></form>
-    </SectionCard>
-  </>
+  const name = profile ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || profile.full_name || 'Your account' : 'Your account'
+  const initials = profile ? `${profile.first_name?.[0] ?? ''}${profile.last_name?.[0] ?? ''}`.toUpperCase() : ''
+  return <div className="my-profile-page"><PageHeader eyebrow="My account" title="My profile" />
+    <section className="profile-summary" aria-label="Account summary">
+      <div className="profile-summary-icon"><UserRound size={26} /></div>
+      <div className="min-w-0 flex-1"><p className="profile-summary-eyebrow">Your library identity</p><h2>{name}</h2><p className="profile-summary-description">Keep your details up to date for a smoother library experience.</p></div>
+      {profile ? <div className="profile-summary-tags"><span><ShieldCheck size={14} />{profile.role}</span><span><CheckCircle2 size={14} />{profile.account_status}</span></div> : null}
+    </section>
+    {message ? <p role={messageError ? 'alert' : 'status'} className="profile-message">{message}</p> : null}
+    <div className="profile-layout">
+      <section className="profile-panel profile-photo-panel" aria-labelledby="profile-photo-heading">
+        <div className="profile-photo-banner"><Camera size={19} /><span>Make it yours</span></div>
+        <div className="profile-photo-body">
+          <div className="profile-avatar">{preview || data?.currentUrl ? <img src={preview ?? data!.currentUrl!} alt={preview ? 'New picture preview' : 'Your approved profile picture'} /> : <span aria-label="No approved profile picture">{initials || <UserRound size={40} />}</span>}<span className="profile-avatar-camera"><Camera size={15} /></span></div>
+          <h2 id="profile-photo-heading">Profile picture</h2><p className="profile-muted">A familiar face for your library account.</p>
+          <p className="profile-photo-status">{preview ? <><ImagePlus size={14} />New picture preview</> : data?.pending ? <><Clock3 size={14} />Awaiting approval</> : data?.currentUrl ? <><CheckCircle2 size={14} />Approved picture</> : <><Camera size={14} />No picture yet</>}</p>
+          {data?.pending ? <p role="status" className="profile-photo-note">Your submitted picture is awaiting Librarian review. Your approved picture stays visible until then.</p> : null}
+          {data?.lastRejection ? <p role="status" className="profile-photo-note">Your previous picture was not approved: {data.lastRejection.reason}</p> : null}
+          <form onSubmit={submit} className="profile-upload-form">
+            <label className="profile-upload"><ImagePlus size={24} /><span>{file ? 'Choose a different picture' : 'Choose a picture'}</span><span className="profile-upload-hint">PNG, JPEG or WebP · up to 2 MB</span><input ref={fileInput} aria-label="New picture" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={event => selectPicture(event.target.files?.[0] ?? null)} /></label>
+            {file ? <div className="profile-selected-file"><span title={file.name}>{file.name}</span><button type="button" aria-label="Remove selected picture" disabled={busy} onClick={clearPicture}><X size={15} /></button></div> : null}
+            <button disabled={busy || !file} className="profile-primary-button"><ShieldCheck size={16} />{operation === 'photo' ? 'Uploading…' : 'Submit for approval'}</button>
+          </form>
+          <p className="profile-photo-note">New pictures appear on your account after Librarian approval.</p>
+        </div>
+      </section>
+      <section className="profile-panel profile-details-panel" aria-labelledby="profile-details-heading">
+        <header className="profile-panel-heading"><span className="profile-section-icon"><UserRound size={20} /></span><div><h2 id="profile-details-heading">Profile details</h2><p className="profile-muted">Only you can edit your personal information.</p></div></header>
+        {profile ? <form onSubmit={saveProfile}>
+          <fieldset className="profile-field-section" disabled={busy}><legend>Personal information</legend><div className="profile-field-grid">
+            {([['first_name', 'First name'], ['last_name', 'Last name']] as const).map(([key, label]) => <label key={key}>{label}<input required maxLength={100} autoComplete={key === 'first_name' ? 'given-name' : 'family-name'} value={draft[key]} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))} /></label>)}
+          </div></fieldset>
+          {profile.role === 'Student' ? <fieldset className="profile-field-section" disabled={busy}><legend><GraduationCap size={16} />Academic details</legend><div className="profile-field-grid">
+            {([['program_strand', 'Program / strand'], ['year_grade_level', 'Year / grade level']] as const).map(([key, label]) => <label key={key}>{label}<input required value={draft[key]} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))} /></label>)}
+          </div></fieldset> : null}
+          <div className="profile-identity"><div className="profile-identity-heading"><LockKeyhole size={16} /><h3>School identity</h3><span>Read-only</span></div><p className="profile-muted">Your school ID and email are linked to your account.</p><div className="profile-field-grid"><label>School ID<input value={profile.school_id} readOnly /></label><label>School email<input value={profile.email ?? ''} readOnly /></label></div></div>
+          <footer className="profile-save-bar"><p><ShieldCheck size={15} />Updates are recorded in your account history.</p><button disabled={busy} className="profile-primary-button"><Save size={16} />{operation === 'profile' ? 'Saving…' : 'Save my profile'}</button></footer>
+        </form> : <p className="p-6 profile-muted">Loading profile…</p>}
+      </section>
+    </div>
+  </div>
 }

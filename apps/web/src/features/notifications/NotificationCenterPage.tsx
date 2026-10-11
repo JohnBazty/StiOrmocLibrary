@@ -17,7 +17,14 @@ function icon(type: string) {
 }
 function route(path: string | null) {
   if (!path) return null
-  return getCurrentIdentity()?.role === 'Faculty' ? path.replace('/student/', '/faculty/') : path
+  const role = getCurrentIdentity()?.role
+  if (role === 'Faculty') return path.replace('/student/', '/faculty/')
+  if (role === 'Librarian' || role === 'Staff') {
+    const prefix = role === 'Librarian' ? '/librarian' : '/staff'
+    if (path === '/student/notifications') return `${prefix}/notifications`
+    return path.replace('/admin/', `${prefix}/`)
+  }
+  return path
 }
 
 export function NotificationCenterPage() {

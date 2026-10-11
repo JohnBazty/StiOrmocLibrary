@@ -6,10 +6,12 @@ import { reservationApi } from './reservation-api'
 import type { ReservationStatus } from './types'
 import { BookCoverThumbnail } from '../catalog/BookCoverThumbnail'
 import { ViewLocationButton } from '../floor-plan/ViewLocationButton'
+import { getCurrentIdentity } from '../auth/auth-storage'
 
 type Item = { reservationId: number; title: string; titleId?: number | null; coverImagePath: string | null; queuePosition: number; status: ReservationStatus; reservedAt: string; pickupDeadline: string | null; accessionNumber: string | null; barcode: string | null; conditionStatus: string | null }
 
 export function StudentReservations() {
+  const catalogPath = getCurrentIdentity()?.role === 'Faculty' ? '/faculty/library' : '/student/library'
   const [items, setItems] = useState<Item[]>([]); const [loading, setLoading] = useState(true)
   const [error, setError] = useState(''); const [busyId, setBusyId] = useState<number | null>(null)
   const load = useCallback(async () => {
@@ -26,7 +28,7 @@ export function StudentReservations() {
     finally { setBusyId(null) }
   }
   return <>
-    <PageHeader eyebrow="My library" title="Book reservations" action={<div className="flex gap-2"><Button variant="secondary" onClick={() => void load()}><RefreshCw size={16} /> Refresh</Button><Link to="/student/catalog"><Button><Search size={16} /> Find a book</Button></Link></div>} />
+    <PageHeader eyebrow="My library" title="Book reservations" action={<div className="flex gap-2"><Button variant="secondary" onClick={() => void load()}><RefreshCw size={16} /> Refresh</Button><Link to={catalogPath}><Button><Search size={16} /> Find a book</Button></Link></div>} />
     {error ? <div role="alert" className="mb-5 flex items-center gap-3 rounded-xl bg-[#FFF200] px-4 py-3 font-semibold text-[#003399]"><AlertTriangle size={18} />{error}</div> : null}
     {loading ? <SectionCard className="p-10 text-center font-semibold text-[#003399]">Loading reservations…</SectionCard> : items.length ? <div className="grid gap-4 lg:grid-cols-2">{items.map((item) => {
       const cancellable = ['pending', 'approved', 'ready_for_pickup'].includes(item.status)

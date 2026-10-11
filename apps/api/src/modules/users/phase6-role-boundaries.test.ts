@@ -29,7 +29,7 @@ test('Admin cannot use Librarian lost-book finance actions', async () => {
   }
 })
 
-test('profile-picture approval requests are visible only to Admin', async () => {
+test('profile-picture approval requests are restricted to account administrators', async () => {
   const response = await request(appFor('Staff')).get('/profile/avatar/submissions')
   assert.equal(response.status, 403)
   assert.equal(response.body.code, 'JWT_ROLE_FORBIDDEN')

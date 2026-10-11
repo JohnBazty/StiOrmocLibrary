@@ -1,3 +1,4 @@
+import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { BadgeCheck, RefreshCw, Search, UserCheck, Users, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button, PageHeader, SectionCard, StatCard } from '../../components/ui'
@@ -8,7 +9,7 @@ const field = 'h-10 w-full rounded-xl border border-[#003399]/20 bg-white px-3 t
 const initial: UserFilters = { q: '', role: '', program: '', clearance: '', status: 'Active', page: 1, limit: 25 }
 
 export function AdminUsersPage({ archive = false }: { archive?: boolean }) {
-  const canManage = getCurrentIdentity()?.role === 'Admin'
+  const canManage = ['Admin', 'Librarian'].includes(getCurrentIdentity()?.role ?? '')
   const [filters, setFilters] = useState<UserFilters>(() => ({ ...initial, status: archive ? 'Inactive' : 'Active' }))
   const [refresh, setRefresh] = useState(0)
   const [summary, setSummary] = useState<UserSummary | null>(null)
@@ -77,9 +78,9 @@ export function AdminUsersPage({ archive = false }: { archive?: boolean }) {
       <select aria-label="Clearance" className={field} value={filters.clearance} onChange={event => update({ clearance: event.target.value })}><option value="">All clearance states</option><option>Cleared</option><option>Not Cleared</option></select>
     </div></SectionCard>
     <SectionCard><div className="border-b border-[#003399]/15 p-5"><h2 className="font-bold text-[#003399]">{archive ? 'Deactivated and archived accounts' : 'Account directory'}</h2><p className="text-xs text-[#003399]/65">{pagination.total} matching accounts · Profile details are edited by account owners</p></div>
-      <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-[#003399] text-white"><tr>{['User', 'School ID', 'Role', 'Program / unit', 'Year / level', 'Clearance', 'Status', 'Action'].map(label => <th key={label} className="px-5 py-3 text-xs">{label}</th>)}</tr></thead><tbody>
+      <ResponsiveTable><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-[#003399] text-white"><tr>{['User', 'School ID', 'Role', 'Program / unit', 'Year / level', 'Clearance', 'Status', 'Action'].map(label => <th key={label} className="px-5 py-3 text-xs">{label}</th>)}</tr></thead><tbody>
         {loading ? <tr><td colSpan={8} className="p-10 text-center text-[#003399]">Loading users…</td></tr> : rows.length === 0 ? <tr><td colSpan={8} className="p-10 text-center text-[#003399]">No accounts match these filters.</td></tr> : rows.map(user => <tr key={user.id} className="border-b border-[#003399]/10 text-[#003399]"><td className="px-5 py-4"><b>{user.full_name}</b><p className="text-xs opacity-70">{user.email}</p></td><td className="px-5 py-4 font-mono text-xs">{user.school_id}</td><td className="px-5 py-4">{user.role}</td><td className="px-5 py-4">{user.program}</td><td className="px-5 py-4">{user.year_or_unit}</td><td className="px-5 py-4">{user.clearance_status}</td><td className="px-5 py-4"><span className="rounded-full bg-[#003399] px-2 py-1 text-xs font-bold text-white">{user.account_status}</span></td><td className="px-5 py-4"><button className="font-bold underline" onClick={() => void open(user)}>View record</button></td></tr>)}
-      </tbody></table></div><div className="flex justify-end gap-2 p-4"><Button variant="secondary" disabled={filters.page <= 1} onClick={() => update({ page: filters.page - 1 })}>Previous</Button><span className="self-center text-xs font-bold text-[#003399]">Page {pagination.page} of {Math.max(1, pagination.total_pages)}</span><Button variant="secondary" disabled={filters.page >= pagination.total_pages} onClick={() => update({ page: filters.page + 1 })}>Next</Button></div>
+      </tbody></table></ResponsiveTable><div className="flex justify-end gap-2 p-4"><Button variant="secondary" disabled={filters.page <= 1} onClick={() => update({ page: filters.page - 1 })}>Previous</Button><span className="self-center text-xs font-bold text-[#003399]">Page {pagination.page} of {Math.max(1, pagination.total_pages)}</span><Button variant="secondary" disabled={filters.page >= pagination.total_pages} onClick={() => update({ page: filters.page + 1 })}>Next</Button></div>
     </SectionCard>
     {detail && <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#003399]/75 p-4"><div role="dialog" aria-modal="true" aria-label="Account record" className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 text-[#003399]">
       <div className="flex justify-between gap-4"><div><p className="text-xs font-bold uppercase">{detail.role} account · {detail.account_status}</p><h2 className="text-2xl font-black">{detail.full_name}</h2><p className="text-sm">{detail.school_id}</p></div><button aria-label="Close account record" onClick={() => setDetail(null)}><X /></button></div>

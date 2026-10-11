@@ -1,8 +1,10 @@
+import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { ViewLocationButton } from '../floor-plan/ViewLocationButton'
 import { AlertTriangle, BookOpen, CalendarClock, Eye, RefreshCw, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Button, PageHeader, SectionCard, StatCard, StatusBadge } from '../../components/ui'
 import { circulationApi } from './circulation-api'
+import { InLibraryHistory } from './InLibraryHistory'
 import type { BorrowingHistoryData } from './types'
 import { BookDetailDrawer } from '../catalog/BookDetailDrawer'
 import { CancelBorrowRequestDialog } from './CancelBorrowRequestDialog'
@@ -31,7 +33,7 @@ export function BorrowingHistory() {
   const load = useCallback(async () => {
     setLoading(true); setError('')
     try { setData(await circulationApi.history()) }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Borrowing history is unavailable.') }
+    catch (reason) { setData(null); setError(reason instanceof Error ? reason.message : 'Borrowing history is unavailable.') }
     finally { setLoading(false) }
   }, [])
   useEffect(() => {
@@ -75,21 +77,22 @@ export function BorrowingHistory() {
     {error ? <div role="alert" className="mb-5 flex items-center gap-3 rounded-xl bg-[#FFF200] px-4 py-3 font-semibold text-[#003399]"><AlertTriangle size={18} />{error}</div> : null}
     {notice ? <div role="status" className="mb-5 flex items-center justify-between rounded-xl bg-[#003399] px-4 py-3 font-semibold text-[#FFFFFF]"><span>{notice}</span><button aria-label="Dismiss" onClick={() => setNotice('')}><X size={17} /></button></div> : null}
     <div className="mb-5 grid gap-3 sm:grid-cols-3">
-      <StatCard label="Remaining loan slots" value={summary?.remainingLoanSlots === null ? 'Unlimited' : `${summary?.remainingLoanSlots ?? 0} / 2`} icon={BookOpen} tone="blue" />
-      <StatCard label="Active loans" value={summary?.activeLoans ?? 0} icon={CalendarClock} tone="blue" />
-      <StatCard label="Next deadline" value={summary?.nextDueAt ? formatDate(summary.nextDueAt) : 'No active due date'} icon={CalendarClock} tone="orange" />
+      <StatCard label="Remaining loan slots" value={!summary ? '—' : summary.remainingLoanSlots === null ? 'Unlimited' : `${summary.remainingLoanSlots} / ${summary.loanLimit}`} icon={BookOpen} tone="blue" />
+      <StatCard label="Active loans" value={summary?.activeLoans ?? '—'} icon={CalendarClock} tone="blue" />
+      <StatCard label="Next deadline" value={!summary ? '—' : summary.nextDueAt ? formatDate(summary.nextDueAt) : 'No active due date'} icon={CalendarClock} tone="orange" />
     </div>
     {summary?.nextDueAt ? <div className="mb-5 inline-flex rounded-full bg-[#FFF200] px-4 py-2 text-sm font-bold text-[#003399]">Due: {summary.dueCutoffLabel}</div> : null}
     <SectionCard className="overflow-hidden">
       <div className="border-b border-[#003399]/15 px-5 py-4"><h2 className="font-bold text-[#003399]">Transaction history</h2></div>
-      <div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-sm">
+      <ResponsiveTable><table className="w-full min-w-[1050px] text-left text-sm">
         <thead className="bg-[#003399] text-[#FFFFFF]"><tr><th className="px-5 py-3">Title</th><th className="px-5 py-3">Author</th><th className="px-5 py-3">Borrow date</th><th className="px-5 py-3">Due date</th><th className="px-5 py-3">Status</th><th className="px-5 py-3 text-right">Actions</th></tr></thead>
         <tbody>{loading ? <tr><td colSpan={6} className="px-5 py-12 text-center text-[#003399]">Loading borrowing records…</td></tr> : data?.items.length ? data.items.map((item) => <tr key={item.transactionId} className="border-b border-[#003399]/10">
           <td className="px-5 py-4"><div className="flex items-center gap-3"><BookCoverThumbnail title={item.title} coverImagePath={item.coverImagePath} className="h-16 w-11 rounded-lg" /><div className="min-w-0"><p className="font-bold text-[#003399]">{item.title}</p><p className="mt-1 font-mono text-xs text-[#003399]/60">{item.accessionNumber ?? item.barcode ?? `TX-${item.transactionId}`}</p></div></div></td>
           <td className="px-5 py-4 text-[#003399]">{item.author}</td><td className="px-5 py-4 text-[#003399]">{formatDate(item.borrowDate)}</td><td className="px-5 py-4 font-semibold text-[#003399]">{formatDate(item.dueDate)}</td><td className="px-5 py-4"><StatusBadge status={item.lostReportStatus ?? item.status} /></td><td className="px-5 py-4"><div className="flex justify-end gap-2">{item.titleId ? <ViewLocationButton titleId={Number(item.titleId)} barcode={item.barcode}/> : null}{item.titleId ? <button onClick={() => setDetail({ titleId: Number(item.titleId), barcode: item.barcode })} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#003399]/20 px-3 text-xs font-bold text-[#003399]"><Eye size={15} /> View details</button> : null}{item.status === 'Pending' ? <button onClick={() => { setCancelError(''); setCancelling(item) }} className="h-9 rounded-lg px-3 text-xs font-bold text-[#003399] hover:bg-[#FFF200]"><X size={14} className="inline" /> Cancel request</button> : null}{['Borrowed','Overdue'].includes(item.status) && !item.lostReportStatus ? <button onClick={() => { setReportError(''); setReporting(item) }} className="h-9 rounded-lg bg-[#FFF200] px-3 text-xs font-bold text-[#003399]">Report lost</button> : null}</div></td>
-        </tr>) : <tr><td colSpan={6} className="px-5 py-12 text-center font-semibold text-[#003399]">No borrowing transactions have been recorded.</td></tr>}</tbody>
-      </table></div>
+        </tr>) : <tr><td colSpan={6} className="px-5 py-12 text-center font-semibold text-[#003399]">{error ? 'Unable to load borrowing records. Use Refresh to try again.' : 'No borrowing transactions have been recorded.'}</td></tr>}</tbody>
+      </table></ResponsiveTable>
     </SectionCard>
+    <InLibraryHistory />
     {detail ? <BookDetailDrawer titleId={detail.titleId} barcode={detail.barcode} onClose={() => setDetail(null)} /> : null}
     {cancelling ? <CancelBorrowRequestDialog title={cancelling.title} busy={cancelBusy} error={cancelError} onCancel={() => { if (!cancelBusy) setCancelling(null) }} onConfirm={(reason) => void confirmCancellation(reason)} /> : null}
     {reporting ? <ReportLostDialog title={reporting.title} busy={reportBusy} error={reportError} onCancel={() => { if (!reportBusy) setReporting(null) }} onConfirm={() => void reportLost()} /> : null}

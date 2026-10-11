@@ -7,6 +7,7 @@ import { validateBookCartAddition } from './book-cart'
 import { buildApaBookReference } from './book-citation'
 import type { BookCatalogItem } from './book-catalog-types'
 import { BookCoverThumbnail } from './BookCoverThumbnail'
+import { CatalogDetailsPanel } from './CatalogDetailsPanel'
 
 type Props = {
   titleId: number
@@ -16,13 +17,17 @@ type Props = {
   alreadySelected: boolean
   onAddToCart: (book: BookCatalogItem) => void
   onClose: () => void
+  onReserve?: (book: BookCatalogItem) => void
+  requestDisabled?: boolean
+  requestError?: string
+  requestNotice?: string
 }
 
 function Metadata({ label, value }: { label: string; value: string | number | null }) {
   return <div className="rounded-xl border border-[#003399]/10 bg-[#FFFFFF] p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-[#003399]/55">{label}</dt><dd className="mt-1 text-sm font-semibold text-[#003399]">{value || 'Not recorded'}</dd></div>
 }
 
-export function BookOverview({ titleId, role, activeBookCount, selectedBookCount, alreadySelected, onAddToCart, onClose }: Props) {
+export function BookOverview({ titleId, role, activeBookCount, selectedBookCount, alreadySelected, onAddToCart, onClose, onReserve, requestDisabled = false, requestError, requestNotice }: Props) {
   const [book, setBook] = useState<BookCatalogItem | null>(null)
   const [error, setError] = useState('')
   const [citationVisible, setCitationVisible] = useState(false)
@@ -66,6 +71,8 @@ export function BookOverview({ titleId, role, activeBookCount, selectedBookCount
         </header>
 
         <div className="p-5 sm:p-7">
+          {requestError && <p role="alert" className="mb-4 rounded-xl bg-[#b42318] p-3 text-sm font-semibold text-white">{requestError}</p>}
+          {requestNotice && <p role="status" className="mb-4 rounded-xl bg-[#003399] p-3 text-sm font-semibold text-white">{requestNotice}</p>}
           {error ? <div role="alert" className="mb-4 rounded-xl border border-[#003399] bg-[#FFF200] p-3 text-sm font-semibold text-[#003399]">{error}</div> : null}
           {!book && !error ? <div className="py-20 text-center text-sm font-semibold text-[#003399]">Loading book details…</div> : null}
           {book ? <>
@@ -95,6 +102,7 @@ export function BookOverview({ titleId, role, activeBookCount, selectedBookCount
               <Metadata label="Available stock" value={`${book.availableCopiesCount} of ${book.totalCopiesCount} copies`} />
             </dl>
 
+            <CatalogDetailsPanel titleId={book.titleId}/>
             <section className="mt-5 rounded-2xl border border-[#003399]/10 p-4" aria-label="Individual book copies">
               <h3 className="font-bold text-[#003399]">Individual copies</h3>
               <div className="mt-3 space-y-2">{book.copies?.length ? book.copies.map(copy => <div key={copy.copyId} className="grid gap-1 rounded-xl border border-[#003399]/15 p-3 text-xs text-[#003399] sm:grid-cols-2"><strong>{copy.accessionNumber}</strong><span className="font-mono">{copy.barcode}</span><span>Availability: {copy.availability}</span><span>Condition: {copy.condition}</span><span className="sm:col-span-2">Shelf: {copy.shelf}</span></div>) : <p className="text-sm text-[#003399]/60">No active copies are recorded.</p>}</div>
@@ -107,7 +115,8 @@ export function BookOverview({ titleId, role, activeBookCount, selectedBookCount
 
             <div className="mt-5 flex flex-col gap-3 border-t border-[#003399]/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2 text-xs font-semibold text-[#003399]/65"><MapPin size={15} />{book.shelfLocation ?? book.callNumber ?? 'Shelf not recorded'}</div>
-              {['Student', 'Faculty'].includes(role) && book.availableCopiesCount > 0 ? <button onClick={addToCart} disabled={alreadySelected} className="h-11 rounded-xl bg-[#003399] px-5 text-sm font-bold text-[#FFFFFF] disabled:opacity-50">{alreadySelected ? 'In borrow cart' : 'Add to cart'}</button> : null}
+              {['Student', 'Faculty'].includes(role) && book.availableCopiesCount > 0 ? <button onClick={addToCart} disabled={alreadySelected || requestDisabled} className="h-11 rounded-xl bg-[#003399] px-5 text-sm font-bold text-[#FFFFFF] disabled:opacity-50">{alreadySelected ? 'In borrow cart' : 'Add to cart'}</button> : null}
+              {['Student', 'Faculty'].includes(role) && book.availableCopiesCount === 0 && book.totalCopiesCount > 0 && onReserve ? <button onClick={() => onReserve(book)} disabled={requestDisabled} className="h-11 rounded-xl bg-[#FFF200] px-5 text-sm font-bold text-[#003399] disabled:opacity-50">{requestDisabled ? 'Please wait…' : 'Reserve book'}</button> : null}
             </div>
           </> : null}
         </div>

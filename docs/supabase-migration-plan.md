@@ -11,7 +11,7 @@ Product PDFs and `agent.md` historically name MySQL as the baseline; those docs 
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-09-25 |
+| **Date last updated** | 2026-10-11 |
 | **Status** | `inprogress` |
 
 Allowed status values: `planned` → `inprogress` → `built`.
@@ -19,6 +19,10 @@ Allowed status values: `planned` → `inprogress` → `built`.
 ---
 
 ## Locked decisions (approved for build)
+
+**2026-10-11 Phase 5 extension:** Reviewed `023_revision_phase5_desk_circulation.sql` and `024_revision_phase5_reading_materials.sql` applied individually after isolated Postgres acceptance. Adds server-only RLS in-library usage and confirmation receipts, with exclusive book-copy or native research-inventory links. Existing accounts/catalog/loans retained; no data reset. Latest applied product file **024**, next unused **025**; MySQL **047** unapplied / next **048** unchanged. Phase 2 enrollment validation remains pending under the owner's temporary Active-account policy. See [work record](revision-phase5-local-implementation.md).
+
+**2026-10-11 Phase 4 extension:** `022_revision_phase4_attendance.sql` is applied after owner choices 1A/2A/3A. Adds server-only RLS policy/events/scan receipts and visit classification/checkout provenance; retains historical visits and loans. Printing-only visits exclude seats, event permissions are individually configured by Librarian, and open days close at 7 PM with 6:55 PM attendance cutoff. Latest applied product file **022**, next unused **023**. See [work record](revision-phase4-local-implementation.md).
 
 | Decision | Choice |
 | --- | --- |
@@ -65,7 +69,7 @@ Custom `MySqlSessionStore` (`apps/api/src/core/mysql-session-store.js`) on table
 | --- | --- |
 | MySQL baseline | `database/mysql56-schema.sql` |
 | MySQL reference migrations | **48** (`001`…`048`); next MySQL number **`049`**; `043`–`048` are prepared locally and unapplied; the active database remains Supabase Postgres |
-| Postgres drafts | `database/supabase/` through branding migration `017_rename_system_brand.sql`; next `018` |
+| Postgres drafts | Revision product files through applied `024`; next unused `025`. Remote branding `017` source integrated; reconcile with existing ledger before replay. |
 | Views | `borrow_records`, `book_titles` |
 | Seed files | None |
 
@@ -264,3 +268,13 @@ The deployed app URL and its production `DATABASE_URL` have not been verified he
 ## Approval gate
 
 Build is **approved**. The local MySQL history has been transferred. Keep local credentials out of Git and verify the deployed app's connection and flows before retiring MySQL or the pre-cutover backup.
+
+## Revision Phase 1 schema addition — 2026-10-10
+
+The live ledger was inspected before authoring DDL: it contains externally managed files through `019`, including a pre-existing OTP/history schema. Applied only reviewed `020_revision_phase1_password_recovery.sql` using the single-file runner. The new table is additive, server-only and protected by RLS/revoked browser privileges. Existing accounts, schemas and credentials were preserved. Next Postgres file **021**; MySQL rollback reference remains **047**, next **048**. No push or application deployment. See [acceptance record](revision-phase1-local-implementation.md).
+
+## Revision Phase 3 schema addition — 2026-10-11
+
+Applied reviewed additive `021_revision_phase3_catalog.sql` individually after inspecting the current ledger. Added private catalog foundations, title metadata/program/course links, digital-file metadata and import review/provenance tables with RLS and revoked browser-role privileges. The `catalog-digital-files` bucket is private; permitted public PDF downloads are mediated by the API and withdrawn on title/file archival. Existing title, copy, material, loan and account identities were preserved. Local Supabase integration and browser acceptance passed using fixtures that were removed afterward. The real workbook was only previewed. Next Postgres number **022**; MySQL reference **047** remains unapplied, next **048**. No push or application deployment; see [acceptance record](revision-phase3-local-implementation.md).
+
+| 2026-10-11 | Integrated branch branding/login commits without database execution; MySQL reference now 048/next 049, applied Postgres remains 024/next unused 025. See `docs/github-update-integration.md`. |

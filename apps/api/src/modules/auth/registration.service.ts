@@ -4,6 +4,7 @@ import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql
 import { db } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
+import { requireLibraryActor } from '../../core/library-permissions.ts'
 import { issueAttendanceCredential } from '../attendance/attendance-credential.service.ts'
 import { normalizeSchoolId, validateAccountRegistration } from './account-auth.validation.ts'
 import { requireVerificationSender, sendSchoolVerificationCode } from './school-email.sender.ts'
@@ -202,6 +203,7 @@ export function createRegistrationService(
       const connection = await database.getConnection()
       await connection.beginTransaction()
       try {
+        await requireLibraryActor(connection, actorAccountId, 'accounts.manage')
         const [rows] = await connection.execute<RegistrationRow[]>(
           'SELECT * FROM registration_requests WHERE request_id=? LIMIT 1 FOR UPDATE', [requestId],
         )
@@ -211,7 +213,7 @@ export function createRegistrationService(
         const status = decision === 'approve' ? 'Completed' : 'Rejected'
         await connection.execute(
           'UPDATE registration_requests SET status=?,reviewed_by_account_id=?,reviewed_at=NOW(),review_reason=?,password_hash=NULL,updated_at=NOW() WHERE request_id=?',
-          [status, actorAccountId, decision === 'approve' ? 'Account registration approved by Admin.' : 'Account registration rejected by Admin.', requestId],
+          [status, actorAccountId, decision === 'approve' ? 'Account registration approved by the library administrator.' : 'Account registration rejected by the library administrator.', requestId],
         )
         await connection.commit()
         return { requestId, status }

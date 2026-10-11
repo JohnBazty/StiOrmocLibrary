@@ -2,8 +2,9 @@ import { Router } from 'express'
 import { rateLimit } from 'express-rate-limit'
 import type { NextFunction, Request, Response } from 'express'
 import { jwtAuthService } from './jwt-auth.service.ts'
-import { authenticateJwt, ensureActiveJwtAccount, requireJwtRoles } from './jwt-auth.middleware.ts'
+import { authenticateJwt, ensureActiveJwtAccount, requireJwtRoles, requireLibraryPermission } from './jwt-auth.middleware.ts'
 import { registrationService } from './registration.service.ts'
+import { passwordRecoveryService } from './password-recovery.service.ts'
 
 type Service = typeof jwtAuthService
 export function createJwtLoginController(service: Service = jwtAuthService) {
@@ -33,6 +34,21 @@ const registrationLimiter = rateLimit({
 })
 
 export const jwtAuthRouter = Router()
+const recoveryLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false,
+  message: { success: false, code: 'RECOVERY_RATE_LIMITED', message: 'Too many recovery attempts. Please wait 15 minutes.' },
+})
+const recoveryRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, limit: 5, standardHeaders: 'draft-8', legacyHeaders: false,
+  message: { success: false, code: 'RECOVERY_RATE_LIMITED', message: 'Too many code requests. Please wait 15 minutes.' },
+})
+for (const action of ['request', 'verify', 'reset'] as const) {
+  jwtAuthRouter.post(`/password-recovery/${action}`, action === 'request' ? recoveryRequestLimiter : recoveryLimiter, async (request, response, next) => {
+    response.set('Cache-Control', 'no-store')
+    try { response.json({ success: true, data: await passwordRecoveryService[action](request.body) }) }
+    catch (error) { next(error) }
+  })
+}
 jwtAuthRouter.post('/register', registrationLimiter, createJwtRegisterController())
 jwtAuthRouter.post('/register/resend', registrationLimiter, async (request, response, next) => {
   try { response.json({ success: true, data: await registrationService.resend(request.body) }) }
@@ -44,11 +60,11 @@ jwtAuthRouter.post('/register/verify', registrationLimiter, async (request, resp
 })
 jwtAuthRouter.post('/login', limiter, createJwtLoginController())
 jwtAuthRouter.get('/me', authenticateJwt, ensureActiveJwtAccount, (_request, response) => response.json({ success: true, data: response.locals.authenticatedUser }))
-jwtAuthRouter.get('/registration-requests', authenticateJwt, ensureActiveJwtAccount, requireJwtRoles('Admin'), async (_request, response, next) => {
+jwtAuthRouter.get('/registration-requests', authenticateJwt, ensureActiveJwtAccount, requireLibraryPermission('accounts.manage'), async (_request, response, next) => {
   try { response.json({ success: true, data: await registrationService.pendingApprovals() }) }
   catch (error) { next(error) }
 })
-jwtAuthRouter.post('/registration-requests/:requestId/review', authenticateJwt, ensureActiveJwtAccount, requireJwtRoles('Admin'), async (request, response, next) => {
+jwtAuthRouter.post('/registration-requests/:requestId/review', authenticateJwt, ensureActiveJwtAccount, requireLibraryPermission('accounts.manage'), async (request, response, next) => {
   try {
     const data = await registrationService.review(Number(request.params.requestId), response.locals.authenticatedUser.accountId,
       String(request.body?.decision ?? ''))

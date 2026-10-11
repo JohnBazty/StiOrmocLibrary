@@ -13,6 +13,7 @@ function accountDatabase(reservationCount = 0, role = 'Student') {
     beginTransaction: async () => undefined,
     execute: async (sql: string, values: unknown[] = []) => {
       writes.push({ sql, values })
+      if (sql.includes('SELECT a.role,a.account_status')) return [[{role:'Librarian',account_status:'Active'}]]
       if (sql.includes('FROM accounts WHERE account_id')) return [[{ account_id: 9, user_id: 19, role, account_status: 'Active' }]]
       if (sql.includes('FROM borrow_transactions')) return [[{ active_count: 0 }]]
       if (sql.includes('FROM reservations')) return [[{ active_count: reservationCount }]]

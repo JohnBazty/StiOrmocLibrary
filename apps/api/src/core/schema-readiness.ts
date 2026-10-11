@@ -59,7 +59,17 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
 export type SchemaReadiness = { ready: boolean; missingTables: string[]; missingColumns: string[] }
 
 export async function checkSchemaReadiness(database: Pool = db as Pool): Promise<SchemaReadiness> {
-  const tableNames = Object.keys(REQUIRED_COLUMNS)
+  const requiredColumns = dbDriver === 'postgres' ? {
+    ...REQUIRED_COLUMNS,
+    in_library_uses:['use_id','research_inventory_id','user_id','physical_copy_id','attendance_log_id','started_at','hand_back_by','ended_at','status'],
+    circulation_scan_receipts:['request_id','actor_account_id','operation','payload_digest','result'],
+    attendance_operation_settings:['settings_id','service_purposes','preclosing_minutes','configured','row_version'],
+    library_operational_events:['event_id','starts_at','ends_at','seat_capacity','allow_walk_ins','allow_borrowing','allow_printing','row_version'],
+    attendance_scan_receipts:['request_id','user_id','actor_account_id','log_id','action'],
+    attendance_logs:[...REQUIRED_COLUMNS.attendance_logs,'seat_visit','checkout_source','checked_in_at','checked_out_at'],
+    account_recovery_challenges: ['account_id', 'public_id', 'account_version', 'code_hash', 'code_expires_at', 'code_sent_at', 'code_attempts', 'locked_until', 'reset_token_hash', 'reset_expires_at'],
+  } : REQUIRED_COLUMNS
+  const tableNames = Object.keys(requiredColumns)
   const placeholders = tableNames.map(() => '?').join(', ')
   const [rows] = dbDriver === 'postgres'
     ? await database.execute<RowDataPacket[]>(
@@ -83,7 +93,7 @@ export async function checkSchemaReadiness(database: Pool = db as Pool): Promise
   }
   const missingTables = tableNames.filter((table) => !found.has(table))
   const missingColumns = tableNames.flatMap((table) =>
-    missingTables.includes(table) ? [] : REQUIRED_COLUMNS[table]
+    missingTables.includes(table) ? [] : requiredColumns[table]
       .filter((column) => !found.get(table)?.has(column))
       .map((column) => `${table}.${column}`),
   )

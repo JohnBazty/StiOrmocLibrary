@@ -3,6 +3,7 @@ import type { NextFunction, Request, Response } from 'express'
 import { env } from '../../config/env.js'
 import { db } from '../../config/db.js'
 import type { JwtRole } from './jwt-auth.service.ts'
+import { hasLibraryPermission, type LibraryPermission } from '../../core/library-permissions.ts'
 
 export type AuthenticatedJwtUser = { id: number; accountId: number; schoolId: string; role: JwtRole; authVersion: number }
 
@@ -64,6 +65,16 @@ export function requireJwtRoles(...roles: JwtRole[]) {
   return (_request: Request, response: Response, next: NextFunction) => {
     const user = response.locals.authenticatedUser as AuthenticatedJwtUser | undefined
     if (!user || !roles.includes(user.role)) return response.status(403).json({ success: false, code: 'JWT_ROLE_FORBIDDEN', message: 'Your role cannot access this resource.' })
+    return next()
+  }
+}
+
+export function requireLibraryPermission(permission: LibraryPermission) {
+  return (_request: Request, response: Response, next: NextFunction) => {
+    const user = response.locals.authenticatedUser as AuthenticatedJwtUser | undefined
+    if (!user || !hasLibraryPermission(user.role, permission)) {
+      return response.status(403).json({ success: false, code: 'JWT_ROLE_FORBIDDEN', message: 'Your role cannot access this resource.' })
+    }
     return next()
   }
 }

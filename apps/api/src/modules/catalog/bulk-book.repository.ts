@@ -22,6 +22,10 @@ export async function lockBookTitleByIsbn(connection: PoolConnection, isbn: stri
 }
 
 export async function ensureBookLocationExists(connection: PoolConnection, shelfLocation: string) {
+  if (isPostgres) {
+    const [locations] = await connection.execute<RowDataPacket[]>("SELECT location_id FROM catalog_locations WHERE name=? AND lifecycle_status='Active' LIMIT 1", [shelfLocation])
+    return locations.length > 0
+  }
   const [rows] = await connection.execute<RowDataPacket[]>(
     'SELECT category_id FROM categories WHERE shelf_location = ? UNION SELECT id AS category_id FROM floor_plan_shelves WHERE label = ? LIMIT 1', [shelfLocation, shelfLocation],
   )

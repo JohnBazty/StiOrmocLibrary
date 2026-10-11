@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-10-09 (public system branding; MySQL `048` / next `049`; Supabase `017` / next `018`) |
+| **Date last updated** | 2026-10-11 (GitHub branding integrated; MySQL 048/next 049; applied Postgres 024/next unused 025) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---
@@ -98,10 +98,10 @@ Always know and document:
 | Item | Value |
 | --- | --- |
 | Migrations directory | `database/migrations/` |
-| Latest migration | `20261009_048_rename_system_brand.sql` |
+| Latest migration | `20261009_048_rename_system_brand.sql` (reference file integrated; not applied in this session) |
 | Latest number | `048` |
 | **Next available number** | **`049`** |
-| Supabase / Postgres files | Product files through `016_phase6_legacy_student_account_links.sql` are applied; branding migration `017_rename_system_brand.sql` is next, followed by number **018**. The live ledger also contains `011_advisor_security_lockdown.sql` and `012_performance_advisor_fixes.sql`, which are absent from this checkout and need source reconciliation. The tracked `007` is present. Reconcile the `002`/`005` ledger gaps before whole-directory replay. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set. |
+| Supabase / Postgres files | Tracked product files through `016` plus Revision Phase 1 `020_revision_phase1_password_recovery.sql` are applied. The live ledger contains externally managed files through `019`, including `009_password_reset_otp.sql`, advisor files `011`/`012`, `014_circulation_preflight_overrides.sql`, `016_configurable_borrowing_policies.sql`, two `017` files, `018_stocktake_sessions.sql`, and `019_durable_job_runner.sql`; some sources remain absent here. Remote `017_rename_system_brand.sql` is now present; reconcile its identity with the existing ledger before any replay. **Next unused Postgres number: 025.** Revision Phase 5 `023_revision_phase5_desk_circulation.sql` and `024_revision_phase5_reading_materials.sql` are applied; existing records retained. Revision Phase 4 `022_revision_phase4_attendance.sql` is applied with owner-confirmed printing-only service occupancy, per-event access decisions and five-minute pre-closing checkout. Revision Phase 3 `021_revision_phase3_catalog.sql` is applied. Preserve those schemas and reconcile sources before whole-directory replay. Apply only reviewed individual files via `npm run db:supabase -w @sti-library/api -- filename.sql`. |
 
 Naming pattern in this repo:
 
@@ -112,7 +112,7 @@ YYYYMMDD_NNN_short_snake_description.sql
 Example next file (date prefix chosen on authoring day):
 
 ```text
-20260927_048_example_change.sql
+20261011_049_example_change.sql
 ```
 
 When a new **MySQL** migration lands:
@@ -168,3 +168,10 @@ Prefer simple, readable scripts under a clear folder (for example `tools/` or `s
 | 2026-09-27 | Phase 6 role registration migration prepared locally: MySQL reference `047`, Supabase `015`; both unapplied. Next numbers `048` and `016`. No push or deployment. |
 | 2026-09-28 | Applied reviewed Supabase product files `012`–`015` individually after taking private snapshots of affected rows. Local API schema health is ready; a disposable Staff request passed real-Postgres registration/code verification and was removed. MySQL `047` remains a rollback reference; next numbers remain `048` and `016`. The live ledger has two advisor-named files absent from this checkout. No GitHub push or Vercel deployment. |
 | 2026-09-28 | Applied Supabase `016` to link seven existing Student users to missing sign-in accounts without replacing their operational user IDs or password hashes. Next Postgres file number is `017`; MySQL reference remains `047` / next `048`. |
+
+| 2026-10-10 | Revision Phase 1 added and applied Supabase `020` for private account recovery. Existing externally managed files through `019` were inspected and preserved. Next Postgres `021`; MySQL reference remains `047` unapplied / next `048`. |
+| 2026-10-11 | Revision Phase 3 applied additive Supabase `021` and completed local holdings-import/public-catalog/Maintenance acceptance. Existing catalog/account/loan data retained; test fixtures removed; no real workbook import, push or deployment. Next Postgres `022`; MySQL reference remains `047` unapplied / next `048`. |
+
+| 2026-10-11 | Revision Phase 5 built locally: Postgres 023/024 applied for scan confirmation receipts and in-library book/native-thesis usage. Temporary Active-account enrollment policy approved; missing handbacks flagged at closing. 298 API/129 web tests, build, isolated Postgres concurrency/returns and local HTTP/browser checks passed. Next Postgres 025; MySQL 047 unapplied/next 048 unchanged. No push/deployment. |
+
+| 2026-10-11 | Integrated branch branding/login commits without database execution; MySQL reference now 048/next 049, applied Postgres remains 024/next unused 025. See `docs/github-update-integration.md`. |

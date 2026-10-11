@@ -57,7 +57,7 @@ test('correct pending role credentials explain the approval wait without issuing
     (error: unknown) => error instanceof HttpError && error.code === 'ACCOUNT_APPROVAL_PENDING')
 })
 
-test('rejects valid credentials when login_as does not match the stored role', async () => {
+test('does not include a client-selected role in credential queries', async () => {
   let queryValues: unknown[] = []
   const database = { execute: async (_sql: string, values: unknown[]) => { queryValues = values; return [[]] } } as never
   const service = createJwtAuthService(database, { compare: async () => false } as never, jwt)
@@ -66,7 +66,7 @@ test('rejects valid credentials when login_as does not match the stored role', a
     service.login({ login_as: 'Faculty', school_id: 'STI-2026-0042', password: 'CorrectHorse1' }),
     (error: unknown) => error instanceof HttpError && error.status === 401 && error.code === 'INVALID_CREDENTIALS',
   )
-  assert.deepEqual(queryValues, ['STI-2026-0042', 'Faculty'])
+  assert.deepEqual(queryValues, ['STI-2026-0042'])
 })
 
 test('user portal detects a Student account without a selected role', async () => {
@@ -142,5 +142,33 @@ test('old bearer tokens are rejected after a status change or activation version
       guard({} as never, response as never, () => resolve({ next: true }))
     })
     assert.equal(outcome.code, 'ACCOUNT_ACCESS_REVOKED')
+  }
+})
+
+test('stored roles resolve within a portal; selecting another role cannot elevate access', async () => {
+  const service = createJwtAuthService({ execute: async () => [[{ account_id: 1, school_id: 'STAFF-1', password_hash: 'hash', role: 'Staff', account_status: 'Active' }]] } as never,
+    { compare: async () => true } as never, jwt)
+  const result = await service.login({ school_id: 'STAFF-1', portal: 'personnel', login_as: 'Librarian', password: 'GoodPassword1' })
+  assert.equal(result.user.role, 'Staff')
+  assert.equal(result.redirect, '/staff/dashboard')
+  await assert.rejects(service.login({ school_id: 'STAFF-1', portal: 'user', password: 'GoodPassword1' }),
+    (error: unknown) => error instanceof HttpError && error.code === 'INVALID_CREDENTIALS')
+})
+
+test('both personnel portal contracts authenticate stored staff roles and reject self-service accounts', async () => {
+  for (const role of Object.keys(redirects) as JwtRole[]) {
+    const service = createJwtAuthService({ execute: async () => [[{
+      account_id: 1, school_id: 'TEST-001', password_hash: 'hash', role, account_status: 'Active', linked_status: 'Active',
+    }]] } as never, { compare: async () => true } as never, jwt)
+    for (const portal of ['staff', 'personnel']) {
+      if (role === 'Student' || role === 'Faculty') {
+        await assert.rejects(service.login({ school_id: 'TEST-001', portal, password: 'GoodPassword1' }),
+          (error: unknown) => error instanceof HttpError && error.status === 401 && error.code === 'INVALID_CREDENTIALS')
+      } else {
+        const result = await service.login({ school_id: 'TEST-001', portal, password: 'GoodPassword1' })
+        assert.equal(result.user.role, role)
+        assert.equal(result.redirect, redirects[role])
+      }
+    }
   }
 })

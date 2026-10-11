@@ -23,7 +23,18 @@ export type StockUsageEntry={created_at:string;supply_type:'Ink'|'Paper';supply_
 let csrfToken:string|null=null
 function headers(accept='application/json'){const h=new Headers({Accept:accept}),token=getAccessToken();if(token)h.set('Authorization',`Bearer ${token}`);return h}
 async function ensureCsrf(){if(getAccessToken()||csrfToken)return;const r=await fetch('/api/auth/csrf',{credentials:'include',headers:{Accept:'application/json'}}),p=await r.json() as {csrfToken?:string;message?:string};if(!r.ok||!p.csrfToken)throw new Error(p.message??'Unable to start a secure request.');csrfToken=p.csrfToken}
-async function request<T>(url:string,options:RequestInit={}){const mutating=Boolean(options.method&&options.method!=='GET');if(mutating)await ensureCsrf();const h=headers();if(!(options.body instanceof FormData)&&options.body)h.set('Content-Type','application/json');if(csrfToken&&!getAccessToken())h.set('x-csrf-token',csrfToken);const r=await fetch(url,{...options,credentials:'include',headers:h}),p=await r.json().catch(()=>({})) as {data?:T;message?:string;meta?:{pagination?:{page:number;limit:number;total:number;total_pages:number}}};if(!r.ok)throw new Error(p.message??'The printing service request failed.');return{data:p.data as T,meta:p.meta}}
+async function request<T>(url:string,options:RequestInit={}){
+  const mutating=Boolean(options.method&&options.method!=='GET')
+  if(mutating)await ensureCsrf()
+  const h=headers()
+  if(!(options.body instanceof FormData)&&options.body)h.set('Content-Type','application/json')
+  if(csrfToken&&!getAccessToken())h.set('x-csrf-token',csrfToken)
+  const r=await fetch(url,{...options,credentials:'include',headers:h})
+  const p=await r.json().catch(()=>null) as {data?:T;message?:string;meta?:{pagination?:{page:number;limit:number;total:number;total_pages:number}}}|null
+  if(!r.ok)throw new Error(p?.message??'The printing service is temporarily unavailable. Please try again.')
+  if(!p||p.data==null)throw new Error('The printing service returned an incomplete response. Please try again.')
+  return{data:p.data as T,meta:p.meta}
+}
 async function download(url:string,name:string,accept:string,expected?:string){const r=await fetch(url,{credentials:'include',headers:headers(accept)});if(!r.ok){const p=await r.json().catch(()=>({})) as {message?:string};throw new Error(p.message??'Unable to download the file.')}const contentType=r.headers.get('content-type')??'';if(expected&&!contentType.includes(expected))throw new Error('The server returned an invalid download.');const blob=await r.blob(),objectUrl=URL.createObjectURL(blob),link=document.createElement('a');link.href=objectUrl;link.download=name;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(objectUrl),1000)}
 function filterParams(filters:FinanceFilters){const value=new URLSearchParams({period:filters.period,date:filters.date,month:filters.month});if(filters.period==='weekly')value.set('week',String(filters.week));return value}
 
