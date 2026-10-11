@@ -33,6 +33,7 @@ import { adminFinesV1Router, userFinesV1Router } from './modules/fines/fines.rou
 import { adminDashboardV1Router, userDashboardV1Router } from './modules/dashboard/dashboard.routes.ts'
 import { floorPlanRouter } from './modules/floor-plan/floor-plan.routes.ts'
 import { catalogAdminRouter } from './modules/catalog/catalog-admin.routes.ts'
+import { adminJobRunnerRouter, internalJobRunnerRouter } from './modules/job-runner/job-runner.routes.ts'
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
 const publicDirectory = path.resolve(currentDirectory, '../public')
@@ -82,6 +83,8 @@ export function createApp() {
       })
     } catch (error) { next(error) }
   })
+  // Service-to-service jobs: before session/JWT/CSRF. Auth is X-Job-Runner-Secret only.
+  app.use('/api/internal/jobs', internalJobRunnerRouter)
   app.use('/api/auth', authRouter)
   app.use('/api/v1/auth', jwtAuthRouter)
   app.use('/api/v1', authenticateJwt, ensureActiveJwtAccount)
@@ -110,6 +113,7 @@ export function createApp() {
   app.use('/api/v1/admin/fines', authenticateJwt, requireJwtRoles('Admin'), adminFinesV1Router)
   app.use('/api/v1/admin/announcements', authenticateJwt, requireJwtRoles('Admin'), adminAnnouncementsV1Router)
   app.use('/api/v1/admin/dashboard', authenticateJwt, requireJwtRoles('Admin'), adminDashboardV1Router)
+  app.use('/api/v1/admin/jobs', authenticateJwt, requireJwtRoles('Admin'), adminJobRunnerRouter)
   app.use('/api/v1/admin/borrowing-policies', authenticateJwt, requireJwtRoles('Admin'), borrowingPolicyRouter)
   app.use('/api/v1/admin', authenticateJwt, requireJwtRoles('Admin'), adminCirculationRouter)
   app.use('/api/v1/admin', authenticateJwt, requireJwtRoles('Admin'), thesisInventoryV1AdminRouter)

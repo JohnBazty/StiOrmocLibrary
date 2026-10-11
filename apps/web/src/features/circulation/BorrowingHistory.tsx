@@ -152,7 +152,14 @@ export function BorrowingHistory() {
                     <td className="px-5 py-4 text-[#003399]">{item.author}</td>
                     <td className="px-5 py-4 text-[#003399]">{formatDate(item.borrowDate)}</td>
                     <td className="px-5 py-4 font-semibold text-[#003399]">{formatDate(item.dueDate)}</td>
-                    <td className="px-5 py-4"><StatusBadge status={item.lostReportStatus ?? item.status} /></td>
+                    <td className="px-5 py-4">
+                      <StatusBadge status={item.lostReportStatus ?? item.status} />
+                      {item.caseSummary ? (
+                        <p className="mt-2 max-w-xs text-xs font-semibold text-[#003399]">
+                          {item.caseSummary.caseType}: {item.caseSummary.status}. {item.caseSummary.instruction}
+                        </p>
+                      ) : null}
+                    </td>
                     <td className="px-5 py-4">
                       <div className="flex justify-end">
                         <ItemActions
@@ -186,6 +193,11 @@ export function BorrowingHistory() {
               <RecordField label="Borrowed">{formatDate(item.borrowDate)}</RecordField>
               <RecordField label="Due">{formatDate(item.dueDate)}</RecordField>
             </div>
+            {item.caseSummary ? (
+              <p className="mt-3 text-xs font-semibold text-[#003399]">
+                {item.caseSummary.caseType}: {item.caseSummary.status}. {item.caseSummary.instruction}
+              </p>
+            ) : null}
             <div className="mt-4 border-t border-[#003399]/10 pt-3">
               <ItemActions
                 item={item}

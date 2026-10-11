@@ -8,7 +8,35 @@ export type BorrowingHistoryData = {
   items: Array<{
     transactionId: number; titleId: number | null; title: string; author: string; coverImagePath: string | null; accessionNumber: string | null; barcode: string | null
     borrowDate: string | null; dueDate: string | null; returnDate: string | null; status: BorrowStatus; lostReportStatus: string | null
+    caseSummary: {
+      caseId: number
+      caseType: 'Long Overdue' | 'Damage'
+      status: string
+      openedAt: string
+      instruction: string
+    } | null
   }>
+  pagination: { page: number; limit: number; total: number; totalPages: number }
+}
+
+export type CirculationCaseListItem = {
+  caseId: number
+  caseType: 'Long Overdue' | 'Damage'
+  status: string
+  transactionId: number
+  borrowerName: string
+  borrowerSchoolId: string
+  title: string
+  barcode: string
+  accessionNumber: string | null
+  openedAt: string
+  latestEventType: string | null
+  assignedToUserId: number | null
+  summary: string | null
+}
+
+export type CirculationCaseListData = {
+  items: CirculationCaseListItem[]
   pagination: { page: number; limit: number; total: number; totalPages: number }
 }
 

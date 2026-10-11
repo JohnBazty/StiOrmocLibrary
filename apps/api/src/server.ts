@@ -11,9 +11,12 @@ const app = createApp()
 
 try {
   await verifyDatabaseConnection()
-  await startReservationExpirationWorker()
-  startCirculationOverdueWorker()
-  startNotificationWorker()
+  // Vercel serves api/index.mjs without this process; keep in-process timers local-only.
+  if (!process.env.VERCEL) {
+    await startReservationExpirationWorker()
+    startCirculationOverdueWorker()
+    startNotificationWorker()
+  }
   app.listen(port, () => {
     console.log(`STI Library API running at http://localhost:${port}`)
     console.log(`Open the ${SYSTEM_SHORT_NAME} web application at ${env.webOrigin}/login`)
