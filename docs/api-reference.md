@@ -154,12 +154,16 @@ The response status is `422 Unprocessable Entity`. A copy with completed borrowi
 | `POST` | `/api/v1/reservations/request` | Student, Faculty | Join a book-title waiting queue. |
 | `GET` | `/api/v1/reservations` | Student, Faculty | Read the authenticated user's reservation records. |
 | `PUT` | `/api/v1/reservations/:reservationId/cancel` | Student, Faculty | Cancel an owned waiting request and realign the queue. |
-| `GET` | `/api/v1/borrowing/history` | Student, Faculty | Read personal capacity and borrowing history. |
+| `GET` | `/api/v1/borrowing/history` | Student, Faculty | Read personal capacity and borrowing history (includes renewal fields). |
+| `GET` | `/api/v1/borrowing/:transactionId/renewals/preflight` | Student, Faculty | Preview renewal eligibility for an owned active loan. |
+| `POST` | `/api/v1/borrowing/:transactionId/renewals` | Student, Faculty | Submit an owned renewal request (`requestKey`); decided immediately. |
 | `POST` | `/api/v1/borrow/submit-request` | Student, Faculty | Atomically assign available copies and create a grouped pending-claim request from `title_ids`. |
 | `GET` | `/api/v1/admin/reservations` | Admin | Read the contextual reservation queue. |
 | `POST` | `/api/v1/admin/borrowing/preflight` | Admin | Preview checkout blockers, warnings, and alerts without writing. Includes active `policyVersionId` and binds it into the preflight token. |
 | `POST` | `/api/v1/admin/borrowing/confirm-checkout` | Admin | Confirm a walk-in barcode checkout. Re-resolves policy under locks; returns `CIRCULATION_POLICY_CHANGED` if the token policy version is stale. |
-| `GET` | `/api/v1/admin/borrowing/monitor` | Admin | Read active, due, overdue, and returned records. |
+| `GET` | `/api/v1/admin/borrowing/monitor` | Admin | Read active, due, overdue, and returned records (includes renewal fields). |
+| `GET` | `/api/v1/admin/borrowing/:transactionId/renewals/preflight` | Admin | Preview renewal eligibility for staff renew-on-behalf. |
+| `POST` | `/api/v1/admin/borrowing/:transactionId/renewals` | Admin | Renew on behalf (`requestKey` + required `staffNote`); same blockers as borrower path. |
 | `PUT` | `/api/v1/admin/borrowing/:transactionId/return` | Admin | Complete a return and advance the queue. |
 | `POST` | `/api/v1/admin/borrowing/:transactionId/calculate-penalty` | Admin | Persist the current overdue calculation. |
 | `GET` | `/api/v1/admin/borrowing-policies` | Admin | Active, scheduled, and historical immutable borrowing policy versions. |
@@ -178,6 +182,10 @@ Final checkout accepts optional `{ "preflightToken": "...", "overrideReason": ".
 ### POST `/api/v1/circulation/fulfill-claim`
 
 Admin-only physical desk checkpoint for pending claims (`flow: "claim"`). Accepts `{ "school_id": "...", "barcode": "..." }` plus optional preflight confirmation fields. The selected borrower and barcode must match a linked `Pending` claim. On success the loan becomes `Borrowed`, a linked ready reservation becomes `claimed`, and the due time is fixed to 8:59 AM on the next operating day.
+
+### Loan renewals
+
+Borrower preflight/submit and Admin renew-on-behalf use the same decision service. Preflight returns current/proposed due dates, policy version, renewal usage, blockers, and `canRequestRenewal`. Submit accepts a client `requestKey` (idempotent). Approved renewals extend from the current due date by the active policy's `renewalExtensionDays` on the operating calendar; rejected attempts are stored without changing `due_at`. Decision source is `System` for borrower requests and `Staff` for Admin-on-behalf. Hard blockers cannot be overridden. Due-reminder dedupe keys include `renewal_count`.
 
 ## Admin attendance and active users (JWT)
 

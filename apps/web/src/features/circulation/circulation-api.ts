@@ -5,6 +5,8 @@ import type {
   CheckoutFlow,
   CheckoutPreflightData,
   CirculationMonitorData,
+  RenewalDecisionData,
+  RenewalPreflightData,
 } from './types'
 
 export class CirculationApiError extends Error {
@@ -32,6 +34,17 @@ function checkoutBody(input: CheckoutConfirmationInput) {
 
 export const circulationApi = {
   history: (page = 1) => request<BorrowingHistoryData>(`/api/v1/borrowing/history?page=${page}&limit=25`),
+  preflightRenewal: (transactionId: number, staff = false) => request<RenewalPreflightData>(
+    staff
+      ? `/api/v1/admin/borrowing/${transactionId}/renewals/preflight`
+      : `/api/v1/borrowing/${transactionId}/renewals/preflight`,
+  ),
+  submitRenewal: (transactionId: number, requestKey: string) => request<RenewalDecisionData>(`/api/v1/borrowing/${transactionId}/renewals`, {
+    method: 'POST', body: JSON.stringify({ requestKey }),
+  }),
+  staffRenewal: (transactionId: number, requestKey: string, staffNote: string) => request<RenewalDecisionData>(`/api/v1/admin/borrowing/${transactionId}/renewals`, {
+    method: 'POST', body: JSON.stringify({ requestKey, staffNote }),
+  }),
   cancelRequest: (transactionId: number, reason?: string) => request<{ transactionId: number; status: 'Cancelled'; copyAvailability: string }>(`/api/v1/circulation/requests/${transactionId}/cancel`, {
     method: 'PUT', body: JSON.stringify({ reason }),
   }),

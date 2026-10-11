@@ -1,11 +1,27 @@
 export type BorrowStatus = 'Pending' | 'Borrowed' | 'Active' | 'Overdue' | 'Returned' | 'Cancelled'
 
+export type RenewalDecisionStatus = 'Approved' | 'Rejected'
+export type RenewalDecisionSource = 'System' | 'Staff'
+export type RenewalBlocker = { code: string; message: string }
+
+export interface RenewalHistoryFields {
+  initialDueAt: string | null
+  renewalCount: number
+  maxRenewals: number
+  remainingRenewals: number
+  lastRenewalStatus: RenewalDecisionStatus | null
+  lastRenewalDecisionSummary: string | null
+  lastRenewalAt: string | null
+  lastRenewalDecisionSource: RenewalDecisionSource | null
+  canRequestRenewal: boolean
+}
+
 export type BorrowingHistoryData = {
   summary: {
     role: string; activeLoans: number; activeReservations: number; activeStackCount: number
     loanLimit: number | null; remainingLoanSlots: number | null; nextDueAt: string | null; dueCutoffLabel: string
   }
-  items: Array<{
+  items: Array<RenewalHistoryFields & {
     transactionId: number; titleId: number | null; title: string; author: string; coverImagePath: string | null; accessionNumber: string | null; barcode: string | null
     borrowDate: string | null; dueDate: string | null; returnDate: string | null; status: BorrowStatus; lostReportStatus: string | null
   }>
@@ -14,7 +30,7 @@ export type BorrowingHistoryData = {
 
 export type CirculationMonitorData = {
   summary: { pendingClaims: number; activeLoans: number; overdueLoans: number; returnedToday: number; dueToday: number }
-  items: Array<{
+  items: Array<RenewalHistoryFields & {
     transactionId: number; userName: string; schoolId: string; role: string; title: string
     accessionNumber: string | null; barcode: string; requestedAt: string; borrowDate: string | null; dueDate: string | null
     returnDate: string | null; status: BorrowStatus
@@ -50,4 +66,37 @@ export type CheckoutConfirmationInput = {
   schoolId: string
   preflightToken?: string | null
   overrideReason?: string | null
+}
+
+export type RenewalPreflightData = {
+  transactionId: number
+  currentDueAt: string
+  proposedDueAt: string | null
+  renewalCount: number
+  maxRenewals: number | null
+  remainingRenewals: number | null
+  policyVersionId: number | null
+  blockers: RenewalBlocker[]
+  canRequestRenewal: boolean
+}
+
+export type RenewalDecisionData = {
+  renewalRequestId: number
+  requestKey: string
+  transactionId: number
+  status: RenewalDecisionStatus
+  decisionCode: string
+  decisionSummary: string
+  decisionSource: RenewalDecisionSource
+  staffNote: string | null
+  previousDueAt: string
+  newDueAt: string | null
+  renewalNumber: number
+  maxRenewals: number | null
+  remainingRenewals: number | null
+  policyVersionId: number | null
+  requestedAt: string
+  decidedAt: string
+  blockers: RenewalBlocker[]
+  idempotent: boolean
 }

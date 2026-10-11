@@ -3,6 +3,7 @@
 ## Detailed module plans
 
 - [Book and Research/Thesis Management](book-research-thesis-implementation-plan.md) - database normalization, catalog APIs, ISBN/barcode workflows, search/filtering, web/mobile views, and CSV/PDF inventory reporting.
+- [Renewal Management](renewal-management-implementation-plan.md) - borrower and staff renew-on-behalf flow, policy-backed decisions, `loan_renewal_requests`, and renewal-aware due reminders. Behavioral source: [Complete Renewal Management Implementation Plan](complete-renewal-management-plan.md).
 
 ## 1. System goal
 
