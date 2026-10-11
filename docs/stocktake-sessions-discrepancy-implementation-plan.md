@@ -7,11 +7,11 @@ The inventory screen verifies individual barcodes and records condition changes,
 ## Plan metadata
 
 - **Date created:** 2026-10-10
-- **Date last updated:** 2026-10-10
-- **Status:** `inprogress`
+- **Date last updated:** 2026-10-11
+- **Status:** `built`
 - **Roadmap:** Release 3 in [next-implementation-roadmap.md](next-implementation-roadmap.md)
 - **Active database:** Supabase PostgreSQL; MySQL remains the rollback reference
-- **Migration reservation:** On `feat/stocktake-sessions` (branched from `main`): MySQL `047` / Supabase `018`. Hosted ledger already applied renewals as `017_loan_renewals.sql`, so stocktake uses `018`.
+- **Migration reservation:** On `feat/stocktake-sessions`: MySQL `048` / Supabase `018`. Hosted ledger already applied renewals as `017_loan_renewals.sql`, so stocktake uses Supabase `018` and MySQL `048` (renewal keeps MySQL `047`).
 
 ## Objective, constraints, and assumptions
 
@@ -97,7 +97,7 @@ All new routes require `requireCatalogManager`, so only the canonical `Admin` ro
 
 ## Build order and implementation tracking
 
-- [x] Confirmed numbers: MySQL `047` in-repo; hosted Supabase next is `018` because `017_loan_renewals.sql` is already applied.
+- [x] Confirmed numbers: MySQL `048` in-repo (renumbered from provisional `047`); hosted Supabase `018` because `017_loan_renewals.sql` is already applied.
 - [x] Add the five tables, indexes, constraints, deletion-history guard, and schema-readiness entries; apply Supabase `018` after ledger check.
 - [x] Implement scope resolution and immutable expected-item snapshot, including room shelf mapping and research category links.
 - [x] Implement idempotent scan writes, recognized-item verification audit, classification, close/cancel/review transitions, and read APIs.
@@ -105,6 +105,7 @@ All new routes require `requireCatalogManager`, so only the canonical `Admin` ro
 - [x] Add the React session workflow and API types/client using the existing scanner hook.
 - [x] Add matching signed CSV and PDF discrepancy exports.
 - [x] Update `docs/schema-context.md`, `docs/api-reference.md`, migration trackers, and this plan's status/change log when building begins.
+- [x] Automated API/UI tests and hosted disposable smoke (`smoke:stocktake`); status set to `built`.
 
 ## Verification and acceptance
 
@@ -118,7 +119,7 @@ All new routes require `requireCatalogManager`, so only the canonical `Admin` ro
 
 ## Risks / notes
 
-- **Migration numbering:** MySQL `047` / Supabase `018`. Hosted renewals already claimed Supabase `017`.
+- **Migration numbering:** MySQL `048` / Supabase `018`. Hosted renewals already claimed Supabase `017` and MySQL `047`.
 - **Location authority:** the direct physical-copy shelf patch does not express category-home or floor-plan audit rules. Do not use it as a shortcut for stocktake corrections.
 - **Long counts:** snapshot and close must batch reads/writes while keeping a consistent transaction view and limiting response page sizes. Index session/item and session/barcode lookups.
 - **Concurrent operations:** scan, close, and resolution require session/discrepancy locks and request-key uniqueness. Recheck live restrictions immediately before corrections.
@@ -130,4 +131,5 @@ All new routes require `requireCatalogManager`, so only the canonical `Admin` ro
 - **2026-10-10:** Corrected the migration note after verifying renewal `017` / `047` are committed on `feat/renewal-management`; their hosted acceptance remains open.
 - **2026-10-10:** Branch `feat/stocktake-sessions` created from `main`; build started. Status `inprogress`. Reserved MySQL `047` / Supabase `017` for this branch.
 - **2026-10-10:** Hosted ledger check found `017_loan_renewals.sql` already applied; renumbered stocktake Supabase file to `018_stocktake_sessions.sql`.
-- **2026-10-10:** Applied `018_stocktake_sessions.sql` to hosted Supabase after ledger check. Local MySQL96 service is stopped/disabled, so MySQL `047` was not applied on this machine. Admin API walkthrough passed on hosted data: shelf count → scan → close → dismiss findings → review → CSV/PDF export.
+- **2026-10-10:** Applied `018_stocktake_sessions.sql` to hosted Supabase after ledger check. Local MySQL96 service is stopped/disabled, so MySQL rollback was not applied on this machine. Admin API walkthrough passed on hosted data: shelf count → scan → close → dismiss findings → review → CSV/PDF export.
+- **2026-10-11:** Renumbered MySQL rollback to `048` to avoid colliding with renewal `047`. Added stocktake validation/API/service tests and StocktakePanel UI tests. Hosted disposable smoke (`npm run smoke:stocktake`) create → unknown scan → close → dismiss → review → cleanup. Status set to `built`.

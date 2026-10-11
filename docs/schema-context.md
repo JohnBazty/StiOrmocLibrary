@@ -105,7 +105,7 @@ Migration `20260820_009_research_thesis_inventory.sql` adds the independent phys
 
 Migration `20260821_012_inventory_removal_lifecycle.sql` adds an Active/Archived lifecycle to bound research inventory and extends both book-copy and thesis audit histories with Archived/Deleted events and action reasons. Hard deletion is limited to never-used inventory rows; audit snapshots survive deletion through nullable `ON DELETE SET NULL` parent references. Any circulation, reservation, or audit history requires archive fallback, while active loans and reservations block both operations.
 
-Migration MySQL `047` / Supabase `018` adds Admin stocktake sessions:
+Migration MySQL `048` / Supabase `018` adds Admin stocktake sessions:
 
 - `stocktake_sessions`: scoped count session with `scope_kind` (`shelf`, `category`, `room`, `collection`), `asset_kind`, frozen `scope_snapshot`, and status (`in_progress`, `closed`, `reviewed`, `cancelled`).
 - `stocktake_expected_items`: immutable expected asset snapshots at session start, plus close-time lifecycle/loan/row-version snapshots.
