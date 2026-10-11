@@ -28,6 +28,46 @@ function barcode(value: unknown) {
   return parsed
 }
 
+export type CheckoutFlow = 'claim' | 'walk_in'
+
+function checkoutFlow(value: unknown, required: boolean): CheckoutFlow | null {
+  if (value === undefined || value === null || value === '') {
+    if (required) {
+      throw new HttpError(422, 'CIRCULATION_VALIDATION_FAILED', 'flow must be claim or walk_in.', {
+        errors: { flow: 'flow must be claim or walk_in.' },
+      })
+    }
+    return null
+  }
+  const parsed = String(value).trim().toLowerCase()
+  if (parsed !== 'claim' && parsed !== 'walk_in') {
+    throw new HttpError(422, 'CIRCULATION_VALIDATION_FAILED', 'flow must be claim or walk_in.', {
+      errors: { flow: 'flow must be claim or walk_in.' },
+    })
+  }
+  return parsed
+}
+
+function optionalToken(value: unknown, field: string) {
+  if (value === undefined || value === null || value === '') return null
+  if (typeof value !== 'string' || value.length > 4096 || /[\u0000-\u001f\u007f]/.test(value)) {
+    throw new HttpError(422, 'CIRCULATION_VALIDATION_FAILED', `${field} must be a valid token string.`, {
+      errors: { [field]: `${field} must be a valid token string.` },
+    })
+  }
+  return value
+}
+
+function optionalOverrideReason(value: unknown) {
+  if (value === undefined || value === null || value === '') return null
+  if (typeof value !== 'string') {
+    throw new HttpError(422, 'CIRCULATION_VALIDATION_FAILED', 'Override reason must be text.', {
+      errors: { overrideReason: 'Override reason must be text.' },
+    })
+  }
+  return value
+}
+
 export function validateCheckout(body: unknown) {
   const input = inputObject(body)
   const schoolId = typeof (input.schoolId ?? input.school_id) === 'string'
@@ -44,6 +84,20 @@ export function validateCheckout(body: unknown) {
     schoolId: schoolId || null,
     userId,
     reservationId: optionalPositiveId(input.reservationId ?? input.reservation_id, 'reservationId'),
+    preflightToken: optionalToken(input.preflightToken ?? input.preflight_token, 'preflightToken'),
+    overrideReason: optionalOverrideReason(input.overrideReason ?? input.override_reason),
+  }
+}
+
+export function validatePreflight(body: unknown) {
+  const input = inputObject(body)
+  const checkout = validateCheckout(body)
+  return {
+    barcode: checkout.barcode,
+    schoolId: checkout.schoolId,
+    userId: checkout.userId,
+    reservationId: checkout.reservationId,
+    flow: checkoutFlow(input.flow, true) as CheckoutFlow,
   }
 }
 

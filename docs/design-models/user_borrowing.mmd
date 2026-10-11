@@ -1,0 +1,25 @@
+flowchart TB
+  B1[Browse_Book_Catalog]
+  B2[View_Book_Details]
+  B3[Add_to_Book_Cart]
+  B4[Submit_Borrow_Request]
+  B5[Pending_Request]
+  B6[Admin_Issues_Book]
+  B7[Borrowed_Active]
+  B8[Due_Date_Tracking]
+  B9[Return_at_Circulation_Desk]
+  B10[Returned]
+  B11[Overdue_Fine_if_Late]
+  B12[Cancel_Pending_Request]
+  B1 --> B2
+  B2 --> B3
+  B3 --> B4
+  B4 --> B5
+  B5 --> B6
+  B5 --> B12
+  B6 --> B7
+  B7 --> B8
+  B8 --> B9
+  B9 --> B10
+  B8 --> B11
+  B11 --> B10

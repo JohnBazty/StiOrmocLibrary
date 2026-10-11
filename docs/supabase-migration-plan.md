@@ -278,3 +278,8 @@ The live ledger was inspected before authoring DDL: it contains externally manag
 Applied reviewed additive `021_revision_phase3_catalog.sql` individually after inspecting the current ledger. Added private catalog foundations, title metadata/program/course links, digital-file metadata and import review/provenance tables with RLS and revoked browser-role privileges. The `catalog-digital-files` bucket is private; permitted public PDF downloads are mediated by the API and withdrawn on title/file archival. Existing title, copy, material, loan and account identities were preserved. Local Supabase integration and browser acceptance passed using fixtures that were removed afterward. The real workbook was only previewed. Next Postgres number **022**; MySQL reference **047** remains unapplied, next **048**. No push or application deployment; see [acceptance record](revision-phase3-local-implementation.md).
 
 | 2026-10-11 | Integrated branch branding/login commits without database execution; MySQL reference now 048/next 049, applied Postgres remains 024/next unused 025. See `docs/github-update-integration.md`. |
+
+
+## Main integration — 2026-10-11
+
+The main branch was reconciled with the current revision permission model and phase workflows. Borrowing policy management uses the Librarian workspace; prior login sessions are invalidated when a new login succeeds. Competing upstream SQL identities are retained as non-executable references under `database/upstream-main/`; no migration was applied. Existing phase statuses and applied migration identities remain unchanged. See `docs/main-branch-integration.md`.

@@ -207,3 +207,13 @@ Admin/Librarian-only physical desk checkpoint. Accepts `{ "school_id": "...", "b
 | `POST` | `/api/v1/floor-plan/background` | Admin | Store a validated PNG, JPEG, or WebP floor image up to 2 MB. |
 
 Draft saves and publication use optimistic concurrency. If another administrator saves first, the API returns `409 FLOOR_PLAN_CONFLICT`; the client must reload rather than silently overwrite the newer layout. Public book-location responses expose catalog and availability data only—never borrower or circulation-owner details.
+
+
+## Integrated versioned borrowing policies
+
+- `GET /api/v1/admin/borrowing-policies`: current, scheduled, and historical versions.
+- `GET /api/v1/admin/borrowing-policies/:versionId`: immutable policy details.
+- `POST /api/v1/admin/borrowing-policies`: publish a validated complete version.
+- These routes require the current Librarian `library.manage` permission. The web page is `/librarian/borrowing-policies`.
+- `POST /api/v1/admin/borrowing/preflight`: read-only take-home evaluation, structured blockers/warnings, and an expiring actor-bound confirmation token. The final checkout still enforces the current Phase 5 desk gates (attendance, balance, holds, ready claims, and copy assessment). In-library use keeps its separate desk flow.
+- Successful JWT and cookie login increments the respective stored authentication version and invalidates prior sessions.

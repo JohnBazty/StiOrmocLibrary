@@ -7,6 +7,10 @@ export const ROLES = Object.freeze({
 })
 
 export const ALL_ROLES = Object.freeze(Object.values(ROLES))
+
+export function toEffectiveRole(role) {
+  return role === 'Admin' ? ROLES.SYSTEM_ADMINISTRATOR : role === 'Staff' ? ROLES.LIBRARY_STAFF : role
+}
 export const STAFF_ROLES = Object.freeze([ROLES.LIBRARIAN, ROLES.LIBRARY_STAFF])
 export const USER_ROLES = Object.freeze([ROLES.STUDENT, ROLES.FACULTY])
 

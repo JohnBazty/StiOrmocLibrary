@@ -6,6 +6,7 @@ import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
 import { validateLoginInput } from './auth.validation.js'
 import { validateRoleLogin } from './account-auth.validation.ts'
+import { createAuthSessionRepository, type AuthSessionRepository } from './auth-session.repository.ts'
 
 export type JwtRole = 'Admin' | 'Librarian' | 'Student' | 'Faculty' | 'Staff'
 const JWT_ROLES = new Set<JwtRole>(['Admin', 'Librarian', 'Student', 'Faculty', 'Staff'])
@@ -22,7 +23,7 @@ function isLegacyEmailLogin(body: unknown) {
   return Boolean(body && typeof body === 'object' && 'email' in body && !('school_id' in body) && !('login_as' in body) && !('portal' in body))
 }
 
-export function createJwtAuthService(database: Pool = db, passwordHasher = bcrypt, tokenSigner = jwt) {
+export function createJwtAuthService(database: Pool = db, passwordHasher = bcrypt, tokenSigner = jwt, sessions: AuthSessionRepository = createAuthSessionRepository(database)) {
   function issueToken(accountId: number, schoolId: string, role: JwtRole, authVersion = 1) {
     return tokenSigner.sign(
       { accountId, userId: accountId, schoolId, role, authVersion },
@@ -50,8 +51,10 @@ export function createJwtAuthService(database: Pool = db, passwordHasher = bcryp
     if (!JWT_ROLES.has(user.user_role)) throw new HttpError(403, 'ROLE_NOT_AUTHORIZED', 'Your assigned role is not authorized.')
     const accountId = Number(user.account_id)
     const role = user.user_role as JwtRole
+    const authVersion = await sessions.incrementAuthVersionForAccount(accountId)
+    await sessions.clearAllSessionsForUser(Number(user.user_id))
     return {
-      token: issueToken(accountId, String(user.school_id), role, Number(user.auth_version ?? 1)), tokenType: 'Bearer', expiresIn: env.jwt.expiresInSeconds,
+      token: issueToken(accountId, String(user.school_id), role, authVersion), tokenType: 'Bearer', expiresIn: env.jwt.expiresInSeconds,
       user: { id: accountId, accountId, schoolId: user.school_id, fullName: user.full_name, email: user.email, role },
       redirect: dashboardForJwtRole(role),
     }
@@ -66,7 +69,7 @@ export function createJwtAuthService(database: Pool = db, passwordHasher = bcryp
       const validation = validateRoleLogin(body)
       if (!validation.isValid) throw new HttpError(422, 'AUTH_VALIDATION_FAILED', 'Please correct the highlighted fields.', { errors: validation.errors })
       const [rows] = await database.execute<RowDataPacket[]>(
-        `SELECT a.account_id, a.school_id, a.password_hash, a.role, a.account_status, a.auth_version,
+        `SELECT a.account_id, a.user_id, a.school_id, a.password_hash, a.role, a.account_status, a.auth_version,
                 u.account_status AS linked_status,
                 sp.first_name, sp.last_name, u.full_name
            FROM accounts AS a
@@ -100,9 +103,11 @@ export function createJwtAuthService(database: Pool = db, passwordHasher = bcryp
       const portalRoles = validation.portal === 'user' ? USER_PORTAL_ROLES : STAFF_PORTAL_ROLES
       if (validation.portal && !portalRoles.has(role)) throw new HttpError(401, 'INVALID_CREDENTIALS', INVALID_CREDENTIALS_MESSAGE)
       if (account.account_status !== 'Active' || (account.linked_status && account.linked_status !== 'Active')) throw new HttpError(403, 'ACCOUNT_DEACTIVATED', 'Your account is currently deactivated. Please coordinate with the campus librarian.')
+      const authVersion = await sessions.incrementAuthVersionForAccount(accountId)
+      if (account.user_id) await sessions.clearAllSessionsForUser(Number(account.user_id))
       const fullName = [account.first_name, account.last_name].filter(Boolean).join(' ') || account.full_name || null
       return {
-        token: issueToken(accountId, String(account.school_id), role, Number(account.auth_version ?? 1)), tokenType: 'Bearer', expiresIn: env.jwt.expiresInSeconds,
+        token: issueToken(accountId, String(account.school_id), role, authVersion), tokenType: 'Bearer', expiresIn: env.jwt.expiresInSeconds,
         user: { id: accountId, accountId, schoolId: account.school_id, fullName, role },
         redirect: dashboardForJwtRole(role),
       }

@@ -329,3 +329,8 @@ Migration `20260907_038_shelf_grid_locations.sql` adds the first detailed shelf-
 - Recovery targets active Student accounts using their stored school email. Code lifetime 10 minutes; three wrong codes lock recovery for 15 minutes; verified reset token lifetime 5 minutes. Resends preserve wrong-attempt counts. A reset changes both account/user password hashes and increments both auth versions in one transaction, consuming the recovery token. JWT/cookie guards reject earlier versions. Ordinary login is not locked by recovery failures.
 - The live database also has externally managed `password_reset_otps` and `account_password_history` plus policy/circulation/stocktake/job migrations through `019`. This checkout does not contain their migration sources. Their meanings/data were preserved; no whole-directory replay was performed.
 - See [local implementation record](revision-phase1-local-implementation.md) for acceptance evidence and limitations.
+
+
+## Main integration — 2026-10-11
+
+The main branch was reconciled with the current revision permission model and phase workflows. Borrowing policy management uses the Librarian workspace; prior login sessions are invalidated when a new login succeeds. Competing upstream SQL identities are retained as non-executable references under `database/upstream-main/`; no migration was applied. Existing phase statuses and applied migration identities remain unchanged. See `docs/main-branch-integration.md`.

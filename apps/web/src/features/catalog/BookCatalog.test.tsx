@@ -47,7 +47,7 @@ it('preserves student limits when adding from the merged grid', async () => {
   setup()
   await screen.findByText('Active + selected: 2 / 2')
   fireEvent.click(await screen.findByRole('button', { name: 'Borrow book' }))
-  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Transaction Blocked: Students cannot exceed 2 books.')
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Transaction Blocked: Student cannot exceed 2 books.')
   expect(readBookCart()).toEqual([])
 })
 

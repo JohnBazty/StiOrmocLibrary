@@ -63,7 +63,7 @@ export function BookCatalog() {
   function addToCart(book: BookCatalogItem) {
     if (!viewerReady) return
     assertCatalogItemCanEnterLoanCart({ catalogType: 'Book', id: book.titleId })
-    const validation = validateBookCartAddition({ role: viewer.role, activeBookCount: viewer.activeBookCount, selectedBookCount: cart.length, alreadySelected: cartBooks.has(book.titleId) })
+    const validation = validateBookCartAddition({ role: viewer.role, activeBookCount: viewer.activeBookCount, selectedBookCount: cart.length, alreadySelected: cartBooks.has(book.titleId), bookLimit: viewer.bookLimit })
     setNotice('')
     if (!validation.allowed) { setError(validation.message ?? 'This book cannot be added to the cart.'); return }
     if (book.availableCopiesCount <= 0) { setError('This book is no longer available. Reserve it to join the waiting list.'); return }
@@ -72,7 +72,7 @@ export function BookCatalog() {
     setNotice(validation.message ?? `${book.title} was added to your borrow cart.`)
   }
   async function reserve(book: BookCatalogItem) {
-    if (viewer.role === 'Student' && viewer.bookLimit !== null && viewer.activeBookCount >= viewer.bookLimit) {
+    if (viewer.bookLimit !== null && viewer.activeBookCount >= viewer.bookLimit) {
       throw new Error(`Reservation blocked: you already have ${viewer.activeBookCount} active book commitments. Cancel a waiting request or return a book before reserving another.`)
     }
     const result = await reserveBookTitle(book.titleId)

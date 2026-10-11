@@ -1,0 +1,50 @@
+flowchart TB
+  AdminLogin[Admin_Login]
+  AdminPortal[Admin_Portal]
+  ADash[Dashboard]
+
+  Ops[Operations]
+  Res[Resources]
+  People[People_and_Records]
+
+  ACat[Books_and_Research]
+  AArch[Book_Archive]
+  ACatg[Categories]
+  ACirc[Borrow_and_Return]
+  AResQ[Reservations_Queue]
+  AFines[Fines]
+
+  AInv[Inventory]
+  AFloor[Floor_Plan]
+  APrintQ[Printing_Queue]
+  ASupp[Print_Supplies]
+
+  AAtt[Attendance]
+  AUsers[Users_MIS]
+  AClear[Clearance]
+  AAnn[Announcements]
+  ARep[Reports]
+
+  AdminLogin --> AdminPortal
+  AdminPortal --> ADash
+  ADash --> Ops
+  ADash --> Res
+  ADash --> People
+
+  Ops --> ACat
+  ACat --> AArch
+  AArch --> ACatg
+  ACatg --> ACirc
+  ACirc --> AResQ
+  AResQ --> AFines
+
+  Res --> AInv
+  AInv --> AFloor
+  AFloor --> APrintQ
+  APrintQ --> ASupp
+
+  People --> AAtt
+  AAtt --> AUsers
+  AUsers --> AClear
+  AClear --> AAnn
+  AAnn --> ARep

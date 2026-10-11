@@ -40,6 +40,7 @@ import { usersRepository } from './modules/users/users.repository.ts'
 import { clearanceService } from './modules/clearance/clearance.service.ts'
 import { profileAvatarRouter } from './modules/users/profile-avatar.routes.ts'
 import { adminNotificationsRouter } from './modules/users/admin-notifications.routes.ts'
+import { borrowingPolicyRouter } from './modules/circulation/borrowing-policy.routes.ts'
 import { publicCatalogRouter, catalogMaintenanceRouter } from './modules/catalog/catalog-enhancements.routes.ts'
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
@@ -98,6 +99,7 @@ export function createApp() {
   app.use('/api/v1/auth', jwtAuthRouter)
   app.use('/api/public/catalog', publicCatalogRouter)
   app.use('/api/v1', authenticateJwt, ensureActiveJwtAccount)
+  app.use('/api/v1/admin/borrowing-policies', requireLibraryPermission('library.manage'), borrowingPolicyRouter)
   app.use('/api/v1/admin/maintenance', requireLibraryPermission('library.manage'), catalogMaintenanceRouter)
   app.use('/api/v1/profile/avatar', profileAvatarRouter)
   app.use('/api/v1/profile', selfProfileRouter)

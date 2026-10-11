@@ -43,6 +43,7 @@ import { AdminClearancePage } from './features/clearance/AdminClearancePage'
 import { AdminFinesPage } from './features/fines/AdminFinesPage'
 import { StudentFinesPage } from './features/fines/StudentFinesPage'
 import { PublicCatalogPage } from './features/catalog/PublicCatalogPage'
+import { AdminBorrowingPoliciesPage } from './features/borrowing-policies/AdminBorrowingPoliciesPage'
 import { CatalogMaintenancePage } from './features/catalog/CatalogMaintenancePage'
 import { CatalogReportsPage } from './features/catalog/CatalogReportsPage'
 
@@ -102,6 +103,7 @@ export default function App() {
           <Route path="/librarian/approvals" element={<AccountApprovalsPage />} />
           <Route path="/librarian/notifications" element={<LibrarianNotificationsPage />} />
           <Route path="/librarian/catalog" element={<Navigate to="/librarian/maintenance" replace />} />
+          <Route path="/librarian/borrowing-policies" element={<AdminBorrowingPoliciesPage />} />
           <Route path="/librarian/maintenance" element={<CatalogMaintenancePage />} />
           <Route path="/librarian/reports" element={<CatalogReportsPage />} />
           <Route path="/librarian/book-archive" element={<BookArchivePage />} />

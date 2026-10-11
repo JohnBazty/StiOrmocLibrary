@@ -1,0 +1,15 @@
+flowchart TB
+  A1[Open_QR_Attendance]
+  A2[View_Permanent_Pass]
+  A3[Download_QR_Image]
+  A4[Present_Pass_Offline]
+  A5[Staff_Scans_QR]
+  A6[Check_In_or_Check_Out]
+  A7[Attendance_History_Updated]
+  A1 --> A2
+  A2 --> A3
+  A2 --> A4
+  A3 --> A4
+  A4 --> A5
+  A5 --> A6
+  A6 --> A7

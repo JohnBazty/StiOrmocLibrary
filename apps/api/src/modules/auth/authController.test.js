@@ -18,17 +18,35 @@ function createRequest(body) {
     regenerate(callback) { this.regenerated = true; callback(null) },
     save(callback) { this.saved = true; callback(null) },
   }
-  return { body, session }
+  return { body, session, sessionID: 'session-current' }
 }
 
-function controllerFor(user, passwordMatches = true) {
+function stubSessions(authVersion = 3) {
+  const calls = { userIds: [], cleared: [] }
+  return {
+    calls,
+    async incrementAuthVersionForUser(userId) {
+      calls.userIds.push(userId)
+      return authVersion
+    },
+    async incrementAuthVersionForAccount() { return authVersion },
+    async clearOtherSessions(userId, sessionId) {
+      calls.cleared.push({ userId, sessionId })
+    },
+    async clearAllSessionsForUser() {},
+  }
+}
+
+function controllerFor(user, passwordMatches = true, sessions = stubSessions()) {
   return createLoginController({
     database: { execute: async () => [[user].filter(Boolean)] },
     passwordHasher: { compare: async () => passwordMatches },
+    sessions,
   })
 }
 
 test('creates a fresh student session and returns the user dashboard', async () => {
+  const sessions = stubSessions(7)
   const request = createRequest({ email: 'student.123456@ormoc.sti.edu.ph', password: 'correct-password' })
   const response = createResponse()
   const next = (error) => { if (error) throw error }
@@ -39,7 +57,7 @@ test('creates a fresh student session and returns the user dashboard', async () 
     password_hash: 'bcrypt-hash',
     account_status: 'Active',
     role_name: 'Student',
-  })
+  }, true, sessions)
 
   await login(request, response, next)
 
@@ -48,10 +66,14 @@ test('creates a fresh student session and returns the user dashboard', async () 
   assert.equal(request.session.regenerated, true)
   assert.equal(request.session.saved, true)
   assert.equal(request.session.user.role, 'Student')
+  assert.equal(request.session.authVersion, 7)
   assert.ok(request.session.csrfToken)
+  assert.deepEqual(sessions.calls.userIds, [17])
+  assert.deepEqual(sessions.calls.cleared, [{ userId: 17, sessionId: 'session-current' }])
 })
 
 test('blocks a deactivated account with the required warning', async () => {
+  const sessions = stubSessions()
   const request = createRequest({ email: 'faculty.name@ormoc.sti.edu.ph', password: 'correct-password' })
   const response = createResponse()
   const login = controllerFor({
@@ -61,7 +83,7 @@ test('blocks a deactivated account with the required warning', async () => {
     password_hash: 'bcrypt-hash',
     account_status: 'Deactivated',
     role_name: 'Faculty',
-  })
+  }, true, sessions)
 
   await login(request, response, (error) => { if (error) throw error })
 
@@ -69,6 +91,7 @@ test('blocks a deactivated account with the required warning', async () => {
   assert.equal(response.payload.code, 'ACCOUNT_DEACTIVATED')
   assert.equal(response.payload.message, 'Your account is currently deactivated. Please coordinate with the campus librarian.')
   assert.equal(request.session.user, undefined)
+  assert.deepEqual(sessions.calls.userIds, [])
 })
 
 test('uses a generic error for unknown users and bad passwords', async () => {

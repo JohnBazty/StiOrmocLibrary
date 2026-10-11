@@ -1,5 +1,11 @@
 import { getAccessToken } from '../auth/auth-storage'
-import type { BorrowingHistoryData, CirculationMonitorData } from './types'
+import type {
+  BorrowingHistoryData,
+  CheckoutConfirmationInput,
+  CheckoutFlow,
+  CheckoutPreflightData,
+  CirculationMonitorData,
+} from './types'
 
 export class CirculationApiError extends Error {
   constructor(message: string, public code: string) { super(message) }
@@ -15,17 +21,29 @@ async function request<T>(url: string, options: RequestInit = {}) {
   return payload.data as T
 }
 
+function checkoutBody(input: CheckoutConfirmationInput) {
+  return {
+    barcode: input.barcode,
+    school_id: input.schoolId,
+    ...(input.preflightToken ? { preflightToken: input.preflightToken } : {}),
+    ...(input.overrideReason ? { overrideReason: input.overrideReason } : {}),
+  }
+}
+
 export const circulationApi = {
   history: (page = 1) => request<BorrowingHistoryData>(`/api/v1/borrowing/history?page=${page}&limit=25`),
   cancelRequest: (transactionId: number, reason?: string) => request<{ transactionId: number; status: 'Cancelled'; copyAvailability: string }>(`/api/v1/circulation/requests/${transactionId}/cancel`, {
     method: 'PUT', body: JSON.stringify({ reason }),
   }),
   monitor: (page = 1) => request<CirculationMonitorData>(`/api/v1/admin/borrowing/monitor?page=${page}&limit=100`),
-  confirmCheckout: (barcode: string, schoolId: string) => request('/api/v1/admin/borrowing/confirm-checkout', {
-    method: 'POST', body: JSON.stringify({ barcode, school_id: schoolId }),
+  preflightCheckout: (barcode: string, schoolId: string, flow: CheckoutFlow) => request<CheckoutPreflightData>('/api/v1/admin/borrowing/preflight', {
+    method: 'POST', body: JSON.stringify({ barcode, school_id: schoolId, flow }),
   }),
-  fulfillClaim: (barcode: string, schoolId: string) => request('/api/v1/circulation/fulfill-claim', {
-    method: 'POST', body: JSON.stringify({ barcode, school_id: schoolId }),
+  confirmCheckout: (input: CheckoutConfirmationInput) => request('/api/v1/admin/borrowing/confirm-checkout', {
+    method: 'POST', body: JSON.stringify(checkoutBody(input)),
+  }),
+  fulfillClaim: (input: CheckoutConfirmationInput) => request('/api/v1/circulation/fulfill-claim', {
+    method: 'POST', body: JSON.stringify(checkoutBody(input)),
   }),
   returnBook: (transactionId: number) => request(`/api/v1/admin/borrowing/${transactionId}/return`, { method: 'PUT' }),
   calculatePenalty: (transactionId: number) => request<{ amount: number; currency: string }>(`/api/v1/admin/borrowing/${transactionId}/calculate-penalty`, { method: 'POST' }),

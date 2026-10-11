@@ -49,3 +49,8 @@
 -- checkout cutoff is 6:55 PM before 7 PM closing.
 -- Revision Phase 5: 023/024 applied; separate in-library ledger retains physical
 -- assignments after attendance checkout. Latest product file 024; next unused 025.
+
+
+## Main integration — 2026-10-11
+
+The main branch was reconciled with the current revision permission model and phase workflows. Borrowing policy management uses the Librarian workspace; prior login sessions are invalidated when a new login succeeds. Competing upstream SQL identities are retained as non-executable references under `database/upstream-main/`; no migration was applied. Existing phase statuses and applied migration identities remain unchanged. See `docs/main-branch-integration.md`.

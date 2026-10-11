@@ -19,6 +19,8 @@ import { concurrentAttendanceReport } from '../attendance/attendance-concurrent-
 import { parseAttendanceFilters } from '../attendance/attendance.validation.ts'
 import { manilaDate } from '../attendance/attendance-intervals.ts'
 import { HttpError } from '../../core/http-error.ts'
+import { createBorrowingPolicyService } from '../circulation/borrowing-policy.service.ts'
+import { roleBookLimit } from '../circulation/borrowing-policy.types.ts'
 
 type DashboardActor = { accountId: number; role: string }
 type IdentityRow = RowDataPacket & { account_id: number; user_id: number | null; school_id: string; full_name: string; program: string | null }
@@ -144,7 +146,7 @@ export class DashboardRepository {
     const identity = await this.identity(actor.accountId)
     const userId = identity.user_id
     const profile = await this.libraryProfile()
-    if (!userId) return this.emptyUser(identity, actor.role, profile)
+    if (!userId) return await this.emptyUser(identity, actor.role, profile)
     const last180Days = isPostgres ? `NOW() - INTERVAL '180 day'` : `DATE_SUB(NOW(),INTERVAL 180 DAY)`
     const [summaryResult, loanResult, reservationResult, printResult, noticeResult, announcementResult, historyResult, recommendationResult, occupancyResult] = await Promise.all([
       this.pool.execute<RowDataPacket[]>(`SELECT
@@ -194,7 +196,8 @@ export class DashboardRepository {
     ])
     const state=isPostgres?await libraryState(this.pool):null
     const summary = summaryResult[0][0] ?? {}, loan = loanResult[0][0], reservation = reservationResult[0][0], print = printResult[0][0], notice = noticeResult[0][0], announcement = announcementResult[0][0], occupancy = occupancyResult[0][0] ?? {}
-    const limit = actor.role === 'Student' ? 2 : null
+    const policy = await createBorrowingPolicyService(this.pool).resolveActive(this.pool)
+    const limit = roleBookLimit(policy, actor.role)
     const computedClearance = number(summary.active_loans) > 0 || money(summary.outstanding_fines) > 0 ? 'Not Cleared' : 'Cleared'
     return {
       generatedAt: new Date().toISOString(), user: { name: identity.full_name, schoolId: identity.school_id, program: identity.program, role: actor.role }, profile,
@@ -210,8 +213,9 @@ export class DashboardRepository {
     }
   }
 
-  private emptyUser(identity: IdentityRow, role: string, profile: Awaited<ReturnType<DashboardRepository['libraryProfile']>>) {
-    return { generatedAt:new Date().toISOString(),user:{name:identity.full_name,schoolId:identity.school_id,program:identity.program,role},profile,summary:{activeLoans:0,activeBookCount:0,borrowingLimit:role==='Student'?2:null,activeReservations:0,unreadNotifications:0,outstandingFines:0,clearanceStatus:'Cleared'},occupancy:{current:0,capacity:profile.seatCapacity},currentLoan:null,reservation:null,printRequest:null,latestNotification:null,announcement:null,recentHistory:[],recommendations:[] }
+  private async emptyUser(identity: IdentityRow, role: string, profile: Awaited<ReturnType<DashboardRepository['libraryProfile']>>) {
+    const policy = await createBorrowingPolicyService(this.pool).resolveActive(this.pool)
+    return { generatedAt:new Date().toISOString(),user:{name:identity.full_name,schoolId:identity.school_id,program:identity.program,role},profile,summary:{activeLoans:0,activeBookCount:0,borrowingLimit:roleBookLimit(policy, role),activeReservations:0,unreadNotifications:0,outstandingFines:0,clearanceStatus:'Cleared'},occupancy:{current:0,capacity:profile.seatCapacity},currentLoan:null,reservation:null,printRequest:null,latestNotification:null,announcement:null,recentHistory:[],recommendations:[] }
   }
 }
 

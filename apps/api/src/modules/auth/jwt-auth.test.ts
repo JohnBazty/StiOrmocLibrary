@@ -6,12 +6,41 @@ import request from 'supertest'
 import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
 import { jwtProtectedRouter } from './jwt-auth.routes.ts'
-import { createJwtAuthService, type JwtRole } from './jwt-auth.service.ts'
+import { createJwtAuthService as createService, type JwtRole } from './jwt-auth.service.ts'
 import { createActiveJwtAccountGuard, verifyAccessToken } from './jwt-auth.middleware.ts'
+
+const createJwtAuthService: typeof createService = (database, hasher, signer) => createService(database, hasher, signer, {
+  incrementAuthVersionForAccount: async () => 2,
+  incrementAuthVersionForUser: async () => 2,
+  clearOtherSessions: async () => {},
+  clearAllSessionsForUser: async () => {},
+})
 
 const redirects: Record<JwtRole, string> = {
   Admin: '/admin/dashboard', Librarian: '/librarian/dashboard', Faculty: '/faculty/dashboard', Student: '/student/dashboard', Staff: '/staff/dashboard',
 }
+
+test('a second successful login revokes the prior JWT through the stored account version', async () => {
+  let version = 3
+  let clears = 0
+  const account = { account_id: 8, user_id: 12, school_id: 'TEST-8', password_hash: 'hash', role: 'Librarian', account_status: 'Active', user_status: 'Active' }
+  const database = { execute: async () => [[{ ...account, auth_version: version }]] } as never
+  const sessions = {
+    incrementAuthVersionForAccount: async () => ++version,
+    incrementAuthVersionForUser: async () => ++version,
+    clearAllSessionsForUser: async () => { clears++ }, clearOtherSessions: async () => {},
+  }
+  const service = createService(database, { compare: async () => true } as never, jwt, sessions)
+  const body = { portal: 'staff', school_id: 'TEST-8', password: 'test-only-password' }
+  const first = await service.login(body)
+  const second = await service.login(body)
+  const app = express()
+  app.use((req, res, next) => { res.locals.authenticatedUser = verifyAccessToken(String(req.headers.authorization).slice(7)); next() })
+  app.get('/protected', createActiveJwtAccountGuard(database), (_req, res) => res.json({ success: true }))
+  assert.equal((await request(app).get('/protected').set('Authorization', `Bearer ${first.token}`)).status, 401)
+  assert.equal((await request(app).get('/protected').set('Authorization', `Bearer ${second.token}`)).status, 200)
+  assert.equal(clears, 2)
+})
 
 test('authenticates all four roles, signs the required claims, and returns the correct redirect', async () => {
   let id = 0

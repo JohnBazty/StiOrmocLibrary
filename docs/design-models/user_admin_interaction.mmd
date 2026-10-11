@@ -1,0 +1,17 @@
+flowchart TB
+  UCat[User_Catalog_Cart_Research]
+  UBorrow[User_Borrow_Reserve_History]
+  UPrint[User_Print_QR_Notifications]
+  UAcct[User_Fines_Clearance]
+  ACat[Admin_Catalog_Categories_Archive]
+  ACirc[Admin_Circulation_Reservations]
+  AOps[Admin_Printing_Supplies_Attendance]
+  ARec[Admin_Fines_Clearance_Users_Reports]
+  UCat --> ACat
+  ACat --> UCat
+  UBorrow --> ACirc
+  ACirc --> UBorrow
+  UPrint --> AOps
+  AOps --> UPrint
+  UAcct --> ARec
+  ARec --> UAcct

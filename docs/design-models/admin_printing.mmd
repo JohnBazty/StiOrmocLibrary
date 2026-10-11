@@ -1,0 +1,24 @@
+flowchart TB
+  Pr1[Printing_Queue]
+  Pr2[Pause_or_Resume_Service]
+  Pr3[Select_Print_Request]
+  Pr4[Record_Cash_Payment]
+  Pr5[Update_Job_Status]
+  Pr6[Printing]
+  Pr7[Ready_for_Pickup]
+  Pr8[Completed]
+  Pr9[Print_Supplies]
+  Pr10[Update_Ink_Stock]
+  Pr11[Update_Paper_Stock]
+  Pr12[Review_Revenue]
+  Pr1 --> Pr2
+  Pr1 --> Pr3
+  Pr3 --> Pr4
+  Pr4 --> Pr5
+  Pr5 --> Pr6
+  Pr6 --> Pr7
+  Pr7 --> Pr8
+  Pr4 --> Pr9
+  Pr9 --> Pr10
+  Pr9 --> Pr11
+  Pr9 --> Pr12

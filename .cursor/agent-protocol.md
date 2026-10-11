@@ -175,3 +175,8 @@ Prefer simple, readable scripts under a clear folder (for example `tools/` or `s
 | 2026-10-11 | Revision Phase 5 built locally: Postgres 023/024 applied for scan confirmation receipts and in-library book/native-thesis usage. Temporary Active-account enrollment policy approved; missing handbacks flagged at closing. 298 API/129 web tests, build, isolated Postgres concurrency/returns and local HTTP/browser checks passed. Next Postgres 025; MySQL 047 unapplied/next 048 unchanged. No push/deployment. |
 
 | 2026-10-11 | Integrated branch branding/login commits without database execution; MySQL reference now 048/next 049, applied Postgres remains 024/next unused 025. See `docs/github-update-integration.md`. |
+
+
+## Main integration — 2026-10-11
+
+The main branch was reconciled with the current revision permission model and phase workflows. Borrowing policy management uses the Librarian workspace; prior login sessions are invalidated when a new login succeeds. Competing upstream SQL identities are retained as non-executable references under `database/upstream-main/`; no migration was applied. Existing phase statuses and applied migration identities remain unchanged. See `docs/main-branch-integration.md`.

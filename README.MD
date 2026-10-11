@@ -629,3 +629,8 @@ StiOrmocLibrary/
 - [ ] Confirm `/api/health` reports a ready schema.
 - [ ] Sign in through `/admin/login`.
 - [ ] Run tests, type checking, and the production build.
+
+
+## Main integration — 2026-10-11
+
+The main branch was reconciled with the current revision permission model and phase workflows. Borrowing policy management uses the Librarian workspace; prior login sessions are invalidated when a new login succeeds. Competing upstream SQL identities are retained as non-executable references under `database/upstream-main/`; no migration was applied. Existing phase statuses and applied migration identities remain unchanged. See `docs/main-branch-integration.md`.
