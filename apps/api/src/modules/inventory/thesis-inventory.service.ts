@@ -231,7 +231,13 @@ export async function deleteThesisInventory(
       )
       hasCirculationHistory = loanRows.length > 0 || reservationRows.length > 0
     }
-    if (auditRows.length > 0 || hasCirculationHistory) {
+    const [stocktakeRows] = await connection.execute<RowDataPacket[]>(`
+      SELECT stocktake_expected_item_id FROM stocktake_expected_items
+       WHERE asset_kind = 'research' AND source_item_id = ? LIMIT 1`, [researchInventoryId])
+    const [stocktakeScanRows] = await connection.execute<RowDataPacket[]>(`
+      SELECT stocktake_scan_id FROM stocktake_scans
+       WHERE resolved_asset_kind = 'research' AND resolved_source_item_id = ? LIMIT 1`, [researchInventoryId])
+    if (auditRows.length > 0 || hasCirculationHistory || stocktakeRows.length > 0 || stocktakeScanRows.length > 0) {
       throw new HttpError(
         422,
         'THESIS_REQUIRES_ARCHIVE',

@@ -17,6 +17,7 @@
     "db:backfill:book-codes": "node scripts/backfill-book-asset-codes.js",
     "db:backfill:attendance-passes": "node scripts/backfill-attendance-passes.js",
     "reports:verify-csv": "node scripts/verify-csv.js",
+    "smoke:stocktake": "node scripts/smoke-stocktake-sessions.mjs",
     "start": "node dist/server.js"
   },
   "dependencies": {

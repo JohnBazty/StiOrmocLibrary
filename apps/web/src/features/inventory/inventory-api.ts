@@ -1,5 +1,9 @@
 import { getAccessToken } from '../auth/auth-storage'
-import type { InventoryCopy, InventoryFilters, InventoryPagination, InventorySummary, ThesisInventoryFilters, ThesisInventoryRow, ThesisInventorySummary } from './types'
+import type {
+  InventoryCopy, InventoryFilters, InventoryPagination, InventorySummary,
+  StocktakeDiscrepancy, StocktakeScanResult, StocktakeScopeOptions, StocktakeSession,
+  ThesisInventoryFilters, ThesisInventoryRow, ThesisInventorySummary,
+} from './types'
 
 export class InventoryApiError extends Error {
   constructor(
@@ -170,4 +174,59 @@ export const inventoryApi = {
   ),
   downloadThesis,
   download,
+  stocktakeScopeOptions: () => request<StocktakeScopeOptions>('/api/inventory/stocktakes/scope-options'),
+  stocktakePreview: (params: { scopeKind: string; scopeId?: string; assetKind: string }) => {
+    const query = new URLSearchParams({ scopeKind: params.scopeKind, assetKind: params.assetKind })
+    if (params.scopeId) query.set('scopeId', params.scopeId)
+    return request<{ expected_count: number; book_count: number; research_count: number; unplaced_shelves: string[] }>(
+      `/api/inventory/stocktakes/scope-preview?${query}`,
+    )
+  },
+  async stocktakeSessions(page = 1) {
+    return request<{ items: StocktakeSession[]; pagination: InventoryPagination }>(
+      `/api/inventory/stocktakes?page=${page}&limit=25`,
+    )
+  },
+  createStocktake: (body: { name: string; scopeKind: string; scopeId?: string | null; assetKind: string }) =>
+    request<StocktakeSession>('/api/inventory/stocktakes', { method: 'POST', body: JSON.stringify(body) }),
+  stocktakeSession: (id: number) => request<StocktakeSession>(`/api/inventory/stocktakes/${id}`),
+  stocktakeDiscrepancies: (id: number, page = 1) =>
+    request<{ items: StocktakeDiscrepancy[]; pagination: InventoryPagination }>(
+      `/api/inventory/stocktakes/${id}/discrepancies?page=${page}&limit=50`,
+    ),
+  stocktakeScan: (id: number, body: {
+    requestKey: string; barcode: string; observedShelfId: number
+    observedColumn?: number | null; observedRow?: number | null; source: 'scanner' | 'manual'
+  }) => request<StocktakeScanResult>(`/api/inventory/stocktakes/${id}/scans`, {
+    method: 'POST', body: JSON.stringify(body),
+  }),
+  closeStocktake: (id: number) => request<StocktakeSession>(`/api/inventory/stocktakes/${id}/close`, { method: 'POST', body: '{}' }),
+  cancelStocktake: (id: number, reason: string) =>
+    request<StocktakeSession>(`/api/inventory/stocktakes/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  reviewStocktake: (id: number) => request<StocktakeSession>(`/api/inventory/stocktakes/${id}/review`, { method: 'POST', body: '{}' }),
+  resolveStocktakeFinding: (sessionId: number, discrepancyId: number, body: {
+    expectedRowVersion: number; action: 'dismiss' | 'confirm_found_at_home'; reason: string
+  }) => request(`/api/inventory/stocktakes/${sessionId}/discrepancies/${discrepancyId}/resolve`, {
+    method: 'POST', body: JSON.stringify(body),
+  }),
+  async downloadStocktakeDiscrepancies(sessionId: number, format: 'csv' | 'pdf') {
+    const response = await fetch(`/api/inventory/stocktakes/${sessionId}/discrepancies.${format}`, {
+      credentials: 'include',
+      headers: headersFor('GET', format === 'csv' ? 'text/csv' : 'application/pdf'),
+    })
+    if (!response.ok) {
+      const isJson = (response.headers.get('content-type') ?? '').includes('application/json')
+      const payload = isJson ? await response.json() as { message?: string; code?: string } : null
+      throw new InventoryApiError(payload?.message ?? `Unable to export stocktake ${format.toUpperCase()}.`, payload?.code ?? 'STOCKTAKE_EXPORT_FAILED')
+    }
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `stocktake-${sessionId}-discrepancies.${format}`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
+  },
 }

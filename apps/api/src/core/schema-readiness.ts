@@ -51,6 +51,11 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   library_profile_settings: ['settings_id', 'library_name', 'seat_capacity', 'updated_by_user_id'],
   library_capacity_changes: ['capacity_change_id', 'previous_capacity', 'new_capacity', 'change_reason', 'changed_at'],
   attendance_qr_credentials: ['credential_id', 'user_id', 'public_id', 'secret_hash', 'credential_status', 'issued_at'],
+  stocktake_sessions: ['stocktake_session_id', 'session_name', 'scope_kind', 'scope_label', 'asset_kind', 'scope_snapshot', 'status', 'started_at', 'row_version'],
+  stocktake_expected_items: ['stocktake_expected_item_id', 'stocktake_session_id', 'asset_kind', 'source_item_id', 'barcode', 'accession_number', 'title', 'home_shelf_label', 'row_version_snapshot'],
+  stocktake_scans: ['stocktake_scan_id', 'stocktake_session_id', 'request_key', 'entered_barcode', 'observed_shelf_label', 'scan_source', 'lookup_snapshot', 'scanned_at'],
+  stocktake_discrepancies: ['stocktake_discrepancy_id', 'stocktake_session_id', 'finding_key', 'finding_code', 'status', 'evidence_snapshot', 'row_version'],
+  stocktake_resolution_events: ['stocktake_resolution_event_id', 'stocktake_discrepancy_id', 'previous_status', 'next_status', 'action', 'reason', 'acted_at'],
 }
 
 export type SchemaReadiness = { ready: boolean; missingTables: string[]; missingColumns: string[] }

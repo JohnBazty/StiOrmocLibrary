@@ -8,6 +8,7 @@ import { inventoryApi, InventoryApiError } from './inventory-api'
 import type { InventoryCopy, InventoryFilters, InventoryPagination, InventoryRemovalTarget, InventorySummary, ThesisInventoryFilters, ThesisInventoryRow, ThesisInventorySummary } from './types'
 import { useDesktopScanner } from './useDesktopScanner'
 import { InventoryRemovalDialog } from './InventoryRemovalDialog'
+import { StocktakePanel } from './StocktakePanel'
 
 const EMPTY_SUMMARY: InventorySummary = { total_catalog_materials: 0, total_physical_copies: 0, damaged_copies_count: 0, lost_copies_count: 0 }
 const DEFAULT_FILTERS: InventoryFilters = { page: 1, limit: 25, query: '', conditionState: '', availabilityStatus: '' }
@@ -143,6 +144,7 @@ export function InventoryDashboard() {
   const [availabilityError, setAvailabilityError] = useState<string | null>(null)
   const [thesisExportingPdf, setThesisExportingPdf] = useState(false)
   const [removalTarget, setRemovalTarget] = useState<InventoryRemovalTarget | null>(null)
+  const [stocktakeScanning, setStocktakeScanning] = useState(false)
 
   const load = useCallback(async (nextFilters: InventoryFilters) => {
     setLoading(true); setError(null)
@@ -184,7 +186,7 @@ export function InventoryDashboard() {
     catch (reason) { setError(reason instanceof Error ? reason.message : 'The scanned barcode could not be verified.') }
     finally { setScanning(false) }
   }, [filters, load, scanning, thesisRows])
-  useDesktopScanner(scan, !selected && !availabilityTarget && !selectedThesis && !thesisAvailabilityTarget)
+  useDesktopScanner(scan, !selected && !availabilityTarget && !selectedThesis && !thesisAvailabilityTarget && !stocktakeScanning && !removalTarget)
 
   const downloadPdf = async () => {
     setExportingPdf(true); setError(null)
@@ -261,6 +263,7 @@ export function InventoryDashboard() {
     {error ? <div className="mb-4 flex items-start justify-between gap-3 rounded-xl bg-[#FFF200] p-4 text-sm font-semibold text-[#003399]" role="alert"><span>{error}</span><button aria-label="Dismiss error" onClick={() => setError(null)}><X size={17} /></button></div> : null}
     {notice ? <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-[#003399]/20 bg-[#FFFFFF] p-4 text-sm font-semibold text-[#003399]" role="status"><span className="flex items-center gap-2"><CheckCircle2 size={17} />{notice}</span><button aria-label="Dismiss notice" onClick={() => setNotice(null)}><X size={17} /></button></div> : null}
     <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><StatCard label="Catalog materials" value={summary.total_catalog_materials} note="Active title records" icon={PackageSearch} tone="blue" /><StatCard label="Physical copies" value={summary.total_physical_copies} note="Active accession rows" icon={BookCopy} tone="blue" /><StatCard label="Damaged copies" value={summary.damaged_copies_count} note="Audited condition records" icon={AlertTriangle} tone="amber" /><StatCard label="Lost copies" value={summary.lost_copies_count} note="Forced unavailable" icon={XCircle} tone="red" /></div>
+    <StocktakePanel onSessionScanningChange={setStocktakeScanning} />
     <section aria-labelledby="thesis-inventory-title" className="order-[4] mb-8 mt-8">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
         <SectionCard className="p-5"><span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#003399] text-[#FFFFFF]"><GraduationCap size={21} /></span><p className="mt-4 text-xs font-bold uppercase tracking-wide text-[#003399]/60">Published papers</p><p className="mt-1 text-3xl font-black text-[#003399]">{thesisSummary.total_thesis_materials}</p></SectionCard>
