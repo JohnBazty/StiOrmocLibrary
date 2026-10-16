@@ -14,6 +14,7 @@ const createJwtAuthService: typeof createService = (database, hasher, signer) =>
   incrementAuthVersionForUser: async () => 2,
   clearOtherSessions: async () => {},
   clearAllSessionsForUser: async () => {},
+  revokeCurrentVersion: async () => true,
 })
 
 const redirects: Record<JwtRole, string> = {
@@ -29,6 +30,7 @@ test('a second successful login revokes the prior JWT through the stored account
     incrementAuthVersionForAccount: async () => ++version,
     incrementAuthVersionForUser: async () => ++version,
     clearAllSessionsForUser: async () => { clears++ }, clearOtherSessions: async () => {},
+    revokeCurrentVersion: async () => true,
   }
   const service = createService(database, { compare: async () => true } as never, jwt, sessions)
   const body = { portal: 'staff', school_id: 'TEST-8', password: 'test-only-password' }
@@ -127,7 +129,7 @@ test('user portal rejects staff credentials without revealing the stored role', 
     (error: unknown) => error instanceof HttpError
       && error.status === 401
       && error.code === 'INVALID_CREDENTIALS'
-      && error.message === 'Invalid school ID or password.',
+      && error.message === 'Wrong credentials.',
   )
 })
 

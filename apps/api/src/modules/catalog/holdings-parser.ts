@@ -2,12 +2,14 @@ import ExcelJS from 'exceljs'
 import { Readable } from 'node:stream'
 import { HttpError } from '../../core/http-error.ts'
 import { isValidIsbn, normalizeIsbn } from './catalog.validation.ts'
+import { cleanImportValue, matchImportReference, type ImportCorrection, type ImportReferences } from './holdings-cleanup.ts'
 
-export const holdingsFields = ['title','author','isbn','edition','publisher','publicationYear','copyrightYear','pages','copies','missingCopies','accessions','barcodes','callNumber'] as const
+const legacyHoldingsFields = ['title','author','isbn','edition','publisher','publicationYear','copyrightYear','pages','copies','missingCopies','accessions','barcodes','callNumber'] as const
+export const holdingsFields = [...legacyHoldingsFields, 'categoryName', 'shelfLocation'] as const
 export type HoldingsField = typeof holdingsFields[number]
 export type SheetMapping = { sheet: string; headerRow: number; columns: Partial<Record<HoldingsField, number>>; categoryId?: number; location?: string; programId?: number }
 export type HoldingsSheet = { name: string; rows: string[][]; mapping: SheetMapping; headers: string[] }
-export type HoldingsData = { title: string; author: string; isbn: string; edition: string; publisher: string; publicationYear: string; copyrightYear: string; pages: string; copies: string; missingCopies: string; accessions: string; barcodes: string; callNumber: string; categoryId: number | null; location: string; programId: number | null; generateAccessions: boolean }
+export type HoldingsData = { title: string; author: string; isbn: string; edition: string; publisher: string; publicationYear: string; copyrightYear: string; pages: string; copies: string; missingCopies: string; accessions: string; barcodes: string; callNumber: string; categoryId: number | null; location: string; programId: number | null; generateAccessions: boolean; categoryName?: string; shelfLocation?: string; autoCorrections?: ImportCorrection[] }
 const bad = (message: string) => new HttpError(422,'HOLDINGS_FILE_INVALID',message)
 export const clean = (value: unknown) => String(value ?? '').trim().replace(/\s+/g,' ')
 export const key = (value: unknown) => clean(value).normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim()
@@ -44,19 +46,21 @@ function cellText(value: ExcelJS.CellValue): string {
   return String(value)
 }
 const aliases: Record<HoldingsField, RegExp> = {
- title:/^(book title|title)$/,
- author:/^author(s| s)?$/,
- isbn:/^isbn( number)?$/,
+ title:/^(book title|title|book name|name of book)$/,
+ author:/^(author(s| s)?|writer(s)?|written by)$/,
+ isbn:/^isbn( number| 10| 13)?$/,
  edition:/^edition$/,
  publisher:/^publisher$/,
  publicationYear:/^(year published|publication year|published date|published|year)$/,
  copyrightYear:/^(copyright|copyright year)$/,
  pages:/^(pages|page count|number of pages)$/,
- copies:/^(copies|cps|no of copies|no of|number of copies)$/,
+ copies:/^(copies|copy count|total copies|quantity|qty|cps|no of copies|no of|number of copies|quantity of copies)$/,
  missingCopies:/^(missing|missing copies)$/,
- accessions:/^(accesion|accession)( number| no)?$/,
- barcodes:/^(barcode|barcodes)$/,
+ accessions:/^(accesion|accession)( numbers?| nos?)?$/,
+ barcodes:/^(book )?barcodes?$/,
  callNumber:/^call number$/,
+ categoryName:/^(category|category name|classification)$/,
+ shelfLocation:/^(shelf|shelf location|shelf label|location)$/,
 }
 export function detectMapping(name:string, rows:string[][]): SheetMapping {
   let headerRow=1,best=0
@@ -65,9 +69,11 @@ export function detectMapping(name:string, rows:string[][]): SheetMapping {
     if(score>best){best=score;headerRow=i+1}
   }
   const columns:SheetMapping['columns']={}
-  rows[headerRow-1]?.forEach((value,index)=>{
-    for(const field of holdingsFields) if(aliases[field].test(key(value))) columns[field]=index+1
-  })
+  for (const field of holdingsFields) {
+    const matches = (rows[headerRow - 1] ?? []).flatMap((value, index) => aliases[field].test(key(value)) ? [index + 1] : [])
+    // Competing columns must be chosen by the librarian instead of silently taking the last one.
+    if (matches.length === 1) columns[field] = matches[0]
+  }
   return {sheet:name,headerRow,columns}
 }
 export async function readHoldings(file: {buffer:Buffer;originalname:string}) {
@@ -99,7 +105,17 @@ export async function readHoldings(file: {buffer:Buffer;originalname:string}) {
   }
   return sheets
 }
-export function mappedRows(sheets:HoldingsSheet[],mappings:SheetMapping[]){
+export function holdingsMappingIdentity(mappings: SheetMapping[]) {
+  return JSON.stringify(mappings.map(mapping => ({ ...mapping, columns: Object.fromEntries(holdingsFields
+    .filter(field => (legacyHoldingsFields as readonly string[]).includes(field) || mapping.columns[field])
+    .map(field => [field, mapping.columns[field] ?? null])) })).sort((a, b) => a.sheet.localeCompare(b.sheet)))
+}
+function recordReferenceCorrection(changes: ImportCorrection[], field: string, before: string, after: string, reason: 'category' | 'shelf') {
+  const existing = changes.find(change => change.field === field)
+  if (existing) { existing.after = after; existing.reason = reason }
+  else changes.push({ field, before, after, reason })
+}
+export function mappedRows(sheets:HoldingsSheet[],mappings:SheetMapping[],references:ImportReferences={categories:[],locations:[]}){
   const seen=new Set<string>()
   const items:Array<{sheet:string;sourceRow:number;source:string[];data:HoldingsData}>=[]
   let ignored=0
@@ -113,14 +129,30 @@ export function mappedRows(sheets:HoldingsSheet[],mappings:SheetMapping[]){
     for(const column of Object.values(mapping.columns))if(!Number.isInteger(column)||Number(column)<1||Number(column)>40)throw bad('Choose valid column numbers.')
     for(let i=mapping.headerRow;i<sheet.rows.length;i++){
       const source=sheet.rows[i]
-      const values=Object.fromEntries(holdingsFields.map(field=>[field,mapping.columns[field]?(field==='accessions'||field==='barcodes'?String(source[Number(mapping.columns[field])-1]??'').trim():clean(source[Number(mapping.columns[field])-1])):''])) as Record<HoldingsField,string>
+      const corrections: ImportCorrection[] = []
+      const values=Object.fromEntries(holdingsFields.map(field=>{
+        const result = cleanImportValue(field, mapping.columns[field] ? source[Number(mapping.columns[field]) - 1] : '')
+        if (result.correction) corrections.push(result.correction)
+        return [field, result.value]
+      })) as Record<HoldingsField,string>
       // Signature blocks terminate the holdings table in the supplied campus sheets.
       // Numeric copy rows are retained even if a genuine title contains these words.
       if(!/^\d+$/.test(values.copies)&&source.some(cell=>/^(prepared by|noted by|checked by|certified true(?: and)?(?: correct)?|certified by)\b/i.test(clean(cell)))){ignored+=sheet.rows.length-i;break}
       if(!values.title&&!values.author&&/^(copies|date|year|published)$/i.test(values.copies)){ignored++;continue}
       if(!values.title && !values.copies){ignored++;continue}
       if(/^(book title|title|total|grand total)$/i.test(values.title) || /^(prepared by|noted by|checked by|certified by)\s*:/i.test(values.title) || (!values.title && /total/i.test(source.join(' ')))){ignored++;continue}
-      items.push({sheet:sheet.name,sourceRow:i+1,source,data:{...values,isbn:normalizeIsbn(values.isbn),categoryId:positiveId(mapping.categoryId),location:clean(mapping.location),programId:positiveId(mapping.programId),generateAccessions:false}})
+      let categoryId = positiveId(mapping.categoryId), location = clean(mapping.location)
+      if (values.categoryName) {
+        const category = matchImportReference(values.categoryName, references.categories)
+        categoryId = positiveId(category?.id)
+        if (category && category.name !== values.categoryName) recordReferenceCorrection(corrections, 'categoryName', values.categoryName, category.name, 'category')
+      }
+      if (values.shelfLocation) {
+        const shelf = matchImportReference(values.shelfLocation, references.locations)
+        location = shelf?.name ?? ''
+        if (shelf && shelf.name !== values.shelfLocation) recordReferenceCorrection(corrections, 'shelfLocation', values.shelfLocation, shelf.name, 'shelf')
+      }
+      items.push({sheet:sheet.name,sourceRow:i+1,source,data:{...values,categoryId,location,programId:positiveId(mapping.programId),generateAccessions:false,...(corrections.length ? {autoCorrections:corrections} : {})}})
     }
   }
   if(!items.length)throw bad('No book entries were found using the selected mapping.')
@@ -135,15 +167,15 @@ export function validateHoldingsData(data:HoldingsData, needsCopies=true){
   if(data.isbn && !isValidIsbn(normalizeIsbn(data.isbn)))errors.push('ISBN checksum is invalid. Correct it or clear an unknown ISBN.')
   if(data.edition.length>100||data.publisher.length>255||data.callNumber.length>100)errors.push('Edition, publisher or call number is too long.')
   for(const field of ['publicationYear','copyrightYear'] as const){
-    const n=Number(data[field]);if(data[field]&&(!Number.isInteger(n)||n<1000||n>new Date().getFullYear()))errors.push(`${field==='copyrightYear'?'Copyright':'Publication'} year must be a valid year; leave unknown years blank.`)
+    const n=Number(data[field]);if(data[field]&&(!/^\d+$/.test(data[field])||!Number.isInteger(n)||n<1000||n>new Date().getFullYear()))errors.push(`${field==='copyrightYear'?'Copyright':'Publication'} year must be a valid year; leave unknown years blank.`)
   }
-  if(data.pages && (!Number.isSafeInteger(Number(data.pages)) || Number(data.pages)<1))errors.push('Pages must be a positive whole number or blank.')
+  if(data.pages && (!/^\d+$/.test(data.pages) || !Number.isSafeInteger(Number(data.pages)) || Number(data.pages)<1))errors.push('Pages must be a positive whole number or blank.')
   if(needsCopies){
     const copies=Number(data.copies), missing=Number(data.missingCopies||0)
-    if(!Number.isInteger(copies)||copies<1||copies>100)errors.push('Copies must be a whole number from 1 to 100.')
-    if(!Number.isInteger(missing)||missing<0||missing>copies)errors.push('Missing copies must be a whole number between zero and the copy count.')
-    if(!data.categoryId)errors.push('Choose a category.')
-    if(!data.location || data.location.length>100)errors.push('Choose a managed shelf location.')
+    if(!/^\d+$/.test(data.copies)||!Number.isInteger(copies)||copies<1||copies>100)errors.push('Copies must be a whole number from 1 to 100.')
+    if((data.missingCopies && !/^\d+$/.test(data.missingCopies))||!Number.isInteger(missing)||missing<0||missing>copies)errors.push('Missing copies must be a whole number between zero and the copy count.')
+    if(!data.categoryId)errors.push(data.categoryName ? `Category “${data.categoryName}” could not be matched safely. Choose an existing category.` : 'Choose a category.')
+    if(!data.location || data.location.length>100)errors.push(data.shelfLocation ? `Shelf “${data.shelfLocation}” could not be matched safely. Choose an active shelf.` : 'Choose a managed shelf location.')
     for(const field of ['accessions','barcodes'] as const){
       const ids=identityList(data[field])
       if(field==='accessions' && data.generateAccessions)continue

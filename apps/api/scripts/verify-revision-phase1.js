@@ -19,8 +19,12 @@ const oldPassword = randomBytes(16).toString('hex')
 const newPassword = randomBytes(16).toString('hex')
 let accountId = 0
 let userId = 0
+const personnelFixtures = []
 const isCode = expected => error => error?.code === expected
 try {
+  const [roleMismatches] = await db.execute(`SELECT a.account_id FROM accounts a JOIN users u ON u.user_id=a.user_id
+    WHERE a.account_status='Active' AND u.account_status='Active' AND a.role<>u.user_role`, [])
+  assert.equal(roleMismatches.length, 0, 'Active account/profile roles disagree. Reconcile the approved identities before running workflow fixtures.')
   const [before] = await db.execute("SELECT COUNT(*) AS total FROM accounts WHERE school_id NOT LIKE 'REV1-%'", [])
   const [roles] = await db.execute("SELECT role_id FROM roles WHERE role_name='Student'", [])
   assert.ok(roles[0])
@@ -58,7 +62,26 @@ try {
   const app = createApp()
   assert.equal((await request(app).get('/api/v1/auth/me').set('Authorization', `Bearer ${oldLogin.token}`)).status, 401)
   assert.equal((await request(app).get('/api/v1/auth/me').set('Authorization', `Bearer ${newLogin.token}`)).status, 200)
-  const [identities] = await db.execute("SELECT account_id,school_id,role,auth_version FROM accounts WHERE account_status='Active' AND role IN ('Librarian','Staff','Admin')", [])
+  // Test every role with disposable linked identities, independently of campus account setup.
+  const identities = []
+  for (const [role, roleName] of [['Librarian', 'Librarian'], ['Staff', 'Library Staff'], ['Admin', 'System Administrator']]) {
+    const fixture = { accountId: 0, userId: 0, schoolId: `REV1-${role}-${randomUUID().slice(0,18)}`.toUpperCase() }
+    personnelFixtures.push(fixture)
+    const [canonicalRoles] = await db.execute('SELECT role_id FROM roles WHERE role_name=?', [roleName])
+    assert.equal(canonicalRoles.length, 1)
+    const [createdAccount] = await db.execute("INSERT INTO accounts(school_id,password_hash,role,account_status) VALUES (?,?,?,'Active')", [fixture.schoolId, hash, role])
+    fixture.accountId = Number(createdAccount.insertId)
+    const [createdUser] = await db.execute(`INSERT INTO users(role_id,user_role,institutional_id,school_id,full_name,email,password_hash,account_status)
+      VALUES (?,?,?,?,'Revision permission fixture',?,?,'Active')`, [canonicalRoles[0].role_id, role, fixture.schoolId, fixture.schoolId, `revision-permission-${randomUUID()}@ormoc.sti.edu.ph`, hash])
+    fixture.userId = Number(createdUser.insertId)
+    await db.execute('UPDATE accounts SET user_id=? WHERE account_id=?', [fixture.userId, fixture.accountId])
+    const personnelLogin = await auth.login({ portal: 'staff', school_id: fixture.schoolId, password: oldPassword })
+    assert.equal(personnelLogin.user.role, role)
+    assert.equal(personnelLogin.redirect, { Librarian: '/librarian/dashboard', Staff: '/staff/dashboard', Admin: '/admin/dashboard' }[role])
+    await assert.rejects(auth.login({ portal: 'user', school_id: fixture.schoolId, password: oldPassword }), isCode('INVALID_CREDENTIALS'))
+    const [identity] = await db.execute('SELECT account_id,school_id,role,auth_version FROM accounts WHERE account_id=?', [fixture.accountId])
+    identities.push(identity[0])
+  }
   const tokenFor = identity => jwt.sign({ accountId: Number(identity.account_id), userId: Number(identity.account_id), schoolId: identity.school_id, role: identity.role, authVersion: Number(identity.auth_version) }, env.jwt.secret, { algorithm: 'HS256', expiresIn: 60, issuer: env.jwt.issuer, audience: env.jwt.audience, subject: String(identity.account_id) })
   for (const role of ['Librarian', 'Staff', 'Admin']) {
     const identity = identities.find(row => row.role === role)
@@ -82,8 +105,12 @@ try {
   assert.equal(Number(grants[0].total), 0)
   const [after] = await db.execute("SELECT COUNT(*) AS total FROM accounts WHERE school_id NOT LIKE 'REV1-%'", [])
   assert.equal(Number(before[0].total), Number(after[0].total))
-  console.log('PASS: real Postgres recovery, resend lock, password/token reuse prevention, old credential/session revocation, Librarian authority, Staff denial, notification links, and private RLS/grants. No emails sent.')
+  console.log('PASS: real Postgres recovery, resend lock, password/token reuse prevention, old credential/session revocation, personnel login/redirects, wrong-portal rejection, Librarian authority, Staff denial, notification links, and private RLS/grants. No emails sent.')
 } finally {
+  for (const fixture of personnelFixtures.reverse()) {
+    if (fixture.accountId) await db.execute('DELETE FROM accounts WHERE account_id=? AND school_id=?', [fixture.accountId, fixture.schoolId])
+    if (fixture.userId) await db.execute('DELETE FROM users WHERE user_id=? AND school_id=?', [fixture.userId, fixture.schoolId])
+  }
   if (accountId) await db.execute('DELETE FROM accounts WHERE account_id=? AND school_id=?', [accountId, schoolId])
   if (userId) await db.execute('DELETE FROM users WHERE user_id=? AND email=?', [userId, email])
   await db.end()

@@ -1,10 +1,12 @@
 import type { Pool, RowDataPacket } from 'mysql2/promise'
 import { db } from '../../config/db.js'
-import { forUpdate } from '../../config/sql-dialect.js'
+import { forUpdate, isPostgres } from '../../config/sql-dialect.js'
+import { createBookRequestService } from './book-request.service.ts'
 import { cancelPendingCounterClaim } from './reservation-claim.repository.ts'
 import { notifyReservationStatus } from './reservation-notification.ts'
 
 export async function expireReadyReservations(database: Pool = db, now: Date = new Date(), batchSize = 100) {
+  if (isPostgres) return createBookRequestService(database,()=>now).expire(now,batchSize)
   const safeBatchSize = Math.min(Math.max(Math.trunc(batchSize), 1), 500)
   const connection = await database.getConnection()
   try {

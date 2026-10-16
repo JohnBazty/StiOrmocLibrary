@@ -39,6 +39,7 @@ async function download(url:string,name:string,accept:string,expected?:string){c
 function filterParams(filters:FinanceFilters){const value=new URLSearchParams({period:filters.period,date:filters.date,month:filters.month});if(filters.period==='weekly')value.set('week',String(filters.week));return value}
 
 export const printingApi={
+  downloadInvoice:(row:PrintRequest,admin=false)=>download(`/api/v1/${admin?'admin/printing':'printing'}/requests/${row.request_id}/invoice/pdf`,`PRINT-INV-${String(row.request_id).padStart(8,'0')}.pdf`,'application/pdf','application/pdf'),
   serviceStatus:async()=>(await request<ServiceStatus>('/api/v1/printing/service-status')).data,
   pricing:async()=>(await request<PricingRule[]>('/api/v1/printing/pricing')).data,
   mine:async()=>(await request<PrintRequest[]>('/api/v1/printing/requests')).data,

@@ -1,4 +1,5 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { SelectedFilePreview } from '../../components/SelectedFilePreview'
 import { catalogApi } from './catalog-api'
 
 type Quotation = { quotationId: number; filename: string; quotedAmount: number; uploadedAt: string; current: boolean }
@@ -6,6 +7,8 @@ type Quotation = { quotationId: number; filename: string; quotedAmount: number; 
 export function BookQuotationModal({ titleId, title, onClose }: { titleId: number; title: string; onClose: () => void }) {
   const [items, setItems] = useState<Quotation[]>([])
   const [file, setFile] = useState<File | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const clearFile = () => { setFile(null); if (fileInput.current) fileInput.current.value = '' }
   const [amount, setAmount] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -14,7 +17,7 @@ export function BookQuotationModal({ titleId, title, onClose }: { titleId: numbe
   async function upload(event: FormEvent) {
     event.preventDefault(); if (!file || busy) return
     setBusy(true); setError('')
-    try { await catalogApi.uploadQuotation(titleId, file, Number(amount)); setFile(null); setAmount(''); await load() }
+    try { await catalogApi.uploadQuotation(titleId, file, Number(amount)); clearFile(); setAmount(''); await load() }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Quotation upload failed.') }
     finally { setBusy(false) }
   }
@@ -23,6 +26,6 @@ export function BookQuotationModal({ titleId, title, onClose }: { titleId: numbe
     <p className="mt-4 rounded-xl bg-[#FFF200] p-3 text-sm">A quotation is optional. Upload one only when the supplier provides a replacement price. Earlier versions stay in this history.</p>
     {error ? <p role="alert" className="mt-3 rounded-xl bg-[#FFF200] p-3 text-sm font-bold">{error}</p> : null}
     <div className="mt-4 space-y-2">{items.length ? items.map(item => <div key={item.quotationId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#003399]/20 p-3 text-sm"><div><strong>{item.current ? 'Current quotation' : 'Earlier quotation'} · ₱{item.quotedAmount.toFixed(2)}</strong><p>{item.filename} · {new Date(item.uploadedAt).toLocaleString('en-PH')}</p></div><button type="button" onClick={() => void catalogApi.downloadQuotation(titleId, item.quotationId, item.filename).catch(cause => setError(cause instanceof Error ? cause.message : 'Download failed.'))} className="font-bold underline">Download</button></div>) : <p className="text-sm">No quotation uploaded for this book.</p>}</div>
-    <form onSubmit={upload} className="mt-5 space-y-3 border-t border-[#003399]/20 pt-4"><label className="block text-sm font-bold">Supplier quotation file<input required type="file" accept="application/pdf,image/jpeg,image/png" onChange={event => setFile(event.target.files?.[0] ?? null)} className="mt-1 block w-full" /></label><label className="block text-sm font-bold">Quoted replacement amount (PHP)<input required type="number" min="0.01" max="1000000" step="0.01" value={amount} onChange={event => setAmount(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-[#003399]/30 px-3" /></label><button disabled={busy || !file} className="rounded-lg bg-[#003399] px-4 py-2 font-bold text-white disabled:opacity-50">{busy ? 'Uploading…' : items.length ? 'Upload newer quotation' : 'Upload quotation'}</button></form>
+    <form onSubmit={upload} className="mt-5 space-y-3 border-t border-[#003399]/20 pt-4"><label className="block text-sm font-bold">Supplier quotation file<input ref={fileInput} disabled={busy} required type="file" accept="application/pdf,image/jpeg,image/png" onChange={event => setFile(event.target.files?.[0] ?? null)} className="mt-1 block w-full" /></label><SelectedFilePreview file={file} onRemove={clearFile} disabled={busy} /><label className="block text-sm font-bold">Quoted replacement amount (PHP)<input required type="number" min="0.01" max="1000000" step="0.01" value={amount} onChange={event => setAmount(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-[#003399]/30 px-3" /></label><button disabled={busy || !file} className="rounded-lg bg-[#003399] px-4 py-2 font-bold text-white disabled:opacity-50">{busy ? 'Uploading…' : items.length ? 'Upload newer quotation' : 'Upload quotation'}</button></form>
   </section></div>
 }

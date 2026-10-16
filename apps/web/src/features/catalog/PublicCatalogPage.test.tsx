@@ -21,7 +21,8 @@ it('allows anonymous browsing and details while borrowing leads to login',async(
  expect(await screen.findByRole('dialog')).toBeTruthy()
  expect(screen.getAllByRole('img',{name:'Example library book book cover'})).toHaveLength(2)
  expect(screen.getByText('Available · Good')).toBeTruthy()
- expect(screen.getByRole('link',{name:'Borrow this book'}).getAttribute('href')).toBe('/login?catalogTitleId=42')
+ expect(screen.getAllByRole('link',{name:'Borrow book'})).toHaveLength(2)
+ expect(screen.getAllByRole('link',{name:'Borrow book'}).every(link=>link.getAttribute('href')==='/login?catalogTitleId=42')).toBe(true)
 })
 
 it('filters from the main search, preserves other filters and resets pagination when typing or clearing',async()=>{

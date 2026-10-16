@@ -13,7 +13,7 @@ it('recovers through request, code and password stages without persisting recove
     return new Response(JSON.stringify({ success: true, data }), { headers: { 'Content-Type': 'application/json' } })
   }))
   render(<MemoryRouter><PasswordRecoveryPage /></MemoryRouter>)
-  fireEvent.change(screen.getByLabelText('School ID or school email'), { target: { value: 'STUDENT-123' } })
+  fireEvent.change(screen.getByLabelText('Student Number or school email'), { target: { value: 'STUDENT-123' } })
   fireEvent.click(screen.getByRole('button', { name: 'Send verification code' }))
   fireEvent.change(await screen.findByLabelText('Verification code'), { target: { value: '123456' } })
   fireEvent.click(screen.getByRole('button', { name: 'Verify code' }))
@@ -30,7 +30,7 @@ it('recovers through request, code and password stages without persisting recove
 it('shows a readable error for an empty/non-JSON recovery response and allows retry', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 502 })))
   render(<MemoryRouter><PasswordRecoveryPage /></MemoryRouter>)
-  fireEvent.change(screen.getByLabelText('School ID or school email'), { target: { value: 'STUDENT-123' } })
+  fireEvent.change(screen.getByLabelText('Student Number or school email'), { target: { value: 'STUDENT-123' } })
   fireEvent.click(screen.getByRole('button', { name: 'Send verification code' }))
   expect((await screen.findByRole('alert')).textContent).toContain('temporarily unavailable')
   expect(screen.getByRole('button', { name: 'Send verification code' }).hasAttribute('disabled')).toBe(false)

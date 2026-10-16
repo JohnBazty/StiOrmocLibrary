@@ -3,18 +3,20 @@
 | Field | Value |
 | --- | --- |
 | Date created | 2026-10-10 |
-| Date last updated | 2026-10-11 |
+| Date last updated | 2026-10-16 |
 | Status | `built` (local) |
 | Parent plan | [Revisions implementation plan](revisions-implementation-plan.md) |
 
 ## Why
+
+**2026-10-16 QA update:** The retained `ADMIN-PORTAL-001` login's conflicting account/user roles (P1-01) were discovered, repaired at the owner's request and rechecked. It now has canonical Librarian authority across both records. All 65 focused API regression tests and the live Postgres recovery/permissions gate pass; 20 interface tests passed earlier in the QA run. See [QA report and remaining manual acceptance limits](revision-phase1-qa-20261016.md) and [repair evidence](revision-phase1-role-repair-20261016.md). Earlier acceptance entries below describe their original run dates.
 
 Implement the approved login, Librarian authority, school-email password recovery, and red-error changes while preserving account identities and existing workflows.
 
 ## How
 
 - Infer the stored role from School ID/password. Public login serves Student/Faculty; `/staff` is the unlisted shared personnel login. Preserve old personnel URLs through redirects.
-- Give Librarian account administration in addition to existing operations. Keep the existing technical Admin account as a protected recovery/bootstrap account; do not change or delete identities. Staff remains limited to its current desk tasks and announcement publishing.
+- Give Librarian account administration in addition to existing operations. The owner's 2026-10-12 amendment consolidates the active Admin/Librarian logins into `ADMIN-PORTAL-001`, with canonical Librarian authority; archive the temporary `LIB-TEST-001` login and preserve identities/history. Staff remains limited to its current desk tasks and announcement publishing. See [consolidation record](admin-librarian-account-consolidation.md).
 - Add server-only, hashed password-recovery challenges. Codes expire after ten minutes, three wrong codes lock recovery for fifteen minutes, verified recovery tokens are single-use, and passwords/session versions update together.
 - Reuse the configured school-email sender, with password-recovery-specific messages. No credentials are added to tracked files.
 - Use accessible red error alerts with text/icons. Registration success/pending-approval information remains a status message.
@@ -37,6 +39,8 @@ Implement the approved login, Librarian authority, school-email password recover
 At start: tracked files through `016`, but live ledger through `019`. Applied reviewed `020_revision_phase1_password_recovery.sql`; next **021**. MySQL reference remains `047` unapplied / next **048**. Supabase connector project listings do not include the configured STI project, so inspect the configured database through the existing Postgres connection. Do not operate on unrelated listed projects.
 
 ## Change log
+
+- **2026-10-16:** Repaired P1-02: logout now conditionally revokes the current account/user authentication versions and cookie sessions transactionally, immediately rejecting copied bearer tokens. Older in-flight logout preserves newer logins; cookie login uses the same lock order, explicit bearer logout takes precedence over cookies, and CSRF remains enforced. No schema change or real-account reset. See [repair checks and evidence](revision-phase1-logout-repair-20261016.md).
 
 - **2026-10-10:** Started Revision Phase 1 at the owner's request. Confirmed the configured Supabase database has active Admin, Librarian, Staff, and Student accounts. Existing account IDs and data are preserved. Local implementation only; no GitHub push or deployment.
 
@@ -65,6 +69,8 @@ At start: tracked files through `016`, but live ledger through `019`. Applied re
 - Supabase ledger-source reconciliation remains separate work before any whole-directory migration replay. MySQL is preserved as a historical rollback reference, not enabled for this work.
 
 ## Completion change log
+
+- **2026-10-12:** Owner chose `ADMIN-PORTAL-001` for the combined Librarian/Admin account. Its current password/profile and linked account/user IDs are unchanged; its stored role is now Librarian and it opens `/librarian/dashboard` through `/staff`. `LIB-TEST-001` is archived with its historical records intact. Previous sessions and recovery grants were revoked. This supersedes the separate active Admin recovery/bootstrap arrangement described in older entries. See [consolidation evidence](admin-librarian-account-consolidation.md).
 
 - **2026-10-11:** Repaired a later credential mismatch for `ADMIN-PORTAL-001`: the owner's existing password matched its linked user but not the school-ID account record. Verified the owner-supplied password, backed up both records privately, aligned only this account's hash and invalidated prior authentication versions/recovery grants. Personnel login and JWT `/me` both returned HTTP 200. No general credential fallback or authorization change. See [repair record](admin-login-record-repair.md).
 

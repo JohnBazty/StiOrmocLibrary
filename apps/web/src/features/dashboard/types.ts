@@ -18,10 +18,11 @@ export type AdminDashboardData = {
 }
 
 export type UserDashboardData = {
+  clearanceSchedule?: import('../clearance/types').ClearanceSchedule | null
   generatedAt: string
   user: {name:string;schoolId:string;program:string|null;role:string}
   profile: LibraryProfile
-  summary: {activeLoans:number;activeBookCount:number;borrowingLimit:number|null;activeReservations:number;unreadNotifications:number;outstandingFines:number;clearanceStatus:string}
+  summary: {activeLoans:number;activeBookCount:number;borrowingLimit:number|null;activeReservations:number;unreadNotifications:number;outstandingFines:number;clearanceStatus:string;clearanceComputedStatus?:string}
   occupancy: {current:number;capacity:number}
   currentLoan: null|{id:number;title:string;author:string;barcode:string;shelfLocation:string;status:string;dueAt:string;coverPath:string|null}
   reservation: null|{id:number;title:string;coverPath:string|null;queuePosition:number;status:string;pickupDeadline:string|null}

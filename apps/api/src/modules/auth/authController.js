@@ -97,15 +97,25 @@ export function currentUser(request, response) {
   response.json({ success: true, user: request.session.user, redirect: dashboardForRole(request.session.user.role) })
 }
 
-export function logout(request, response, next) {
-  request.session.destroy((error) => {
-    if (error) return next(error)
-    response.clearCookie(env.session.name, {
-      httpOnly: sessionCookie.httpOnly,
-      secure: sessionCookie.secure,
-      sameSite: sessionCookie.sameSite,
-      path: sessionCookie.path,
-    })
-    return response.redirect(303, '/login?logout=1')
-  })
+export function createLogoutController({ sessions = createAuthSessionRepository() } = {}) {
+  return async function logout(request, response, next) {
+    try {
+      const identity = response.locals.authenticationType === 'jwt'
+        ? { accountId: response.locals.authenticatedUser.accountId, authVersion: response.locals.authenticatedUser.authVersion }
+        : { userId: request.session.user.id, authVersion: Number(request.session.authVersion ?? 1) }
+      await sessions.revokeCurrentVersion(identity)
+      await new Promise((resolve, reject) => request.session.destroy(error => error ? reject(error) : resolve()))
+      response.clearCookie(env.session.name, {
+        httpOnly: sessionCookie.httpOnly,
+        secure: sessionCookie.secure,
+        sameSite: sessionCookie.sameSite,
+        path: sessionCookie.path,
+      })
+      return response.redirect(303, '/login?logout=1')
+    } catch (error) {
+      next(error)
+    }
+  }
 }
+
+export const logout = createLogoutController()

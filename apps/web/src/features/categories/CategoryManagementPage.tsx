@@ -1,6 +1,6 @@
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowRightLeft, BookOpen, FileText, Pencil, Plus, Tags, Trash2, X } from 'lucide-react'
+import { AlertCircle, ArrowRightLeft, BookOpen, CheckCircle2, FileText, Pencil, Plus, Tags, Trash2, X } from 'lucide-react'
 import { PageHeader, SectionCard } from '../../components/ui'
 import { categoryApi, CategoryApiError } from './category-api'
 import type { Category, CategoryPayload } from './types'
@@ -96,7 +96,7 @@ export function CategoryManagementPage() {
   return <>
     <PageHeader eyebrow="Classification administration" title="Category management" description="Maintain catalog classifications, shelf locations, and active book/research assignments." action={<button onClick={() => { setFieldErrors({}); setEditor({ mode: 'create', category: null }) }} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#003399] px-4 text-sm font-bold text-white"><Plus size={16} /> Add category</button>} />
 
-    {notice ? <div role="alert" className={`mb-5 flex items-start justify-between rounded-xl border px-4 py-3 text-sm font-semibold ${notice.error ? 'border-[#FFF200] bg-[#FFF200] text-[#003399]' : 'border-[#003399] bg-white text-[#003399]'}`}><span>{notice.message}</span><button aria-label="Dismiss alert" onClick={() => setNotice(null)}><X size={16} /></button></div> : null}
+    {notice ? <div role={notice.error ? 'alert' : 'status'} data-tone={notice.error ? 'error' : 'success'} className="mb-5 flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-semibold">{notice.error ? <AlertCircle aria-hidden size={20} className="shrink-0" /> : <CheckCircle2 aria-hidden size={20} className="shrink-0" />}<span className="min-w-0 flex-1 break-words">{notice.message}</span><button aria-label="Dismiss alert" onClick={() => setNotice(null)} className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg hover:bg-white/10"><X size={16} /></button></div> : null}
 
     <SectionCard className="mb-5 p-5"><h2 className="font-bold text-[#003399]">Managed shelves</h2><p className="mt-1 text-sm text-[#003399]/70">Create a shelf label here, then assign categories and books to it.</p><form className="mt-4 flex flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); void addShelf() }}><input aria-label="New shelf label" value={newShelf} onChange={(event) => setNewShelf(event.target.value)} maxLength={100} placeholder="Shelf label" className={`${inputClass} max-w-xs`} /><button disabled={saving || !newShelf.trim()} className="rounded-xl bg-[#003399] px-4 text-sm font-bold text-white disabled:opacity-50">Add shelf</button></form><p className="mt-3 text-xs text-[#003399]/65">{shelves.length} shelves available</p></SectionCard>
 

@@ -1,7 +1,10 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+import type { ReactElement } from 'react'
+import { cleanup, fireEvent, render as baseRender, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ProfileAvatarPage } from './ProfileAvatarPage'
 
+const render = (ui: ReactElement) => baseRender(<MemoryRouter>{ui}</MemoryRouter>)
 const api = vi.hoisted(() => ({ myProfile: vi.fn(), saveMyProfile: vi.fn() }))
 vi.mock('./users-api', () => ({ usersApi: api }))
 vi.mock('../auth/auth-storage', () => ({ getAccessToken: () => 'test-token' }))
@@ -20,6 +23,21 @@ it('lets the owner edit academic details while school email and ID stay fixed', 
   fireEvent.change(screen.getByRole('textbox', { name: 'Year / grade level' }), { target: { value: '3rd Year' } })
   fireEvent.click(screen.getByRole('button', { name: 'Save my profile' }))
   await waitFor(() => expect(api.saveMyProfile).toHaveBeenCalledWith({ first_name: 'Test', last_name: 'Student', program_strand: 'BSIT', year_grade_level: '3rd Year' }))
+})
+
+it('opens school details independently with read-only identity fields', async () => {
+  baseRender(<MemoryRouter initialEntries={['/student/profile?section=school']}><ProfileAvatarPage /></MemoryRouter>)
+  expect((await screen.findByDisplayValue('STI-9') as HTMLInputElement).readOnly).toBe(true)
+  expect((screen.getByDisplayValue('student@ormoc.sti.edu.ph') as HTMLInputElement).readOnly).toBe(true)
+  expect(screen.getByRole('textbox',{name:'Year / grade level'})).toBeTruthy()
+  expect(screen.queryByRole('textbox',{name:'First name'})).toBeNull()
+  expect(screen.queryByLabelText('New picture')).toBeNull()
+})
+it('opens the photo section independently without personal or school forms', async () => {
+  baseRender(<MemoryRouter initialEntries={['/student/profile?section=photo']}><ProfileAvatarPage /></MemoryRouter>)
+  expect(await screen.findByLabelText('New picture')).toBeTruthy()
+  expect(screen.queryByRole('textbox',{name:'First name'})).toBeNull()
+  expect(screen.queryByRole('textbox',{name:'School email'})).toBeNull()
 })
 
 it('previews a selected picture without replacing the approved photo and clears it after removal', async () => {

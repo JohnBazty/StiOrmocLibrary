@@ -36,6 +36,7 @@ import { logout } from '../features/auth/auth-api'
 import { AttendanceFab } from '../features/attendance/AttendanceFab'
 import { useMockAuth } from '../features/inventory/MockAuthContext'
 import { ThemeToggle } from '../features/theme/ThemeToggle'
+import { SessionActivity } from '../features/auth/SessionActivity'
 import { SidebarAccountCard } from './SidebarAccountCard'
 
 type Role = 'student' | 'faculty' | 'admin' | 'librarian' | 'staff'
@@ -44,13 +45,14 @@ type NavItem = { label: string; to: string; icon: LucideIcon; section?: string }
 const userNav = (role: 'student' | 'faculty'): NavItem[] => {
   const prefix = role === 'faculty' ? '/faculty' : '/student'
   return [
-    { label: 'Overview', to: `${prefix}/dashboard`, icon: LayoutDashboard, section: 'My library' },
+    { label: 'Dashboard', to: `${prefix}/dashboard`, icon: LayoutDashboard, section: 'My library' },
     { label: 'Library catalog', to: `${prefix}/library`, icon: BookOpen },
     { label: 'Library floor plan', to: `${prefix}/floor-plan`, icon: Map },
     { label: 'Book cart', to: `${prefix}/cart`, icon: ShoppingCart },
     { label: 'Research & thesis', to: `${prefix}/research`, icon: FileText },
     { label: 'Borrowing history', to: `${prefix}/borrowing`, icon: CalendarClock, section: 'My activity' },
-    { label: 'Reservations', to: `${prefix}/reservations`, icon: BookMarked },
+    { label: 'Requests & reservations', to: `${prefix}/reservations`, icon: BookMarked },
+    { label: 'My books', to: `${prefix}/my-books`, icon: LibraryBig },
     ...(role === 'student' ? [{ label: 'Printing service', to: '/student/printing', icon: Printer }] : []),
     { label: 'QR attendance', to: `${prefix}/attendance`, icon: QrCode },
     { label: 'Notifications', to: `${prefix}/notifications`, icon: Bell, section: 'My account' },
@@ -71,14 +73,14 @@ const adminNav: NavItem[] = [
 const librarianNav: NavItem[] = [
   { label: 'Dashboard', to: '/librarian/dashboard', icon: LayoutDashboard, section: 'Operations' },
   { label: 'Maintenance', to: '/librarian/maintenance', icon: Settings },
-  { label: 'Borrowing policies', to: '/librarian/borrowing-policies', icon: ClipboardCheck },
   { label: 'Reports', to: '/librarian/reports', icon: FileBarChart },
   { label: 'Book archive', to: '/librarian/book-archive', icon: Archive },
   { label: 'Categories', to: '/librarian/categories', icon: Tags },
   { label: 'Borrow & return', to: '/librarian/circulation', icon: CalendarClock },
-  { label: 'Reservations', to: '/librarian/reservations', icon: BookMarked },
+  { label: 'Book queue', to: '/librarian/reservations', icon: BookMarked },
   { label: 'Fines', to: '/librarian/fines', icon: CircleDollarSign },
   { label: 'Inventory', to: '/librarian/inventory', icon: Archive, section: 'Resources' },
+  { label: 'Collection review', to: '/librarian/collection-review', icon: ClipboardCheck },
   { label: 'Floor plan', to: '/librarian/floor-plan', icon: Map },
   { label: 'Printing queue', to: '/librarian/printing', icon: Printer },
   { label: 'Print supplies', to: '/librarian/supplies', icon: PackageOpen },
@@ -95,7 +97,7 @@ const librarianNav: NavItem[] = [
 const staffNav: NavItem[] = [
   { label: 'Dashboard', to: '/staff/dashboard', icon: LayoutDashboard, section: 'My tasks' },
   { label: 'Borrow & return', to: '/staff/circulation', icon: CalendarClock },
-  { label: 'Reservations', to: '/staff/reservations', icon: BookMarked },
+  { label: 'Book queue', to: '/staff/reservations', icon: BookMarked },
   { label: 'Printing queue', to: '/staff/printing', icon: Printer },
   { label: 'Attendance', to: '/staff/attendance', icon: QrCode },
   { label: 'Announcements', to: '/staff/announcements', icon: Megaphone },
@@ -123,6 +125,7 @@ function Sidebar({ role, open, onClose }: { role: Role; open: boolean; onClose: 
     return () => media.removeEventListener('change', update)
   }, [])
   const nav = navigation(role)
+  const location = useLocation()
   const preview = useMockAuth()
   const claims = preview.identity ?? getCurrentIdentity()
   return (
@@ -133,6 +136,7 @@ function Sidebar({ role, open, onClose }: { role: Role; open: boolean; onClose: 
         <nav className="flex-1 overflow-y-auto px-3 py-5">
           {nav.map((item) => {
             const Icon = item.icon
+            if (item.label === 'My profile' && (role === 'student' || role === 'faculty')) return <details key={item.to} className="mb-1 rounded-xl bg-white/5" open={location.pathname === item.to || undefined}><summary className="flex min-h-11 cursor-pointer items-center gap-3 px-3 py-3 text-sm"><Icon size={17} />My profile</summary><div className="pb-2 pl-6">{[['personal','Personal details'],['school','School details'],['photo','Profile photo']].map(([section,label]) => <NavLink key={section} to={`${item.to}?section=${section}`} onClick={onClose} className="block min-h-11 rounded-lg px-3 py-3 text-sm text-white hover:bg-white/10">{label}</NavLink>)}</div></details>
             return <div key={item.to}>{item.section ? <p className="mb-2 mt-4 px-3 text-[9px] font-bold uppercase tracking-[0.2em] text-white/40 first:mt-0">{item.section}</p> : null}<NavLink onClick={onClose} to={item.to} className={({ isActive }) => cn('mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition lg:py-2.5', isActive ? 'bg-white text-[#003399] shadow-sm dark:bg-[#FFF200]' : 'text-white/70 hover:bg-white/10 hover:text-white')}><Icon size={17} /><span>{item.label}</span></NavLink></div>
           })}
         </nav>
@@ -148,6 +152,7 @@ export function PortalLayout({ role }: { role: Role }) {
   const navigate = useNavigate()
   const nav = navigation(role)
   const current = nav.find((item) => location.pathname.startsWith(item.to))
+  const [unreadCount, setUnreadCount] = useState(0)
   const [hasAdminAlerts, setHasAdminAlerts] = useState(false)
   useEffect(() => {
     const media = window.matchMedia?.('(min-width: 1024px)')
@@ -191,14 +196,16 @@ export function PortalLayout({ role }: { role: Role }) {
         }
         const response = await fetch('/api/v1/notifications?status=unread&limit=1', { headers: requestHeaders, credentials: 'include' })
         const payload = await response.json() as { success?: boolean; data?: unknown[] | { unreadCount?: number } }
+        if (active && response.ok) setUnreadCount(Array.isArray(payload.data) ? payload.data.length : Number(payload.data?.unreadCount ?? 0))
         const hasAlerts = Array.isArray(payload.data) ? Boolean(payload.data.length) : Number(payload.data?.unreadCount ?? 0) > 0
         if (active) setHasAdminAlerts(pending || (response.ok && Boolean(payload.success) && hasAlerts))
       } catch { /* The page-level operational modules surface connectivity errors. */ }
     }
-    void loadAlerts(); const timer = window.setInterval(() => void loadAlerts(), 15000)
-    return () => { active = false; window.clearInterval(timer) }
+    const update = () => { if (!document.hidden) void loadAlerts() }; window.addEventListener('smartlib:notifications-updated', update);
+    void loadAlerts(); const timer = window.setInterval(() => { if (!document.hidden) void loadAlerts() }, 5000)
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener('smartlib:notifications-updated', update) }
   }, [role])
-  const signOut = async () => { await logout(); navigate('/login', { replace: true }) }
+  const signOut = () => { void logout(); navigate('/login', { replace: true }) }
 
   return (
     <div className="portal-layout min-h-screen bg-[#FFFFFF] text-[#003399] transition-colors dark:bg-[#000d2b] dark:text-[#f2f6ff]">
@@ -210,12 +217,12 @@ export function PortalLayout({ role }: { role: Role }) {
           <label className="relative ml-auto hidden w-64 xl:block"><Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#003399]/45 dark:text-white/45" size={15} /><input placeholder="Search anywhere..." className="h-10 w-full rounded-xl border border-[#003399]/15 bg-[#003399]/5 pl-9 pr-3 text-sm outline-none transition focus:border-[#003399]/15 focus:bg-white focus:ring-4 focus:ring-[#003399]/10 dark:border-white/15 dark:bg-white/5 dark:text-white dark:focus:bg-[#002266]" /></label>
           <div className="ml-auto flex items-center gap-2 xl:ml-3">
             <ThemeToggle />
-            <button onClick={() => navigate(role === 'admin' ? '/admin/notifications' : role === 'librarian' ? '/librarian/notifications' : role === 'staff' ? '/staff/notifications' : role === 'faculty' ? '/faculty/notifications' : '/student/notifications')} aria-label="Notifications" className="relative rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 transition hover:bg-[#003399]/5 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><Bell size={18} />{hasAdminAlerts ? <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#FFF200] ring-2 ring-white dark:ring-[#001a4d]" /> : null}</button>
+            <button onClick={() => navigate(role === 'admin' ? '/admin/notifications' : role === 'librarian' ? '/librarian/notifications' : role === 'staff' ? '/staff/notifications' : role === 'faculty' ? '/faculty/notifications' : '/student/notifications')} aria-label="Notifications" className="relative rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 transition hover:bg-[#003399]/5 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><Bell size={18} />{unreadCount > 0 ? <span aria-label={`${unreadCount} unread notifications`} className="absolute -right-2 -top-2 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-700 px-1 text-[10px] font-bold tabular-nums text-white">{unreadCount > 99 ? '99+' : unreadCount}</span> : hasAdminAlerts ? <span className="absolute right-2 top-2 size-2 rounded-full bg-[#FFF200]" /> : null}</button>
             <button onClick={signOut} aria-label="Sign out" title="Sign out" className="rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 transition hover:bg-[#003399]/5 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><LogOut size={18} /></button>
             <button aria-label="Collapse sidebar" className="hidden rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 lg:block dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80"><PanelLeftClose size={18} /></button>
           </div>
         </header>
-        <main className="portal-content mx-auto min-w-0 max-w-[1500px] p-4 sm:p-6 lg:p-8"><Outlet /></main>
+        <SessionActivity /><main className="portal-content mx-auto min-w-0 max-w-[1500px] p-4 sm:p-6 lg:p-8"><Outlet /></main>
         {role !== 'admin' ? <AttendanceFab role={role} /> : null}
       </div>
     </div>

@@ -1,7 +1,7 @@
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { ViewLocationButton } from '../floor-plan/ViewLocationButton'
 import { AlertTriangle, BookOpen, CalendarClock, Eye, RefreshCw, X } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, PageHeader, SectionCard, StatCard, StatusBadge } from '../../components/ui'
 import { circulationApi } from './circulation-api'
 import { InLibraryHistory } from './InLibraryHistory'
@@ -15,10 +15,11 @@ import { clearanceApi } from '../clearance/clearance-api'
 function formatDate(value: string | null) {
   if (!value) return '—'
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' })
 }
 
 export function BorrowingHistory() {
+  const [page, setPage] = useState(1)
   const [data, setData] = useState<BorrowingHistoryData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -30,15 +31,18 @@ export function BorrowingHistory() {
   const [reporting, setReporting] = useState<BorrowingHistoryData['items'][number] | null>(null)
   const [reportBusy, setReportBusy] = useState(false)
   const [reportError, setReportError] = useState('')
+  const fetching = useRef(false)
   const load = useCallback(async () => {
-    setLoading(true); setError('')
-    try { setData(await circulationApi.history()) }
-    catch (reason) { setData(null); setError(reason instanceof Error ? reason.message : 'Borrowing history is unavailable.') }
-    finally { setLoading(false) }
-  }, [])
+    if (fetching.current) return
+    fetching.current = true
+    setError('')
+    try { setData(await circulationApi.history(page)) }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Borrowing history is unavailable.') }
+    finally { setLoading(false); fetching.current = false }
+  }, [page])
   useEffect(() => {
     void load()
-    const refresh = () => void load()
+    const refresh = () => { if (!document.hidden) void load() }
     const timer = window.setInterval(refresh, 5_000)
     window.addEventListener('smartlib:circulation-updated', refresh)
     return () => { window.clearInterval(timer); window.removeEventListener('smartlib:circulation-updated', refresh) }
@@ -91,6 +95,7 @@ export function BorrowingHistory() {
           <td className="px-5 py-4 text-[#003399]">{item.author}</td><td className="px-5 py-4 text-[#003399]">{formatDate(item.borrowDate)}</td><td className="px-5 py-4 font-semibold text-[#003399]">{formatDate(item.dueDate)}</td><td className="px-5 py-4"><StatusBadge status={item.lostReportStatus ?? item.status} /></td><td className="px-5 py-4"><div className="flex justify-end gap-2">{item.titleId ? <ViewLocationButton titleId={Number(item.titleId)} barcode={item.barcode}/> : null}{item.titleId ? <button onClick={() => setDetail({ titleId: Number(item.titleId), barcode: item.barcode })} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#003399]/20 px-3 text-xs font-bold text-[#003399]"><Eye size={15} /> View details</button> : null}{item.status === 'Pending' ? <button onClick={() => { setCancelError(''); setCancelling(item) }} className="h-9 rounded-lg px-3 text-xs font-bold text-[#003399] hover:bg-[#FFF200]"><X size={14} className="inline" /> Cancel request</button> : null}{['Borrowed','Overdue'].includes(item.status) && !item.lostReportStatus ? <button onClick={() => { setReportError(''); setReporting(item) }} className="h-9 rounded-lg bg-[#FFF200] px-3 text-xs font-bold text-[#003399]">Report lost</button> : null}</div></td>
         </tr>) : <tr><td colSpan={6} className="px-5 py-12 text-center font-semibold text-[#003399]">{error ? 'Unable to load borrowing records. Use Refresh to try again.' : 'No borrowing transactions have been recorded.'}</td></tr>}</tbody>
       </table></ResponsiveTable>
+      {data && data.pagination.totalPages > 1 ? <nav aria-label="Borrowing history pages" className="flex flex-wrap items-center justify-between gap-3 border-t p-4 text-sm"><Button variant="secondary" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>Previous</Button><span>Page {data.pagination.page} of {data.pagination.totalPages} · {data.pagination.total} transactions</span><Button variant="secondary" disabled={page >= data.pagination.totalPages} onClick={() => setPage(value => value + 1)}>Next</Button></nav> : null}
     </SectionCard>
     <InLibraryHistory />
     {detail ? <BookDetailDrawer titleId={detail.titleId} barcode={detail.barcode} onClose={() => setDetail(null)} /> : null}

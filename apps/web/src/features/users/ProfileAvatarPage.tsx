@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { Camera, CheckCircle2, Clock3, GraduationCap, ImagePlus, LockKeyhole, Save, ShieldCheck, UserRound, X } from 'lucide-react'
+import { Camera, CheckCircle2, Clock3, GraduationCap, ImagePlus, LockKeyhole, Save, ShieldCheck, UserRound } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { SelectedFilePreview } from '../../components/SelectedFilePreview'
 import { PageHeader } from '../../components/ui'
 import { getAccessToken } from '../auth/auth-storage'
 import { usersApi, type OwnProfile, type ProfileEdit } from './users-api'
@@ -8,6 +10,9 @@ import { notifyProfileUpdated } from './profile-events'
 type AvatarState = { currentUrl: string | null; pending: { id: number; submittedAt: string } | null; lastRejection?: { reviewedAt: string; reason: string } | null }
 
 export function ProfileAvatarPage() {
+  const [params] = useSearchParams()
+  const section = params.get('section')
+  const showAll = !['personal', 'school', 'photo'].includes(section ?? '')
   const [data, setData] = useState<AvatarState | null>(null)
   const [profile, setProfile] = useState<OwnProfile | null>(null)
   const [draft, setDraft] = useState<ProfileEdit>({ first_name: '', last_name: '', program_strand: '', year_grade_level: '' })
@@ -69,15 +74,15 @@ export function ProfileAvatarPage() {
   }
   const name = profile ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || profile.full_name || 'Your account' : 'Your account'
   const initials = profile ? `${profile.first_name?.[0] ?? ''}${profile.last_name?.[0] ?? ''}`.toUpperCase() : ''
-  return <div className="my-profile-page"><PageHeader eyebrow="My account" title="My profile" />
+  return <div className="my-profile-page"><PageHeader eyebrow="My account" title={showAll ? 'My profile' : section === 'personal' ? 'Personal details' : section === 'school' ? 'School details' : 'Profile photo'} />
     <section className="profile-summary" aria-label="Account summary">
       <div className="profile-summary-icon"><UserRound size={26} /></div>
       <div className="min-w-0 flex-1"><p className="profile-summary-eyebrow">Your library identity</p><h2>{name}</h2><p className="profile-summary-description">Keep your details up to date for a smoother library experience.</p></div>
       {profile ? <div className="profile-summary-tags"><span><ShieldCheck size={14} />{profile.role}</span><span><CheckCircle2 size={14} />{profile.account_status}</span></div> : null}
     </section>
     {message ? <p role={messageError ? 'alert' : 'status'} className="profile-message">{message}</p> : null}
-    <div className="profile-layout">
-      <section className="profile-panel profile-photo-panel" aria-labelledby="profile-photo-heading">
+    <div className="profile-layout" style={!showAll ? { gridTemplateColumns: 'minmax(0, 1fr)' } : undefined}>
+      {showAll || section === 'photo' ? <section className="profile-panel profile-photo-panel" aria-labelledby="profile-photo-heading">
         <div className="profile-photo-banner"><Camera size={19} /><span>Make it yours</span></div>
         <div className="profile-photo-body">
           <div className="profile-avatar">{preview || data?.currentUrl ? <img src={preview ?? data!.currentUrl!} alt={preview ? 'New picture preview' : 'Your approved profile picture'} /> : <span aria-label="No approved profile picture">{initials || <UserRound size={40} />}</span>}<span className="profile-avatar-camera"><Camera size={15} /></span></div>
@@ -87,25 +92,25 @@ export function ProfileAvatarPage() {
           {data?.lastRejection ? <p role="status" className="profile-photo-note">Your previous picture was not approved: {data.lastRejection.reason}</p> : null}
           <form onSubmit={submit} className="profile-upload-form">
             <label className="profile-upload"><ImagePlus size={24} /><span>{file ? 'Choose a different picture' : 'Choose a picture'}</span><span className="profile-upload-hint">PNG, JPEG or WebP · up to 2 MB</span><input ref={fileInput} aria-label="New picture" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={event => selectPicture(event.target.files?.[0] ?? null)} /></label>
-            {file ? <div className="profile-selected-file"><span title={file.name}>{file.name}</span><button type="button" aria-label="Remove selected picture" disabled={busy} onClick={clearPicture}><X size={15} /></button></div> : null}
+            <SelectedFilePreview file={file} onRemove={clearPicture} removeLabel="Remove selected picture" disabled={busy} />
             <button disabled={busy || !file} className="profile-primary-button"><ShieldCheck size={16} />{operation === 'photo' ? 'Uploading…' : 'Submit for approval'}</button>
           </form>
           <p className="profile-photo-note">New pictures appear on your account after Librarian approval.</p>
         </div>
-      </section>
-      <section className="profile-panel profile-details-panel" aria-labelledby="profile-details-heading">
+      </section> : null}
+      {showAll || section !== 'photo' ? <section className="profile-panel profile-details-panel" aria-labelledby="profile-details-heading">
         <header className="profile-panel-heading"><span className="profile-section-icon"><UserRound size={20} /></span><div><h2 id="profile-details-heading">Profile details</h2><p className="profile-muted">Only you can edit your personal information.</p></div></header>
         {profile ? <form onSubmit={saveProfile}>
-          <fieldset className="profile-field-section" disabled={busy}><legend>Personal information</legend><div className="profile-field-grid">
+          <fieldset style={!showAll && section !== 'personal' ? { display: 'none' } : undefined} className="profile-field-section" disabled={busy}><legend>Personal information</legend><div className="profile-field-grid">
             {([['first_name', 'First name'], ['last_name', 'Last name']] as const).map(([key, label]) => <label key={key}>{label}<input required maxLength={100} autoComplete={key === 'first_name' ? 'given-name' : 'family-name'} value={draft[key]} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))} /></label>)}
           </div></fieldset>
-          {profile.role === 'Student' ? <fieldset className="profile-field-section" disabled={busy}><legend><GraduationCap size={16} />Academic details</legend><div className="profile-field-grid">
+          {profile.role === 'Student' && (showAll || section === 'school') ? <fieldset className="profile-field-section" disabled={busy}><legend><GraduationCap size={16} />Academic details</legend><div className="profile-field-grid">
             {([['program_strand', 'Program / strand'], ['year_grade_level', 'Year / grade level']] as const).map(([key, label]) => <label key={key}>{label}<input required value={draft[key]} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))} /></label>)}
           </div></fieldset> : null}
-          <div className="profile-identity"><div className="profile-identity-heading"><LockKeyhole size={16} /><h3>School identity</h3><span>Read-only</span></div><p className="profile-muted">Your school ID and email are linked to your account.</p><div className="profile-field-grid"><label>School ID<input value={profile.school_id} readOnly /></label><label>School email<input value={profile.email ?? ''} readOnly /></label></div></div>
+          <div style={!showAll && section !== 'school' ? { display: 'none' } : undefined} className="profile-identity"><div className="profile-identity-heading"><LockKeyhole size={16} /><h3>School identity</h3><span>Read-only</span></div><p className="profile-muted">Your school ID and email are linked to your account.</p><div className="profile-field-grid"><label>School ID<input value={profile.school_id} readOnly /></label><label>School email<input value={profile.email ?? ''} readOnly /></label></div></div>
           <footer className="profile-save-bar"><p><ShieldCheck size={15} />Updates are recorded in your account history.</p><button disabled={busy} className="profile-primary-button"><Save size={16} />{operation === 'profile' ? 'Saving…' : 'Save my profile'}</button></footer>
         </form> : <p className="p-6 profile-muted">Loading profile…</p>}
-      </section>
+      </section> : null}
     </div>
   </div>
 }

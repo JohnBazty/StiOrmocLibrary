@@ -4,6 +4,8 @@ const actor=(res:Response):DeskActor=>({accountId:Number(res.locals.authenticate
 const handle=(fn:(req:Request,res:Response)=>Promise<unknown>)=>(req:Request,res:Response,next:NextFunction)=>{res.set('Cache-Control','no-store');void fn(req,res).then(data=>res.json({success:true,data})).catch(next)}
 export const deskCirculationRouter=Router()
 deskCirculationRouter.post('/borrower',handle((req,res)=>deskCirculationService.borrower(actor(res),req.body)))
+deskCirculationRouter.post('/request-preview',handle((req,res)=>deskCirculationService.requestPreview(actor(res),req.body)))
+
 deskCirculationRouter.post('/preview',handle((req,res)=>deskCirculationService.preview(actor(res),req.body)))
 deskCirculationRouter.post('/checkout',handle((req,res)=>deskCirculationService.checkout(actor(res),req.body)))
 deskCirculationRouter.post('/return-preview',handle((req,res)=>deskCirculationService.returnPreview(actor(res),req.body)))

@@ -107,6 +107,9 @@ export async function generateNotifications(database: Pool = db, now: Date = new
        WHERE u.account_status='Active' AND c.closed_date BETWEEN ${currentDate()} AND ${dateAddDays(currentDate(), 7)}`), []],
   ]
   let inserted = 0
+  // Phase 6 writes complete, deduplicated status notices at the transaction boundary.
+  // Do not manufacture a second historic reservation notice every minute.
+  if(isPostgres) queries.splice(3,1)
   for (const [sql, values] of queries) {
     const [result] = await database.execute(sql, values)
     inserted += (result as ResultSetHeader).affectedRows

@@ -37,16 +37,19 @@ export function NotificationCenterPage() {
   const navigate = useNavigate()
   const load = useCallback(async () => {
     setError('')
-    try { const [items, hours] = await Promise.all([notificationApi.list(), notificationApi.schedule()]); setData(items); setSchedule(hours) }
+    try { const [items, hours] = await Promise.all([notificationApi.list(), notificationApi.schedule()]); setData(items); setSchedule(hours); window.dispatchEvent(new Event('smartlib:notifications-updated')) }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Notifications are unavailable.') }
   }, [])
-  useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 30_000); return () => window.clearInterval(timer) }, [load])
+  useEffect(() => { void load(); const timer = window.setInterval(() => { if (!document.hidden) void load() }, 30_000); return () => window.clearInterval(timer) }, [load])
   async function read(item: NotificationItem) {
-    if (!item.isRead) await notificationApi.markRead(item.notificationId)
-    const target = route(item.actionPath); if (target) navigate(target)
-    await load()
+    setError('')
+    try {
+      if (!item.isRead) { await notificationApi.markRead(item.notificationId); window.dispatchEvent(new Event('smartlib:notifications-updated')) }
+      const target = route(item.actionPath); if (target) navigate(target)
+      else await load()
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'The notification could not be opened. Try again.') }
   }
-  async function readAll() { setBusy(true); try { await notificationApi.markAllRead(); await load() } finally { setBusy(false) } }
+  async function readAll() { setBusy(true); setError(''); try { await notificationApi.markAllRead(); await load() } catch (reason) { setError(reason instanceof Error ? reason.message : 'Notifications could not be marked read. Try again.') } finally { setBusy(false) } }
   async function remove(item: NotificationItem) {
     setDeletingId(item.notificationId); setError('')
     try { await notificationApi.remove(item.notificationId); await load() }

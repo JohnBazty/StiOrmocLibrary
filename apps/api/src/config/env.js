@@ -83,7 +83,7 @@ export const env = Object.freeze({
   session: {
     name: 'sti.sid',
     secret: configuredSecret || randomBytes(48).toString('hex'),
-    idleTimeoutMs: 30 * 60 * 1000,
+    idleTimeoutMs: 10 * 60 * 1000,
   },
   jwt: {
     secret: developmentJwtSecret,

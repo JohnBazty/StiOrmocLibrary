@@ -22,6 +22,7 @@ describe('AddMultipleCopiesModal', () => {
     fireEvent.change(isbn, { target: { value: '9780132350884' } })
     fireEvent.blur(isbn)
     await waitFor(() => expect(api.lookupIsbn).toHaveBeenCalledWith('9780132350884', expect.any(AbortSignal)))
+    await screen.findByDisplayValue('Clean Code')
     expect((screen.getByLabelText(/Title \*/i) as HTMLInputElement).value).toBe('Clean Code')
     expect((screen.getByLabelText(/Author \*/i) as HTMLInputElement).value).toBe('Robert C. Martin')
     expect((screen.getByLabelText(/Publisher/i) as HTMLInputElement).value).toBe('Prentice Hall')

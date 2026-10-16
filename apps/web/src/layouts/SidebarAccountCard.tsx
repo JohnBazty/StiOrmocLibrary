@@ -50,7 +50,7 @@ export function SidebarAccountCard({ identity, preview = false }: { identity: Au
       <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#FFF200] text-sm font-black text-[#003399] ring-2 ring-white/20">
         {photo && photo !== failedPhoto ? <img src={photo} alt="Your approved profile picture" onError={() => setFailedPhoto(photo)} className="h-full w-full object-cover" /> : <span aria-label="Profile initials">{initials}</span>}
       </div>
-      <div className="min-w-0 flex-1"><p className="break-words text-xs font-bold leading-snug text-white">{name}</p><p className="mt-1 break-all text-[10px] font-medium text-white/80">{schoolId}</p><p className="mt-0.5 text-[10px] text-white/55">{role}</p></div>
+      <div className="min-w-0 flex-1"><p className="break-words text-xs font-bold leading-snug text-white">{name}</p><p className="mt-1 break-all text-[10px] font-medium text-white/80">{schoolId}</p><p className="mt-0.5 text-[10px] text-white/55">{role === 'Librarian' ? 'Librarian / Admin' : role}</p></div>
     </div>
   </section>
 }

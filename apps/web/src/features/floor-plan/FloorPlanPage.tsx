@@ -1,3 +1,4 @@
+import { SelectedFilePreview } from '../../components/SelectedFilePreview'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { MapPin, Plus, Save, Undo2 } from 'lucide-react'
@@ -22,6 +23,8 @@ export function FloorPlanPage({editor=false}:{editor?:boolean}){
   const [error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[preview,setPreview]=useState(false),[dirty,setDirty]=useState(false)
   const [newShelf,setNewShelf]=useState(''),[areaName,setAreaName]=useState(''),[versionId,setVersionId]=useState(''),[versions,setVersions]=useState<Version[]>([])
   const [unmapped,setUnmapped]=useState(false)
+  const [backgroundFile,setBackgroundFile]=useState<File|null>(null)
+  useEffect(()=>{setBackgroundFile(null)},[areaId])
   const [targetBook,setTargetBook]=useState<MapBook|null>(null)
   const [undo,setUndo]=useState<Layout[]>([])
   const requestSequence=useRef(0),focusKey=useRef('')
@@ -77,7 +80,7 @@ export function FloorPlanPage({editor=false}:{editor?:boolean}){
   async function upload(file:File|undefined){if(!file||!area||!layout)return;void action(async()=>{
     if(file.size>2*1024*1024)throw new Error('Use an image no larger than 2 MB.')
     const image=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=reject;reader.readAsDataURL(file)})
-    const result=await floorRequest<{path:string}>('/background','POST',{image});change({...layout,areas:layout.areas.map(a=>a.id===area.id?{...a,background:result.path}:a)})
+    const result=await floorRequest<{path:string}>('/background','POST',{image});setBackgroundFile(null);change({...layout,areas:layout.areas.map(a=>a.id===area.id?{...a,background:result.path}:a)})
   })}
   return <>
     <PageHeader eyebrow={editor?'Library layout management':'Find your way around'} title="Library floor plan" description={editor?'Arrange shelves, save a draft, and publish the layout when the library is ready.':'Find a book, select its shelf, or explore the library map.'} action={editor?<div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={!undo.length||busy||preview} onClick={()=>{const previous=undo.at(-1);if(previous){setLayout(previous);setUndo(undo.slice(0,-1));setDirty(true)}}}><Undo2 size={15}/>Undo</Button><Button variant="secondary" disabled={!layout||busy} onClick={()=>setPreview(!preview)}>{preview?'Return to editing':'Preview'}</Button><Button disabled={!layout||busy} onClick={()=>save()}><Save size={15}/>Save draft</Button><Button disabled={!layout||busy} onClick={()=>save(true)}>Publish</Button></div>:undefined}/>
@@ -94,7 +97,7 @@ export function FloorPlanPage({editor=false}:{editor?:boolean}){
         <div className="grid grid-cols-2 gap-2">{(['width','height'] as const).map(key=><label key={key} className="text-xs font-bold">Area {key}<input className={input} type="number" min={300} max={10000} value={area[key]} onChange={e=>change({...layout,areas:layout.areas.map(a=>a.id===area.id?{...a,[key]:Number(e.target.value)}:a)})}/></label>)}</div>
         <p className="text-xs text-[#003399]/60">Increasing the area adds space and keeps existing shelf positions.</p>
         {layout.areas.length>1?<Button variant="secondary" onClick={removeArea}>Delete this empty area</Button>:null}
-        <label className="block text-xs font-bold">Background image (optional)<input className={input} type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>void upload(e.target.files?.[0])}/></label>
+        <label className="block text-xs font-bold">Background image (optional)<input className={input} type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{setBackgroundFile(e.target.files?.[0]??null);e.target.value=''}}/></label><SelectedFilePreview file={backgroundFile} disabled={busy} onRemove={()=>setBackgroundFile(null)}/>{backgroundFile?<Button disabled={busy} onClick={()=>void upload(backgroundFile)}>Use this background</Button>:null}
         {area.background?<Button variant="secondary" onClick={()=>change({...layout,areas:layout.areas.map(a=>a.id===area.id?{...a,background:null}:a)})}>Remove background</Button>:null}
         <form onSubmit={e=>{e.preventDefault();const id=crypto.randomUUID();change({...layout,areas:[...layout.areas,{id,name:areaName.trim(),width:1200,height:800,background:null}]});setAreaId(id);setAreaName('')}}><label className="text-xs font-bold">New area or floor<input required maxLength={100} className={input} value={areaName} onChange={e=>setAreaName(e.target.value)} placeholder="Second floor"/></label><Button variant="secondary" type="submit" disabled={!areaName.trim()||layout.areas.length>=20} className="mt-2"><Plus size={15}/>Add area</Button></form>
         <div><h3 className="mb-2 text-sm font-bold">Add objects</h3><div className="flex flex-wrap gap-2">{['wall','entrance','exit','table','desk','chair','printing'].map(kind=><button key={kind} onClick={()=>addObject(kind)} className="rounded-lg border border-[#003399]/20 px-2 py-1.5 text-xs capitalize hover:bg-[#FFF200]">{kind}</button>)}</div></div>

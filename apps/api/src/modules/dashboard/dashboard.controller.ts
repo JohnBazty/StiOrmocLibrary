@@ -1,3 +1,4 @@
+import { clearanceScheduleService } from '../clearance/clearance-schedule.service.ts'
 import type { NextFunction, Request, Response } from 'express'
 import { createBrandedTablePdf } from '../reports/branded-table-pdf.ts'
 import { dashboardRepository } from './dashboard.repository.ts'
@@ -32,7 +33,10 @@ export const dashboardController = {
     response.set('Cache-Control', 'private, no-store').json({ success: true, message: 'Dashboard loaded.', data })
   }),
   user: handle(async (request, response) => {
-    const data = await dashboardRepository.user(actor(request, response))
+    const [dashboard, clearanceSchedule] = await Promise.all([
+      dashboardRepository.user(actor(request, response)), actor(request, response).role === 'Student' ? clearanceScheduleService.current() : Promise.resolve(null),
+    ])
+    const data = { ...dashboard, clearanceSchedule }
     response.set('Cache-Control', 'private, no-store').json({ success: true, message: 'Dashboard loaded.', data })
   }),
   adminPdf: handle(async (request, response) => {

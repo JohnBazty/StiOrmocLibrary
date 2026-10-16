@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { login, registerStudent } from './auth-api'
+import { login, logout, registerStudent } from './auth-api'
+import { saveAccessToken, getAccessToken } from './auth-storage'
 
 function token(payload: Record<string, unknown>) {
   const encode = (value: unknown) => btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
@@ -7,6 +8,17 @@ function token(payload: Record<string, unknown>) {
 }
 
 describe('normalized authentication API client', () => {
+  it('clears logout immediately and preserves a newer login when the old request finishes late', async () => {
+    let finish!: (response: Response) => void
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => { finish = resolve })))
+    saveAccessToken(token({userId:999001,schoolId:'EXAMPLE',role:'Student',exp:Math.floor(Date.now()/1000)+900}))
+    const pending = logout()
+    expect(getAccessToken()).toBeNull()
+    saveAccessToken('newer-login-token')
+    finish(new Response('{}',{status:503}))
+    await pending
+    expect(getAccessToken()).toBe('newer-login-token')
+  })
   it.each([undefined, 'application/json'])('reports a service outage for an empty gateway response (%s)', async contentType => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('', {
       status: 502, headers: contentType ? { 'Content-Type': contentType } : {},
@@ -47,4 +59,4 @@ describe('normalized authentication API client', () => {
   })
 })
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => { vi.unstubAllGlobals(); sessionStorage.clear() })

@@ -3,11 +3,12 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
+import { pdfPreviewAssets } from './pdf-preview-assets.ts'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), pdfPreviewAssets()],
     server: {
       port: 5173,
       strictPort: true,

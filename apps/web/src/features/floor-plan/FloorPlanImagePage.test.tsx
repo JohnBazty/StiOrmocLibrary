@@ -28,8 +28,31 @@ it('lets a Librarian publish an image and see the published version', async () =
   render(<MemoryRouter><FloorPlanImagePage /></MemoryRouter>)
   await screen.findByText('Floor plan image not available yet.')
   fireEvent.change(screen.getByLabelText('Choose image'), { target: { files: [new File(['image'], 'floor.png', { type: 'image/png' })] } })
+  expect(screen.getByText('floor.png')).toBeTruthy()
+  expect(vi.mocked(fetch).mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
+  fireEvent.click(screen.getByRole('button', { name: 'Publish image' }))
   await waitFor(() => expect(screen.getByAltText('Current library floor plan')).toBeTruthy())
   expect(screen.getByText('Floor plan image published. Everyone can now view it.')).toBeTruthy()
+  expect(screen.getByRole('status').getAttribute('data-tone')).toBe('success')
+  expect(screen.queryByRole('alert')).toBeNull()
+})
+
+it('allows removing an image before publishing and preserves a failed selection for retry', async () => {
+  auth.role = 'Librarian'
+  render(<MemoryRouter><FloorPlanImagePage /></MemoryRouter>)
+  await screen.findByText('Floor plan image not available yet.')
+  const input = screen.getByLabelText('Choose image')
+  const file = new File(['image'], 'floor.png', { type: 'image/png' })
+  fireEvent.change(input, { target: { files: [file] } })
+  fireEvent.click(screen.getByRole('button', { name: 'Remove selected file' }))
+  expect(screen.queryByRole('button', { name: 'Publish image' })).toBeNull()
+  fireEvent.change(input, { target: { files: [file] } })
+  vi.mocked(fetch).mockResolvedValueOnce(new Response('', { status: 502 }))
+  fireEvent.click(screen.getByRole('button', { name: 'Publish image' }))
+  await screen.findByText('The library service is unavailable. Please try again.')
+  expect(screen.getByRole('alert').getAttribute('data-tone')).toBe('error')
+  expect(screen.getByText('floor.png')).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Publish image' }).hasAttribute('disabled')).toBe(false)
 })
 
 it.each(['Student', 'Faculty', 'Staff', 'Admin'])('does not offer floor-plan uploads to %s', async role => {

@@ -37,7 +37,7 @@ export function createBookCatalogController(service: Service = bookCatalogServic
       response.status(201).json({
         success: true,
         message: 'Reservation request submitted successfully.',
-        data: await service.reserve(request.params.titleId, viewer(response)),
+        data: await service.reserve(request.params.titleId, viewer(response),request.body),
       })
     }),
   }

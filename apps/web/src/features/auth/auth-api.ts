@@ -37,6 +37,7 @@ export type RegistrationResult = {
 }
 
 export type LoginPortal = 'user' | 'staff' | 'personnel'
+export type LoginChallenge = { otpRequired: true; challengeId: string; emailHint: string; expiresIn: number; resendAfter: number }
 
 export async function login(schoolId: string, password: string, portal: LoginPortal = 'user'): Promise<LoginResult> {
   clearAccessToken()
@@ -50,7 +51,7 @@ export async function login(schoolId: string, password: string, portal: LoginPor
     throw new AuthenticationError('The library service is temporarily unavailable. Please try again.', 'NON_JSON_RESPONSE')
   }
   const payload = await response.json().catch(() => null) as {
-    data?: LoginResult
+    data?: LoginResult | LoginChallenge
     message?: string
     code?: string
     details?: { errors?: Record<string, string> }
@@ -59,11 +60,26 @@ export async function login(schoolId: string, password: string, portal: LoginPor
   if (!response.ok || !payload.data) {
     throw new AuthenticationError(payload.message ?? 'Sign in failed.', payload.code, payload.details?.errors)
   }
+  if ('otpRequired' in payload.data) throw new LoginCodeRequired(payload.data)
   const claims = decodeAccessToken(payload.data.token)
   if (!claims || claims.role !== payload.data.user.role || claims.userId !== payload.data.user.id) {
     throw new AuthenticationError('The server returned an invalid access token.', 'INVALID_TOKEN_RESPONSE')
   }
   return payload.data
+}
+export class LoginCodeRequired extends Error {
+  constructor(public challenge: LoginChallenge) { super('Enter the code sent to your school email.') }
+}
+export async function verifyLoginCode(challengeId: string, code: string): Promise<LoginResult> {
+  const response = await fetch('/api/v1/auth/login/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ challenge_id: challengeId, code }) })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok || !payload?.data?.token || !decodeAccessToken(payload.data.token)) throw new AuthenticationError(payload?.message ?? 'Code verification is unavailable.')
+  return payload.data
+}
+export async function resendLoginCode(challengeId: string) {
+  const response = await fetch('/api/v1/auth/login/resend', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ challenge_id: challengeId }) })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) throw new AuthenticationError(payload?.message ?? 'The code could not be sent.')
 }
 
 export async function registerStudent(input: StudentRegistrationInput): Promise<RegistrationResult> {
@@ -146,13 +162,23 @@ export async function resolveSessionIdentity(): Promise<AuthenticatedIdentity | 
 
 export async function logout() {
   const token = getAccessToken()
+  if (token && typeof BroadcastChannel !== 'undefined') {
+    const claims = decodeAccessToken(token)
+    const channel = new BroadcastChannel('sti-library-session-activity')
+    channel.postMessage({ type: 'logout', accountId: claims?.userId })
+    channel.close()
+  }
+  // Clear immediately. A delayed logout response must not erase a later login.
+  clearAccessToken()
+  setSessionIdentity(null)
   try {
-    const csrfResponse = await fetch('/api/auth/csrf', { credentials: 'include', headers: { Accept: 'application/json' } })
+    const csrfResponse = await fetch('/api/auth/csrf', { credentials: 'include', headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) })
     if (csrfResponse.ok) {
       const csrfPayload = await csrfResponse.json() as { csrfToken?: string }
       if (csrfPayload.csrfToken) {
         await fetch('/api/auth/logout', {
           method: 'POST', credentials: 'include', redirect: 'manual',
+          signal: AbortSignal.timeout(10_000),
           headers: {
             Accept: 'application/json', 'x-csrf-token': csrfPayload.csrfToken,
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -160,8 +186,5 @@ export async function logout() {
         })
       }
     }
-  } finally {
-    clearAccessToken()
-    setSessionIdentity(null)
-  }
+  } catch { /* Local logout remains complete while the old server session expires. */ }
 }

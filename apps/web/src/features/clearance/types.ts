@@ -1,4 +1,6 @@
+export type ClearanceSchedule = { termId: number | null; academicYear?: string; termName?: string; deadlineAt: string | null; version: number }
 export type ClearanceRecord = {
+  schedule?: ClearanceSchedule | null
   student: { userId: number; schoolId: string; name: string; program: string | null; section: string | null; accountStatus: string }
   status: 'Cleared' | 'Not Cleared'; computedStatus: 'Cleared' | 'Not Cleared'; reason: string; checkedAt: string
   summary: { activeLoans: number; unpaidOverdueFines: number; unpaidReplacementCharges: number; totalOutstanding: number; blockCount: number }

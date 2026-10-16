@@ -5,6 +5,8 @@ import { jwtAuthService } from './jwt-auth.service.ts'
 import { authenticateJwt, ensureActiveJwtAccount, requireJwtRoles, requireLibraryPermission } from './jwt-auth.middleware.ts'
 import { registrationService } from './registration.service.ts'
 import { passwordRecoveryService } from './password-recovery.service.ts'
+import { loginSecurityService, signSessionToken } from './login-security.service.ts'
+import { db } from '../../config/db.js'
 
 type Service = typeof jwtAuthService
 export function createJwtLoginController(service: Service = jwtAuthService) {
@@ -22,11 +24,6 @@ export function createJwtRegisterController() {
     } catch (error) { next(error) }
   }
 }
-
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: 'draft-8', legacyHeaders: false,
-  message: { success: false, code: 'TOO_MANY_LOGIN_ATTEMPTS', message: 'Too many login attempts. Please wait 15 minutes.' },
-})
 
 const registrationLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: 'draft-8', legacyHeaders: false,
@@ -58,7 +55,25 @@ jwtAuthRouter.post('/register/verify', registrationLimiter, async (request, resp
   try { response.json({ success: true, data: await registrationService.verify(request.body) }) }
   catch (error) { next(error) }
 })
-jwtAuthRouter.post('/login', limiter, createJwtLoginController())
+jwtAuthRouter.post('/login', rateLimit({ windowMs: 10 * 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false }), async (request, response, next) => {
+  response.set('Cache-Control', 'no-store')
+  try { response.json({ success: true, data: await loginSecurityService.login(request.body) }) } catch (error) { next(error) }
+})
+const otpLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false })
+for (const action of ['verify', 'resend'] as const) jwtAuthRouter.post(`/login/${action}`, otpLimiter, async (request, response, next) => {
+  response.set('Cache-Control', 'no-store')
+  try { response.json({ success: true, data: await loginSecurityService[action](request.body) }) } catch (error) { next(error) }
+})
+jwtAuthRouter.post('/activity', authenticateJwt, ensureActiveJwtAccount, async (_request, response, next) => {
+  response.set('Cache-Control', 'no-store')
+  try {
+    const identity = response.locals.authenticatedUser
+    if (!identity.sessionId) { response.status(401).json({ success: false, message: 'Sign in again to start a renewed session.' }); return }
+    const [result] = await db.execute('UPDATE library_login_sessions SET last_activity_at=NOW() WHERE session_id=? AND account_id=? AND auth_version=? AND revoked_at IS NULL AND last_activity_at>NOW()-INTERVAL \'10 minutes\'', [identity.sessionId, identity.accountId, identity.authVersion])
+    if (!(result as { affectedRows: number }).affectedRows) { response.status(401).json({ success: false, message: 'Your session expired. Sign in again.' }); return }
+    response.json({ success: true, data: { token: signSessionToken(identity), idleSeconds: 600 } })
+  } catch (error) { next(error) }
+})
 jwtAuthRouter.get('/me', authenticateJwt, ensureActiveJwtAccount, (_request, response) => response.json({ success: true, data: response.locals.authenticatedUser }))
 jwtAuthRouter.get('/registration-requests', authenticateJwt, ensureActiveJwtAccount, requireLibraryPermission('accounts.manage'), async (_request, response, next) => {
   try { response.json({ success: true, data: await registrationService.pendingApprovals() }) }

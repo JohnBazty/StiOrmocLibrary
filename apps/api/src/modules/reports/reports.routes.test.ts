@@ -3,7 +3,15 @@ import test from 'node:test'
 import express from 'express'
 import request from 'supertest'
 import { createCsvStream, createInventoryPdf, type InventoryExportRow } from './catalog-export.service.ts'
-import { createReportsRouter } from './reports.routes.ts'
+import { createReportsRouter, resolveReportAccount } from './reports.routes.ts'
+
+test('report sessions resolve their linked account instead of treating a user ID as an account ID', async () => {
+  const database = { execute: async (_sql: string, values: unknown[]) => { assert.deepEqual(values,[42]); return [[{account_id:77}]] } } as never
+  assert.equal(await resolveReportAccount({id:42},true,database),77)
+  assert.equal(await resolveReportAccount({accountId:77,id:42},false,database),77)
+  await assert.rejects(resolveReportAccount({id:42},false,database))
+  await assert.rejects(resolveReportAccount({id:42},true,{execute:async()=>[[]]} as never))
+})
 
 const row: InventoryExportRow = {
   recordType: 'Book', title: 'Database Systems', authors: 'SmartLib QA', isbn: '9780132350884',

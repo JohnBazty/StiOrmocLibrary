@@ -3,10 +3,12 @@
 | Field | Value |
 | --- | --- |
 | Date created | 2026-10-11 |
-| Date last updated | 2026-10-11 |
+| Date last updated | 2026-10-16 |
 | Status | `built` |
 
 ## Why
+
+**2026-10-16 amendment:** Ready-request **Start checkout** now loads the stored borrower and exact assigned copy without repeat QR/barcode scans. Staff review and **Confirm handover**; all eligibility checks remain authoritative. Walk-in scans and returns remain available. See [verified work record](qr-cart-queue-checkout-20261016.md).
 
 The owner authorized Revision Phase 5. Replace routine manual identity lookup with QR/copy scans and enforce eligibility inside the transaction while retaining the authoritative take-home loan ledger and incident/override history.
 

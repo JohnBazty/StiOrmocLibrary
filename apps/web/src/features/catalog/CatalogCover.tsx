@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BookOpen } from 'lucide-react'
+import { BookInitialsCover } from './BookInitialsCover'
 
 export function CatalogCover({ title, src, className = '', flush = false }: { title: string; src?: string | null; className?: string; flush?: boolean }) {
   const [failedSource, setFailedSource] = useState<string | null>(null)
@@ -10,10 +10,7 @@ export function CatalogCover({ title, src, className = '', flush = false }: { ti
       {available ? (
         <img src={src!} alt={`${title} book cover`} loading="lazy" className={`h-full w-full object-contain ${flush ? '' : 'p-3'}`} onError={() => setFailedSource(src!)} />
       ) : (
-        <div className="flex flex-col items-center gap-3 p-5 text-center text-[#003399] dark:text-white">
-          <BookOpen size={40} aria-hidden="true" />
-          <span className="text-sm">Cover not available</span>
-        </div>
+        <BookInitialsCover title={title} />
       )}
     </div>
   )

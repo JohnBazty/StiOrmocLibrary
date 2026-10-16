@@ -1,0 +1,17 @@
+import {fileURLToPath} from 'node:url'
+import {collectionReviewService} from '../catalog/collection-review.service.ts'
+import {createBrandedTablePdf} from './branded-table-pdf.ts'
+import {createIntegrityProtectedCsvStream} from './csv-integrity.ts'
+import {HttpError} from '../../core/http-error.ts'
+export async function collectionReport(actor:number,scope:string,format:string){
+ if(!['full','updated','exclusions'].includes(scope)||!['csv','pdf'].includes(format))throw new HttpError(422,'COLLECTION_REPORT_INVALID','Choose a collection report and CSV or PDF.')
+ const data=await collectionReviewService.report(actor),selected=data.books.filter(b=>scope==='full'||(scope==='updated'?b.updated:!b.updated)),counts=`Book records: full ${data.books.length}, updated ${data.books.filter(b=>b.updated).length}, excluded ${data.books.filter(b=>!b.updated).length}`
+ const criteria=`SY ${data.reference.academicYear}; reference ${data.reference.referenceYear}; copyright age >=5 review; missing/future excluded; archived/unheld excluded from Updated. ${counts}. Age review only, not CHED certification.`
+ const result=selected.map(b=>({id:b.id,title:b.title,author:b.author,edition:b.edition??'',copyright:b.copyrightYear??'',publication:b.publicationYear??'',age:b.age??'',status:b.ageStatus,copies:b.copies,usable:b.usableCopies,digital:b.digitalFiles,conditions:b.holdings.map((p:any)=>`${p.accession}: ${p.condition}/${p.availability}/${p.status}`).join('; '),programs:b.programNames??b.programIds.join('; '),courses:b.courseNames??b.courseIds.join('; '),loans:b.loans,inLibrary:b.inLibraryUses,lastBorrowed:String(b.lastBorrowedAt??'Never recorded'),decision:b.decisions[0]?.decision??'Pending review',reason:b.exclusionReason,criteria}))
+ async function* iterator(){yield* result}
+ const columns=[['id','ID',40],['title','TITLE',140],['author','AUTHOR',90],['edition','EDITION',60],['copyright','COPYRIGHT',55],['publication','PUBLISHED',55],['age','AGE',30],['status','AGE STATUS',55],['copies','ALL COPIES',40],['usable','USABLE',40],['digital','DIGITAL',40],['conditions','HOLDINGS / CONDITION / STATUS',160],['programs','PROGRAMS',50],['courses','COURSES',50],['loans','LOANS',35],['inLibrary','IN-LIBRARY USES',40],['lastBorrowed','LAST BORROWED',70],['decision','RECOMMENDATION',80],['reason','EXCLUSION',100]] as const
+ if(format==='pdf')return {stream:createBrandedTablePdf(iterator(),{title:`${scope.toUpperCase()} BOOK COLLECTION`,subtitle:criteria,fonts:{regular:fileURLToPath(new URL('../../../assets/fonts/NotoSans-Regular.ttf',import.meta.url)),bold:fileURLToPath(new URL('../../../assets/fonts/NotoSans-Bold.ttf',import.meta.url))},emptyMessage:'No book records in this report.',columns:columns.map(([key,label,width])=>({key,label,width}))}),type:'application/pdf',filename:`collection-${scope}-${data.reference.referenceYear}.pdf`}
+ const cell=(v:unknown)=>{let s=String(v??'');if(/^\s*[=+\-@]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"'}
+ async function* csv(){yield '\uFEFF'+cell('Report criteria')+','+cell(criteria)+'\r\n';yield [...columns.map(([,label])=>cell(label)),cell('CRITERIA')].join(',')+'\r\n';for(const row of result)yield [...columns.map(([key])=>cell(row[key])),cell(criteria)].join(',')+'\r\n'}
+ return {stream:createIntegrityProtectedCsvStream(csv(),`collection_${scope}`,columns.length+1),type:'text/csv; charset=utf-8',filename:`collection-${scope}-${data.reference.referenceYear}.csv`}
+}

@@ -1,4 +1,5 @@
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import { isPostgres } from '../../config/sql-dialect.js'
 
 export async function createPendingCounterClaim(
   connection: PoolConnection,
@@ -13,7 +14,7 @@ export async function createPendingCounterClaim(
   const [insert] = await connection.execute<ResultSetHeader>(
     `INSERT INTO borrow_transactions
        (user_id, material_id, physical_copy_id, reservation_id, request_group_id, transaction_status, created_at)
-     VALUES (?, ?, ?, ?, UUID(), 'Pending', NOW())`,
+     VALUES (?, ?, ?, ?, ${isPostgres?'gen_random_uuid()':'UUID()'}, 'Pending', NOW())`,
     [reservation.user_id, copy.material_id, copy.physical_copy_id, reservation.reservation_id],
   )
   return Number(insert.insertId)

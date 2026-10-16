@@ -1,3 +1,4 @@
+import { printingInvoice, createPrintingInvoicePdf } from './printing-invoice.ts'
 import type { NextFunction,Request,Response } from 'express'
 import { createBrandedTablePdf } from '../reports/branded-table-pdf.ts'
 import { printingRepository } from './printing.repository.ts'
@@ -10,6 +11,8 @@ const handle=(fn:(request:Request,response:Response)=>Promise<void>)=>(request:R
 const wholeStock=(value:unknown)=>value==null?'Legacy':String(Math.trunc(Number(value)))
 
 export const printingController={
+  invoice:handle(async(request,response)=>{const invoice=await printingInvoice(actor(request,response),request.params.id,request.baseUrl.includes('/admin/'));response.set('Cache-Control','no-store').json({success:true,data:invoice})}),
+  invoicePdf:handle(async(request,response)=>{const invoice=await printingInvoice(actor(request,response),request.params.id,request.baseUrl.includes('/admin/'));response.set({'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="${invoice.invoiceNumber}.pdf"`,'Cache-Control':'no-store'});createPrintingInvoicePdf(invoice).pipe(response)}),
   availability:handle(async(_request,response)=>{response.json({success:true,data:await printingService.serviceStatus()})}),
   serviceStatus:handle(async(_request,response)=>{response.json({success:true,data:await printingService.serviceStatus()})}),
   setServiceStatus:handle(async(request,response)=>{response.json({success:true,message:'Printing service availability updated.',data:await printingService.setServiceStatus(actor(request,response),request.body)})}),

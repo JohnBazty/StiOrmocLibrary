@@ -7,6 +7,9 @@ import { generateNotifications } from '../notifications/notification.worker.ts'
 import { createAttendanceOperations } from '../attendance/attendance-operations.service.ts'
 import { isPostgres } from '../../config/sql-dialect.js'
 import { flagUnreturnedInLibrary } from '../circulation/desk-circulation.service.ts'
+import { createBookRequestService } from '../reservations/book-request.service.ts'
+import { deliverBookRequestEmails } from '../reservations/book-request-email.worker.ts'
+import { createCollectionReviewService } from '../catalog/collection-review.service.ts'
 
 const name = 'operational-minute'
 const jobNow=isPostgres?"(NOW() AT TIME ZONE 'UTC')":'NOW()'
@@ -44,10 +47,13 @@ export async function runOperationalJobs(now = new Date(), database: Pool = db) 
     const attendance = await createAttendanceOperations(database,()=>now).autoCheckout()
     const inLibrary = isPostgres ? await flagUnreturnedInLibrary(database,now) : {flagged:0}
     const expiration = await expireReadyReservations(database, now)
+    const preparation = isPostgres ? await createBookRequestService(database,()=>now).advanceWaiting(now) : {assigned:0}
     const overdue = await escalateOverdueTransactions(database, now)
     const notifications = await generateNotifications(database, now)
+    const requestEmails = isPostgres ? await deliverBookRequestEmails(database,now) : {sent:0,failed:0}
+    const collection = isPostgres ? await createCollectionReviewService(database).refresh() : {titles:0,shortfalls:0}
     await database.execute(`UPDATE library_job_runs SET lease_until=NULL,run_token=NULL,last_success_at=${jobNow},last_error=NULL,run_count=run_count+1,last_duration_ms=? WHERE job_name=? AND run_token=?`, [Date.now() - started, name, token])
-    return { skipped: false, attendance, inLibrary, expiration, overdue, notifications }
+    return { skipped: false, attendance, inLibrary, expiration, preparation, overdue, notifications, requestEmails, collection }
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 1000) : 'Unknown scheduled job failure'
     await database.execute(`UPDATE library_job_runs SET lease_until=NULL,run_token=NULL,last_error_at=${jobNow},last_error=?,failure_count=failure_count+1,last_duration_ms=? WHERE job_name=? AND run_token=?`, [message, Date.now() - started, name, token])

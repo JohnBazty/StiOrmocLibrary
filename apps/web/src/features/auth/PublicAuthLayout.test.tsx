@@ -39,7 +39,7 @@ it('Escape dismisses an idle dialog through its return-to-catalog route', () => 
 it('cannot dismiss or switch forms while a login request is pending', () => {
   vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
   setup()
-  fireEvent.change(screen.getByLabelText('School ID'), { target: { value: 'STUDENT-123' } })
+  fireEvent.change(screen.getByLabelText('Student Number / Faculty ID'), { target: { value: 'STUDENT-123' } })
   fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'LocalTest123' } })
   fireEvent.click(screen.getByRole('button', { name: 'Log In' }))
   expect((screen.getByRole('button', { name: 'Close account dialog' }) as HTMLButtonElement).disabled).toBe(true)

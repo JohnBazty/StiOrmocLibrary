@@ -13,11 +13,14 @@ type Props = {
   titleId: number
   role: AuthRole
   activeBookCount: number
+  bookLimit?: number | null
   selectedBookCount: number
   alreadySelected: boolean
+  alreadyReserved?: boolean
   onAddToCart: (book: BookCatalogItem) => void
   onClose: () => void
   onReserve?: (book: BookCatalogItem) => void
+  onRequest?: (book: BookCatalogItem) => void
   requestDisabled?: boolean
   requestError?: string
   requestNotice?: string
@@ -27,7 +30,7 @@ function Metadata({ label, value }: { label: string; value: string | number | nu
   return <div className="rounded-xl border border-[#003399]/10 bg-[#FFFFFF] p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-[#003399]/55">{label}</dt><dd className="mt-1 text-sm font-semibold text-[#003399]">{value || 'Not recorded'}</dd></div>
 }
 
-export function BookOverview({ titleId, role, activeBookCount, selectedBookCount, alreadySelected, onAddToCart, onClose, onReserve, requestDisabled = false, requestError, requestNotice }: Props) {
+export function BookOverview({ titleId, role, activeBookCount, bookLimit, selectedBookCount, alreadySelected, alreadyReserved = false, onAddToCart, onClose, onReserve, onRequest, requestDisabled = false, requestError, requestNotice }: Props) {
   const [book, setBook] = useState<BookCatalogItem | null>(null)
   const [error, setError] = useState('')
   const [citationVisible, setCitationVisible] = useState(false)
@@ -46,7 +49,7 @@ export function BookOverview({ titleId, role, activeBookCount, selectedBookCount
   const citation = useMemo(() => book ? buildApaBookReference(book) : '', [book])
   const addToCart = () => {
     if (!book) return
-    const validation = validateBookCartAddition({ role, activeBookCount, selectedBookCount, alreadySelected })
+    const validation = validateBookCartAddition({ role, activeBookCount, bookLimit, selectedBookCount, alreadySelected })
     if (!validation.allowed) return setError(validation.message ?? 'This book cannot be added to the cart.')
     onAddToCart(book)
     setError(validation.message ?? '')
@@ -115,8 +118,9 @@ export function BookOverview({ titleId, role, activeBookCount, selectedBookCount
 
             <div className="mt-5 flex flex-col gap-3 border-t border-[#003399]/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2 text-xs font-semibold text-[#003399]/65"><MapPin size={15} />{book.shelfLocation ?? book.callNumber ?? 'Shelf not recorded'}</div>
-              {['Student', 'Faculty'].includes(role) && book.availableCopiesCount > 0 ? <button onClick={addToCart} disabled={alreadySelected || requestDisabled} className="h-11 rounded-xl bg-[#003399] px-5 text-sm font-bold text-[#FFFFFF] disabled:opacity-50">{alreadySelected ? 'In borrow cart' : 'Add to cart'}</button> : null}
-              {['Student', 'Faculty'].includes(role) && book.availableCopiesCount === 0 && book.totalCopiesCount > 0 && onReserve ? <button onClick={() => onReserve(book)} disabled={requestDisabled} className="h-11 rounded-xl bg-[#FFF200] px-5 text-sm font-bold text-[#003399] disabled:opacity-50">{requestDisabled ? 'Please wait…' : 'Reserve book'}</button> : null}
+              {['Student','Faculty'].includes(role) && onRequest && book.totalCopiesCount>0 ? <button onClick={()=>onRequest(book)} disabled={alreadySelected||requestDisabled} className="h-11 rounded-xl bg-[#003399] px-5 text-sm font-bold text-white disabled:opacity-50">{alreadySelected?'Requested / selected':requestDisabled?'Please wait…':book.availableCopiesCount>0?'Borrow book':'Reserve book'}</button> : null}
+              {!onRequest && ['Student', 'Faculty'].includes(role) && book.availableCopiesCount > 0 ? <button onClick={addToCart} disabled={alreadySelected || requestDisabled} className="h-11 rounded-xl bg-[#003399] px-5 text-sm font-bold text-[#FFFFFF] disabled:opacity-50">{alreadySelected ? 'In borrow cart' : 'Borrow book'}</button> : null}
+              {!onRequest && ['Student', 'Faculty'].includes(role) && book.totalCopiesCount > 0 && book.availableCopiesCount === 0 && onReserve ? <button onClick={() => onReserve(book)} disabled={requestDisabled || alreadyReserved} className="h-11 rounded-xl bg-[#FFF200] px-5 text-sm font-bold text-[#003399] disabled:opacity-50">{alreadyReserved ? 'Reserved' : requestDisabled ? 'Please wait…' : 'Reserve book'}</button> : null}
             </div>
           </> : null}
         </div>

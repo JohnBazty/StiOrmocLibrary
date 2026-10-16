@@ -5,7 +5,9 @@ import { db, dbDriver } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
 import { requireLibraryActor } from '../../core/library-permissions.ts'
-import { clean, holdingsFields, holdingsIdentity, identityList, key, mappedRows, positiveId, readHoldings, validateHoldingsData, type HoldingsData, type SheetMapping } from './holdings-parser.ts'
+import { refreshCollectionReview } from './collection-review.service.ts'
+import { clean, holdingsFields, holdingsIdentity, holdingsMappingIdentity, identityList, key, mappedRows, positiveId, readHoldings, validateHoldingsData, type HoldingsData, type SheetMapping } from './holdings-parser.ts'
+import { retainImportCorrections, type ImportReferences } from './holdings-cleanup.ts'
 import { insertAuthors, insertLegacyBookMaterial, insertPhysicalCopy, insertTitle } from './catalog.repository.ts'
 import { reserveBarcodeSequence } from './bulk-book.repository.ts'
 import { renderBookLabel } from './book-label.renderer.ts'
@@ -22,7 +24,7 @@ function foundationKind(value:string):FoundationKind{if(!Object.hasOwn(foundatio
 export async function catalogOptions(publicOnly=false){
  pg();const result:Record<string,unknown>={}
  for(const [kind,spec] of Object.entries(foundation))result[kind]=await rows(db,`SELECT ${spec.id} AS id,name,lifecycle_status AS status,row_version AS version${kind==='programs'||kind==='courses'?',code':''}${kind==='courses'?',program_id AS "programId"':''}${kind==='types'?',record_kind AS "recordKind"':''}${kind==='locations'?',COALESCE((SELECT column_count FROM floor_plan_shelves s WHERE s.label=name),1) AS "columnCount",COALESCE((SELECT row_count FROM floor_plan_shelves s WHERE s.label=name),1) AS "rowCount"':''} FROM ${spec.table} ${publicOnly?"WHERE lifecycle_status='Active'":''} ORDER BY name`)
- result.categories=await rows(db,'SELECT category_id AS id,category_name AS name FROM categories ORDER BY category_name')
+ result.categories=await rows(db,"SELECT category_id AS id,category_name AS name,'Active' AS status,1 AS version FROM categories ORDER BY category_name")
  return result
 }
 export async function saveFoundation(kindValue:string,recordId:unknown,body:Record<string,unknown>,actor:number){
@@ -92,6 +94,7 @@ export async function saveDetails(value:unknown,body:Record<string,unknown>,acto
   await c.execute('DELETE FROM catalog_title_courses WHERE title_id=?',[titleId]);await c.execute('DELETE FROM catalog_title_programs WHERE title_id=?',[titleId])
   for(const program of programs)await c.execute('INSERT INTO catalog_title_programs(title_id,program_id) VALUES (?,?)',[titleId,program])
   for(const course of courses)await c.execute('INSERT INTO catalog_title_courses(title_id,course_id) VALUES (?,?)',[titleId,course])
+  await refreshCollectionReview(c)
  });return publicDetail(titleId)
 }
 const bucket='catalog-digital-files'
@@ -115,9 +118,15 @@ export async function digitalDownload(value:unknown){pg();const file=(await rows
 }
 export async function inspectHoldings(file:Express.Multer.File|undefined){if(!file)throw fail('Choose a holdings file.');const sheets=await readHoldings(file);return sheets.map(s=>({name:s.name,rowCount:s.rows.length,headers:s.headers,mapping:s.mapping,preview:s.rows.slice(0,12)}))}
 export async function stageHoldings(file:Express.Multer.File|undefined,mappings:SheetMapping[],actor:number){
+ pg()
  if(!file)throw fail('Choose a holdings file.');if(!Array.isArray(mappings)||!mappings.length||mappings.length>12)throw fail('Confirm the sheet mappings.')
- const sheets=await readHoldings(file),{items,ignored}=mappedRows(sheets,mappings)
- const fingerprint=createHash('sha256').update(file.buffer).update(JSON.stringify(mappings.map(m=>({...m,columns:Object.fromEntries(holdingsFields.map(f=>[f,m.columns[f]??null]))})).sort((a,b)=>a.sheet.localeCompare(b.sheet)))).digest('hex')
+ const sheets=await readHoldings(file)
+ const [categories,locations]=await Promise.all([
+  rows(db,"SELECT category_id AS id,category_name AS name,'Active' AS status FROM categories"),
+  rows(db,"SELECT location_id AS id,name,lifecycle_status AS status FROM catalog_locations WHERE lifecycle_status='Active'"),
+ ])
+ const {items,ignored}=mappedRows(sheets,mappings,{categories,locations} as ImportReferences)
+ const fingerprint=createHash('sha256').update(file.buffer).update(holdingsMappingIdentity(mappings)).digest('hex')
  const batchId=await transaction(actor,async c=>{
   const [insert]=await c.execute<ResultSetHeader>('INSERT INTO catalog_import_batches(fingerprint,filename,mapping_json,created_by) VALUES (?,?,?::jsonb,?) ON CONFLICT(fingerprint) DO NOTHING',[fingerprint,file.originalname.slice(0,255),JSON.stringify(mappings),actor])
   const batch=(await rows(c,'SELECT batch_id FROM catalog_import_batches WHERE fingerprint=? FOR UPDATE',[fingerprint]))[0]
@@ -147,6 +156,7 @@ export async function reviewImport(value:unknown,body:Record<string,unknown>,act
  await transaction(actor,async c=>{
   const row=(await rows(c,'SELECT * FROM catalog_import_rows WHERE import_row_id=? FOR UPDATE',[rowId]))[0];if(!row||row.status==='Imported')throw fail('An imported row cannot be changed.',409)
   if(Number(row.row_version)!==Number(body.version))throw fail('This row changed. Reload before reviewing.',409)
+  data.autoCorrections=retainImportCorrections(row.data_json?.autoCorrections)
   if(decision!=='skip')await validateImportReferences(c,data,needsCopies)
   let target:number|null=null,reuse:number|null=null
   if(decision==='link'||decision==='add'){target=id(body.targetTitleId);if(!(await rows(c,"SELECT 1 FROM titles WHERE title_id=? AND record_type='Book' AND lifecycle_status='Active'",[target])).length)throw fail('Choose an active existing book.')}
@@ -185,7 +195,7 @@ export async function commitImport(value:unknown,actor:number){
     }
    }
    if(data.programId)await c.execute('INSERT INTO catalog_title_programs(title_id,program_id) VALUES (?,?) ON CONFLICT DO NOTHING',[titleId,data.programId])
-   await c.execute("UPDATE catalog_import_rows SET status='Imported',result_json=?::jsonb,row_version=row_version+1,error_text=NULL,updated_at=NOW() WHERE import_row_id=?",[JSON.stringify({titleId,copyIds}),rowId]);return true
+   await c.execute("UPDATE catalog_import_rows SET status='Imported',result_json=?::jsonb,row_version=row_version+1,error_text=NULL,updated_at=NOW() WHERE import_row_id=?",[JSON.stringify({titleId,copyIds}),rowId]);await refreshCollectionReview(c);return true
   });if(saved)imported++}catch(e){const message=e instanceof HttpError?e.message:'The row could not be imported. Review its identifiers and try again.';errors.push({rowId,message});await db.execute("UPDATE catalog_import_rows SET error_text=? WHERE import_row_id=? AND status='Ready'",[message,rowId])}
  }
  const remaining=await rows(db,"SELECT COUNT(*) AS total FROM catalog_import_rows WHERE batch_id=? AND status='Ready'",[batchId]);return {imported,remaining:Number(remaining[0].total),errors}

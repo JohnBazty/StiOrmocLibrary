@@ -38,7 +38,7 @@ export function normalizePortal(value: unknown): LoginPortal | '' {
   return candidate === 'user' || candidate === 'staff' ? candidate : ''
 }
 
-export function validateAccountRegistration(body: unknown) {
+export function validateAccountRegistration(body: unknown, officialSchoolDetails = false) {
   const input = body && typeof body === 'object' ? body as Record<string, unknown> : {}
   const schoolId = normalizeSchoolId(input.school_id)
   const firstName = cleanText(input.first_name)
@@ -63,10 +63,10 @@ export function validateAccountRegistration(body: unknown) {
   else if (schoolEmail.length > 191 || !SCHOOL_EMAIL_PATTERN.test(schoolEmail)) errors.school_email = 'Use your @ormoc.sti.edu.ph school email.'
   if (requestedRole === 'Student') {
     if (!programStrand) errors.program_strand = 'Program or strand is required.'
-    else if (!(COLLEGE_PROGRAMS.has(programStrand) || SENIOR_HIGH_PROGRAMS.has(programStrand))) errors.program_strand = 'Select an offered Ormoc program or pathway.'
+    else if (programStrand.length>150 || (!officialSchoolDetails && !(COLLEGE_PROGRAMS.has(programStrand) || SENIOR_HIGH_PROGRAMS.has(programStrand)))) errors.program_strand = 'Select an offered Ormoc program or pathway.'
     if (!yearGradeLevel) errors.year_grade_level = 'Year or grade level is required.'
     else if (!['Grade 11', 'Grade 12', '1st Year', '2nd Year', '3rd Year', '4th Year'].includes(yearGradeLevel)) errors.year_grade_level = 'Select a valid year or grade level.'
-    else if (yearGradeLevel.startsWith('Grade') !== SENIOR_HIGH_PROGRAMS.has(programStrand)) errors.program_strand = 'Select a program that matches your year or grade level.'
+    else if (!officialSchoolDetails && yearGradeLevel.startsWith('Grade') !== SENIOR_HIGH_PROGRAMS.has(programStrand)) errors.program_strand = 'Select a program that matches your year or grade level.'
   } else {
     if (programStrand.length > 150) errors.program_strand = 'Program or strand must not exceed 150 characters.'
     if (yearGradeLevel.length > 100) errors.year_grade_level = 'Year or grade level must not exceed 100 characters.'

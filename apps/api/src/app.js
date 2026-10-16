@@ -32,6 +32,7 @@ import { adminClearanceV1Router, userClearanceV1Router } from './modules/clearan
 import { adminAnnouncementsV1Router, userNotificationsV1Router } from './modules/notifications/notifications.routes.ts'
 import { adminFinesV1Router, userFinesV1Router } from './modules/fines/fines.routes.ts'
 import { adminDashboardV1Router, userDashboardV1Router } from './modules/dashboard/dashboard.routes.ts'
+import { liveReportsRouter, workspaceTasksRouter } from './modules/reports/live-reports.routes.ts'
 import { floorPlanRouter } from './modules/floor-plan/floor-plan.routes.ts'
 import { catalogAdminRouter } from './modules/catalog/catalog-admin.routes.ts'
 import { authorizedJobToken, jobRunnerStatus, runOperationalJobs } from './modules/jobs/job-runner.ts'
@@ -40,8 +41,9 @@ import { usersRepository } from './modules/users/users.repository.ts'
 import { clearanceService } from './modules/clearance/clearance.service.ts'
 import { profileAvatarRouter } from './modules/users/profile-avatar.routes.ts'
 import { adminNotificationsRouter } from './modules/users/admin-notifications.routes.ts'
-import { borrowingPolicyRouter } from './modules/circulation/borrowing-policy.routes.ts'
+import { archivedBorrowingPolicyRouter } from './modules/circulation/borrowing-policy-archive.routes.ts'
 import { publicCatalogRouter, catalogMaintenanceRouter } from './modules/catalog/catalog-enhancements.routes.ts'
+import { collectionReviewRouter } from './modules/catalog/collection-review.routes.ts'
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
 const publicDirectory = path.resolve(currentDirectory, '../public')
@@ -99,8 +101,9 @@ export function createApp() {
   app.use('/api/v1/auth', jwtAuthRouter)
   app.use('/api/public/catalog', publicCatalogRouter)
   app.use('/api/v1', authenticateJwt, ensureActiveJwtAccount)
-  app.use('/api/v1/admin/borrowing-policies', requireLibraryPermission('library.manage'), borrowingPolicyRouter)
+  app.use('/api/v1/admin/borrowing-policies', requireLibraryPermission('library.manage'), archivedBorrowingPolicyRouter)
   app.use('/api/v1/admin/maintenance', requireLibraryPermission('library.manage'), catalogMaintenanceRouter)
+  app.use('/api/v1/admin/collection-review', requireLibraryPermission('library.manage'), collectionReviewRouter)
   app.use('/api/v1/profile/avatar', profileAvatarRouter)
   app.use('/api/v1/profile', selfProfileRouter)
   app.get('/api/v1/admin/account-dashboard', requireLibraryPermission('accounts.manage'), async (_request, response, next) => {
@@ -139,6 +142,8 @@ export function createApp() {
   app.use('/api/v1/fines', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userFinesV1Router)
   app.use('/api/v1/notifications', authenticateJwt, requireJwtRoles('Student', 'Faculty', 'Librarian', 'Staff'), userNotificationsV1Router)
   app.use('/api/v1/dashboard', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userDashboardV1Router)
+  app.use('/api/v1/workspace/tasks', authenticateJwt, workspaceTasksRouter)
+  app.use('/api/v1/admin/reports', authenticateJwt, liveReportsRouter)
   app.use('/api/v1/admin/printing', authenticateJwt, requireLibraryPermission('desk.operate'), adminPrintingV1Router)
   app.use('/api/v1/admin/clearance', authenticateJwt, requireJwtRoles('Admin', 'Librarian'), adminClearanceV1Router)
   app.use('/api/v1/admin/fines', authenticateJwt, requireLibraryPermission('library.manage'), adminFinesV1Router)

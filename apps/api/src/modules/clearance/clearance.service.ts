@@ -83,7 +83,7 @@ export function createClearanceService(database: Pool = db) {
     })
   }
 
-  async function compute(userId: number) {
+  async function compute(userId: number, updateCache = true) {
     const [[userRows], [loanRows], [fineRows], [lostRows], [overrideRows], [historyRows]] = await Promise.all([
       database.execute<RowDataPacket[]>(
         `SELECT u.user_id, u.school_id, u.full_name, u.course_or_strand, u.section, u.account_status
@@ -168,7 +168,7 @@ export function createClearanceService(database: Pool = db) {
       unpaidReplacement > 0 ? `PHP ${unpaidReplacement.toFixed(2)} unpaid lost-book replacement charges` : '',
     ].filter(Boolean)
     const reason = activeOverride ? `Authorized override: ${activeOverride.reason}` : reasons.join('; ') || 'No library obligations'
-    await database.execute(
+    if (updateCache) await database.execute(
       isPostgres
         ? `INSERT INTO clearance_statuses(user_id,standing_status,reason_block_details,reviewed_by_user_id,last_checked_at,updated_at)
        VALUES (?,?,?,NULL,NOW(),NOW())

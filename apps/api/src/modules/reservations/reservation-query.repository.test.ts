@@ -14,3 +14,11 @@ test('queue query combines prepared status, dates, role, and user filters with c
   assert.ok(query.dataParameters.includes('%John%'))
   assert.match(query.dataSql, /LIMIT 20 OFFSET 20/)
 })
+
+test('active queue includes waiting preparation and ready pickup and excludes completed history',()=>{
+  const filters=parseQueueFilters({status:'active',page:1,limit:25})
+  const query=buildReservationQueueQuery(filters)
+  assert.match(query.dataSql,/r.reservation_status IN \('pending','approved','ready_for_pickup'\)/)
+  assert.match(query.countSql,/r.reservation_status IN \('pending','approved','ready_for_pickup'\)/)
+  assert.ok(!query.dataParameters.includes('active'))
+})

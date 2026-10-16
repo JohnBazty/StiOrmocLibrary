@@ -29,6 +29,7 @@ import { ResearchCatalog } from './features/catalog/ResearchCatalog'
 import { BorrowingHistory } from './features/circulation/BorrowingHistory'
 import { AdminCirculationMonitor } from './features/circulation/AdminCirculationMonitor'
 import { StudentReservations } from './features/reservations/StudentReservations'
+import { MyBooksPage } from './features/catalog/MyBooksPage'
 import { BookCart } from './features/catalog/BookCart'
 import { StudentPrintingPage } from './features/printing/StudentPrintingPage'
 import { AdminPrintingQueuePage } from './features/printing/AdminPrintingQueuePage'
@@ -43,9 +44,10 @@ import { AdminClearancePage } from './features/clearance/AdminClearancePage'
 import { AdminFinesPage } from './features/fines/AdminFinesPage'
 import { StudentFinesPage } from './features/fines/StudentFinesPage'
 import { PublicCatalogPage } from './features/catalog/PublicCatalogPage'
-import { AdminBorrowingPoliciesPage } from './features/borrowing-policies/AdminBorrowingPoliciesPage'
+import { BorrowingPoliciesArchivedPage } from './features/borrowing-policies/BorrowingPoliciesArchivedPage'
 import { CatalogMaintenancePage } from './features/catalog/CatalogMaintenancePage'
 import { CatalogReportsPage } from './features/catalog/CatalogReportsPage'
+import { CollectionReviewPage } from './features/catalog/CollectionReviewPage'
 
 function NotFound() {
   return <div className="flex min-h-screen items-center justify-center bg-[#003399]/5 p-6 text-center"><div><p className="text-sm font-bold text-[#003399]">404</p><h1 className="mt-2 font-display text-3xl font-bold text-[#003399]">This shelf is empty.</h1><p className="mt-2 text-sm text-[#003399]/65">The page you requested is not part of the library system.</p><a href="/" className="mt-5 inline-flex rounded-xl bg-[#003399] px-4 py-2.5 text-sm font-bold text-[#FFFFFF]">Return to library</a></div></div>
@@ -73,6 +75,7 @@ export default function App() {
           <Route path="/student/cart" element={<BookCart />} />
           <Route path="/student/research" element={<ResearchCatalog />} />
           <Route path="/student/borrowing" element={<BorrowingHistory />} />
+          <Route path="/student/my-books" element={<MyBooksPage />} />
           <Route path="/student/reservations" element={<StudentReservations />} />
           <Route path="/student/printing" element={<StudentPrintingPage />} />
           <Route path="/student/attendance" element={<UserAttendancePage />} />
@@ -103,9 +106,10 @@ export default function App() {
           <Route path="/librarian/approvals" element={<AccountApprovalsPage />} />
           <Route path="/librarian/notifications" element={<LibrarianNotificationsPage />} />
           <Route path="/librarian/catalog" element={<Navigate to="/librarian/maintenance" replace />} />
-          <Route path="/librarian/borrowing-policies" element={<AdminBorrowingPoliciesPage />} />
+          <Route path="/librarian/borrowing-policies" element={<BorrowingPoliciesArchivedPage />} />
           <Route path="/librarian/maintenance" element={<CatalogMaintenancePage />} />
           <Route path="/librarian/reports" element={<CatalogReportsPage />} />
+          <Route path="/librarian/collection-review" element={<CollectionReviewPage />} />
           <Route path="/librarian/book-archive" element={<BookArchivePage />} />
           <Route path="/librarian/categories" element={<CategoryManagementPage />} />
           <Route path="/librarian/circulation" element={<AdminCirculationMonitor />} />
@@ -142,6 +146,7 @@ export default function App() {
           <Route path="/faculty/cart" element={<BookCart />} />
           <Route path="/faculty/research" element={<ResearchCatalog />} />
           <Route path="/faculty/borrowing" element={<BorrowingHistory />} />
+          <Route path="/faculty/my-books" element={<MyBooksPage />} />
           <Route path="/faculty/reservations" element={<StudentReservations />} />
           <Route path="/faculty/attendance" element={<UserAttendancePage />} />
           <Route path="/faculty/notifications" element={<NotificationCenterPage />} />

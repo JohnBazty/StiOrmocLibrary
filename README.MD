@@ -6,7 +6,7 @@ This guide explains how to prepare a Windows development computer, run and test 
 
 ## AI agents — read this first
 
-1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) (start-session protocol, plan statuses, MySQL reference migration tracker: latest **048** reference file, next **049**; Supabase Revision Phase 3 file **021** applied; Phase 4 **022** and Phase 5 **023/024** applied, next unused **025**).
+1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) (start-session protocol, plan statuses, MySQL reference migration tracker: latest **048** reference file, next **049**; Supabase Revision Phase 3 file **021** applied; Phase 4 **022**, Phase 5 **023/024** Phase 6 **025** and Phase 7 **026** and cart/reservation split **027** plus October revisions **029** applied; enrollment **028** remains an unapplied draft; next unused **030**).
 2. Read [AGENTS.md](AGENTS.md) and [agent.md](agent.md).
 3. Database cutover status: [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md).
 
@@ -49,6 +49,10 @@ The repository is an npm workspace:
 - `docs` — architecture, database, feature, and development documentation.
 
 Implemented live database areas include authentication, categories, normalized books/research records, physical-copy inventory, thesis inventory, reservations, and inventory CSV/PDF reports. Some remaining presentation screens still use mock operational data while their backend modules are developed.
+
+Revision Phase 8 adds live actionable Librarian/Staff tasks, owner-scoped dashboard links and a Librarian Reports page with 13 filtered source reports and CSV/PDF exports. The active report overview uses real database records. Local technical checks passed; human Librarian acceptance remains open. See [implementation evidence](docs/revision-phase8-local-implementation.md) and [trial guide](docs/revision-phase8-librarian-trial.md).
+
+The owner-approved combined Librarian/Admin login is `ADMIN-PORTAL-001` at `/staff`, using its existing password and opening `/librarian/dashboard`. The temporary `LIB-TEST-001` login is archived with its history preserved. See [account consolidation record](docs/admin-librarian-account-consolidation.md).
 
 ## Prerequisites
 

@@ -12,7 +12,9 @@
   },
   "dependencies": {
     "html5-qrcode": "^2.3.8",
+    "jszip": "^3.10.2",
     "lucide-react": "latest",
+    "pdfjs-dist": "^6.4.299",
     "react": "latest",
     "react-dom": "latest",
     "react-router-dom": "latest"

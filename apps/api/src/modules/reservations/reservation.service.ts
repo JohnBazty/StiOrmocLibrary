@@ -8,6 +8,8 @@ import { parseQueueFilters, positiveId, validateReservationRequest, validateStat
 import { queryReservationQueue } from './reservation-query.repository.ts'
 import { cancelPendingCounterClaim, createPendingCounterClaim } from './reservation-claim.repository.ts'
 import { notifyReservationStatus } from './reservation-notification.ts'
+import { createBookRequestService } from './book-request.service.ts'
+import { requestEventStatus, requestInstructions, requestLabels } from './book-request-events.ts'
 
 // Claimed reservations are represented by their authoritative open loan and
 // must not remain in a user's capacity forever after that loan is returned.
@@ -77,10 +79,17 @@ export function createReservationService(database: Pool = db, clock: () => Date 
       const userId = accounts[0]?.user_id ? Number(accounts[0].user_id) : null
       if (!userId) throw new HttpError(422, 'CIRCULATION_PROFILE_NOT_LINKED', 'This login account is not linked to a circulation profile.')
       const [rows] = await database.execute<RowDataPacket[]>(
-        `SELECT r.reservation_id, r.queue_position, r.reservation_status, r.reserved_at, r.pickup_deadline,
+        `SELECT r.reservation_id, r.queue_position, r.reservation_status, r.reserved_at, r.pickup_deadline, ${isPostgres ? 'r.request_kind,' : ''}
                 COALESCE(t.title, m.title) AS title, t.title_id, t.cover_image_path,
                 assigned_pc.accession_number, COALESCE(assigned_pc.barcode, assigned.barcode) AS barcode,
                 COALESCE(assigned_pc.condition_status, source_pc.condition_status) AS condition_status
+                ${isPostgres ? `, (r.pickup_deadline AT TIME ZONE 'Asia/Manila') AS deadline_iso,
+                  (r.reserved_at AT TIME ZONE 'Asia/Manila') AS requested_iso,
+                  r.preparation_started_at,r.ready_at,
+                  (SELECT json_agg(json_build_object('status',e.event_status,'at',e.occurred_at) ORDER BY e.occurred_at,e.event_id)
+                   FROM book_request_events e WHERE e.reservation_id=r.reservation_id) AS events,
+                  (SELECT d.status FROM book_request_email_deliveries d JOIN book_request_events e ON e.event_id=d.event_id
+                   WHERE e.reservation_id=r.reservation_id ORDER BY e.event_id DESC LIMIT 1) AS email_status` : ''}
            FROM reservations r INNER JOIN materials m ON m.material_id = r.material_id
            LEFT JOIN physical_copies source_pc ON source_pc.material_id = r.material_id
            LEFT JOIN titles t ON t.title_id = COALESCE(r.book_title_id, source_pc.title_id)
@@ -88,14 +97,20 @@ export function createReservationService(database: Pool = db, clock: () => Date 
            LEFT JOIN physical_copies assigned_pc ON assigned_pc.physical_copy_id = r.assigned_physical_copy_id
           WHERE r.user_id = ? ORDER BY r.reserved_at DESC, r.reservation_id DESC`, [userId],
       )
-      return rows.map((row) => ({ reservationId: Number(row.reservation_id), title: row.title, titleId: row.title_id ? Number(row.title_id) : null,
+      return rows.map((row) => ({ requestKind:row.request_kind??'Reservation', reservationId: Number(row.reservation_id), title: row.title, titleId: row.title_id ? Number(row.title_id) : null,
         coverImagePath: row.cover_image_path ? String(row.cover_image_path) : null, queuePosition: Number(row.queue_position),
-        status: row.reservation_status, reservedAt: row.reserved_at, pickupDeadline: row.pickup_deadline,
+        status: row.reservation_status, reservedAt: isPostgres ? row.requested_iso : row.reserved_at,
+        pickupDeadline: isPostgres ? row.deadline_iso : row.pickup_deadline,
+        requestStatus: requestEventStatus(String(row.reservation_status),Boolean(row.barcode)),
+        statusLabel: row.request_kind==='CartHandover'&&row.reservation_status==='approved'?'Awaiting handover':requestLabels[requestEventStatus(String(row.reservation_status),Boolean(row.barcode))],
+        instructions: row.request_kind==='CartHandover'&&row.reservation_status==='approved'?'Bring your selected book to the library desk. Staff will confirm handover before the loan starts.':requestInstructions(requestEventStatus(String(row.reservation_status),Boolean(row.barcode)),row.deadline_iso ? new Date(row.deadline_iso) : null),
+        events: row.events ?? [], emailStatus: row.email_status ?? null,
         accessionNumber: row.accession_number ?? null, barcode: row.barcode ?? null,
         conditionStatus: row.condition_status ? String(row.condition_status) : null }))
     },
 
     async createForAccount(accountIdValue: unknown, body: unknown) {
+      if (isPostgres) return createBookRequestService(database,clock).createForAccount(accountIdValue,body)
       const accountId = positiveId(accountIdValue, 'accountId')
       const input = body && typeof body === 'object' ? body as Record<string, unknown> : {}
       const [accounts] = await database.execute<RowDataPacket[]>(
@@ -119,6 +134,7 @@ export function createReservationService(database: Pool = db, clock: () => Date 
     },
 
     async create(userIdValue: unknown, body: unknown) {
+      if (isPostgres) return createBookRequestService(database,clock).create(userIdValue,body)
       const userId = positiveId(userIdValue, 'userId')
       const { materialId } = validateReservationRequest(body)
       const connection = await database.getConnection()
@@ -251,6 +267,7 @@ export function createReservationService(database: Pool = db, clock: () => Date 
     },
 
     async cancelForAccount(accountIdValue: unknown, reservationIdValue: unknown) {
+      if (isPostgres) return createBookRequestService(database,clock).cancel(accountIdValue,reservationIdValue)
       const accountId = positiveId(accountIdValue, 'accountId')
       const reservationId = positiveId(reservationIdValue, 'reservationId')
       const connection = await database.getConnection()
@@ -297,6 +314,7 @@ export function createReservationService(database: Pool = db, clock: () => Date 
     },
 
     async adjustStatus(adminUserIdValue: unknown, reservationIdValue: unknown, body: unknown) {
+      if (isPostgres) return createBookRequestService(database,clock).adjustStatus(adminUserIdValue,reservationIdValue,body)
       const adminUserId = positiveId(adminUserIdValue, 'adminUserId')
       const reservationId = positiveId(reservationIdValue, 'reservationId')
       const adjustment = validateStatusAdjustment(body)

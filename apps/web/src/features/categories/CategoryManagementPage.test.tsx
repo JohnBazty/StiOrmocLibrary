@@ -8,6 +8,28 @@ vi.mock('./category-api', () => ({ categoryApi: api, CategoryApiError: class ext
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('CategoryManagementPage', () => {
+  it('marks shelf creation as success, allows dismissal, and reports a failed attempt as an error', async () => {
+    api.list.mockResolvedValue([])
+    api.listShelves.mockResolvedValue([])
+    api.addShelf.mockResolvedValueOnce({ id: 1, label: 'TH1A' }).mockRejectedValueOnce(new Error('A shelf with this label already exists.'))
+    render(<CategoryManagementPage />)
+    await screen.findByText('No categories have been registered.')
+    fireEvent.change(screen.getByLabelText('New shelf label'), { target: { value: 'TH1A' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add shelf' }))
+    const saved = await screen.findByRole('status')
+    expect(saved.textContent).toContain('Shelf TH1A is ready for category assignments.')
+    expect(saved.getAttribute('data-tone')).toBe('success')
+    expect(screen.queryByRole('alert')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss alert' }))
+    expect(screen.queryByRole('status')).toBeNull()
+    fireEvent.change(screen.getByLabelText('New shelf label'), { target: { value: 'TH1A' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add shelf' }))
+    const failed = await screen.findByRole('alert')
+    expect(failed.textContent).toContain('A shelf with this label already exists.')
+    expect(failed.getAttribute('data-tone')).toBe('error')
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
   it('shows the canonical category details and keeps assigned categories out of direct delete', async () => {
     api.list.mockResolvedValue([{ categoryId: 7, categoryName: 'Programming', description: 'Software development books', shelfLocation: 'Shelf A', shelfColumn: 1, shelfRow: 2, totalBooksCount: 3, totalThesisCount: 0, createdAt: '2026-09-25T00:00:00.000Z', updatedAt: null }])
     api.listShelves.mockResolvedValue([{ id: 1, label: 'Shelf A', columnCount: 3, rowCount: 5 }])

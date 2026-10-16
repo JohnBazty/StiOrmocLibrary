@@ -47,7 +47,7 @@ export function createBookCatalogService(database: Pool = db) {
       return { ...book, copies: await queryBookCopyDetails(database, titleId) }
     },
 
-    async reserve(titleIdValue: unknown, viewer: CatalogViewer) {
+    async reserve(titleIdValue: unknown, viewer: CatalogViewer, body: unknown = {}) {
       if (!['Student', 'Faculty'].includes(viewer.role)) {
         throw new HttpError(403, 'BOOK_RESERVATION_ROLE_FORBIDDEN', 'Only Student or Faculty accounts may reserve catalog books.')
       }
@@ -56,7 +56,8 @@ export function createBookCatalogService(database: Pool = db) {
       if (!target || !target.userId || !target.materialId) {
         throw new HttpError(422, 'BOOK_RESERVATION_UNAVAILABLE', 'This account or title is not linked to a reservable physical copy.')
       }
-      return reservationService.create(target.userId, { materialId: target.materialId })
+      return reservationService.create(target.userId, { materialId: target.materialId,
+        requestId: body && typeof body==='object' ? (body as Record<string,unknown>).requestId : undefined })
     },
   }
 }

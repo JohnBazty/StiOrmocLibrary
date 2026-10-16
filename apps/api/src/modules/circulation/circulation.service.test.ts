@@ -12,6 +12,20 @@ const legacyPolicyRow = {
   long_overdue_after_days: null, change_reason: 'Legacy baseline', created_by_user_id: null, created_at: '2000-01-01',
 }
 
+test('cart reconciliation reads only the owner active loans and queue titles without writing',async()=>{
+  let calls=0
+  const database={execute:async(sql:string,args:unknown[])=>{
+    calls++;assert.deepEqual(args,[7]);assert.match(sql,/WHERE a.account_id=\?/)
+    assert.match(sql,/transaction_status IN \('Pending','Borrowed','Overdue'\)/)
+    assert.match(sql,/reservation_status IN \('pending','approved','ready_for_pickup'\)/)
+    assert.doesNotMatch(sql,/\b(INSERT|UPDATE|DELETE)\b/)
+    return [[{title_id:'12'},{title_id:20}]]
+  }} as unknown as Pool
+  assert.deepEqual(await createCirculationService(database).cartState(7),{activeTitleIds:[12,20]})
+  await assert.rejects(createCirculationService(database).cartState(0))
+  assert.equal(calls,1)
+})
+
 function checkoutPool(role: 'Student' | 'Faculty', activeCount = 0, readyClaim: boolean | 'cart' = false, condition = 'Good') {
   const state = { commits: 0, rollbacks: 0, borrowInserts: 0, queueCompactions: 0, notifications: 0, overrideInserts: 0 }
   const connection = {
@@ -208,5 +222,5 @@ test('borrowing history exposes the normalized title cover path', async () => {
   const result = await createCirculationService(database).history(1, { page: 1, limit: 25 })
   assert.equal(result.items[0].coverImagePath, '/api/assets/covers/clean-code.png')
   assert.equal(result.summary.loanLimit, 2)
-  assert.equal(result.summary.dueCutoffLabel, '8:59 AM')
+  assert.equal(result.summary.dueCutoffLabel, 'See the exact due date and time for each loan')
 })

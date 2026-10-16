@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createLoginController } from './authController.js'
+import { createLoginController, createLogoutController } from './authController.js'
 
 function createResponse() {
   return {
@@ -107,4 +107,54 @@ test('uses a generic error for unknown users and bad passwords', async () => {
     assert.equal(response.statusCode, 401)
     assert.equal(response.payload.code, 'INVALID_CREDENTIALS')
   }
+})
+
+function logoutFixture(type, revoke = async () => true, destroyError = null) {
+  const calls = []
+  const request = { session: { user: { id: 12 }, authVersion: 9, destroy(callback) { calls.push('destroy'); callback(destroyError) } } }
+  const response = {
+    locals: { authenticationType: type, authenticatedUser: { accountId: 5, authVersion: 4 } },
+    clearCookie() { calls.push('clearCookie') },
+    redirect(status, url) { calls.push({ status, url }) },
+  }
+  const controller = createLogoutController({ sessions: { async revokeCurrentVersion(identity) { calls.push(identity); return revoke(identity) } } })
+  return { request, response, calls, controller }
+}
+
+test('logout revokes the authenticated bearer account/version before destroying a coexisting cookie', async () => {
+  const f = logoutFixture('jwt')
+  await f.controller(f.request, f.response, error => { throw error })
+  assert.deepEqual(f.calls, [{ accountId: 5, authVersion: 4 }, 'destroy', 'clearCookie', { status: 303, url: '/login?logout=1' }])
+})
+
+test('cookie-only logout uses the operational user version, not the bearer account ID', async () => {
+  const f = logoutFixture('session')
+  await f.controller(f.request, f.response, error => { throw error })
+  assert.deepEqual(f.calls[0], { userId: 12, authVersion: 9 })
+  assert.deepEqual(f.calls.at(-1), { status: 303, url: '/login?logout=1' })
+})
+
+test('a stale logout still clears its own cookie when a newer version is preserved', async () => {
+  const f = logoutFixture('jwt', async () => false)
+  await f.controller(f.request, f.response, error => { throw error })
+  assert.ok(f.calls.includes('destroy'))
+  assert.deepEqual(f.calls.at(-1), { status: 303, url: '/login?logout=1' })
+})
+
+test('logout fails without reporting success when revocation cannot be committed', async () => {
+  const failure = new Error('Database unavailable')
+  const f = logoutFixture('jwt', async () => { throw failure })
+  let received
+  await f.controller(f.request, f.response, error => { received = error })
+  assert.equal(received, failure)
+  assert.deepEqual(f.calls, [{ accountId: 5, authVersion: 4 }])
+})
+
+test('logout does not redirect successfully when cookie destruction fails after revocation', async () => {
+  const failure = new Error('Session store unavailable')
+  const f = logoutFixture('session', async () => true, failure)
+  let received
+  await f.controller(f.request, f.response, error => { received = error })
+  assert.equal(received, failure)
+  assert.deepEqual(f.calls, [{ userId: 12, authVersion: 9 }, 'destroy'])
 })

@@ -46,11 +46,20 @@ React web admin  React Native mobile  React tablet kiosk
 - Input validation: Zod or an equivalent server-side validation library
 - QR/barcode scanning: browser camera library such as `html5-qrcode`; accept USB barcode scanners as keyboard input
 
+## Design for people with no technical background
+
+Owner requirement (2026-10-16): assume the person using every feature has no technical background. Reduce the actual work required, use familiar library words and clear next actions, and explain outcomes before saving. Prefer automatic recognition, sensible reusable choices and review of exceptions over repeated forms and confirmations. Keep optional technical settings collapsed. Do not show database IDs, implementation terms or raw errors as normal instructions. Preserve server validation, permissions, provenance and review of ambiguous data; ease of use must not silently discard records, guess copy quantities or create duplicates. Apply this rule to all future screens and workflows, not only bulk imports.
+
+Owner requirement (2026-10-17): every file/image chooser must show the selected filename, size and a local content preview before the final send, publish or scan action. Reuse `SelectedFilePreview`, allow removal/replacement, show readable loading/failure states, and clear the picker after a successful submission. Preserve failed selections for retry. Image previews must show the uncropped image; Word/spreadsheet samples must disclose their limits. Previewing must not execute document scripts or formulas or send files to a third-party viewer. Automatic printing analysis/import inspection may still run for page counting and column recognition; these are not final submissions.
+
+Owner clarification (2026-10-17): the Printing service's selected-document card should show a PDF or DOCX file-type icon, filename, size and removal control only. Do not display document contents there. Use `SelectedFilePreview` with `display="icon"`; automatic page counting and pricing still apply.
+
 ## Frontend Visual Rules
 
-- Use only STI blue `#003399`, STI yellow `#FFF200`, and white `#FFFFFF` in the frontend.
-- Opacity variants of those three colors are allowed for borders, muted text, backgrounds, and overlays.
-- Do not add gray, green, red, orange, violet, or any other interface color.
+- Owner direction (2026-10-17): the blue/yellow/white-only restriction is withdrawn. Use any colors needed for clear, accessible and consistent UI/UX; additional palette colors do not require separate approval.
+- STI blue, yellow and white remain available as brand colors. Use neutrals for readable surfaces and supporting text, and purposeful accent colors for clear actions and states.
+- Preserve the owner's semantic rule: red is for errors only; green may identify successful actions. Amber may identify warnings and blue may identify information. Use `role="alert"` for errors and `role="status"` with `data-tone="success"` for success messages. Do not mark successful actions as error alerts.
+- Keep color meanings consistent across screens and light/dark themes. Meet WCAG AA contrast: at least 4.5:1 for normal text, 3:1 for large text and relevant controls/focus indicators.
 - Pair status colors with explicit text and icons; color alone must never communicate meaning.
 
 ## Backend Module Boundaries
@@ -104,9 +113,11 @@ Use role-based authorization on the server for every protected endpoint.
 - `librarian`: the library Super Admin with full policy, catalog, circulation, inventory, attendance, printing, fines, archive, clearance, user-state, and reporting controls.
 - `system_admin`: technical/system administration kept distinct from the Librarian's library-policy role.
 
+Owner amendment (2026-10-12): the active `ADMIN-PORTAL-001` account now uses canonical Librarian authority as the combined Librarian/Admin login. The separate temporary `LIB-TEST-001` account is archived with original identities and history preserved. The legacy System Administrator role remains a schema/history compatibility reference; do not recreate a separate active administrator or reactivate the retired login without a new owner instruction. See [account consolidation record](docs/admin-librarian-account-consolidation.md).
+
 Never trust role, fine amount, due date, book availability, or print cost values sent by the client. Calculate and enforce these on the server.
 
-Authentication requests must use an approved institutional `@ormoc.sti.edu.ph` or `@sti.edu` domain, prepared MySQL statements, CSRF protection, session fixation prevention, and a 30-minute idle timeout. Every state-changing authenticated API request must carry the session's CSRF token. Anonymous registration may create Student and Faculty accounts only; Librarian creation requires an authenticated System Administrator. Do not replace the MySQL-backed session store with Express MemoryStore in production.
+Authentication requests must use an approved institutional `@ormoc.sti.edu.ph` or `@sti.edu` domain, prepared MySQL statements, CSRF protection, session fixation prevention, and a 10-minute inactivity timeout. The active Postgres web login requires an email code on every Student and Faculty sign-in; active interactions renew its JWT silently, while background polling does not extend the session. See `docs/october16-revisions-implementation.json`. Every state-changing authenticated API request must carry the session's CSRF token. Anonymous registration may create Student and Faculty accounts only; Librarian creation requires an authenticated System Administrator. Do not replace the MySQL-backed session store with Express MemoryStore in production.
 
 ## Business Rules to Preserve
 

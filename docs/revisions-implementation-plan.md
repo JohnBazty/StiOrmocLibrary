@@ -3,10 +3,10 @@
 | Field | Value |
 | --- | --- |
 | Date created | 2026-10-10 |
-| Date last updated | 2026-10-11 |
+| Date last updated | 2026-10-16 |
 | Status | `inprogress` |
 | Source | `C:/Users/JOHN/Downloads/Revisions.pdf`, pages 1–3 |
-| Scope | Revision Phases 1, 3 and 4 built locally; other phases remain planned |
+| Scope | Revision Phases 1, 3, 4, 5, 6 and 7 built locally; Phase 2 and 8 remain planned; Phase 7 school criteria activation pending |
 
 ## Why
 
@@ -27,9 +27,11 @@ These are **Revision Phases 1–8**, a separate roadmap from the earlier [system
 | Topic | Owner's decision | Consequence for the plan |
 | --- | --- | --- |
 | Main administrative role | Librarian becomes the main Admin | Replace the earlier account-management/library-operations split with a Librarian/Super Admin workspace covering both. Staff remains restricted. |
+| Combined account (2026-10-12) | Keep `ADMIN-PORTAL-001` and its existing password | Set it to canonical Librarian authority; archive the separate temporary `LIB-TEST-001` login and preserve both identities and history. See [consolidation record](admin-librarian-account-consolidation.md). |
 | Error appearance | Allow red for errors | Add an accessible error style; retain STI blue, yellow, and white elsewhere. |
 | Reservation claim timer | Start when staff marks the book ready | Hold a copy immediately when available, but start the 24-hour claim deadline only at Ready for Pickup. |
 | Book age review | Five years old or older | Flag age `>= 5` for review, using the approved academic-year reference. |
+| QR/cart/checkout amendment (2026-10-16) | One permanent user QR; Add to cart → review → submit; requests queue only; Start checkout loads borrower/copy for handover confirmation | Supersedes purpose-QR generation, immediate catalog request actions and new Pending loan creation. See [built work record](qr-cart-queue-checkout-20261016.md) for verified behavior and historical compatibility. |
 
 Previously agreed behavior continues unless explicitly changed: Supabase is the active database; users edit their own profiles; school email stays fixed; registration requires email verification and account approval; account deactivation preserves records in User Archive; semester changes require administrator review; library closing is **7:00 PM, Asia/Manila**. Invoice issuance, the old interactive floor plan, the View Location button, and feedback/reviews remain archived or deferred.
 
@@ -84,7 +86,7 @@ For each phase: confirm its remaining policy inputs, write the API/schema/UI con
 
 - Reuse existing authentication, school-email sender, password hashing, registration, notifications, and approval modules. Recovery codes must be separate from registration codes, hashed, expiring, single-use, and never returned or logged. After code verification only, return a short-lived reset grant kept in component memory; store its digest and never log it. Rate-limit requests and use neutral responses for unknown accounts.
 - Add a shared action-level permission contract applied to route guards, API routes, service checks, and record queries. Include API namespaces currently restricted to `Admin` and legacy notification action links.
-- Preserve existing account IDs, credentials, user links, and history. Establish and verify a main Librarian account before changing the old Admin workspace. Keep any technical/bootstrap administrator separate from everyday library duties; document legacy-account mapping before cutover. Do not silently delete or promote accounts.
+- Preserve existing account IDs, credentials, user links, and history. Following the owner's 2026-10-12 instruction, use `ADMIN-PORTAL-001` as the combined Librarian/Admin account and archive the temporary `LIB-TEST-001` login. Historical Admin role/schema compatibility remains; the old separate-bootstrap-account proposal is superseded for these accounts. Revoke prior sessions and verify the complete workspace before cutover is considered complete.
 - Revoke/recheck existing sessions when roles, passwords, or account status change. The unlisted URL is a navigation choice; backend authorization still protects every action.
 
 ### Acceptance
@@ -208,7 +210,9 @@ Reuse circulation services, the physical-copy bridge, QR identity resolution, fi
 
 ## Revision Phase 6 — Online requests, staff preparation, and pickup
 
-**Status:** `planned`
+**Status:** `built`
+
+Implementation record: [revision-phase6-local-implementation.md](revision-phase6-local-implementation.md).
 
 **Goal:** A simple request-to-pickup flow with notifications at each status change.
 
@@ -238,7 +242,9 @@ The chosen rule is 24 elapsed hours from readiness. If the school wants closed-d
 
 ## Revision Phase 7 — Collection-age review, weeding, and program alerts
 
-**Status:** `planned`
+**Status:** `built`
+
+**2026-10-12 local implementation:** Collection review, year approvals (2026–2027/reference 2026), append-only recommendations/requirement versions, deduplicated notices and Full/Updated/Exclusions CSV/PDF exports are built. Postgres 026 is applied after private snapshot and isolated acceptance. Official CHED CMO 22, s. 2021 Section 4(b)(4) supplies a reviewable major-subject template; numeric checks remain pending school confirmation and verified course/title mappings. See [work record and official-source research](revision-phase7-local-implementation.md).
 
 **Goal:** Identify aging resources and support collection review with traceable reporting criteria.
 
@@ -267,7 +273,9 @@ The PDF's blanket five-year language is the owner's chosen **review rule**, not 
 
 ## Revision Phase 8 — Dashboards, Reports, usability, and acceptance
 
-**Status:** `planned`
+**Status:** `inprogress`
+
+Local dashboards and source reports are implemented and technically verified on 2026-10-12: 344 API tests, 157 web tests, build/type checks, running role/API checks, all 13 report sources/26 exports and isolated end-to-end circulation/request regressions passed. Human Librarian usability/device acceptance remains required before marking this phase built. See [implementation evidence](revision-phase8-local-implementation.md) and [trial checklist](revision-phase8-librarian-trial.md). No Phase 8 schema migration or deployment was performed; the Phase 2 enrollment exception and unapproved collection criteria remain visible.
 
 **Goal:** Make urgent work visible and verify complete workflows locally.
 
@@ -337,8 +345,8 @@ The PDF's blanket five-year language is the owner's chosen **review rule**, not 
 - [x] Revision Phase 3 — Holdings, catalog, public browsing, and Maintenance (built locally).
 - [x] Revision Phase 4 — QR attendance, occupancy, and operational states (built locally).
 - [x] Revision Phase 5 — Desk circulation and in-library use (built locally).
-- [ ] Revision Phase 6 — Online requests and pickup.
-- [ ] Revision Phase 7 — Collection review and program alerts.
+- [x] Revision Phase 6 — Online requests and pickup (built locally).
+- [x] Revision Phase 7 — Collection review and program alerts framework; school criteria activation pending.
 - [ ] Revision Phase 8 — Dashboards, Reports, usability, and local acceptance.
 - [ ] Separate release approval and deployment checks, when requested.
 
@@ -352,3 +360,8 @@ The PDF's blanket five-year language is the owner's chosen **review rule**, not 
 
 - **2026-10-11:** Revision Phase 4 built locally after owner choices 1A/2A/3A. Supabase 022 applied; atomic automatic-action scanning, signed purpose QR, printing-only service occupancy, concurrent peak reports, Librarian event controls/Staff read-only state and 6:55 PM closing/recovery are active. 296 API/125 web tests, type checks/build, isolated UTC/concurrency integration and live API/browser checks passed. Disposable fixtures removed; no push/deployment. Next unused Postgres 023; MySQL 047/048 unchanged.
 - **2026-10-11:** Revision Phase 5 built locally after approved in-library and interim enrollment policies. Postgres 023/024 applied; QR borrower previews, scanned copy checkout/returns, atomic eligibility, condition assessment, returned-copy preparation and separate physical reading ledger are active. 298 API/129 web tests, build, isolated Postgres and local API/browser verification passed. Next Postgres 025; MySQL 047/048 unchanged. No push/deployment.
+
+- **2026-10-11:** Revision Phase 6 built locally: unified copy holds and waitlists, staff preparation, readiness-based 24-hour pickup timer, request timeline/in-app notices and recoverable email delivery, verified QR pickup, cancellation/expiry/return advancement. Additive Postgres 025 applied after private snapshot; existing accounts/catalog/loan history retained. 332 API/149 web tests, typecheck/build, isolated Postgres Phase 5/6 and local browser/API checks pass. Next Postgres 026; MySQL reference 048/next 049 unchanged. Phase 2 enrollment remains pending. No push/deployment.
+
+- 2026-10-12: Revision Phase 7 built locally with starting reference year 2026, researched CHED sources, school-approved requirement versions, review decisions, deduplicated notices and reconciled CSV/PDF exports. Applied 026 after private snapshot and isolated acceptance; source criteria/course mappings remain pending verification.
+- 2026-10-12: Revision Phase 8 local technical implementation verified: actionable role dashboards, canonical read-only clearance and 13 source reports with matching preview/CSV/PDF criteria. Human Librarian usability/device acceptance remains pending, so status is inprogress. Current data and migration tracker preserved; no push or deployment.

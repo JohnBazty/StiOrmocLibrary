@@ -11,7 +11,7 @@
   "outputDirectory": "apps/web/dist",
   "functions": {
     "api/index.mjs": {
-      "includeFiles": "node_modules/{@sparticuz/chromium/bin/**,docx-preview/dist/docx-preview.js,jszip/dist/jszip.min.js}",
+      "includeFiles": "{apps/api/assets/fonts/**,node_modules/@sparticuz/chromium/bin/**,node_modules/docx-preview/dist/docx-preview.js,node_modules/jszip/dist/jszip.min.js}",
       "maxDuration": 60
     }
   },

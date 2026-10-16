@@ -1,3 +1,4 @@
+import { ClearanceScheduleEditor } from './ClearanceScheduleEditor'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { AlertTriangle, BadgeCheck, Clock3, Download, Eye, RefreshCw, ShieldCheck, X } from 'lucide-react'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
@@ -82,6 +83,7 @@ export function AdminClearancePage() {
     const blob = await response.blob(); const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'smartlib-clearance.csv'; anchor.click(); URL.revokeObjectURL(url)
   }
   return <>
+    {isLibrarian ? <ClearanceScheduleEditor /> : null}
     <PageHeader eyebrow="Student standing" title="Clearance management" description="Live obligations, documented exceptions, lost-book charges, and audit history." action={<div className="flex gap-2"><Button variant="secondary" onClick={() => void load()}><RefreshCw size={16} /> Refresh</Button><Button onClick={() => void exportCsv()}><Download size={16} /> Export bulk status</Button></div>} />
     {error ? <div role="alert" className="mb-5 flex gap-2 rounded-xl bg-[#FFF200] p-4 font-bold text-[#003399]"><AlertTriangle size={18} />{error}</div> : null}
     <div className="mb-5 grid gap-3 sm:grid-cols-4"><StatCard label="Students" value={data?.summary.totalStudents ?? 0} icon={BadgeCheck} tone="blue" /><StatCard label="Cleared" value={data?.summary.cleared ?? 0} icon={BadgeCheck} tone="blue" /><StatCard label="Pending clearance" value={data?.summary.pending ?? 0} icon={Clock3} tone="blue" /><StatCard label="Active overrides" value={data?.summary.activeOverrides ?? 0} icon={ShieldCheck} tone="blue" /></div>

@@ -18,7 +18,7 @@ describe('authentication pages', () => {
   it('shows school-ID login without public personnel links with a registration link', () => {
     render(<MemoryRouter><ThemeProvider><LoginPage /></ThemeProvider></MemoryRouter>)
     expect(screen.queryByLabelText('Login as')).toBeNull()
-    expect(screen.getByLabelText('School ID')).toBeTruthy()
+    expect(screen.getByLabelText('Student Number / Faculty ID')).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Register an account' }).getAttribute('href')).toBe('/register')
     expect(screen.queryByRole('link', { name: 'System Administrator Login' })).toBeNull()
     expect(screen.getByRole('link', { name: 'Forgot Password?' }).getAttribute('href')).toBe('/forgot-password')

@@ -7,7 +7,7 @@ vi.mock('html5-qrcode',()=>({Html5QrcodeSupportedFormats:{QR_CODE:0},Html5Qrcode
 const visitor={name:'Test visitor',schoolId:'TEST-1',role:'Student',purpose:null}
 beforeEach(()=>{vi.clearAllMocks();api.resolveScan.mockResolvedValue({visitor,openVisit:null,occupancy:{current:0,capacity:1}});api.scan.mockResolvedValue({visitor,message:'Library entry recorded.',occupancy:{current:1,capacity:1}})})
 afterEach(cleanup)
-async function upload(){const input=document.querySelector('input[type=file]')!;fireEvent.change(input,{target:{files:[new File(['qr'],'qr.png',{type:'image/png'})]}});await screen.findByText('Test visitor')}
+async function upload(){const input=document.querySelector('input[type=file]')!;fireEvent.change(input,{target:{files:[new File(['qr'],'qr.png',{type:'image/png'})]}});expect(api.resolveScan).not.toHaveBeenCalled();fireEvent.click(await screen.findByRole('button',{name:'Read QR from image'}));await screen.findByText('Test visitor')}
 it('requires a purpose for permanent QR entry and cancelling records no visit',async()=>{
  render(<AttendanceScannerModal open onClose={()=>undefined}/>);await upload()
  expect(screen.queryByRole('button',{name:'Check out'})).toBeNull()

@@ -3,16 +3,18 @@ import { useCallback, useEffect, useState } from 'react'
 import { Button, PageHeader, SectionCard, StatCard, StatusBadge, TableShell } from '../../components/ui'
 import { dashboardApi } from './dashboard-api'
 import type { AdminDashboardData } from './types'
+import { Link } from 'react-router-dom'
+import { WorkspaceTasks } from './WorkspaceTasks'
 
 const peso=(value:number)=>new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP'}).format(value)
 const count=(value:number)=>new Intl.NumberFormat('en-PH').format(value)
 const first=(name:string)=>name.trim().split(/\s+/)[0]||'Administrator'
 
 export function AdminDashboardPage(){
-  const[data,setData]=useState<AdminDashboardData|null>(null);const[error,setError]=useState('');const[loading,setLoading]=useState(true);const[exporting,setExporting]=useState(false)
+  const[data,setData]=useState<AdminDashboardData|null>(null);const[error,setError]=useState('');const[loading,setLoading]=useState(true)
   const load=useCallback(async()=>{setLoading(true);setError('');try{setData(await dashboardApi.admin())}catch(value){setError(value instanceof Error?value.message:'The dashboard could not be loaded.')}finally{setLoading(false)}},[])
   useEffect(()=>{void load()},[load])
-  const exportPdf=async()=>{setExporting(true);setError('');try{await dashboardApi.downloadAdminSummary()}catch(value){setError(value instanceof Error?value.message:'The PDF could not be generated.')}finally{setExporting(false)}}
+
   if(!data&&loading)return <DashboardLoading />
   if(!data)return <DashboardError message={error} retry={load}/>
   const k=data.kpis,max=Math.max(1,...data.weeklyAttendance.map(item=>item.value)),categoryMax=Math.max(1,...data.popularCategories.map(item=>item.value)),occupancyPercent=Math.min(100,Math.round(data.occupancy.current/data.occupancy.capacity*100))
@@ -21,9 +23,10 @@ export function AdminDashboardPage(){
     ['Active users',count(k.activeUsers),Users,'cyan'],['Daily attendance',count(k.dailyAttendance),UserCheck,'blue'],['Reservations',count(k.activeReservations),CalendarDays,'violet'],['Outstanding fines',peso(k.outstandingFines),PhilippinePeso,'orange'],
   ] as const
   return <>
-    <PageHeader eyebrow="Library operations" title={`Good day, ${first(data.staff.name)}`} action={<div className="flex gap-2"><Button variant="secondary" disabled={loading} onClick={()=>void load()}><RefreshCw size={15}/>{loading?'Refreshing…':'Refresh'}</Button><Button disabled={exporting} onClick={()=>void exportPdf()}><Download size={15}/>{exporting?'Preparing…':'Export summary'}</Button></div>}/>
-    {error?<div role="alert" className="mb-5 rounded-2xl bg-[#FFF200] px-4 py-3 text-sm font-semibold text-[#003399]">{error}</div>:null}
-    <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{cards.map(([label,value,icon,tone])=><StatCard key={label} label={label} value={value} icon={icon} tone={tone}/>)}</div>
+    <PageHeader eyebrow="Library operations" title={`Good day, ${first(data.staff.name)}`} action={<div className="flex gap-2"><Button variant="secondary" disabled={loading} onClick={()=>void load()}><RefreshCw size={15}/>{loading?'Refreshing…':'Refresh'}</Button><Link to="/librarian/reports" className="inline-flex items-center rounded-xl bg-[#003399] px-4 py-2 text-sm font-bold text-white"><Download size={15} className="mr-2"/>View reports</Link></div>}/>
+    {error?<div role="alert" className="mb-5 rounded-2xl bg-[#b42318] px-4 py-3 text-sm font-semibold text-white">{error}</div>:null}
+    <WorkspaceTasks />
+    <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{cards.map(([label,value,icon,tone],index)=><Link key={label} className="rounded-2xl transition hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-4" to={['/librarian/inventory','/librarian/circulation','/librarian/inventory','/librarian/circulation','/librarian/users','/librarian/attendance','/librarian/reservations','/librarian/fines'][index]}><StatCard label={label} value={value} icon={icon} tone={tone}/></Link>)}</div>
     <div className="grid gap-5 xl:grid-cols-[1.2fr_.8fr]">
       <SectionCard className="p-5"><div className="flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-wider text-[#003399]/45">Visitor analytics</p><h2 className="mt-1 font-display text-lg font-bold text-[#003399]">Weekly attendance</h2></div><span className="text-xs font-semibold text-[#003399]/55">Asia/Manila</span></div><div className="mt-8 flex h-52 items-end gap-3 sm:gap-5">{data.weeklyAttendance.map(item=><div key={item.label} className="flex h-full flex-1 flex-col justify-end gap-2"><div className="relative flex flex-1 items-end rounded-t-lg bg-[#003399]/5"><div style={{height:`${Math.max(item.value?8:0,item.value/max*100)}%`}} className="relative w-full rounded-t-lg bg-[#003399]"><span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-bold text-[#003399]">{item.value}</span></div></div><span className="text-center text-[10px] font-semibold text-[#003399]/45">{item.label}</span></div>)}</div></SectionCard>
       <SectionCard className="p-5"><p className="text-xs font-bold uppercase tracking-wider text-[#003399]/45">Collection demand</p><h2 className="mt-1 font-display text-lg font-bold text-[#003399]">Popular categories</h2><div className="mt-6 space-y-5">{data.popularCategories.length?data.popularCategories.map(item=><div key={item.label}><div className="mb-2 flex justify-between text-xs"><span className="font-semibold text-[#003399]">{item.label}</span><span className="text-[#003399]/45">{item.value} borrows</span></div><div className="h-2 overflow-hidden rounded-full bg-[#003399]/5"><div style={{width:`${item.value/categoryMax*100}%`}} className="h-full rounded-full bg-[#003399]"/></div></div>):<Empty text="No borrowing activity in the last 30 days."/>}</div></SectionCard>
@@ -36,7 +39,7 @@ export function AdminDashboardPage(){
       <SectionCard className="p-5"><p className="text-xs font-bold uppercase tracking-wider text-[#003399]/45">Attendance purpose today</p><h2 className="mt-1 font-display text-lg font-bold text-[#003399]">Why visitors came in</h2><div className="mt-4 grid gap-3 sm:grid-cols-2">{data.purposeBreakdown.map(item=><Mini key={item.label} label={item.label} value={String(item.value)}/>)}{!data.purposeBreakdown.length?<Empty text="No attendance recorded today."/>:null}</div></SectionCard>
       <SectionCard className="p-5"><p className="text-xs font-bold uppercase tracking-wider text-[#003399]/45">Operational feed</p><h2 className="mt-1 font-display text-lg font-bold text-[#003399]">Recent activity</h2><div className="mt-3 divide-y divide-[#003399]/10">{data.recentActivity.map(item=><div key={item.id} className="py-3"><p className="text-sm font-semibold text-[#003399]">{item.title}</p><p className="mt-1 line-clamp-2 text-xs text-[#003399]/65">{item.message}</p><p className="mt-1 text-[10px] text-[#003399]/45">{item.createdAt}</p></div>)}{!data.recentActivity.length?<Empty text="No recent operational events."/>:null}</div></SectionCard>
     </div>
-    <p className="mt-4 text-right text-[11px] text-[#003399]/45">Last updated {new Date(data.generatedAt).toLocaleString('en-PH')}</p>
+    <p className="mt-4 text-right text-[11px] text-[#003399]/45">Last updated {new Date(data.generatedAt).toLocaleString('en-PH',{timeZone:'Asia/Manila'})}</p>
   </>
 }
 

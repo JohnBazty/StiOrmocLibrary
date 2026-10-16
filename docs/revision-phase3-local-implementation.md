@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Date created | 2026-10-11 |
-| Date last updated | 2026-10-11 |
+| Date last updated | 2026-10-16 |
 | Status | `built` — locally verified |
 
 ## Why
@@ -30,6 +30,10 @@ Implement Revision Phase 3 without replacing existing title, physical-copy, rese
 - [x] Verify workflows, permissions, duplicate prevention, existing records and local browser behavior.
 
 ## Verification and use
+
+**2026-10-16 import usability update:** Adding books now uses Choose file → Check books → Add books, automatic column recognition, category/shelf choices once per file, and individual questions only for exceptions. See [implementation, tests and limits](holdings-import-usability-20261016.md). Existing overlap review and transactional duplicate protections remain in force.
+
+**2026-10-16 QA tooling update:** Run `node apps/api/scripts/verify-phase3-qa-isolated.js` for the live gate. It wraps the earlier verifier in a rollback-only transaction with savepoints, disposable permission actors and full-row preservation fingerprints, while explicitly removing external Storage fixtures. The earlier deletion-based cleanup predates Phase 7 collection-cache references, so direct execution is now blocked with an actionable instruction to use the wrapper. See [current QA findings and limits](revision-phase3-qa-20261016.md); the historical acceptance results below describe the original build.
 
 - API suite: **286 tests passed** before the final parser/history error refinements; final targeted parser/category checks: **16 passed**. Web suite: **115 passed**. API/web type checks and production builds passed. The build retains a bundle-size warning; it is not a build failure.
 - `node apps/api/scripts/verify-revision-phase3.js` passed against configured Supabase with disposable fixtures. Verified overlap reuse, invalid-row rejection, stale-version protection, per-copy identifiers and legacy circulation links, resumable/idempotent commit, metadata and course filters, public data boundaries, role restrictions, private-table privileges, digital upload/download, and withdrawal after archival.

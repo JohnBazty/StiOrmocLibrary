@@ -3,7 +3,7 @@ import { authorsAgg, isPostgres, sumEquals } from '../../config/sql-dialect.js'
 import type { BookCatalogFilters } from './book-catalog.validation.ts'
 
 const availableCopyCount = isPostgres
-  ? `COUNT(*) FILTER (WHERE pc.availability_status = 'Available' AND pc.material_id IS NOT NULL)`
+  ? `COUNT(*) FILTER (WHERE pc.availability_status = 'Available' AND pc.material_id IS NOT NULL AND pc.condition_status NOT IN ('Lost','Damaged','For Repair'))`
   : `SUM(pc.availability_status = 'Available' AND pc.material_id IS NOT NULL)`
 
 const currentConditionStatus = isPostgres
@@ -59,13 +59,13 @@ const SELECT_FIELDS = `SELECT
     COALESCE(c.category_name, 'Uncategorized') AS category_name,
     COALESCE(stock.available_shelf_location, stock.any_shelf_location, t.call_number) AS shelf_location,
     COALESCE(stock.total_copies_count, 0) AS total_copies_count,
-    CASE WHEN COALESCE(waiting.active_waiting_count, 0) > 0
-      THEN 0 ELSE COALESCE(stock.available_copies_count, 0) END AS available_copies_count,
+    ${isPostgres ? 'COALESCE(stock.available_copies_count, 0)' : `CASE WHEN COALESCE(waiting.active_waiting_count, 0) > 0
+      THEN 0 ELSE COALESCE(stock.available_copies_count, 0) END`} AS available_copies_count,
     stock.reservable_material_id,
     stock.preview_barcode,
     stock.current_condition_status,
     CASE
-      WHEN COALESCE(waiting.active_waiting_count, 0) > 0 THEN 'Reserved'
+      ${isPostgres ? '' : "WHEN COALESCE(waiting.active_waiting_count, 0) > 0 THEN 'Reserved'"}
       WHEN COALESCE(stock.available_copies_count, 0) > 0 THEN 'Available'
       WHEN COALESCE(stock.reserved_copies_count, 0) > 0 THEN 'Reserved'
       WHEN COALESCE(stock.borrowed_copies_count, 0) > 0 THEN 'Borrowed'

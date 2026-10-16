@@ -3,10 +3,12 @@
 | Field | Value |
 | --- | --- |
 | Date created | 2026-10-11 |
-| Date last updated | 2026-10-11 |
+| Date last updated | 2026-10-16 |
 | Status | `built` |
 
 ## Why
+
+**2026-10-16 amendment:** Active user routes now generate only the permanent library QR, reused across services and sign-ins. Staff choose visit purpose. Old temporary codes remain readable for compatibility. See [verified work record](qr-cart-queue-checkout-20261016.md); the original implementation description below is historical where it describes purpose QR generation.
 
 The owner authorized Revision Phase 4 of the revision roadmap. Retain attendance history and permanent passes while adding purpose QR, automatic scan actions, accurate occupied seats, events and closing-time recovery.
 

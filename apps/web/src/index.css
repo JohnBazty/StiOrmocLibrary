@@ -435,20 +435,26 @@ html.dark aside a[class*="bg-[#FFF200]"] * {
   color: #003399 !important;
 }
 
-/* Revision Phase 1: errors are red in both themes; statuses retain STI colors. */
-html [role="alert"]:not([data-tone="info"]) {
+/* Errors are red; explicitly successful notices are green in both themes. */
+html [role="alert"]:not([data-tone="info"]):not([data-tone="success"]) {
   background-color: #b42318 !important;
   border-color: #b42318 !important;
   color: #ffffff !important;
 }
-html [role="alert"]:not([data-tone="info"]) * {
+html [role="alert"]:not([data-tone="info"]):not([data-tone="success"]) * {
   color: #ffffff !important;
 }
+html [data-tone="success"] {
+  background-color: #166534 !important;
+  border-color: #166534 !important;
+  color: #ffffff !important;
+}
+html [data-tone="success"] * { color: #ffffff !important; }
 html .field-error { color: #b42318 !important; }
 html.dark .field-error { color: #ffb4ab !important; }
 
 /* Decorative warning icon for existing text-only errors; alert text remains accessible. */
-html [role="alert"]:not([data-tone="info"]):not(:has(svg))::before {
+html [role="alert"]:not([data-tone="info"]):not([data-tone="success"]):not(:has(svg))::before {
   content: ""; display: inline-block; width: 1rem; height: 1rem; margin-right: .5rem; vertical-align: -.15em;
   background: url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="white" stroke-width="2"%3E%3Ccircle cx="10" cy="10" r="8"/%3E%3Cpath d="M10 5v6m0 3v1"/%3E%3C/svg%3E') center / contain no-repeat;
 }

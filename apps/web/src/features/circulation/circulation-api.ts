@@ -31,6 +31,7 @@ function checkoutBody(input: CheckoutConfirmationInput) {
 }
 
 export const circulationApi = {
+  myBooks: () => request<Pick<BorrowingHistoryData, 'items'>>('/api/v1/borrowing/my-books', { cache: 'no-store' }),
   history: (page = 1) => request<BorrowingHistoryData>(`/api/v1/borrowing/history?page=${page}&limit=25`),
   cancelRequest: (transactionId: number, reason?: string) => request<{ transactionId: number; status: 'Cancelled'; copyAvailability: string }>(`/api/v1/circulation/requests/${transactionId}/cancel`, {
     method: 'PUT', body: JSON.stringify({ reason }),

@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import type { ClearanceRecord } from './types'
 
 const api = vi.hoisted(() => ({
-  list: vi.fn(), detail: vi.fn(), override: vi.fn(), revoke: vi.fn(),
+  terms: vi.fn().mockResolvedValue([]), schedule: vi.fn(), saveSchedule: vi.fn(), list: vi.fn(), detail: vi.fn(), override: vi.fn(), revoke: vi.fn(),
   decideLost: vi.fn(), settleLost: vi.fn(),
 }))
 vi.mock('./clearance-api', () => ({ clearanceApi: api }))

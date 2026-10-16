@@ -4,6 +4,7 @@ import { ApiError, catalogApi } from './catalog-api'
 import { BookLabelSheet } from './BookLabelSheet'
 import type { BulkBookResult, Category } from './types'
 import { isbnInputError, normalizeIsbnInput } from './isbn'
+import { SelectedFilePreview } from '../../components/SelectedFilePreview'
 
 const fieldClass = 'h-11 w-full rounded-xl border border-[#003399]/20 bg-[#FFFFFF] px-3 text-sm text-[#003399] outline-none focus:border-[#003399] focus:ring-4 focus:ring-[#003399]/10'
 const labelClass = 'mb-1.5 block text-xs font-bold uppercase tracking-wide text-[#003399]'
@@ -24,7 +25,9 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [message, setMessage] = useState('')
   const [batch, setBatch] = useState<BulkBookResult | null>(null)
-  const [coverImageData, setCoverImageData] = useState<string | null>(null)
+  const [coverFile, setCoverFile] = useState<File | null>(null)
+  const coverInput = useRef<HTMLInputElement>(null)
+  const clearCover = () => { setCoverFile(null); if (coverInput.current) coverInput.current.value = '' }
   const [isbn, setIsbn] = useState('')
   const [metadata, setMetadata] = useState({ title: '', author: '', publisher: '', publicationYear: '' })
   const [lookupStatus, setLookupStatus] = useState<{ state: 'idle' | 'loading' | 'found' | 'error'; message: string }>({ state: 'idle', message: '' })
@@ -81,6 +84,12 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
     const data = Object.fromEntries(new FormData(event.currentTarget).entries())
     setSaving(true); setErrors({}); setMessage('')
     try {
+      const coverImageData = coverFile ? await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result))
+        reader.onerror = () => reject(new Error('The cover could not be read. Choose the image again.'))
+        reader.readAsDataURL(coverFile)
+      }) : null
       const result = await catalogApi.createBulkBook({
         title: data.title, author: data.author, isbn: normalizeIsbnInput(isbn),
         number_of_copies: data.numberOfCopies, publication_year: data.publicationYear || null,
@@ -100,14 +109,14 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
 
   function selectCover(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
-    if (!file) { setCoverImageData(null); return }
+    clearCover()
+    if (!file) return
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 2 * 1024 * 1024) {
       setErrors((current) => ({ ...current, cover_image: 'Choose a JPEG, PNG, or WebP image no larger than 2 MB.' }))
       event.target.value = ''; return
     }
-    const reader = new FileReader()
-    reader.onload = () => { setCoverImageData(String(reader.result)); setErrors((current) => { const next = { ...current }; delete next.cover_image; return next }) }
-    reader.readAsDataURL(file)
+    setCoverFile(file)
+    setErrors((current) => { const next = { ...current }; delete next.cover_image; return next })
   }
 
   function changeCategory(value: string) {
@@ -127,7 +136,7 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
         <Field label="Publication year" name="publicationYear" value={metadata.publicationYear} onChange={(publicationYear) => setMetadata((current) => ({ ...current, publicationYear }))} /><Field label="Publisher" name="publisher" value={metadata.publisher} onChange={(publisher) => setMetadata((current) => ({ ...current, publisher }))} />
         <p className="self-center text-sm text-[#003399]/70">Supplier quotation optional. You can attach one from the catalog after saving this book.</p>
         <Field label="Call number" name="callNumber" />
-        <label><span className={labelClass}>Cover page</span><span className="flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-[#003399]/20 bg-[#FFFFFF] px-3 text-sm font-bold text-[#003399]"><ImagePlus size={17} />{coverImageData ? 'Cover selected' : 'Upload cover image'}<input aria-label="Upload cover page" type="file" accept="image/jpeg,image/png,image/webp" onChange={selectCover} className="sr-only" /></span></label>
+        <div className="space-y-3"><label><span className={labelClass}>Cover page</span><span className="flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-[#003399]/20 bg-[#FFFFFF] px-3 text-sm font-bold text-[#003399]"><ImagePlus size={17} />{coverFile ? 'Choose a different cover' : 'Upload cover image'}<input ref={coverInput} disabled={saving || Boolean(batch)} aria-label="Upload cover page" type="file" accept="image/jpeg,image/png,image/webp" onChange={selectCover} className="sr-only" /></span></label><SelectedFilePreview file={coverFile} onRemove={clearCover} disabled={saving || Boolean(batch)} /></div>
         <label><span className={labelClass}>Category *</span><select name="categoryId" required value={categoryId} onChange={(event) => changeCategory(event.target.value)} className={fieldClass}><option value="">Select category</option>{categories.map((category) => <option key={category.categoryId} value={category.categoryId}>{category.categoryName}</option>)}</select></label>
         <label><span className={labelClass}>Book location *</span><select name="bookLocation" required value={bookLocation} onChange={e=>setBookLocation(e.target.value)} className={fieldClass}><option value="">Choose managed location</option>{(locations??[...new Set(categories.map(c=>c.shelfLocation))]).map(location=><option key={location}>{location}</option>)}</select><span className="mt-1.5 block text-xs text-[#003399]/65">Defaults to the category shelf; choose another active managed location if needed.</span></label>
         {!categories.length ? <p role="alert" className="text-sm font-semibold text-[#003399] sm:col-span-2">Create a category and book location before adding physical copies.</p> : null}
