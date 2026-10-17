@@ -11,6 +11,8 @@ import type { FinanceFilters, QueueFilters } from './printing.validation.ts'
 
 const dayAfter = (placeholder = '?') => dateAddDays(placeholder, 1)
 const monthStart = startOfMonth()
+// Postgres can read this optional Phase 2 field from the row without referencing a missing column.
+const receiptDocumentLabel = isPostgres ? "to_jsonb(r)->>'document_label' AS document_label" : 'r.document_label'
 
 export class PrintingRepository {
   readonly pool: Pool
@@ -41,7 +43,7 @@ export class PrintingRepository {
   }
 
   async ownReceipts(schoolId: string) {
-    const [rows] = await this.pool.execute<RowDataPacket[]>(`SELECT r.print_receipt_id,r.request_id,r.receipt_number,r.verification_code,r.receipt_status,
+    const [rows] = await this.pool.execute<RowDataPacket[]>(`SELECT r.print_receipt_id,r.request_id,r.receipt_number,r.verification_code,r.receipt_status,${receiptDocumentLabel},
         r.student_name_snapshot student_name,r.school_id_snapshot school_id,r.file_name_snapshot file_name,
         r.page_count_snapshot page_count,r.copies_snapshot number_of_copies,r.total_sheets_snapshot total_sheets,
         r.print_type_snapshot print_type,r.paper_size_snapshot paper_size,r.amount_received,r.payment_method,
@@ -57,7 +59,7 @@ export class PrintingRepository {
     const values:Array<string|number>=[receiptId]
     const ownership=schoolId?' AND u.school_id=?':''
     if(schoolId)values.push(schoolId)
-    const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT r.print_receipt_id,r.request_id,r.receipt_number,r.verification_code,r.receipt_status,
+    const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT r.print_receipt_id,r.request_id,r.receipt_number,r.verification_code,r.receipt_status,${receiptDocumentLabel},
         r.student_name_snapshot student_name,r.school_id_snapshot school_id,r.file_name_snapshot file_name,
         r.page_count_snapshot page_count,r.copies_snapshot number_of_copies,r.total_sheets_snapshot total_sheets,
         r.print_type_snapshot print_type,r.paper_size_snapshot paper_size,r.amount_received,r.payment_method,
@@ -205,7 +207,7 @@ export class PrintingRepository {
   }
 
   async *printReportRows(filters: QueueFilters) { let page=1; while(true){const result=await this.queue({...filters,page,limit:100});for(const row of result.rows)yield row;if(page>=result.pagination.total_pages)break;page+=1} }
-  async *supplyReportRows() { const data=await this.supplies();for(const row of data.ink)yield {supply_type:'Ink bottle',name:`${row.cartridge_type} ${row.color_variation}`,available:String(row.available_bottles),threshold:String(row.low_stock_threshold_bottles),status:Number(row.is_low)?'Low stock':'In stock'};for(const row of data.paper)yield {supply_type:'Bond paper',name:row.paper_size_dimension,available:`${row.unopened_reams} unopened reams`,threshold:`${row.low_stock_threshold_reams} reams`,status:Number(row.is_low)?'Low stock':'In stock'} }
+  async *supplyReportRows() { const data=await this.supplies();for(const row of data.ink)yield {supply_type:'Ink bottle',name:`${row.cartridge_type} ${row.color_variation}`,available:`${row.available_bottles} unopened bottles`,threshold:`${row.low_stock_threshold_bottles} bottles`,status:Number(row.is_low)?'Low stock':'In stock'};for(const row of data.paper)yield {supply_type:'Bond paper',name:row.paper_size_dimension,available:`${row.unopened_reams} unopened reams`,threshold:`${row.low_stock_threshold_reams} reams`,status:Number(row.is_low)?'Low stock':'In stock'} }
 }
 
 export const printingRepository = new PrintingRepository()

@@ -2,7 +2,8 @@ import type { Pool } from 'mysql2/promise'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { renderBookLabel } from './book-label.renderer.ts'
-import { createBulkBookTitle, insertGeneratedBookCopy, lockBookTitleByIsbn, lockCategoryShelf, reserveBarcodeSequence, updateBookCover, updateBookPurchasePrice } from './bulk-book.repository.ts'
+import { createBulkBookTitle, ensureBookLocationExists, insertGeneratedBookCopy, lockBookTitleByIsbn, lockCategoryShelf, reserveBarcodeSequence, updateBookCover } from './bulk-book.repository.ts'
+import { isPostgres } from '../../config/sql-dialect.js'
 import { validateBulkBookInput } from './bulk-book.validation.ts'
 import { removeStoredCover, storeCoverImage } from './cover-image.storage.ts'
 
@@ -26,9 +27,13 @@ export function createBulkBookService(database: Pool = db, clock: () => Date = (
         await connection.beginTransaction()
         const category = await lockCategoryShelf(connection, validated.categoryId)
         if (!category) throw new HttpError(422, 'CATEGORY_NOT_FOUND', 'The selected category does not exist.', { category_id: validated.categoryId })
-        if (!category.shelfId) throw new HttpError(422, 'CATEGORY_SHELF_NOT_MANAGED', 'Assign this category to a shelf created in Floor Plan before adding books.')
-        if (category.shelfColumn > category.columnCount || category.shelfRow > category.rowCount) throw new HttpError(422, 'CATEGORY_SHELF_POSITION_INVALID', 'The category position is outside its shelf grid. Update the category before adding books.')
-        const input = { ...validated, shelfLocation: category.shelfLocation, shelfColumn: category.shelfColumn, shelfRow: category.shelfRow }
+        if (isPostgres) {
+          if (!await ensureBookLocationExists(connection,validated.shelfLocation)) throw new HttpError(422,'BOOK_LOCATION_NOT_MANAGED','Choose an active location from Maintenance.')
+        } else {
+          if (!category.shelfId) throw new HttpError(422, 'CATEGORY_SHELF_NOT_MANAGED', 'Assign this category to a shelf created in Floor Plan before adding books.')
+          if (category.shelfColumn > category.columnCount || category.shelfRow > category.rowCount) throw new HttpError(422, 'CATEGORY_SHELF_POSITION_INVALID', 'The category position is outside its shelf grid. Update the category before adding books.')
+        }
+        const input = { ...validated, shelfLocation: isPostgres?validated.shelfLocation:category.shelfLocation, shelfColumn: category.shelfColumn, shelfRow: category.shelfRow }
         const existingTitle = await lockBookTitleByIsbn(connection, input.isbn)
         if (existingTitle && (
           identity(existingTitle.title) !== identity(input.title)
@@ -44,7 +49,6 @@ export function createBulkBookService(database: Pool = db, clock: () => Date = (
         storedCoverPath = await storeCoverImage(input.coverImageData)
         if (titleId === null) titleId = await createBulkBookTitle(connection, input, storedCoverPath)
         else if (storedCoverPath) await updateBookCover(connection, titleId, storedCoverPath)
-        if (existingTitle && input.purchasePrice !== null) await updateBookPurchasePrice(connection, titleId, input.purchasePrice)
 
         const year = clock().getFullYear()
         const firstSequence = await reserveBarcodeSequence(connection, year, input.numberOfCopies)

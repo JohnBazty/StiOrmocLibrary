@@ -1,22 +1,28 @@
+import { attendanceTodaySql as currentDate } from '../attendance/attendance-calendar.ts'
 import type { Pool, RowDataPacket } from 'mysql2/promise'
 import { SYSTEM_NAME } from '../../config/branding.ts'
 import { db } from '../../config/db.js'
+import { requestEventStatus, requestLabels } from '../reservations/book-request-events.ts'
 import {
   isPostgres,
   authorsAgg,
   authorsAggDistinct,
   formatDate,
   formatTime,
-  currentDate,
   weekday,
   hourOf,
   dateAddDays,
   sumEquals,
   sumCondition,
 } from '../../config/sql-dialect.js'
+import { libraryState } from '../attendance/attendance-operations.service.ts'
+import { concurrentAttendanceReport } from '../attendance/attendance-concurrent-report.ts'
+import { parseAttendanceFilters } from '../attendance/attendance.validation.ts'
+import { manilaDate } from '../attendance/attendance-intervals.ts'
 import { HttpError } from '../../core/http-error.ts'
 import { createBorrowingPolicyService } from '../circulation/borrowing-policy.service.ts'
 import { roleBookLimit } from '../circulation/borrowing-policy.types.ts'
+import { createClearanceService } from '../clearance/clearance.service.ts'
 
 type DashboardActor = { accountId: number; role: string }
 type IdentityRow = RowDataPacket & { account_id: number; user_id: number | null; school_id: string; full_name: string; program: string | null }
@@ -74,7 +80,7 @@ export class DashboardRepository {
     const weekEnd = dateAddDays(weekStart, 5)
     const last30Days = isPostgres ? `NOW() - INTERVAL '30 day'` : `DATE_SUB(NOW(),INTERVAL 30 DAY)`
     const visitMinutes = isPostgres
-      ? `EXTRACT(EPOCH FROM (time_out - time_in))/60`
+      ? `GREATEST(0,EXTRACT(EPOCH FROM (COALESCE(checked_out_at,attendance_date+time_out)-COALESCE(checked_in_at,attendance_date+time_in))))/60`
       : `TIME_TO_SEC(TIMEDIFF(time_out,time_in))/60`
     const [profile, copyResult, operationsResult, attendanceResult, fineResult, weeklyResult, purposeResult, categoriesResult, circulationResult, activityResult, occupancyResult] = await Promise.all([
       this.libraryProfile(),
@@ -84,7 +90,7 @@ export class DashboardRepository {
           (SELECT COUNT(*) FROM borrow_transactions WHERE (transaction_status='Overdue' OR (transaction_status='Borrowed' AND due_at<NOW())) AND lost_confirmed_at IS NULL) overdue_books,
           (SELECT COUNT(*) FROM borrow_transactions WHERE transaction_status='Returned' AND DATE(returned_at)=${currentDate()}) returned_today,
           (SELECT COUNT(*) FROM accounts WHERE role IN ('Student','Faculty') AND account_status='Active') active_users,
-          (SELECT COUNT(*) FROM reservations WHERE reservation_status IN ('pending','approved','ready_for_pickup')) active_reservations`),
+          (SELECT COUNT(*) FROM reservations WHERE ${isPostgres ? "request_kind='Reservation' AND" : ''} reservation_status IN ('pending','approved','ready_for_pickup')) active_reservations`),
       this.pool.execute<RowDataPacket[]>(`SELECT COUNT(*) daily_attendance FROM attendance_logs WHERE attendance_date=${currentDate()}`),
       this.pool.execute<RowDataPacket[]>(`SELECT
           COALESCE((SELECT SUM(GREATEST(0,f.fine_amount-COALESCE(p.paid,0)-COALESCE(a.adjusted,0)))
@@ -119,6 +125,9 @@ export class DashboardRepository {
     const copies = copyResult[0][0] ?? {}, operations = operationsResult[0][0] ?? {}, attendance = attendanceResult[0][0] ?? {}, fine = fineResult[0][0] ?? {}, occupancy = occupancyResult[0][0] ?? {}
     const days = ['Mon','Tue','Wed','Thu','Fri','Sat']
     const byDay = new Map((weeklyResult[0] as RowDataPacket[]).map((row) => [number(row.weekday), number(row.visits)]))
+    const state=isPostgres?await libraryState(this.pool):null
+    const date=manilaDate(new Date())
+    const concurrent=state?await concurrentAttendanceReport(this.pool,parseAttendanceFilters({date}),{from:date,to:date,label:date},state.policy.servicePurposes):null
     const peak = occupancy.peak_hour === null || occupancy.peak_hour === undefined ? null : number(occupancy.peak_hour)
     return {
       generatedAt: new Date().toISOString(), staff: { name: identity.full_name, schoolId: identity.school_id }, profile,
@@ -131,7 +140,7 @@ export class DashboardRepository {
       popularCategories: (categoriesResult[0] as RowDataPacket[]).map((row) => ({ label: String(row.label), value: number(row.value) })),
       recentCirculation: (circulationResult[0] as RowDataPacket[]).map((row) => ({ id: number(row.transaction_id), userName: String(row.full_name), schoolId: String(row.school_id), title: String(row.title), barcode: String(row.barcode), status: String(row.transaction_status), eventAt: String(row.event_at) })),
       recentActivity: (activityResult[0] as RowDataPacket[]).map((row) => ({ id: number(row.admin_notification_id), type: String(row.event_type), title: String(row.message_title), message: String(row.message_body), createdAt: String(row.created_at) })),
-      occupancy: { current: number(occupancy.currently_inside), capacity: profile.seatCapacity, peakHour: peak === null ? null : `${peak % 12 || 12}:00 ${peak < 12 ? 'AM' : 'PM'}`, averageMinutes: number(occupancy.average_minutes) },
+      occupancy: { current: state?.current??number(occupancy.currently_inside), capacity: state?.capacity??profile.seatCapacity, peakOccupancy:concurrent?.peak_occupancy??0,serviceVisits:state?.serviceVisits??0,state:state?.state, peakHour: peak === null ? null : `${peak % 12 || 12}:00 ${peak < 12 ? 'AM' : 'PM'}`, averageMinutes: number(occupancy.average_minutes) },
     }
   }
 
@@ -144,7 +153,7 @@ export class DashboardRepository {
     const [summaryResult, loanResult, reservationResult, printResult, noticeResult, announcementResult, historyResult, recommendationResult, occupancyResult] = await Promise.all([
       this.pool.execute<RowDataPacket[]>(`SELECT
         (SELECT COUNT(*) FROM borrow_transactions WHERE user_id=? AND transaction_status IN ('Borrowed','Overdue') AND lost_confirmed_at IS NULL) active_loans,
-        (SELECT COUNT(*) FROM borrow_transactions WHERE user_id=? AND transaction_status='Pending') pending_book_requests,
+        (SELECT COUNT(*) FROM borrow_transactions WHERE user_id=? AND transaction_status='Pending' AND reservation_id IS NULL) pending_book_requests,
         (SELECT COUNT(*) FROM reservations WHERE user_id=? AND reservation_status IN ('pending','approved','ready_for_pickup')) active_reservations,
         (SELECT COUNT(*) FROM notifications WHERE user_id=? AND deleted_at IS NULL AND is_read=0 AND (delivered_at IS NULL OR delivered_at<=NOW()) AND (expires_at IS NULL OR expires_at>NOW())) unread_notifications,
         (SELECT override_status FROM clearance_overrides WHERE user_id=? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>NOW()) ORDER BY applied_at DESC,clearance_override_id DESC LIMIT 1) override_status,
@@ -159,7 +168,7 @@ export class DashboardRepository {
         LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id LEFT JOIN titles t ON t.title_id=pc.title_id
         WHERE bt.user_id=? AND bt.transaction_status IN ('Borrowed','Overdue') AND bt.lost_confirmed_at IS NULL
         ORDER BY (bt.transaction_status='Overdue') DESC,bt.due_at ASC LIMIT 1`, [userId]),
-      this.pool.execute<RowDataPacket[]>(`SELECT r.reservation_id,COALESCE(t.title,m.title) title,t.cover_image_path,r.queue_position,r.reservation_status,${formatDate('r.pickup_deadline', '%Y-%m-%d %h:%i %p', 'YYYY-MM-DD HH12:MI AM')} pickup_deadline
+      this.pool.execute<RowDataPacket[]>(`SELECT r.reservation_id,${isPostgres ? 'r.request_kind,' : ''}COALESCE(t.title,m.title) title,t.cover_image_path,r.queue_position,r.reservation_status,r.assigned_physical_copy_id,${formatDate('r.pickup_deadline', '%Y-%m-%d %h:%i %p', 'YYYY-MM-DD HH12:MI AM')} pickup_deadline
         FROM reservations r JOIN materials m ON m.material_id=r.material_id LEFT JOIN titles t ON t.title_id=r.book_title_id
         WHERE r.user_id=? AND r.reservation_status IN ('pending','approved','ready_for_pickup') ORDER BY (r.reservation_status='ready_for_pickup') DESC,r.reserved_at LIMIT 1`, [userId]),
       this.pool.execute<RowDataPacket[]>(`SELECT request_id,file_name,number_of_copies,print_type,calculated_cost,job_status,${formatDate('created_at', '%Y-%m-%d %h:%i %p', 'YYYY-MM-DD HH12:MI AM')} created_at
@@ -187,16 +196,17 @@ export class DashboardRepository {
         GROUP BY t.title_id,t.title,t.cover_image_path HAVING COUNT(DISTINCT CASE WHEN pc.availability_status='Available' THEN pc.physical_copy_id END)>0 ORDER BY score DESC,t.title LIMIT 3`, [identity.program ?? '',userId,userId]),
       this.pool.execute<RowDataPacket[]>(`SELECT ${sumCondition(`attendance_date=${currentDate()} AND time_out IS NULL`)} currently_inside FROM attendance_logs`),
     ])
+    const state=isPostgres?await libraryState(this.pool):null
     const summary = summaryResult[0][0] ?? {}, loan = loanResult[0][0], reservation = reservationResult[0][0], print = printResult[0][0], notice = noticeResult[0][0], announcement = announcementResult[0][0], occupancy = occupancyResult[0][0] ?? {}
     const policy = await createBorrowingPolicyService(this.pool).resolveActive(this.pool)
     const limit = roleBookLimit(policy, actor.role)
-    const computedClearance = number(summary.active_loans) > 0 || money(summary.outstanding_fines) > 0 ? 'Not Cleared' : 'Cleared'
+    const standing = await createClearanceService(this.pool).compute(Number(userId), false)
     return {
       generatedAt: new Date().toISOString(), user: { name: identity.full_name, schoolId: identity.school_id, program: identity.program, role: actor.role }, profile,
-      summary: { activeLoans: number(summary.active_loans), activeBookCount: number(summary.active_loans)+number(summary.pending_book_requests)+number(summary.active_reservations), borrowingLimit: limit, activeReservations: number(summary.active_reservations), unreadNotifications: number(summary.unread_notifications), outstandingFines: money(summary.outstanding_fines), clearanceStatus: summary.override_status ? String(summary.override_status) : computedClearance },
-      occupancy: { current: number(occupancy.currently_inside), capacity: profile.seatCapacity },
+      summary: { activeLoans: number(summary.active_loans), activeBookCount: number(summary.active_loans)+number(summary.pending_book_requests)+number(summary.active_reservations), borrowingLimit: limit, activeReservations: number(summary.active_reservations), unreadNotifications: number(summary.unread_notifications), outstandingFines: standing.summary.totalOutstanding, clearanceStatus: standing.status, clearanceComputedStatus: standing.computedStatus },
+      occupancy: { current: state?.current??number(occupancy.currently_inside), capacity: state?.capacity??profile.seatCapacity },
       currentLoan: loan ? { id:number(loan.transaction_id),title:String(loan.title),author:String(loan.author),barcode:String(loan.barcode ?? ''),shelfLocation:String(loan.shelf_location ?? ''),status:String(loan.transaction_status),dueAt:String(loan.due_at ?? ''),coverPath:loan.cover_image_path?String(loan.cover_image_path):null } : null,
-      reservation: reservation ? { id:number(reservation.reservation_id),title:String(reservation.title),coverPath:reservation.cover_image_path?String(reservation.cover_image_path):null,queuePosition:number(reservation.queue_position),status:String(reservation.reservation_status),pickupDeadline:reservation.pickup_deadline?String(reservation.pickup_deadline):null } : null,
+      reservation: reservation ? { id:number(reservation.reservation_id),title:String(reservation.title),coverPath:reservation.cover_image_path?String(reservation.cover_image_path):null,queuePosition:reservation.request_kind==='CartHandover'?0:number(reservation.queue_position),status:isPostgres&&reservation.request_kind==='CartHandover'?'Awaiting handover':isPostgres?requestLabels[requestEventStatus(String(reservation.reservation_status),Boolean(reservation.assigned_physical_copy_id))]:String(reservation.reservation_status),pickupDeadline:reservation.pickup_deadline?String(reservation.pickup_deadline):null } : null,
       printRequest: print ? { id:number(print.request_id),fileName:String(print.file_name),copies:number(print.number_of_copies),printType:String(print.print_type),cost:money(print.calculated_cost),status:String(print.job_status),createdAt:String(print.created_at) } : null,
       latestNotification: notice ? { id:number(notice.notification_id),title:String(notice.message_title),message:String(notice.message_body),type:String(notice.trigger_type),actionPath:notice.action_path?String(notice.action_path):null,createdAt:String(notice.created_at) } : null,
       announcement: announcement ? { id:number(announcement.announcement_id),title:String(announcement.title),message:String(announcement.message_body),priority:String(announcement.priority),publishedAt:String(announcement.published_at) } : null,
@@ -207,7 +217,8 @@ export class DashboardRepository {
 
   private async emptyUser(identity: IdentityRow, role: string, profile: Awaited<ReturnType<DashboardRepository['libraryProfile']>>) {
     const policy = await createBorrowingPolicyService(this.pool).resolveActive(this.pool)
-    return { generatedAt:new Date().toISOString(),user:{name:identity.full_name,schoolId:identity.school_id,program:identity.program,role},profile,summary:{activeLoans:0,activeBookCount:0,borrowingLimit:roleBookLimit(policy, role),activeReservations:0,unreadNotifications:0,outstandingFines:0,clearanceStatus:'Cleared'},occupancy:{current:0,capacity:profile.seatCapacity},currentLoan:null,reservation:null,printRequest:null,latestNotification:null,announcement:null,recentHistory:[],recommendations:[] }
+    const state = isPostgres ? await libraryState(this.pool) : null
+    return { generatedAt:new Date().toISOString(),user:{name:identity.full_name,schoolId:identity.school_id,program:identity.program,role},profile,summary:{activeLoans:0,activeBookCount:0,borrowingLimit:roleBookLimit(policy, role),activeReservations:0,unreadNotifications:0,outstandingFines:0,clearanceStatus:'Needs verification'},occupancy:{current:state?.current??0,capacity:state?.capacity??profile.seatCapacity},currentLoan:null,reservation:null,printRequest:null,latestNotification:null,announcement:null,recentHistory:[],recommendations:[] }
   }
 }
 

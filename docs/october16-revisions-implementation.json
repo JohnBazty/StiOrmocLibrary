@@ -1,0 +1,152 @@
+{
+  "title": "October 16 revisions — stages 1 through 8 implementation and verification",
+  "why": "Implement the owner's approved revisions with clear, short workflows for nontechnical library users and personnel.",
+  "dateCreated": "2026-10-17",
+  "dateLastUpdated": "2026-10-17",
+  "status": "built",
+  "meaningOfStatus": "All eight stages have implementation code and passing automated verification. Browser visual QA and real mailbox delivery verification are still unverified, as explicitly recorded below.",
+  "ownerDecisions": {
+    "studentAndFacultyOtp": "Every login to the registered school email",
+    "incorrectPasswords": "Eight incorrect attempts; ten-minute pause; warnings with three, two and one attempts remaining",
+    "closedDayDueDate": "Next open date at the original handover clock time; existing recorded deadlines preserved",
+    "bookScreens": "My Books collection separate from Requests & reservations and Borrowing history",
+    "printing": "Invoice available before payment; paid state after confirmed payment; payment confirmation retained separately",
+    "clearance": "One deadline per academic term shared by all Students; no invented deadline",
+    "profileSections": [
+      "Personal details",
+      "School details",
+      "Profile photo"
+    ],
+    "notificationBadge": "Red unread count is an approved exception",
+    "excluded": [
+      "Paper-size revisions",
+      "Kiosk implementation",
+      "Enrollment draft migration 028"
+    ]
+  },
+  "stages": [
+    {
+      "stage": 1,
+      "name": "Human-activity sessions",
+      "status": "built",
+      "how": "Server-side account/version-bound session records enforce a ten-minute idle limit. Trusted interaction renews the session and token silently. The final minute shows a warning. Background polling does not count as activity. Cross-tab messages contain account identifiers and activity timestamps, not credentials. Logout clears local access immediately, and late network responses cannot overwrite a newer login.",
+      "verification": "Idle warning/expiry, rejected-session exit, delayed logout regression and isolated server expiry checks passed. Browser event delivery and physical device sleep/resume remain visually unverified."
+    },
+    {
+      "stage": 2,
+      "name": "Login OTP and attempt limits",
+      "status": "built",
+      "how": "Student and Faculty credentials create a six-digit code challenge, not an access token. Codes are HMAC protected, version bound, expire after ten minutes and are consumed transactionally. Resends wait sixty seconds, replace old codes and retain wrong-code counts. Three wrong codes pause new challenges for ten minutes. Eight wrong passwords pause the account for ten minutes across school-ID and legacy email aliases. Personnel keep their credential login. Browser autocomplete settings are advisory.",
+      "verification": "Concurrent wrong-password counts, remaining-attempt warnings, shared alias budget, expiry, resend replacement, wrong-code pause, concurrent verification, replay rejection, Faculty OTP and personnel login passed with a fake sender. The configured Gmail provider was detected without exposing its configuration. No real email was sent by the acceptance tests."
+    },
+    {
+      "stage": 3,
+      "name": "Book screens and cart labels",
+      "status": "built",
+      "how": "Cart uses Check Out while retaining staff handover as the start of the actual loan. Requests & reservations remains at the existing reservations route. My Books uses a new owner-scoped query over the complete history to show each borrowed title once, independent of transaction-history pagination. Covers, search and details remain available. Borrowing history has page controls.",
+      "verification": "Collection ownership, complete-query ranking, exclusion of pending requests, latest record selection, search preservation, separate navigation and existing cart tests passed. The new collection query also passed a read-only check against the configured live schema without printing private school records."
+    },
+    {
+      "stage": 4,
+      "name": "Exact deadlines and stable history refresh",
+      "status": "built",
+      "how": "New Postgres loans retain the handover time after the configured calendar-day duration. Closed due dates advance to the next open date at the same clock time. The operating fine calculator uses recorded deadlines. Manila timestamps are resolved explicitly when read, independently of the host time zone. Existing recorded deadlines are not rewritten. History refresh retains existing rows and open interactions while requests are pending or fail.",
+      "verification": "Weekdays, Sunday plus holiday, calendar-day duration, leap day, seconds/milliseconds, invalid calendar and UTC-host timestamp checks passed. Existing circulation and fine tests passed."
+    },
+    {
+      "stage": 5,
+      "name": "Dashboard, permanent QR and unread count",
+      "status": "built",
+      "how": "Overview is labeled Dashboard. The dashboard displays the existing permanent QR through the existing authenticated pass-image endpoint. The notification bell displays the full unread count and opens Notifications. Visible dashboard and badge data poll every five seconds, retaining content during refresh; notification changes request an immediate badge update.",
+      "verification": "Full unread count, read-event count update, bell navigation, five-second polling and visible-content preservation passed. Five seconds is the polling interval; network-inclusive production latency has not been measured. A new QR credential is not generated by these display changes."
+    },
+    {
+      "stage": 6,
+      "name": "Printing invoice before payment",
+      "status": "built",
+      "how": "Every saved printing request has a stable PRINT-INV identifier and invoice view/PDF derived from its recorded pages, copies, print configuration and charge. Unpaid invoices show the amount due; confirmed payment or cancellation removes the amount due. Existing payment records remain separate. User invoice reads are owner scoped; authorized personnel use the administrative route. The archived general invoice module remains archived.",
+      "verification": "Unpaid/paid/cancelled calculations, stable identifier, ownership/role rejection, PDF generation and download error handling passed. A disposable invoice PDF was rendered and inspected for clipping, text and amount legibility. A file-encoding issue that blocked the production build was repaired."
+    },
+    {
+      "stage": 7,
+      "name": "Semester clearance deadline",
+      "status": "built",
+      "how": "An active Librarian can set or remove one deadline per academic term in Philippine time. Saves serialize on the term, check a concurrency version and append a before/after event. Conflicts reload the current deadline for review. Students always see their obligations. The overdue warning appears after the deadline for incomplete requirements, while authorized approvals are identified separately. With no configured deadline the screen says No schedule yet for clearance day. Faculty do not inherit the Student deadline; borrowing restrictions are unchanged.",
+      "verification": "No schedule, create/remove, stale edit, unauthorized roles, audit history, Philippine-time conversion, before/after deadline states and authorized-override labeling passed. No real semester deadline was invented or saved by testing."
+    },
+    {
+      "stage": 8,
+      "name": "Profile sections and final integration",
+      "status": "built",
+      "how": "My Profile has a native accessible dropdown with Personal details, School details and Profile photo. Each link opens the selected section with a clear heading. School ID and email stay read-only; photo approval behavior is retained. New actions use touch-sized controls, visible retry errors and responsive layouts.",
+      "verification": "Section visibility, read-only identity fields, profile and photo workflows, notification retry handling, role boundaries, full automated suites and builds passed. Desktop/mobile screenshots, keyboard behavior in a real browser and physical-device rendering remain unverified because the browser tool reports local browser use disabled."
+    }
+  ],
+  "database": {
+    "applied": "029_october16_revisions.sql",
+    "enrollment028Applied": false,
+    "nextUnusedPostgresNumber": "030",
+    "mysqlRollbackReference": "048 / next 049; these additions target the active Postgres deployment",
+    "newTables": [
+      "login_attempt_windows",
+      "login_otp_challenges",
+      "library_login_sessions",
+      "clearance_semester_schedules",
+      "clearance_schedule_events"
+    ],
+    "existingRecords": "Before/after counts and full-row digest aggregates matched for accounts, users, titles, physical copies, borrow transactions, reservations and printing requests at migration time. No passwords or existing deadlines were reset.",
+    "security": "Read-only live metadata check confirmed RLS enabled and anon/authenticated table access denied for all five additions.",
+    "readiness": "Healthy after restarting the current API.",
+    "evidence": [
+      "output/october16-schema-before.json",
+      "output/october16-schema-after.json"
+    ]
+  },
+  "automatedVerification": {
+    "apiTests": {
+      "passed": 390,
+      "failed": 0,
+      "command": "npm run test -w @sti-library/api",
+      "note": "Existing API unit suite uses the repository's MySQL mock environment; active Postgres behavior is checked separately below."
+    },
+    "webTests": {
+      "passed": 268,
+      "failed": 0,
+      "command": "npm run test -w @sti-library/web -- --maxWorkers=2",
+      "note": "Limited workers avoid resource contention on the local machine. An ISBN test now awaits rendered metadata rather than assuming a request call means its result was already rendered."
+    },
+    "isolatedPostgres": {
+      "checks": 42,
+      "passed": true,
+      "command": "$env:TZ='UTC'; node apps/api/scripts/verify-october16-revisions.ts",
+      "note": "Disposable schema, fake email sender, generated credentials, cleanup in finally; existing school record counts unchanged. The script also validates its migration in a rolled-back transaction before isolated application."
+    },
+    "apiBuild": "passed",
+    "webBuild": "passed; existing large-chunk advisory remains",
+    "invoicePdf": "Rendered and visually inspected using disposable sample data.",
+    "localServices": {
+      "api": "http://localhost:4000/api/health — healthy",
+      "web": "http://localhost:5173/ — HTTP 200"
+    },
+    "logs": [
+      "output/october16-api-tests.txt",
+      "output/october16-web-tests.txt",
+      "output/october16-isolated-acceptance.txt",
+      "output/october16-api-build.txt",
+      "output/october16-web-build.txt"
+    ]
+  },
+  "remainingVerificationLimits": [
+    "The owner said they would enable browser use, but subsequent tool checks still reported that local browser use is disabled in Work settings. No browser visual check or real mobile-device check is claimed.",
+    "Live school-email OTP delivery has not been exercised. Test codes used a fake sender, not a real inbox.",
+    "Physical barcode/QR scanner and printer hardware checks are not covered by these automated tests.",
+    "The MySQL rollback reference was preserved; no MySQL migration for these Postgres additions was applied."
+  ],
+  "cleanup": "All generated acceptance schemas were removed by the isolated script. Temporary browser fixture source files were removed. No real accounts, books, loans or payment rows were used as mutation fixtures. Ignored logs, metadata fingerprints and a sample invoice PDF remain as evidence.",
+  "changeLog": [
+    {
+      "date": "2026-10-17",
+      "change": "Implemented approved stages 1–8, applied only migration 029, preserved prior work and existing school data, passed automated gates, restarted the API, and recorded browser/email verification limits. No new Markdown plan was created."
+    }
+  ]
+}

@@ -11,10 +11,12 @@ export function validateBookCartAddition(input: {
   const limit = input.bookLimit === undefined
     ? (input.role === 'Student' ? 2 : null)
     : input.bookLimit
-  if (limit !== null && input.activeBookCount + input.selectedBookCount >= limit) {
+  // A cart is a local selection, not another active loan or queue commitment.
+  // The API checks existing commitments when the reviewed selection is submitted.
+  if (limit !== null && input.selectedBookCount >= limit) {
     return {
       allowed: false,
-      message: `Transaction Blocked: ${input.role} cannot exceed ${limit} books.`,
+      message: `Your cart can hold ${limit} books. Remove one before adding another.`,
     }
   }
   return { allowed: true, message: null }

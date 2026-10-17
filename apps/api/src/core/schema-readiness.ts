@@ -23,15 +23,21 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   announcements: ['announcement_id', 'title', 'message_body', 'priority', 'announcement_status', 'publish_at', 'created_by_user_id'],
   announcement_revisions: ['announcement_revision_id', 'announcement_id', 'revision_number', 'changed_by_user_id'],
   clearance_overrides: ['clearance_override_id', 'user_id', 'override_status', 'reason', 'applied_by_user_id', 'revoked_at'],
-  lost_book_reports: ['lost_book_report_id', 'transaction_id', 'user_id', 'report_status', 'replacement_charge', 'payment_status'],
+  lost_book_reports: ['lost_book_report_id', 'transaction_id', 'user_id', 'report_status', 'replacement_charge', 'payment_status', 'quotation_id', 'charge_resolution', 'resolution_reason'],
+  book_quotations: ['quotation_id', 'title_id', 'storage_path', 'quoted_amount', 'created_at'],
+  library_job_runs: ['job_name', 'lease_until', 'run_token', 'last_success_at', 'last_error_at'],
+  invoice_setup: ['settings_id', 'issuer_name', 'issuer_tin', 'serial_prefix', 'next_serial', 'approved'],
+  customer_invoices: ['invoice_id', 'source_type', 'source_id', 'invoice_number', 'status', 'amount'],
   fines: ['fine_id', 'user_id', 'fine_type', 'fine_amount', 'payment_status', 'maximum_cap_applied', 'finalized_at'],
   fine_policy_versions: ['fine_policy_id', 'hourly_rate', 'daily_rate', 'maximum_penalty', 'effective_from', 'is_active'],
   fine_infractions: ['fine_infraction_id', 'fine_id', 'category', 'incident_at', 'details', 'issued_by_user_id'],
-  fine_payment_receipts: ['fine_payment_receipt_id', 'receipt_number', 'request_key', 'user_id', 'amount_received', 'payment_method', 'receipt_status'],
+  fine_payment_receipts: ['fine_payment_receipt_id', 'receipt_number', 'request_key', 'user_id', 'amount_received', 'payment_method', 'receipt_status', 'document_label'],
   fine_payment_allocations: ['fine_payment_allocation_id', 'fine_payment_receipt_id', 'fine_id', 'lost_book_report_id', 'amount_allocated', 'balance_before', 'balance_after'],
   fine_adjustments: ['fine_adjustment_id', 'fine_id', 'adjustment_type', 'amount_adjusted', 'reason', 'adjusted_by_user_id'],
   users: ['user_id', 'school_id', 'user_role', 'password_hash'],
   accounts: ['account_id', 'school_id', 'contact_number', 'password_hash', 'role', 'account_status'],
+  registration_requests: ['request_id', 'school_id', 'email', 'requested_role', 'password_hash', 'status', 'code_hash', 'code_expires_at', 'email_verified_at', 'reviewed_by_account_id'],
+  profile_avatar_submissions: ['submission_id', 'account_id', 'storage_path', 'status', 'reviewed_by_account_id', 'review_reason'],
   student_profiles: ['student_profile_id', 'account_id', 'first_name', 'last_name', 'program_strand', 'year_grade_level'],
   academic_terms: ['academic_term_id', 'academic_year', 'term_name', 'starts_on', 'ends_on', 'is_active'],
   attendance_logs: ['log_id', 'user_id', 'attendance_date', 'time_in', 'time_out', 'reason_for_visit'],
@@ -46,7 +52,7 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   print_cash_payments: ['print_cash_payment_id', 'request_id', 'amount_paid', 'received_at'],
   ink_stock_movements: ['ink_stock_movement_id', 'ink_id', 'movement_type', 'activity_code', 'quantity_bottles', 'unit_cost_per_bottle', 'balance_before', 'balance_after', 'created_at'],
   paper_stock_movements: ['paper_stock_movement_id', 'paper_stock_id', 'movement_type', 'activity_code', 'quantity_reams', 'unit_cost_per_ream', 'balance_before', 'balance_after', 'created_at'],
-  print_payment_receipts: ['print_receipt_id', 'print_cash_payment_id', 'request_id', 'user_id', 'receipt_number', 'verification_code', 'receipt_status', 'amount_received', 'payment_method', 'received_at'],
+  print_payment_receipts: ['print_receipt_id', 'print_cash_payment_id', 'request_id', 'user_id', 'receipt_number', 'verification_code', 'receipt_status', 'document_label', 'amount_received', 'payment_method', 'received_at'],
   floor_plan_shelves: ['id', 'label', 'column_count', 'row_count'],
   library_profile_settings: ['settings_id', 'library_name', 'seat_capacity', 'updated_by_user_id'],
   library_capacity_changes: ['capacity_change_id', 'previous_capacity', 'new_capacity', 'change_reason', 'changed_at'],
@@ -56,7 +62,32 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
 export type SchemaReadiness = { ready: boolean; missingTables: string[]; missingColumns: string[] }
 
 export async function checkSchemaReadiness(database: Pool = db as Pool): Promise<SchemaReadiness> {
-  const tableNames = Object.keys(REQUIRED_COLUMNS)
+  const requiredColumns = dbDriver === 'postgres' ? {
+    ...REQUIRED_COLUMNS,
+    login_attempt_windows: ['identifier_hash', 'failed_count', 'window_started_at', 'locked_until'],
+    login_otp_challenges: ['challenge_id', 'account_id', 'auth_version', 'code_hash', 'failed_count', 'expires_at', 'sent_at', 'consumed_at', 'resend_count'],
+    library_login_sessions: ['session_id', 'account_id', 'auth_version', 'last_activity_at', 'revoked_at'],
+    clearance_semester_schedules: ['academic_term_id', 'deadline_at', 'row_version', 'updated_by', 'updated_at'],
+    clearance_schedule_events: ['event_id', 'academic_term_id', 'previous_deadline', 'deadline_at', 'actor_id', 'created_at'],
+    collection_reference_versions:['reference_id','academic_year','reference_year','review_age','approved_by','approval_source'],
+    collection_review_settings:['settings_id','reference_id','row_version'],
+    collection_age_status:['title_id','reference_id','age_status'],
+    collection_review_decisions:['decision_id','title_id','reference_id','decision','note','evidence','decided_by'],
+    collection_requirement_versions:['requirement_id','program_id','course_id','minimum_count','minimum_recent','maximum_age','year_basis','approved','mapping_verified'],
+    collection_review_alerts:['alert_id','dedupe_key','title_id','requirement_id','reference_id'],
+    collection_requirement_status:['requirement_id','status','checked_at'],
+    reservations:[...REQUIRED_COLUMNS.reservations,'client_request_id','preparation_started_at','ready_at','request_kind'],
+    in_library_uses:['use_id','research_inventory_id','user_id','physical_copy_id','attendance_log_id','started_at','hand_back_by','ended_at','status'],
+    book_request_events:['event_id','reservation_id','event_status','physical_copy_id','occurred_at'],
+    book_request_email_deliveries:['delivery_id','event_id','status','attempts','lease_token'],
+    circulation_scan_receipts:['request_id','actor_account_id','operation','payload_digest','result'],
+    attendance_operation_settings:['settings_id','service_purposes','preclosing_minutes','configured','row_version'],
+    library_operational_events:['event_id','starts_at','ends_at','seat_capacity','allow_walk_ins','allow_borrowing','allow_printing','row_version'],
+    attendance_scan_receipts:['request_id','user_id','actor_account_id','log_id','action'],
+    attendance_logs:[...REQUIRED_COLUMNS.attendance_logs,'seat_visit','checkout_source','checked_in_at','checked_out_at'],
+    account_recovery_challenges: ['account_id', 'public_id', 'account_version', 'code_hash', 'code_expires_at', 'code_sent_at', 'code_attempts', 'locked_until', 'reset_token_hash', 'reset_expires_at'],
+  } : REQUIRED_COLUMNS
+  const tableNames = Object.keys(requiredColumns)
   const placeholders = tableNames.map(() => '?').join(', ')
   const [rows] = dbDriver === 'postgres'
     ? await database.execute<RowDataPacket[]>(
@@ -80,7 +111,7 @@ export async function checkSchemaReadiness(database: Pool = db as Pool): Promise
   }
   const missingTables = tableNames.filter((table) => !found.has(table))
   const missingColumns = tableNames.flatMap((table) =>
-    missingTables.includes(table) ? [] : REQUIRED_COLUMNS[table]
+    missingTables.includes(table) ? [] : requiredColumns[table]
       .filter((column) => !found.get(table)?.has(column))
       .map((column) => `${table}.${column}`),
   )

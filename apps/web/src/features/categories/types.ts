@@ -1,6 +1,7 @@
 export type Category = {
   categoryId: number
   categoryName: string
+  description: string
   shelfLocation: string
   shelfColumn: number
   shelfRow: number
@@ -10,7 +11,7 @@ export type Category = {
   updatedAt: string | null
 }
 
-export type CategoryPayload = { categoryName: string; shelfLocation: string; shelfColumn: number; shelfRow: number }
+export type CategoryPayload = { categoryName: string; description: string; shelfLocation: string; shelfColumn: number; shelfRow: number }
 
 export type CategoryShelfSync = {
   bookCopies: number

@@ -1,3 +1,4 @@
+import { requireOperationalService } from '../attendance/attendance-operations.service.ts'
 import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { randomBytes } from 'node:crypto'
 import { db } from '../../config/db.js'
@@ -39,8 +40,6 @@ export function createPrintingService(pool: Pool = db, repository: PrintingRepos
 
     async quote(actor:Actor, body:Record<string,unknown>, file?:Express.Multer.File) {
       await actorUserId(actor.schoolId)
-      const serviceStatus=await repository.serviceStatus()
-      if (!Number(serviceStatus.accepting_requests)) throw new HttpError(422,'PRINTING_UNAVAILABLE',String(serviceStatus.unavailable_reason??'Printing requests are temporarily unavailable.'))
       const document=await inspectPrintDocument(file)
       const input=parsePrintRequest(body,document.pageCount)
       const pricing=await repository.pricing(),rule=pricing.find(row=>row.print_type===input.printType&&row.paper_size===input.paperSize)
@@ -110,7 +109,7 @@ export function createPrintingService(pool: Pool = db, repository: PrintingRepos
       }catch(error){await connection.rollback();throw error}finally{connection.release()}
     },
 
-    async updateStatus(actor:Actor,requestIdValue:unknown,body:Record<string,unknown>){const staffId=await actorUserId(actor.schoolId),requestId=Number(requestIdValue),input=parseStatusUpdate(body);const connection=await pool.getConnection();try{await connection.beginTransaction();const[rows]=await connection.execute<RowDataPacket[]>(`SELECT * FROM print_requests WHERE request_id=? FOR UPDATE`,[requestId]);const row=rows[0];if(!row)throw new HttpError(404,'PRINT_REQUEST_NOT_FOUND','The print request was not found.');if(!transitions[String(row.job_status)]?.includes(input.status))throw new HttpError(422,'PRINT_STATUS_TRANSITION_INVALID',`A ${row.job_status} job cannot move to ${input.status}.`)
+    async updateStatus(actor:Actor,requestIdValue:unknown,body:Record<string,unknown>){const staffId=await actorUserId(actor.schoolId),requestId=Number(requestIdValue),input=parseStatusUpdate(body);const connection=await pool.getConnection();try{await connection.beginTransaction();if(input.status==='Printing')await requireOperationalService(connection,'Printing');const[rows]=await connection.execute<RowDataPacket[]>(`SELECT * FROM print_requests WHERE request_id=? FOR UPDATE`,[requestId]);const row=rows[0];if(!row)throw new HttpError(404,'PRINT_REQUEST_NOT_FOUND','The print request was not found.');if(!transitions[String(row.job_status)]?.includes(input.status))throw new HttpError(422,'PRINT_STATUS_TRANSITION_INVALID',`A ${row.job_status} job cannot move to ${input.status}.`)
       if(input.status==='Printing'&&row.payment_status!=='Paid')throw new HttpError(422,'PRINT_PAYMENT_REQUIRED','Record the cash payment before starting this print job.')
       const timestamp=input.status==='Printing'?'started_at':input.status==='Ready for Pickup'?'ready_at':input.status==='Completed'?'completed_at':'cancelled_at'
       await connection.execute(`UPDATE print_requests SET job_status=?,printer_id=NULL,processed_by_user_id=?,${timestamp}=NOW(),cancelled_reason=?,updated_at=NOW(),row_version=row_version+1 WHERE request_id=?`,[input.status,staffId,input.status==='Cancelled'?input.reason:null,requestId])

@@ -6,7 +6,7 @@ This guide explains how to prepare a Windows development computer, run and test 
 
 ## AI agents — read this first
 
-1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) (start-session protocol, plan statuses, MySQL reference migration tracker: latest **046**, next **047**; Supabase: latest **016**, next **017**).
+1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) (start-session protocol, plan statuses, MySQL reference migration tracker: latest **048** reference file, next **049**; Supabase Revision Phase 3 file **021** applied; Phase 4 **022**, Phase 5 **023/024** Phase 6 **025** and Phase 7 **026** and cart/reservation split **027** plus October revisions **029** applied; enrollment **028** remains an unapplied draft; next unused **030**).
 2. Read [AGENTS.md](AGENTS.md) and [agent.md](agent.md).
 3. Database cutover status: [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md).
 
@@ -18,7 +18,7 @@ This guide explains how to prepare a Windows development computer, run and test 
 4. [Configure MySQL](#configure-mysql)
 5. [Configure environment variables](#configure-environment-variables)
 6. [Initialize the database](#initialize-the-database)
-7. [Create an Admin (Librarian)](#create-an-admin-librarian)
+7. [Create a System Administrator](#create-a-system-administrator)
 8. [Run the application](#run-the-application)
 9. [Verify the installation](#verify-the-installation)
 10. [Common development commands](#common-development-commands)
@@ -49,6 +49,10 @@ The repository is an npm workspace:
 - `docs` — architecture, database, feature, and development documentation.
 
 Implemented live database areas include authentication, categories, normalized books/research records, physical-copy inventory, thesis inventory, reservations, and inventory CSV/PDF reports. Some remaining presentation screens still use mock operational data while their backend modules are developed.
+
+Revision Phase 8 adds live actionable Librarian/Staff tasks, owner-scoped dashboard links and a Librarian Reports page with 13 filtered source reports and CSV/PDF exports. The active report overview uses real database records. Local technical checks passed; human Librarian acceptance remains open. See [implementation evidence](docs/revision-phase8-local-implementation.md) and [trial guide](docs/revision-phase8-librarian-trial.md).
+
+The owner-approved combined Librarian/Admin login is `ADMIN-PORTAL-001` at `/staff`, using its existing password and opening `/librarian/dashboard`. The temporary `LIB-TEST-001` login is archived with its history preserved. See [account consolidation record](docs/admin-librarian-account-consolidation.md).
 
 ## Prerequisites
 
@@ -268,21 +272,21 @@ FROM schema_migrations
 ORDER BY migration_name;
 ```
 
-## Create an Admin (Librarian)
+## Create a System Administrator
 
-The dedicated staff portal is located at `/staff` (`/admin/login` redirects there). It requires an `Admin` identity in the normalized `accounts` table. Admin is the Librarian/Super Admin authorization role.
+The dedicated administrator portal is located at `/admin/login`. It requires an `Admin` identity in the normalized `accounts` table.
 
 ### 1. Create the secure credential
 
 Run the interactive account utility:
 
 ```powershell
-npm run auth:create-user -w @sti-library/api -- --email admin@ormoc.sti.edu.ph --role Admin --id ADMIN-001 --name "Campus Librarian"
+npm run auth:create-user -w @sti-library/api -- --email admin@ormoc.sti.edu.ph --role "System Administrator" --id ADMIN-001 --name "Campus Administrator"
 ```
 
 The command prompts for the password without displaying it. Passwords must contain 8–72 characters and are hashed with bcrypt before storage.
 
-Use a real authorized institutional address ending in `@ormoc.sti.edu.ph`. Change `ADMIN-001` to the librarian's official school or staff identifier.
+Use a real authorized institutional address ending in `@ormoc.sti.edu.ph`. Change `ADMIN-001` to the administrator's official school or staff identifier.
 
 ### 2. Synchronize the normalized login identity
 
@@ -330,7 +334,7 @@ Students may register through:
 http://localhost:5173/register
 ```
 
-Public registration always creates an active Student account. Admin (Librarian) privileges must never be accepted from a public registration form.
+Public registration always creates an active Student account. Administrative and Librarian privileges must never be accepted from a public registration form.
 
 ## Run the application
 
@@ -624,8 +628,13 @@ StiOrmocLibrary/
 - [ ] Create the `sti_library_app` MySQL account.
 - [ ] Copy and configure `apps/api/.env`.
 - [ ] Run `db:schema` and `db:migrate`.
-- [ ] Create and synchronize an Admin (Librarian) account.
+- [ ] Create and synchronize a System Administrator account.
 - [ ] Run `npm run dev`.
 - [ ] Confirm `/api/health` reports a ready schema.
 - [ ] Sign in through `/admin/login`.
 - [ ] Run tests, type checking, and the production build.
+
+
+## Main integration — 2026-10-11
+
+The main branch was reconciled with the current revision permission model and phase workflows. Borrowing policy management uses the Librarian workspace; prior login sessions are invalidated when a new login succeeds. Competing upstream SQL identities are retained as non-executable references under `database/upstream-main/`; no migration was applied. Existing phase statuses and applied migration identities remain unchanged. See `docs/main-branch-integration.md`.

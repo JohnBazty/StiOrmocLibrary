@@ -46,6 +46,11 @@ export function useBookCart() {
     if (!current.some((entry) => entry.titleId === item.titleId)) writeBookCart([...current, item])
   }, [])
   const removeItem = useCallback((titleId: number) => writeBookCart(readBookCart().filter((item) => item.titleId !== titleId)), [])
+  const removeItems = useCallback((titleIds:number[]) => {
+    const ids=new Set(titleIds),current=readBookCart(),next=current.filter(item=>!ids.has(item.titleId))
+    if(next.length!==current.length)writeBookCart(next)
+    return current.length-next.length
+  },[])
   const updateItem = useCallback((titleId: number, updates: Partial<BookCartItem>) => {
     const current = readBookCart()
     const next = current.map((item) => item.titleId === titleId ? { ...item, ...updates } : item)
@@ -54,7 +59,7 @@ export function useBookCart() {
     if (before && after && JSON.stringify(before) !== JSON.stringify(after)) writeBookCart(next)
   }, [])
   const clear = useCallback(() => writeBookCart([]), [])
-  return { items, addItem, updateItem, removeItem, clear }
+  return { items, addItem, updateItem, removeItem, removeItems, clear }
 }
 
 export function clearBookCartForTests() {

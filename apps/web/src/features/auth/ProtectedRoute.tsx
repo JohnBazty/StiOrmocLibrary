@@ -8,7 +8,7 @@ import {
 import { useMockAuth } from '../inventory/MockAuthContext'
 
 function LoadingAuthentication() {
-  return <main className="flex min-h-screen items-center justify-center bg-[#FFFFFF] text-[#003399]"><div className="text-center"><div className="mx-auto h-10 w-10 animate-pulse rounded-xl bg-[#FFF200]" /><p className="mt-4 text-sm font-bold">Opening your secure workspace…</p></div></main>
+  return <main className="flex min-h-screen items-center justify-center bg-[#FFFFFF] text-[#0b5ea2]"><div className="text-center"><div className="mx-auto h-10 w-10 animate-pulse rounded-xl bg-[#FFF200]" /><p className="mt-4 text-sm font-bold">Opening your secure workspace…</p></div></main>
 }
 
 function useResolvedIdentity() {
@@ -36,10 +36,11 @@ export function ProtectedRoute({ roles }: { roles: AuthRole[] }) {
   const tokenClaims = getCurrentClaims()
   const { identity, checking, error } = useResolvedIdentity()
   if (checking) return <LoadingAuthentication />
-  if (error) return <main className="flex min-h-screen items-center justify-center bg-[#FFFFFF] p-6 text-center text-[#003399]"><div><h1 className="text-xl font-bold">Inventory preview could not start</h1><p className="mt-2 text-sm text-[#003399]/65">{error}</p><a className="mt-5 inline-flex rounded-xl bg-[#003399] px-4 py-2 text-sm font-bold text-[#FFFFFF]" href="/login">Use normal sign in</a></div></main>
-  if (!identity || !roles.includes(identity.role)) {
+  if (error) return <main className="flex min-h-screen items-center justify-center bg-[#FFFFFF] p-6 text-center text-[#0b5ea2]"><div><h1 className="text-xl font-bold">Inventory preview could not start</h1><p className="mt-2 text-sm text-[#0b5ea2]/65">{error}</p><a className="mt-5 inline-flex rounded-xl bg-[#0b5ea2] px-4 py-2 text-sm font-bold text-[#FFFFFF]" href="/login">Use normal sign in</a></div></main>
+  if (identity && !roles.includes(identity.role)) return <Navigate to={dashboardForRole(identity.role)} replace />
+  if (!identity) {
     if (tokenClaims) clearAccessToken()
-    return <Navigate to="/login" replace state={{ deniedPath: location.pathname }} />
+    return <Navigate to={roles.some(role => ['Admin', 'Librarian', 'Staff'].includes(role)) ? '/staff' : '/login'} replace state={{ deniedPath: location.pathname }} />
   }
   return <Outlet />
 }

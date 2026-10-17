@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import { ArrowUpRight, MoreHorizontal, Search } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { isValidElement, type ReactNode, type ReactElement } from 'react'
+import { ResponsiveTable } from './ResponsiveTable'
 
 export function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ')
@@ -8,64 +9,64 @@ export function cn(...classes: Array<string | false | null | undefined>) {
 
 export function PageHeader({ eyebrow, title, action }: { eyebrow?: string; title: string; description?: string; action?: ReactNode }) {
   return (
-    <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="page-header mb-6 flex min-w-0 flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
       <div className="min-w-0">
-        {eyebrow ? <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#003399] dark:text-[#f2f6ff]">{eyebrow}</p> : null}
-        <h1 className="font-display text-2xl font-bold tracking-tight text-[#003399] sm:text-3xl dark:text-white">{title}</h1>
+        {eyebrow ? <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#0b5ea2] dark:text-[#f2f6ff]">{eyebrow}</p> : null}
+        <h1 className="font-display text-2xl font-bold tracking-tight text-[#0b5ea2] sm:text-3xl dark:text-white">{title}</h1>
       </div>
-      {action ? <div className="flex flex-wrap gap-2">{action}</div> : null}
+      {action && <div className="page-header-actions min-w-0">{action}</div>}
     </div>
   )
 }
 
 export function Button({ children, variant = 'primary', className, type = 'button', onClick, disabled = false }: { children: ReactNode; variant?: 'primary' | 'secondary' | 'ghost'; className?: string; type?: 'button' | 'submit'; onClick?: () => void; disabled?: boolean }) {
   const variants = {
-    primary: 'bg-[#003399] text-white shadow-sm hover:bg-[#003399]',
-    secondary: 'border border-[#003399]/15 bg-white text-[#003399] hover:border-[#003399]/15 hover:text-[#003399] dark:border-white/20 dark:bg-[#001a4d] dark:text-[#f2f6ff]',
-    ghost: 'text-[#003399]/65 hover:bg-[#003399]/5 hover:text-[#003399] dark:text-white/70 dark:hover:bg-white/10 dark:hover:text-white',
+    primary: 'bg-[#0b5ea2] text-white shadow-sm hover:bg-[#0b5ea2]',
+    secondary: 'border border-[#0b5ea2]/15 bg-white text-[#0b5ea2] hover:border-[#0b5ea2]/15 hover:text-[#0b5ea2] dark:border-white/20 dark:bg-[#001a4d] dark:text-[#f2f6ff]',
+    ghost: 'text-[#0b5ea2]/65 hover:bg-[#0b5ea2]/5 hover:text-[#0b5ea2] dark:text-white/70 dark:hover:bg-white/10 dark:hover:text-white',
   }
-  return <button type={type} onClick={onClick} disabled={disabled} className={cn('inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-45', variants[variant], className)}>{children}</button>
+  return <button type={type} onClick={onClick} disabled={disabled} className={cn('smartlib-button inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-45', variants[variant], className)}>{children}</button>
 }
 
 export function SectionCard({ children, className }: { children: ReactNode; className?: string }) {
-  return <section className={cn('rounded-2xl border border-[#003399]/10 bg-white shadow-[0_1px_3px_rgba(0,51,153,0.08)] dark:border-white/10 dark:bg-[#001a4d] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]', className)}>{children}</section>
+  return <section className={cn('section-card min-w-0 max-w-full rounded-2xl border border-[#0b5ea2]/10 bg-white shadow-[0_1px_3px_rgba(11, 94, 162,0.08)] dark:border-white/10 dark:bg-[#001a4d] dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]', className)}>{children}</section>
 }
 
 const toneClasses: Record<string, string> = {
-  active: 'bg-[#003399]/5 text-[#003399] ring-[#003399]/10 dark:bg-white/10 dark:text-[#f7f9ff] dark:ring-white/15',
-  available: 'bg-[#003399]/5 text-[#003399] ring-[#003399]/10 dark:bg-white/10 dark:text-[#f7f9ff] dark:ring-white/15',
-  ready_for_pickup: 'bg-[#003399]/5 text-[#003399] ring-[#003399]/10 dark:bg-white/10 dark:text-[#f7f9ff] dark:ring-white/15',
-  cleared: 'bg-[#003399]/5 text-[#003399] ring-[#003399]/10 dark:bg-white/10 dark:text-[#f7f9ff] dark:ring-white/15',
-  paid: 'bg-[#003399]/5 text-[#003399] ring-[#003399]/10 dark:bg-white/10 dark:text-[#f7f9ff] dark:ring-white/15',
-  returned: 'bg-[#003399]/5 text-[#003399]/65 ring-[#003399]/10 dark:bg-white/10 dark:text-white/80 dark:ring-white/15',
-  queued: 'bg-[#FFF200]/35 text-[#003399] ring-[#003399]/10 dark:bg-[#FFF200]/40 dark:text-[#003399] dark:ring-[#FFF200]/50',
-  pending: 'bg-[#FFF200]/35 text-[#003399] ring-[#003399]/10 dark:bg-[#FFF200]/40 dark:text-[#003399] dark:ring-[#FFF200]/50',
-  partially_paid: 'bg-[#FFF200]/35 text-[#003399] ring-[#003399]/10 dark:bg-[#FFF200]/40 dark:text-[#003399] dark:ring-[#FFF200]/50',
-  printing: 'bg-[#FFF200]/35 text-[#003399] ring-[#003399]/10 dark:bg-[#FFF200]/40 dark:text-[#003399] dark:ring-[#FFF200]/50',
-  overdue: 'bg-[#FFF200] text-[#003399] ring-[#003399]/10 dark:bg-[#FFF200] dark:text-[#003399] dark:ring-[#FFF200]/60',
-  borrowed: 'bg-[#003399]/5 text-[#003399] ring-[#003399]/10 dark:bg-white/10 dark:text-[#f7f9ff] dark:ring-white/15',
-  reserved: 'bg-[#FFF200]/35 text-[#003399] ring-[#003399]/10 dark:bg-[#FFF200]/40 dark:text-[#003399] dark:ring-[#FFF200]/50',
-  blocked: 'bg-[#FFF200] text-[#003399] ring-[#003399]/10 dark:bg-[#FFF200] dark:text-[#003399] dark:ring-[#FFF200]/60',
-  unpaid: 'bg-[#FFF200] text-[#003399] ring-[#003399]/10 dark:bg-[#FFF200] dark:text-[#003399] dark:ring-[#FFF200]/60',
-  unavailable: 'bg-[#003399]/5 text-[#003399]/65 ring-[#003399]/10 dark:bg-white/10 dark:text-white/80 dark:ring-white/15',
-  inactive: 'bg-[#003399]/5 text-[#003399]/65 ring-[#003399]/10 dark:bg-white/10 dark:text-white/80 dark:ring-white/15',
+  active: 'bg-[#0b5ea2]/5 text-[#0b5ea2] ring-[#0b5ea2]/10 dark:bg-white/10 dark:text-[#f7f9ff] dark:ring-white/15',
+  available: 'bg-[#0b5ea2]/5 text-[#0b5ea2] ring-[#0b5ea2]/10 dark:bg-white/10 dark:text-[#f7f9ff] dark:ring-white/15',
+  ready_for_pickup: 'bg-[#0b5ea2]/5 text-[#0b5ea2] ring-[#0b5ea2]/10 dark:bg-white/10 dark:text-[#f7f9ff] dark:ring-white/15',
+  cleared: 'bg-[#0b5ea2]/5 text-[#0b5ea2] ring-[#0b5ea2]/10 dark:bg-white/10 dark:text-[#f7f9ff] dark:ring-white/15',
+  paid: 'bg-[#0b5ea2]/5 text-[#0b5ea2] ring-[#0b5ea2]/10 dark:bg-white/10 dark:text-[#f7f9ff] dark:ring-white/15',
+  returned: 'bg-[#0b5ea2]/5 text-[#0b5ea2]/65 ring-[#0b5ea2]/10 dark:bg-white/10 dark:text-white/80 dark:ring-white/15',
+  queued: 'bg-[#FFF200]/35 text-[#0b5ea2] ring-[#0b5ea2]/10 dark:bg-[#FFF200]/40 dark:text-[#0b5ea2] dark:ring-[#FFF200]/50',
+  pending: 'bg-[#FFF200]/35 text-[#0b5ea2] ring-[#0b5ea2]/10 dark:bg-[#FFF200]/40 dark:text-[#0b5ea2] dark:ring-[#FFF200]/50',
+  partially_paid: 'bg-[#FFF200]/35 text-[#0b5ea2] ring-[#0b5ea2]/10 dark:bg-[#FFF200]/40 dark:text-[#0b5ea2] dark:ring-[#FFF200]/50',
+  printing: 'bg-[#FFF200]/35 text-[#0b5ea2] ring-[#0b5ea2]/10 dark:bg-[#FFF200]/40 dark:text-[#0b5ea2] dark:ring-[#FFF200]/50',
+  overdue: 'bg-[#FFF200] text-[#0b5ea2] ring-[#0b5ea2]/10 dark:bg-[#FFF200] dark:text-[#0b5ea2] dark:ring-[#FFF200]/60',
+  borrowed: 'bg-[#0b5ea2]/5 text-[#0b5ea2] ring-[#0b5ea2]/10 dark:bg-white/10 dark:text-[#f7f9ff] dark:ring-white/15',
+  reserved: 'bg-[#FFF200]/35 text-[#0b5ea2] ring-[#0b5ea2]/10 dark:bg-[#FFF200]/40 dark:text-[#0b5ea2] dark:ring-[#FFF200]/50',
+  blocked: 'bg-[#FFF200] text-[#0b5ea2] ring-[#0b5ea2]/10 dark:bg-[#FFF200] dark:text-[#0b5ea2] dark:ring-[#FFF200]/60',
+  unpaid: 'bg-[#FFF200] text-[#0b5ea2] ring-[#0b5ea2]/10 dark:bg-[#FFF200] dark:text-[#0b5ea2] dark:ring-[#FFF200]/60',
+  unavailable: 'bg-[#0b5ea2]/5 text-[#0b5ea2]/65 ring-[#0b5ea2]/10 dark:bg-white/10 dark:text-white/80 dark:ring-white/15',
+  inactive: 'bg-[#0b5ea2]/5 text-[#0b5ea2]/65 ring-[#0b5ea2]/10 dark:bg-white/10 dark:text-white/80 dark:ring-white/15',
 }
 
 export function StatusBadge({ status }: { status: string }) {
   const normalized = status.toLowerCase().replaceAll(' ', '_')
-  return <span className={cn('inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold capitalize ring-1 ring-inset', toneClasses[normalized] ?? 'bg-[#003399]/5 text-[#003399]/65 ring-[#003399]/10 dark:bg-white/10 dark:text-white/80 dark:ring-white/15')}>{status.replaceAll('_', ' ')}</span>
+  return <span className={cn('inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold capitalize ring-1 ring-inset', toneClasses[normalized] ?? 'bg-[#0b5ea2]/5 text-[#0b5ea2]/65 ring-[#0b5ea2]/10 dark:bg-white/10 dark:text-white/80 dark:ring-white/15')}>{status.replaceAll('_', ' ')}</span>
 }
 
 const statTones: Record<string, string> = {
-  emerald: 'bg-[#003399]/5 text-[#003399] dark:bg-white/10 dark:text-[#f7f9ff]',
-  blue: 'bg-[#003399]/5 text-[#003399] dark:bg-white/10 dark:text-[#f7f9ff]',
-  teal: 'bg-[#003399]/5 text-[#003399] dark:bg-white/10 dark:text-[#f7f9ff]',
-  orange: 'bg-[#FFF200]/35 text-[#003399] dark:bg-[#FFF200]/40 dark:text-[#003399]',
-  violet: 'bg-[#003399]/5 text-[#003399] dark:bg-white/10 dark:text-[#f7f9ff]',
-  cyan: 'bg-[#003399]/5 text-[#003399] dark:bg-white/10 dark:text-[#f7f9ff]',
-  pink: 'bg-[#003399]/5 text-[#003399] dark:bg-white/10 dark:text-[#f7f9ff]',
-  red: 'bg-[#FFF200] text-[#003399] dark:bg-[#FFF200] dark:text-[#003399]',
-  amber: 'bg-[#FFF200]/35 text-[#003399] dark:bg-[#FFF200]/40 dark:text-[#003399]',
+  emerald: 'bg-[#0b5ea2]/5 text-[#0b5ea2] dark:bg-white/10 dark:text-[#f7f9ff]',
+  blue: 'bg-[#0b5ea2]/5 text-[#0b5ea2] dark:bg-white/10 dark:text-[#f7f9ff]',
+  teal: 'bg-[#0b5ea2]/5 text-[#0b5ea2] dark:bg-white/10 dark:text-[#f7f9ff]',
+  orange: 'bg-[#FFF200]/35 text-[#0b5ea2] dark:bg-[#FFF200]/40 dark:text-[#0b5ea2]',
+  violet: 'bg-[#0b5ea2]/5 text-[#0b5ea2] dark:bg-white/10 dark:text-[#f7f9ff]',
+  cyan: 'bg-[#0b5ea2]/5 text-[#0b5ea2] dark:bg-white/10 dark:text-[#f7f9ff]',
+  pink: 'bg-[#0b5ea2]/5 text-[#0b5ea2] dark:bg-white/10 dark:text-[#f7f9ff]',
+  red: 'bg-[#FFF200] text-[#0b5ea2] dark:bg-[#FFF200] dark:text-[#0b5ea2]',
+  amber: 'bg-[#FFF200]/35 text-[#0b5ea2] dark:bg-[#FFF200]/40 dark:text-[#0b5ea2]',
 }
 
 export function StatCard({ label, value, icon: Icon, tone = 'emerald' }: { label: string; value: string | number; note?: string; icon?: LucideIcon; tone?: string }) {
@@ -73,8 +74,8 @@ export function StatCard({ label, value, icon: Icon, tone = 'emerald' }: { label
     <SectionCard className="p-4 sm:p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold text-[#003399]/65 dark:text-white/70">{label}</p>
-          <p className="mt-2 font-display text-2xl font-bold tracking-tight text-[#003399] dark:text-white">{value}</p>
+          <p className="text-xs font-semibold text-[#0b5ea2]/65 dark:text-white/70">{label}</p>
+          <p className="mt-2 font-display text-2xl font-bold tracking-tight text-[#0b5ea2] dark:text-white">{value}</p>
         </div>
         {Icon && <div className={cn('rounded-xl p-2.5', statTones[tone] ?? statTones.emerald)}><Icon size={18} /></div>}
       </div>
@@ -85,8 +86,8 @@ export function StatCard({ label, value, icon: Icon, tone = 'emerald' }: { label
 export function TableSearch({ placeholder = 'Search records...', value, onChange }: { placeholder?: string; value?: string; onChange?: (value: string) => void }) {
   return (
     <label className="relative block w-full sm:max-w-xs">
-      <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#003399]/45 dark:text-white/45" size={16} />
-      <input value={value} onChange={(event) => onChange?.(event.target.value)} placeholder={placeholder} className="h-10 w-full rounded-xl border border-[#003399]/15 bg-[#003399]/5 pl-9 pr-3 text-sm outline-none transition focus:border-[#003399]/15 focus:bg-white focus:ring-4 focus:ring-[#003399]/10 dark:border-white/15 dark:bg-white/5 dark:text-white dark:focus:bg-[#002266]" />
+      <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#0b5ea2]/45 dark:text-white/45" size={16} />
+      <input value={value} onChange={(event) => onChange?.(event.target.value)} placeholder={placeholder} className="h-10 w-full rounded-xl border border-[#0b5ea2]/15 bg-[#0b5ea2]/5 pl-9 pr-3 text-sm outline-none transition focus:border-[#0b5ea2]/15 focus:bg-white focus:ring-4 focus:ring-[#0b5ea2]/10 dark:border-white/15 dark:bg-white/5 dark:text-white dark:focus:bg-[#002266]" />
     </label>
   )
 }
@@ -94,74 +95,26 @@ export function TableSearch({ placeholder = 'Search records...', value, onChange
 export function TableShell({ title, controls, children }: { title: string; subtitle?: string; controls?: ReactNode; children: ReactNode }) {
   return (
     <SectionCard className="overflow-hidden">
-      <div className="flex flex-col gap-3 border-b border-[#003399]/15 px-5 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-white/10">
-        <h2 className="font-display text-base font-bold text-[#003399] dark:text-white">{title}</h2>
+      <div className="flex flex-col gap-3 border-b border-[#0b5ea2]/15 px-5 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-white/10">
+        <h2 className="font-display text-base font-bold text-[#0b5ea2] dark:text-white">{title}</h2>
         {controls}
       </div>
-      <div className="overflow-x-auto">{children}</div>
+      {isValidElement(children) && children.type === 'table' ? <ResponsiveTable label={title}>{children as ReactElement<{ children?: ReactNode }>}</ResponsiveTable> : <div className="min-w-0 overflow-x-auto">{children}</div>}
     </SectionCard>
   )
 }
 
 export function MoreButton() {
-  return <button aria-label="More actions" className="rounded-lg p-2 text-[#003399]/45 transition hover:bg-[#003399]/5 hover:text-[#003399] dark:text-white/45 dark:hover:bg-white/10 dark:hover:text-white"><MoreHorizontal size={17} /></button>
+  return <button aria-label="More actions" className="rounded-lg p-2 text-[#0b5ea2]/45 transition hover:bg-[#0b5ea2]/5 hover:text-[#0b5ea2] dark:text-white/45 dark:hover:bg-white/10 dark:hover:text-white"><MoreHorizontal size={17} /></button>
 }
 
 export function CardLink({ children }: { children: ReactNode }) {
-  return <span className="inline-flex items-center gap-1 text-xs font-bold text-[#003399]">{children}<ArrowUpRight size={13} /></span>
-}
-
-/** Mobile stacked record card (student/faculty lists). */
-export function RecordCard({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <article className={cn('rounded-2xl border border-[#003399]/10 bg-white p-4 shadow-[0_1px_3px_rgba(0,51,153,0.06)] dark:border-white/10 dark:bg-[#001a4d]', className)}>
-      {children}
-    </article>
-  )
-}
-
-export function RecordField({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#003399]/45 dark:text-white/45">{label}</p>
-      <div className="mt-1 text-sm font-semibold text-[#003399] dark:text-[#f7f9ff]">{children}</div>
-    </div>
-  )
-}
-
-/** Desktop table + mobile card stack. Pass table for md+ and cards for small screens. */
-export function ResponsiveRecords({
-  table,
-  cards,
-  empty,
-  emptyLabel = 'No records found.',
-  loading,
-  loadingLabel = 'Loading records…',
-}: {
-  table: ReactNode
-  cards: ReactNode
-  empty?: boolean
-  emptyLabel?: string
-  loading?: boolean
-  loadingLabel?: string
-}) {
-  if (loading) {
-    return <p className="px-5 py-12 text-center text-sm font-semibold text-[#003399] dark:text-[#f7f9ff]">{loadingLabel}</p>
-  }
-  if (empty) {
-    return <p className="px-5 py-12 text-center text-sm font-semibold text-[#003399] dark:text-[#f7f9ff]">{emptyLabel}</p>
-  }
-  return (
-    <>
-      <div className="hidden md:block">{table}</div>
-      <div className="space-y-3 p-4 md:hidden">{cards}</div>
-    </>
-  )
+  return <span className="inline-flex items-center gap-1 text-xs font-bold text-[#0b5ea2]">{children}<ArrowUpRight size={13} /></span>
 }
 
 export function BookCover({ code, accent, className }: { code: string; accent: string; className?: string }) {
   return (
-    <div className={cn('relative flex aspect-[3/4] items-end overflow-hidden rounded-xl bg-gradient-to-br p-3 text-white shadow-lg shadow-[#003399]/10', accent, className)}>
+    <div className={cn('relative flex aspect-[3/4] items-end overflow-hidden rounded-xl bg-gradient-to-br p-3 text-white shadow-lg shadow-[#0b5ea2]/10', accent, className)}>
       <div className="absolute inset-y-0 left-2 w-px bg-white/20" />
       <div className="absolute right-3 top-3 h-5 w-5 rounded-full border border-white/20" />
       <span className="font-display text-xl font-black tracking-tight">{code}</span>

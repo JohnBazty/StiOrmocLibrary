@@ -83,12 +83,12 @@ export async function fetchCatalogCopyAsset(barcode: string, signal?: AbortSigna
   return parseResponse<CatalogCopyAsset>(response)
 }
 
-export async function reserveBookTitle(titleId: number) {
+export async function reserveBookTitle(titleId: number, requestId?: string) {
   const response = await fetch(`${BASE_URL}/${titleId}/reservations`, {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...authorizationHeaders() },
     credentials: 'include',
-    body: '{}',
+    body: JSON.stringify({requestId}),
   })
-  return parseResponse<{ reservationId: number; queuePosition: number; status: string }>(response)
+  return parseResponse<{ reservationId: number; queuePosition: number; status: string; statusLabel?: string; instructions?:string }>(response)
 }

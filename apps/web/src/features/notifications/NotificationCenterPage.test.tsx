@@ -16,6 +16,15 @@ const notification = {
 const schedule = { timezone: 'Asia/Manila', weekly: [], upcomingClosures: [] }
 
 describe('notification center', () => {
+  it('keeps the inbox and unread state when marking notifications read fails', async () => {
+    api.list.mockResolvedValue({ items:[notification],unreadCount:1,pagination:{page:1,limit:100,total:1,totalPages:1} })
+    api.markAllRead.mockRejectedValue(new Error('Connection interrupted. Try again.'))
+    render(<MemoryRouter><NotificationCenterPage/></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button',{name:'Mark all read'}))
+    expect((await screen.findByRole('alert')).textContent).toContain('Connection interrupted')
+    expect(screen.getByText('Book ready for pickup')).toBeTruthy()
+    expect((screen.getByRole('button',{name:'Mark all read'}) as HTMLButtonElement).disabled).toBe(false)
+  })
   beforeEach(() => { vi.clearAllMocks(); api.schedule.mockResolvedValue(schedule); api.remove.mockResolvedValue({ deleted: true }); api.removeAll.mockResolvedValue({ deletedCount: 1 }) })
   afterEach(() => { cleanup(); vi.restoreAllMocks() })
 

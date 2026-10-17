@@ -10,7 +10,6 @@ export type BulkBookInput = {
   numberOfCopies: number
   publicationYear: number | null
   publisher: string | null
-  purchasePrice: number | null
   callNumber: string | null
   coverImageData: string | null
 }
@@ -37,9 +36,6 @@ export function validateBulkBookInput(body: unknown): BulkBookInput {
   const publicationYearValue = input.publication_year ?? input.publicationYear
   const publicationYear = publicationYearValue === '' || publicationYearValue === null || publicationYearValue === undefined
     ? null : positiveInteger(publicationYearValue)
-  const purchasePriceValue = input.purchase_price ?? input.purchasePrice
-  const purchasePrice = purchasePriceValue === '' || purchasePriceValue === null || purchasePriceValue === undefined
-    ? null : Number(purchasePriceValue)
 
   if (!title) errors.title = 'Title is required.'
   if (!author) errors.author = 'Author is required.'
@@ -50,7 +46,6 @@ export function validateBulkBookInput(body: unknown): BulkBookInput {
   if (!numberOfCopies || numberOfCopies > 100) errors.number_of_copies = 'Number of copies must be a whole number from 1 to 100.'
   const currentYear = new Date().getFullYear()
   if (publicationYear !== null && (publicationYear < 1000 || publicationYear > currentYear)) errors.publication_year = `Publication year must be between 1000 and ${currentYear}.`
-  if (purchasePrice !== null && (!Number.isFinite(purchasePrice) || purchasePrice <= 0 || purchasePrice > 1_000_000)) errors.purchase_price = 'Purchase price must be a positive amount.'
   const coverImageData = typeof (input.cover_image_data ?? input.coverImageData) === 'string'
     ? String(input.cover_image_data ?? input.coverImageData) : null
   if (coverImageData && coverImageData.length > 2_800_000) errors.cover_image = 'Book cover must not exceed 2 MB.'
@@ -61,7 +56,6 @@ export function validateBulkBookInput(body: unknown): BulkBookInput {
   return {
     title, author, isbn, categoryId: categoryId!, shelfLocation, numberOfCopies: numberOfCopies!, publicationYear,
     publisher: clean(input.publisher, 255) || null,
-    purchasePrice,
     callNumber: clean(input.call_number ?? input.callNumber, 100) || null,
     coverImageData,
   }

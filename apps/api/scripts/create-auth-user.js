@@ -57,7 +57,7 @@ const missing = required.filter((key) => !args[key])
 
 if (missing.length > 0) {
   console.error(`Missing required arguments: ${missing.map((key) => `--${key}`).join(', ')}`)
-  console.error('Example: npm run auth:create-user -w @sti-library/api -- --email admin@ormoc.sti.edu.ph --role Admin --id ADMIN-001 --name "Campus Librarian"')
+  console.error('Example: npm run auth:create-user -w @sti-library/api -- --email admin@ormoc.sti.edu.ph --role "System Administrator" --id ADMIN-001 --name "Campus Administrator"')
   process.exit(1)
 }
 
@@ -82,7 +82,7 @@ try {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
     [
       roleRows[0].role_id,
-      args.role,
+      args.role === 'System Administrator' ? 'Admin' : args.role,
       args.id,
       args.id,
       args.name,

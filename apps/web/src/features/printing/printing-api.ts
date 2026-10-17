@@ -4,7 +4,7 @@ export type ServiceStatus={accepting_requests:number|boolean;unavailable_reason:
 export type PricingRule={pricing_rule_id:number;print_type:'Colored'|'Monochrome';paper_size:'Short'|'A4'|'Long';price_per_page:number|string}
 export type PrintQuote={page_count:number;total_sheets:number;calculated_cost:number;document_sha256:string;printable_file_name:string}
 export type PrintRequest={request_id:number;full_name?:string;school_id?:string;user_role?:string;file_name:string;number_of_copies:number;print_type:string;paper_size:string;page_count:number;total_sheets:number;calculated_cost:number|string;payment_status:'Unpaid'|'Paid';job_status:'Pending'|'Printing'|'Ready for Pickup'|'Completed'|'Cancelled';created_at:string;cancelled_reason?:string|null;print_receipt_id?:number|null;receipt_number?:string|null;verification_code?:string|null;receipt_status?:'Issued'|'Reversed'|null;receipt_issued_at?:string|null}
-export type PrintingReceipt={print_receipt_id:number;request_id:number;receipt_number:string;verification_code:string;receipt_status:'Issued'|'Reversed';student_name:string;school_id:string;file_name:string;page_count:number;number_of_copies:number;total_sheets:number;print_type:string;paper_size:string;amount_received:number|string;payment_method:'Cash';received_by:string;received_at:string}
+export type PrintingReceipt={print_receipt_id:number;request_id:number;receipt_number:string;verification_code:string;receipt_status:'Issued'|'Reversed';document_label?:string;student_name:string;school_id:string;file_name:string;page_count:number;number_of_copies:number;total_sheets:number;print_type:string;paper_size:string;amount_received:number|string;payment_method:'Cash';received_by:string;received_at:string}
 export type PrintCashPayment={request_id:number;payment_status:'Paid';amount_paid:number;receipt:PrintingReceipt}
 export type PrintSummary={pending_jobs:number;printing_jobs:number;ready_jobs:number;completed_today:number;unpaid_jobs:number;revenue_today:number;service_status:ServiceStatus}
 export type InkStock={ink_id:number;cartridge_type:string;color_variation:string;available_bottles:number;low_stock_threshold_bottles:number;cost_per_bottle:number|string;is_low:number}
@@ -23,11 +23,23 @@ export type StockUsageEntry={created_at:string;supply_type:'Ink'|'Paper';supply_
 let csrfToken:string|null=null
 function headers(accept='application/json'){const h=new Headers({Accept:accept}),token=getAccessToken();if(token)h.set('Authorization',`Bearer ${token}`);return h}
 async function ensureCsrf(){if(getAccessToken()||csrfToken)return;const r=await fetch('/api/auth/csrf',{credentials:'include',headers:{Accept:'application/json'}}),p=await r.json() as {csrfToken?:string;message?:string};if(!r.ok||!p.csrfToken)throw new Error(p.message??'Unable to start a secure request.');csrfToken=p.csrfToken}
-async function request<T>(url:string,options:RequestInit={}){const mutating=Boolean(options.method&&options.method!=='GET');if(mutating)await ensureCsrf();const h=headers();if(!(options.body instanceof FormData)&&options.body)h.set('Content-Type','application/json');if(csrfToken&&!getAccessToken())h.set('x-csrf-token',csrfToken);const r=await fetch(url,{...options,credentials:'include',headers:h}),p=await r.json().catch(()=>({})) as {data?:T;message?:string;meta?:{pagination?:{page:number;limit:number;total:number;total_pages:number}}};if(!r.ok)throw new Error(p.message??'The printing service request failed.');return{data:p.data as T,meta:p.meta}}
+async function request<T>(url:string,options:RequestInit={}){
+  const mutating=Boolean(options.method&&options.method!=='GET')
+  if(mutating)await ensureCsrf()
+  const h=headers()
+  if(!(options.body instanceof FormData)&&options.body)h.set('Content-Type','application/json')
+  if(csrfToken&&!getAccessToken())h.set('x-csrf-token',csrfToken)
+  const r=await fetch(url,{...options,credentials:'include',headers:h})
+  const p=await r.json().catch(()=>null) as {data?:T;message?:string;meta?:{pagination?:{page:number;limit:number;total:number;total_pages:number}}}|null
+  if(!r.ok)throw new Error(p?.message??'The printing service is temporarily unavailable. Please try again.')
+  if(!p||p.data==null)throw new Error('The printing service returned an incomplete response. Please try again.')
+  return{data:p.data as T,meta:p.meta}
+}
 async function download(url:string,name:string,accept:string,expected?:string){const r=await fetch(url,{credentials:'include',headers:headers(accept)});if(!r.ok){const p=await r.json().catch(()=>({})) as {message?:string};throw new Error(p.message??'Unable to download the file.')}const contentType=r.headers.get('content-type')??'';if(expected&&!contentType.includes(expected))throw new Error('The server returned an invalid download.');const blob=await r.blob(),objectUrl=URL.createObjectURL(blob),link=document.createElement('a');link.href=objectUrl;link.download=name;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(objectUrl),1000)}
 function filterParams(filters:FinanceFilters){const value=new URLSearchParams({period:filters.period,date:filters.date,month:filters.month});if(filters.period==='weekly')value.set('week',String(filters.week));return value}
 
 export const printingApi={
+  downloadInvoice:(row:PrintRequest,admin=false)=>download(`/api/v1/${admin?'admin/printing':'printing'}/requests/${row.request_id}/invoice/pdf`,`PRINT-INV-${String(row.request_id).padStart(8,'0')}.pdf`,'application/pdf','application/pdf'),
   serviceStatus:async()=>(await request<ServiceStatus>('/api/v1/printing/service-status')).data,
   pricing:async()=>(await request<PricingRule[]>('/api/v1/printing/pricing')).data,
   mine:async()=>(await request<PrintRequest[]>('/api/v1/printing/requests')).data,
@@ -57,7 +69,7 @@ export const printingApi={
   openPaperReam:async(id:number)=>request(`/api/v1/admin/printing/supplies/paper/${id}/open-ream`,{method:'POST',body:'{}'}),
   createInk:async(data:{cartridge_type:string;color_variation:string;available_bottles:number;low_stock_threshold_bottles:number;cost_per_bottle:number})=>request('/api/v1/admin/printing/supplies/ink',{method:'POST',body:JSON.stringify(data)}),
   printReport:()=>download('/api/v1/admin/printing/report.pdf','smartlib-printing-report.pdf','application/pdf','application/pdf'),
-  supplyReport:()=>download('/api/v1/admin/printing/supplies/report.pdf','smartlib-print-supplies-report.pdf','application/pdf','application/pdf'),
+  supplyReport:()=>download('/api/v1/admin/printing/supplies/report.pdf','smartlib-print-supplies-current-stock.pdf','application/pdf','application/pdf'),
   financeReport:(filters:FinanceFilters)=>download(`/api/v1/admin/printing/finance/report.pdf?${filterParams(filters)}`,`smartlib-print-finance-${filters.period}-${filters.date}.pdf`,'application/pdf','application/pdf'),
   revenueReport:(filters:FinanceFilters)=>download(`/api/v1/admin/printing/reports/revenue.pdf?${filterParams(filters)}`,`smartlib-print-revenue-${filters.period}-${filters.date}.pdf`,'application/pdf','application/pdf'),
   stockExpenseReport:(filters:FinanceFilters)=>download(`/api/v1/admin/printing/reports/stock-expenses.pdf?${filterParams(filters)}`,`smartlib-stock-expenses-${filters.period}-${filters.date}.pdf`,'application/pdf','application/pdf'),

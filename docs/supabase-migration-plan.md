@@ -1,6 +1,6 @@
 # Title
 
-**MySQL → Supabase (PostgreSQL) conversion for STI College Ormoc Integrated Library Management System**
+**MySQL → Supabase (PostgreSQL) conversion for STI Ormoc Smart Library**
 
 ## Why
 
@@ -11,14 +11,26 @@ Product PDFs and `agent.md` historically name MySQL as the baseline; those docs 
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-10-09 |
+| **Date last updated** | 2026-10-16 |
 | **Status** | `inprogress` |
 
 Allowed status values: `planned` → `inprogress` → `built`.
 
+**2026-10-16 targeted repair:** Owner-authorized correction of retained account 5's drifted role after Phase 1 QA. Private snapshot `phase1_role_repair_20261016_801ab152`, transactional restoration to canonical Librarian authority, preserved passwords/identities/history and authentication revocation. Live workspace checks and regression gate passed. No product DDL change; Postgres 026 / next 027 and MySQL reference 048 / next 049 unchanged. See [repair evidence](revision-phase1-role-repair-20261016.md).
+
+**2026-10-12 account data operation:** At the owner's request, retained `ADMIN-PORTAL-001` as the combined Librarian/Admin login using canonical Librarian authority and archived the separate `LIB-TEST-001` login. Private transactional snapshots and paired history entries preserve original identities, credentials and operational provenance. Prior authentication versions/recovery grants were revoked; live authority and archive checks passed. This does not advance the product migration tracker (Postgres 026 / next 027; MySQL reference 048 / next 049). See [consolidation record](admin-librarian-account-consolidation.md).
+
 ---
 
 ## Locked decisions (approved for build)
+
+**2026-10-12 Revision Phase 7:** Reviewed `026_revision_phase7_collection_review.sql` applied individually after isolated acceptance and private snapshot `revision_phase7_backup_20261012`. Adds approved reference-year versions, review/requirement histories with append-only guards, derived status caches and deduplicated alerts. All affected pre-existing records compare identically to the snapshot. Owner chose starting year 2026 for 2026–2027; numeric CHED criteria remain pending school/mapping approval. Latest applied product file **026**, next unused **027**; MySQL reference **048** / next **049** unchanged. See [work record and source research](revision-phase7-local-implementation.md).
+
+**2026-10-11 Revision Phase 6:** Reviewed `025_revision_phase6_book_requests.sql` applied individually after disposable-schema acceptance and a private snapshot in `revision_phase6_backup_20261011`. Adds request timeline and recoverable email delivery, client request keys and explicit preparation/readiness instants. Existing accounts, copies and loan IDs/data verified against the snapshot; existing reservations retained. No historical emails queued. Latest applied product file **025**, next unused **026**; MySQL reference **048** / next **049** unchanged. See [work record](revision-phase6-local-implementation.md).
+
+**2026-10-11 Phase 5 extension:** Reviewed `023_revision_phase5_desk_circulation.sql` and `024_revision_phase5_reading_materials.sql` applied individually after isolated Postgres acceptance. Adds server-only RLS in-library usage and confirmation receipts, with exclusive book-copy or native research-inventory links. Existing accounts/catalog/loans retained; no data reset. Latest applied product file **024**, next unused **025**; MySQL **047** unapplied / next **048** unchanged. Phase 2 enrollment validation remains pending under the owner's temporary Active-account policy. See [work record](revision-phase5-local-implementation.md).
+
+**2026-10-11 Phase 4 extension:** `022_revision_phase4_attendance.sql` is applied after owner choices 1A/2A/3A. Adds server-only RLS policy/events/scan receipts and visit classification/checkout provenance; retains historical visits and loans. Printing-only visits exclude seats, event permissions are individually configured by Librarian, and open days close at 7 PM with 6:55 PM attendance cutoff. Latest applied product file **022**, next unused **023**. See [work record](revision-phase4-local-implementation.md).
 
 | Decision | Choice |
 | --- | --- |
@@ -64,8 +76,8 @@ Custom `MySqlSessionStore` (`apps/api/src/core/mysql-session-store.js`) on table
 | Item | Count / path |
 | --- | --- |
 | MySQL baseline | `database/mysql56-schema.sql` |
-| MySQL reference migrations | **46 files** (`001`…`046`); next MySQL number **`047`**; the active database remains Supabase Postgres |
-| Postgres drafts | `database/supabase/` through `016_configurable_borrowing_policies.sql`; next `017` |
+| MySQL reference migrations | **48** (`001`…`048`); next MySQL number **`049`**; `043`–`048` are prepared locally and unapplied; the active database remains Supabase Postgres |
+| Postgres drafts | Revision product files through applied `025`; next unused `026`. Remote branding `017` source integrated; reconcile with existing ledger before replay. |
 | Views | `borrow_records`, `book_titles` |
 | Seed files | None |
 
@@ -227,6 +239,12 @@ On 2026-09-25, `tools/ai/migrate-mysql-to-supabase.mjs` completed a full transac
 
 On 2026-09-26, the reviewed Postgres `011_phase2_user_management.sql` was applied to Supabase. It adds authentication-version columns to `accounts` and `users` and the append-only account-management event table. MySQL `042` is a rollback reference and was not applied to the active application.
 
+On 2026-09-27, Phase 6 Postgres `015_phase6_registration_roles.sql` and MySQL rollback reference `047` were prepared locally. They add pending school-email registration, the restricted Library Staff role, and private profile-picture approvals. Supabase `012`–`015` remain unapplied; the hosted ledger's latest applied file is still `011`. Applying these to the shared database is a separate release step and was not performed for the local-only Phase 6 work.
+
+On 2026-09-28, the user approved using the connected Supabase project for local verification. A private schema snapshot `migration_backup_20260927154637` captured the existing roles, lost-book reports, and print/fine payment rows before changes. Product files `012_phase2_book_quotations.sql`, `013_phase2_job_runner.sql`, `014_phase2_invoices.sql`, and `015_phase6_registration_roles.sql` then applied individually and transactionally. The API health check became healthy; existing lost-book and payment row counts stayed at 2, 10, and 20. A disposable Staff registration passed pending-email and code-verification transitions against Supabase, entered PendingApproval without creating an account, and was removed. The Gmail SMTP test was accepted by Gmail and the owner confirmed the message arrived in school Outlook; a full browser registration with a real unused school address remains unconfirmed. No GitHub push or Vercel deployment occurred. The live migration ledger also contains `011_advisor_security_lockdown.sql` and `012_performance_advisor_fixes.sql`, whose source files are absent from this checkout; reconcile them before any full replay.
+
+Later on 2026-09-28, a local registration failure exposed seven active Student users with no linked `accounts` rows. Supabase `016_phase6_legacy_student_account_links.sql` was tested inside a rolled-back transaction, then applied through the single-file runner. It adds only missing Student/Faculty account links, copying the existing school ID, password hash, role, and status while preserving each `users.user_id` and its transactions. Registration now explains that an existing user must sign in with the original password; a newly typed registration password is not saved. Next Supabase product file is `017`; the MySQL rollback tracker remains `047` / next `048`. This repair was not deployed.
+
 The target transaction created a pre-cutover snapshot of all public tables in private schema `mysql_cutover_backup_20260925100301`. Keep this schema until the team has verified the deployed app and agreed to retire rollback. The importer refuses a second `--apply` while a cutover backup exists. Use `node tools/ai/audit-supabase-cutover.mjs` for read-only source/target counts.
 
 Independent post-commit counts: `users` 6 (4 source + 2 prior hosted), `accounts` 5 (4 + 1), `student_profiles` 3 (2 + 1), `categories` 6, `titles` 16, `physical_copies` 27, `borrow_transactions` 30, `reservations` 10, `fines` 13, `attendance_logs` 7, and `print_requests` 4. All 56 source tables are present and no populated source column is missing. The local API health endpoint reports `healthy`; a new student registration and login succeeded through the local web proxy against Supabase, and the temporary account was removed.
@@ -239,21 +257,48 @@ The deployed app URL and its production `DATABASE_URL` have not been verified he
 
 | Date | Change | Author context |
 | --- | --- | --- |
+| 2026-09-28 | Applied Supabase `016` to repair seven missing Student login links after a rollback-only dry run; preserved operational user records and updated registration guidance. | Agent Alpha |
 | 2026-09-25 | Initial draft. Status `planned`. | Agent draft |
 | 2026-09-25 | Ethan approved build. Inventory filled; decisions locked; status → `inprogress`. | Agent Alpha |
 | 2026-09-25 | Implementation started: `pg` adapter + dialect helpers + supabase drafts. | Agent Alpha |
 | 2026-09-25 | Live Supabase wired via session pooler (`ap-northeast-2`). Applied `001`+`003`+`004`; `checkSchemaReadiness` = ready. Direct `db.*` host is IPv6-only on this network. | Agent Alpha |
 | 2026-09-25 | Ported cutover into GitHub main: kept product migrations 033–040, added `005_main_product_gapfill.sql`, dialect merges for dual-driver API. | Agent |
+| 2026-10-09 | Added branding-only MySQL migration `048` and Supabase migration `017`; no database structures or API response shapes changed. | Agent Alpha |
 | 2026-09-25 | Verified hosted connection and audited live migration ledger and row counts. Started source MySQL access check; no hosted schema or data changes made. | Agent Alpha |
 | 2026-09-25 | Applied Postgres 008–009, migrated local MySQL history into Supabase with a pre-cutover backup, verified counts and local registration/login. | Agent Alpha |
 | 2026-09-25 | Switched Vercel's Supabase URL to transaction pooling after session pool exhaustion, bounded each function's `pg` pool, and verified linked-student routes on production. | Agent Alpha |
 | 2026-09-25 | Added server-side Supabase Storage for new print documents and corrected PostgreSQL printing and borrow-cart queries; verified live student and admin flows. | Agent Alpha |
 | 2026-09-25 | Migrated the four retained historical print PDFs to private Supabase Storage, kept local originals, and verified production downloads for every retained print document. | Agent Alpha |
 | 2026-09-25 | Corrected PostgreSQL admin checkout and bulk book row-lock queries and added public Supabase Storage for new covers; checked rollback-only database flows and a live image upload. | Agent Alpha |
-| 2026-10-09 | Added branding-only MySQL migration `045` and Supabase migration `015`; no database structures or API response shapes changed. | Agent Alpha |
 
 ---
 
 ## Approval gate
 
 Build is **approved**. The local MySQL history has been transferred. Keep local credentials out of Git and verify the deployed app's connection and flows before retiring MySQL or the pre-cutover backup.
+
+## Revision Phase 1 schema addition — 2026-10-10
+
+The live ledger was inspected before authoring DDL: it contains externally managed files through `019`, including a pre-existing OTP/history schema. Applied only reviewed `020_revision_phase1_password_recovery.sql` using the single-file runner. The new table is additive, server-only and protected by RLS/revoked browser privileges. Existing accounts, schemas and credentials were preserved. Next Postgres file **021**; MySQL rollback reference remains **047**, next **048**. No push or application deployment. See [acceptance record](revision-phase1-local-implementation.md).
+
+## Revision Phase 3 schema addition — 2026-10-11
+
+Applied reviewed additive `021_revision_phase3_catalog.sql` individually after inspecting the current ledger. Added private catalog foundations, title metadata/program/course links, digital-file metadata and import review/provenance tables with RLS and revoked browser-role privileges. The `catalog-digital-files` bucket is private; permitted public PDF downloads are mediated by the API and withdrawn on title/file archival. Existing title, copy, material, loan and account identities were preserved. Local Supabase integration and browser acceptance passed using fixtures that were removed afterward. The real workbook was only previewed. Next Postgres number **022**; MySQL reference **047** remains unapplied, next **048**. No push or application deployment; see [acceptance record](revision-phase3-local-implementation.md).
+
+| 2026-10-11 | Integrated branch branding/login commits without database execution; MySQL reference now 048/next 049, applied Postgres remains 024/next unused 025. See `docs/github-update-integration.md`. |
+
+
+## Main integration — 2026-10-11
+
+The main branch was reconciled with the current revision permission model and phase workflows. Borrowing policy management uses the Librarian workspace; prior login sessions are invalidated when a new login succeeds. Competing upstream SQL identities are retained as non-executable references under `database/upstream-main/`; no migration was applied. Existing phase statuses and applied migration identities remain unchanged. See `docs/main-branch-integration.md`.
+
+Revision Phase 6 file 025 applied individually on 2026-10-11 after a private snapshot and isolated acceptance. Next Postgres file: 026. MySQL reference: 048/next 049. Existing accounts and operational history are preserved.
+
+## Cart and reservation separation — 2026-10-16
+
+Applied only reviewed `027_cart_handover_reservation_split.sql` after a disposable-schema acceptance run and an ignored private local snapshot. The existing reservations ledger gains a constrained request kind; original request fields matched their pre-migration SHA-256 fingerprint. Counts remained 7 accounts, 19 titles, 31 copies and 17 loan records at verification. No user passwords or existing operational statuses were changed. Readiness is healthy after local API restart. Next Postgres file 028; MySQL rollback reference 048/next 049 remains unchanged. No push or deployment. See [work record](cart-handover-reservation-split-20261016.md).
+
+
+## October revision additions — 2026-10-17
+
+Applied only `029_october16_revisions.sql` after disposable-schema acceptance and private, ignored before/after fingerprints of accounts, users, titles, copies, loans, reservations and printing requests. All seven existing-table fingerprints matched. The five new RLS tables support account login throttles, login OTPs, human-activity sessions and semester clearance schedules/history. Readiness is healthy. Enrollment `028_revision_phase2_enrollment.sql` remains unapplied. Next unused Postgres number `030`; MySQL reference `048` / next `049` is unchanged. Existing passwords, loan deadlines and financial records are preserved. See `docs/october16-revisions-implementation.json` for tests and remaining device/email verification limits.

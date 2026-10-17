@@ -20,13 +20,37 @@
 --   009_inventory_audit_orphan_history.sql  — nullable copy link for Deleted audit snapshots
 --   010_phase3_archive_floor_image.sql      — archive actor and published floor image history
 --   011_phase2_user_management.sql          — account auth versions and Admin management audit
---   015_rename_system_brand.sql             — public library name branding
---   016_configurable_borrowing_policies.sql — immutable borrowing policy versions
--- Next Postgres schema number: 017. Apply reviewed files individually.
+--   012_phase2_book_quotations.sql           — private quotation history and lost charge resolution (applied)
+--   013_phase2_job_runner.sql                — durable scheduled-run lease and metrics (applied)
+--   014_phase2_invoices.sql                  — separate gated invoice ledger (applied)
+--   015_phase6_registration_roles.sql        — pending verified accounts, Staff role, and avatar reviews (applied)
+--   016_phase6_legacy_student_account_links.sql — backfill missing Student/Faculty login links (applied)
+--   017_rename_system_brand.sql              - guarded public-name update; source integrated, reconcile existing 017 ledger entries before replay
+--   020_revision_phase1_password_recovery.sql — server-only hashed recovery challenges (applied)
+--   021_revision_phase3_catalog.sql           — private import review, richer catalog, managed foundations and digital PDF metadata/bucket (applied)
+--   022_revision_phase4_attendance.sql        — attendance policy, events, scan receipts and checkout provenance (applied)
+--   023_revision_phase5_desk_circulation.sql   — in-library use and deduplicated desk confirmations (applied)
+--   024_revision_phase5_reading_materials.sql  — native physical thesis links for in-library use (applied)
+-- Next Postgres file number: 025. The live ledger includes externally managed files
+-- through 019 that are absent from this checkout, including password reset,
+-- policies, circulation cases/renewals, stocktake and a durable job runner.
+-- Their schemas are preserved. Reconcile sources before whole-directory replay.
+-- Apply reviewed files individually; do not renumber previously applied files.
 --
 -- MySQL tree under database/mysql56-schema.sql and database/migrations/ remains
--- the historical contract and local rollback path (latest MySQL migration: 046).
+-- the historical contract and local rollback path (latest MySQL reference migration: 048).
 --
 -- Connection note: free-tier direct db.* host is often IPv6-only. Use Session
 -- pooler (port 5432) with user postgres.<project-ref> when on IPv4 networks.
 --
+
+-- Revision Phase 4: 022_revision_phase4_attendance.sql applied after owner choices 1A/2A/3A.
+-- Printing-only visits exclude seats; Librarian configures each event; entry/automatic
+-- checkout cutoff is 6:55 PM before 7 PM closing.
+-- Revision Phase 5: 023/024 applied; separate in-library ledger retains physical
+-- assignments after attendance checkout. Latest product file 024; next unused 025.
+
+
+## Main integration — 2026-10-11
+
+The main branch was reconciled with the current revision permission model and phase workflows. Borrowing policy management uses the Librarian workspace; prior login sessions are invalidated when a new login succeeds. Competing upstream SQL identities are retained as non-executable references under `database/upstream-main/`; no migration was applied. Existing phase statuses and applied migration identities remain unchanged. See `docs/main-branch-integration.md`.

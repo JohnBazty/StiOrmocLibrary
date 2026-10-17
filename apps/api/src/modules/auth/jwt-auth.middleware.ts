@@ -1,11 +1,11 @@
 import jwt, { type JwtPayload } from 'jsonwebtoken'
 import type { NextFunction, Request, Response } from 'express'
 import { env } from '../../config/env.js'
-import { db } from '../../config/db.js'
+import { db, dbDriver } from '../../config/db.js'
 import type { JwtRole } from './jwt-auth.service.ts'
-import { toCanonicalRole } from './role-normalization.ts'
+import { hasLibraryPermission, type LibraryPermission } from '../../core/library-permissions.ts'
 
-export type AuthenticatedJwtUser = { id: number; accountId: number; schoolId: string; role: JwtRole; authVersion: number }
+export type AuthenticatedJwtUser = { id: number; accountId: number; schoolId: string; role: JwtRole; authVersion: number; sessionId?: string }
 
 export function bearerToken(request: Request) {
   const authorization = request.get('authorization') ?? ''
@@ -19,13 +19,13 @@ export function verifyAccessToken(token: string): AuthenticatedJwtUser {
   }) as JwtPayload
   const id = Number(decoded.accountId ?? decoded.userId ?? decoded.sub)
   const schoolId = typeof decoded.schoolId === 'string' ? decoded.schoolId : ''
-  // Compatibility: accept legacy Librarian / System Administrator claims and normalize to Admin.
-  const role = toCanonicalRole(decoded.role)
+  const role = decoded.role
   const authVersion = Number(decoded.authVersion ?? 1)
-  if (!Number.isSafeInteger(id) || id < 1 || !schoolId || !Number.isSafeInteger(authVersion) || authVersion < 1 || !role) {
+  if (!Number.isSafeInteger(id) || id < 1 || !schoolId || !Number.isSafeInteger(authVersion) || authVersion < 1 || !['Admin', 'Librarian', 'Student', 'Faculty', 'Staff'].includes(role)) {
     throw new Error('Token claims are invalid.')
   }
-  return { id, accountId: id, schoolId, role, authVersion }
+  const sessionId = typeof decoded.sessionId === 'string' ? decoded.sessionId : undefined
+  return { id, accountId: id, schoolId, role: role as JwtRole, authVersion, ...(sessionId ? { sessionId } : {}) }
 }
 
 /** Check current state on every request so older bearer tokens stop working immediately. */
@@ -36,14 +36,17 @@ export function createActiveJwtAccountGuard(database: Pick<typeof db, 'execute'>
   void database.execute(
     `SELECT a.account_status,a.auth_version,a.school_id,a.role,u.account_status AS user_status
        FROM accounts a LEFT JOIN users u ON u.user_id=a.user_id WHERE a.account_id=?`, [identity.accountId],
-  ).then(([rows]) => {
+  ).then(async ([rows]) => {
     const account = (rows as Array<Record<string, unknown>>)[0]
-    const accountRole = toCanonicalRole(account?.role)
     if (!account || account.account_status !== 'Active' || (account.user_status && account.user_status !== 'Active')
-      || Number(account.auth_version) !== identity.authVersion || account.school_id !== identity.schoolId
-      || accountRole !== identity.role) {
+      || Number(account.auth_version) !== identity.authVersion || account.school_id !== identity.schoolId || account.role !== identity.role) {
       response.status(401).json({ success: false, code: 'ACCOUNT_ACCESS_REVOKED', message: 'Your account access changed. Please sign in again.' })
       return
+    }
+    if (!identity.sessionId && dbDriver === 'postgres') { response.status(401).json({ success: false, code: 'SESSION_UPGRADE_REQUIRED', message: 'Sign in again to start your updated secure session.' }); return }
+    if (identity.sessionId) {
+      const [sessions] = await database.execute('SELECT 1 FROM library_login_sessions WHERE session_id=? AND account_id=? AND auth_version=? AND revoked_at IS NULL AND last_activity_at>NOW()-INTERVAL \'10 minutes\'', [identity.sessionId, identity.accountId, identity.authVersion])
+      if (!(sessions as unknown[]).length) { response.status(401).json({ success: false, code: 'SESSION_EXPIRED', message: 'Your session expired after 10 minutes of inactivity. Sign in again.' }); return }
     }
     next()
   }).catch(next)
@@ -68,6 +71,16 @@ export function requireJwtRoles(...roles: JwtRole[]) {
   return (_request: Request, response: Response, next: NextFunction) => {
     const user = response.locals.authenticatedUser as AuthenticatedJwtUser | undefined
     if (!user || !roles.includes(user.role)) return response.status(403).json({ success: false, code: 'JWT_ROLE_FORBIDDEN', message: 'Your role cannot access this resource.' })
+    return next()
+  }
+}
+
+export function requireLibraryPermission(permission: LibraryPermission) {
+  return (_request: Request, response: Response, next: NextFunction) => {
+    const user = response.locals.authenticatedUser as AuthenticatedJwtUser | undefined
+    if (!user || !hasLibraryPermission(user.role, permission)) {
+      return response.status(403).json({ success: false, code: 'JWT_ROLE_FORBIDDEN', message: 'Your role cannot access this resource.' })
+    }
     return next()
   }
 }

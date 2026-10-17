@@ -1,6 +1,7 @@
 import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
+import { isPostgres } from '../../config/sql-dialect.js'
 import type { InventoryActor } from './inventory.repository.ts'
 import {
   cancelLostThesisReservations, findActiveThesisReservation, findOpenThesisLoan, getThesisInventorySummary,
@@ -151,6 +152,7 @@ export async function setThesisAvailability(
 }
 
 async function assertThesisNotActivelyAllocated(connection: PoolConnection, thesis: LockedThesisInventory) {
+  if(isPostgres){const [uses]=await connection.execute<RowDataPacket[]>('SELECT use_id FROM in_library_uses WHERE research_inventory_id=? AND ended_at IS NULL',[thesis.research_inventory_id]);if(uses.length)throw new HttpError(422,'THESIS_IN_LIBRARY_USE','Hand back this in-library copy before archiving or deleting its record.')}
   const circulation = await lockThesisCirculationMaterial(connection, thesis.barcode)
   const materialId = circulation ? Number(circulation.material_id) : null
   const loan = materialId === null ? null : await findOpenThesisLoan(connection, materialId)

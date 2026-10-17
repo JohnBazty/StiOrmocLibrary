@@ -3,6 +3,22 @@ import { stripBackticks, toPgPlaceholders } from './sql.js'
 
 const { Pool } = pg
 
+// pg rejects active queries on disconnect, but its error events also need
+// listeners while a client is checked out and while it is idle in the pool.
+// Do not replay writes: callers still receive the failed query/transaction.
+export function handlePgConnectionErrors(pool, report = () => console.error('[Postgres] A database connection closed unexpectedly; affected requests failed.')) {
+  const reported = new WeakSet()
+  const reportOnce = (error) => {
+    if (error instanceof Error) {
+      if (reported.has(error)) return
+      reported.add(error)
+    }
+    report()
+  }
+  pool.on('error', reportOnce)
+  pool.on('connect', (client) => client.on('error', reportOnce))
+}
+
 function isWriteStatement(sql) {
   return /^\s*(INSERT|UPDATE|DELETE|REPLACE)/i.test(sql)
 }
@@ -80,6 +96,7 @@ export function createPgPool(connectionString, connectionLimit) {
     connectionTimeoutMillis: 10000,
     options: '-c timezone=Asia/Manila',
   })
+  handlePgConnectionErrors(pool)
 
   return {
     driver: 'postgres',

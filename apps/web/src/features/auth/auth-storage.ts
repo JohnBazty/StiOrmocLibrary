@@ -1,4 +1,4 @@
-export type AuthRole = 'Admin' | 'Faculty' | 'Student'
+export type AuthRole = 'Admin' | 'Librarian' | 'Faculty' | 'Student' | 'Staff'
 
 export type AccessTokenClaims = {
   userId: number
@@ -16,9 +16,7 @@ export type AuthenticatedIdentity = {
 }
 
 const TOKEN_KEY = 'smartlib_access_token'
-const ROLES = new Set<AuthRole>(['Admin', 'Faculty', 'Student'])
-/** Compatibility: decode legacy staff claims as Admin until old tokens expire. */
-const LEGACY_ADMIN = new Set(['Librarian', 'System Administrator'])
+const ROLES = new Set<AuthRole>(['Admin', 'Librarian', 'Faculty', 'Student', 'Staff'])
 let cachedSessionIdentity: AuthenticatedIdentity | null = null
 
 function decodeBase64Url(value: string) {
@@ -26,24 +24,16 @@ function decodeBase64Url(value: string) {
   return atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '='))
 }
 
-function normalizeTokenRole(role: unknown): AuthRole | null {
-  if (typeof role !== 'string') return null
-  if (ROLES.has(role as AuthRole)) return role as AuthRole
-  if (LEGACY_ADMIN.has(role)) return 'Admin'
-  return null
-}
-
 export function decodeAccessToken(token: string): AccessTokenClaims | null {
   try {
     const parts = token.split('.')
     if (parts.length !== 3) return null
-    const payload = JSON.parse(decodeBase64Url(parts[1])) as Partial<AccessTokenClaims> & { role?: string }
+    const payload = JSON.parse(decodeBase64Url(parts[1])) as Partial<AccessTokenClaims>
     if (!Number.isSafeInteger(payload.userId) || Number(payload.userId) < 1) return null
     if (typeof payload.schoolId !== 'string' || !payload.schoolId) return null
-    const role = normalizeTokenRole(payload.role)
-    if (!role) return null
+    if (!ROLES.has(payload.role as AuthRole)) return null
     if (!Number.isFinite(payload.exp) || Number(payload.exp) * 1000 <= Date.now()) return null
-    return { userId: Number(payload.userId), schoolId: payload.schoolId, role, exp: Number(payload.exp) }
+    return payload as AccessTokenClaims
   } catch {
     return null
   }
@@ -52,8 +42,10 @@ export function decodeAccessToken(token: string): AccessTokenClaims | null {
 export function dashboardForRole(role: AuthRole) {
   return ({
     Admin: '/admin/dashboard',
+    Librarian: '/librarian/dashboard',
     Faculty: '/faculty/dashboard',
     Student: '/student/dashboard',
+    Staff: '/staff/dashboard',
   })[role]
 }
 

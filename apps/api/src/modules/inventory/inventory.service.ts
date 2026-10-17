@@ -56,6 +56,15 @@ export async function overrideInventoryCondition(
     await connection.beginTransaction()
     const copy = ensureActive(await lockInventoryCopy(connection, barcode))
     const isLost = conditionState === 'Lost'
+    if (isLost) {
+      const loan = await findActiveLoan(connection, copy.circulation_material_id)
+      if (loan || copy.availability_status === 'Borrowed') throw new HttpError(422, 'PHYSICAL_COPY_HAS_ACTIVE_LOAN', 'Report the loss from the active loan in Circulation so the borrower and charge are recorded.')
+      if (copy.condition_status === 'Lost') {
+        await connection.commit()
+        return { physical_copy_id: copy.physical_copy_id, item_title: copy.title, accession_number: copy.accession_number,
+          barcode: copy.barcode, condition_status: 'Lost', availability_status: 'Unavailable', already_reported: true }
+      }
+    }
     const nextAvailability = isLost ? 'Unavailable' : copy.availability_status
     await connection.execute(`
       UPDATE physical_copies

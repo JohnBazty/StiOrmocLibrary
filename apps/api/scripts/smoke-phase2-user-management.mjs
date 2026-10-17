@@ -72,7 +72,7 @@ try {
   )
   userId = Number(user.rows[0].user_id)
   const account = await client.query(
-    "INSERT INTO accounts(user_id,school_id,contact_number,password_hash,role,account_status) VALUES($1,$2,'09123456789',$3,'Student','Active') RETURNING account_id",
+    "INSERT INTO accounts(user_id,school_id,password_hash,role,account_status) VALUES($1,$2,$3,'Student','Active') RETURNING account_id",
     [userId, schoolId, hash],
   )
   accountId = Number(account.rows[0].account_id)
@@ -109,7 +109,7 @@ try {
   expect(freshLogin.success && freshLogin.data?.token, 'reactivated student receives fresh token')
 
   const edit = await request(`/api/v1/admin/users/${accountId}/profile`, 'PATCH', adminToken,
-    { first_name: 'Phase Two', last_name: 'Smoke Student', email, contact_number: '09123456789', program_strand: 'BS Information Technology', year_grade_level: '3rd Year', reason: 'Deployment smoke test' })
+    { first_name: 'Phase Two', last_name: 'Smoke Student', email, program_strand: 'BS Information Technology', year_grade_level: '3rd Year', reason: 'Deployment smoke test' })
   expect(edit.success && edit.data?.changed_fields?.includes('year_grade_level'), 'admin edits permitted profile field')
   const detail = await request(`/api/v1/admin/users/${accountId}`, 'GET', adminToken)
   expect(detail.success && detail.data?.year_grade_level === '3rd Year' && detail.data.events.length === 3, 'profile and audit history read back')

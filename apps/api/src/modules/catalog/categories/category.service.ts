@@ -112,6 +112,9 @@ export function createCategoryService(database: Pool = db) {
         return { categoryId, deleted: true }
       } catch (error) {
         await connection.rollback()
+        if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23503') {
+          throw new HttpError(422, 'CATEGORY_HAS_HISTORICAL_MATERIALS', 'This category is used by retained catalog records and cannot be deleted.')
+        }
         throw error
       } finally { connection.release() }
     },

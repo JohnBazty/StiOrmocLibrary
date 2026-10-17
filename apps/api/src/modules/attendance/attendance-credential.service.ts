@@ -2,6 +2,8 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
 import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise'
 import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
+import { attendancePurposes, type AttendancePurpose } from './attendance.validation.ts'
+import { isPostgres } from '../../config/sql-dialect.js'
 
 type Executor = Pool | PoolConnection
 export type AttendanceCredential = {
@@ -22,11 +24,27 @@ function payload(publicId: string, secret: string) {
   return `${prefix}.${publicId}.${secret}`
 }
 
-export function parseAttendanceQr(value: unknown) {
+export function purposeAttendanceQr(base: string, purpose: AttendancePurpose, now = new Date()) {
+  if (!attendancePurposes.includes(purpose)) throw new HttpError(422,'ATTENDANCE_PURPOSE_REQUIRED','Choose a valid visit purpose.')
+  const parsed = parseAttendanceQr(base)
+  const unsigned = `STILIB.ATTENDANCE.2.${parsed.publicId}.${parsed.secret}.${attendancePurposes.indexOf(purpose)}.${Math.floor(now.getTime()/1000)+900}`
+  return `${unsigned}.${createHmac('sha256',env.attendanceQr.secret).update(unsigned).digest('base64url')}`
+}
+
+export function parseAttendanceQr(value: unknown, now = new Date()) {
   const text = String(value ?? '').trim()
+  const purposeMatch = /^STILIB\.ATTENDANCE\.2\.([A-Za-z0-9_-]{16,40})\.([A-Za-z0-9_-]{32,80})\.([0-5])\.(\d{10})\.([A-Za-z0-9_-]{43})$/.exec(text)
+  if (purposeMatch) {
+    const expected = createHmac('sha256',env.attendanceQr.secret).update(text.slice(0,text.lastIndexOf('.'))).digest()
+    const supplied = Buffer.from(purposeMatch[5],'base64url')
+    if (expected.length !== supplied.length || !timingSafeEqual(expected,supplied)) throw new HttpError(422,'ATTENDANCE_QR_INVALID','The visit purpose QR is invalid.')
+    const expires = Number(purposeMatch[4])
+    if (expires <= Math.floor(now.getTime()/1000) || expires > Math.floor(now.getTime()/1000)+900) throw new HttpError(422,'ATTENDANCE_QR_EXPIRED','This visit QR has expired. Generate a new one or use your permanent pass.')
+    return {publicId:purposeMatch[1],secret:purposeMatch[2],payload:text,purpose:attendancePurposes[Number(purposeMatch[3])] as AttendancePurpose}
+  }
   const match = /^STILIB\.ATTENDANCE\.1\.([A-Za-z0-9_-]{16,40})\.([A-Za-z0-9_-]{32,80})$/.exec(text)
   if (!match) throw new HttpError(422, 'ATTENDANCE_QR_INVALID', 'This is not a valid STI Library attendance QR code.')
-  return { publicId: match[1], secret: match[2], payload: text }
+  return { publicId: match[1], secret: match[2], payload: text, purpose: null }
 }
 
 export async function issueAttendanceCredential(executor: Executor, userId: number): Promise<AttendanceCredential> {
@@ -67,10 +85,10 @@ export async function issueAttendanceCredential(executor: Executor, userId: numb
   throw new HttpError(500, 'ATTENDANCE_QR_ISSUE_FAILED', 'Unable to issue an attendance pass.')
 }
 
-export async function validateAttendanceCredential(executor: Executor, value: unknown, lock = false) {
-  const parsed = parseAttendanceQr(value)
+export async function validateAttendanceCredential(executor: Executor, value: unknown, lock = false, now = new Date()) {
+  const parsed = parseAttendanceQr(value, now)
   const [rows] = await executor.execute<RowDataPacket[]>(
-    `SELECT c.credential_id,c.user_id,c.secret_hash,c.credential_status,c.issued_at,c.last_used_at,
+    `SELECT c.credential_id,c.user_id,c.secret_hash,c.credential_status,c.issued_at,${isPostgres?`to_char(c.last_used_at,'YYYY-MM-DD"T"HH24:MI:SS.MS')`:'c.last_used_at'} AS last_used_at,
             u.school_id,u.full_name,u.user_role,u.account_status,u.course_or_strand,u.section
        FROM attendance_qr_credentials c
        JOIN users u ON u.user_id=c.user_id
@@ -88,7 +106,7 @@ export async function validateAttendanceCredential(executor: Executor, value: un
     credentialId: Number(row.credential_id), userId: Number(row.user_id), publicId: parsed.publicId,
     schoolId: String(row.school_id), name: String(row.full_name), role: String(row.user_role),
     program: row.course_or_strand ? String(row.course_or_strand) : null,
-    section: row.section ? String(row.section) : null, issuedAt: row.issued_at, lastUsedAt: row.last_used_at,
+    section: row.section ? String(row.section) : null, issuedAt: row.issued_at, lastUsedAt: row.last_used_at, purpose: parsed.purpose,
   }
 }
 

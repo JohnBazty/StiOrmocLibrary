@@ -1,18 +1,86 @@
 # Database Schema Context
 
-## Engine note (2026-09-25)
+## Engine note (updated 2026-09-28)
 
 The API is mid-cutover to Supabase PostgreSQL. See [supabase-migration-plan.md](supabase-migration-plan.md).
 
 - When `DATABASE_URL` (postgresql://…) is set, the runtime uses `pg` against drafts under [database/supabase/](../database/supabase/).
 - When unset, the runtime uses local MySQL via `mysql2` and the MySQL tree below (rollback / offline path).
-- The MySQL baseline and ordered migrations remain the historical product contract. Latest MySQL reference migration: `20261009_046_configurable_borrowing_policies.sql` (after branding `045` and preflight `044`). Next MySQL number if needed: **`047`**. MySQL is not the active database.
+- The MySQL baseline and ordered migrations remain the historical product contract. Latest MySQL reference migration: `20261009_048_rename_system_brand.sql`. Next MySQL number: **`049`**. MySQL is not the active database.
 - Additive MAIN product tables for Postgres land in `database/supabase/005_main_product_gapfill.sql` (033–040).
-- The 2026-09-25 historical data cutover copied local MySQL rows into Supabase after applying Postgres 008–009. Hosted users/accounts were preserved, and the pre-cutover hosted snapshot is in schema `mysql_cutover_backup_20260925100301`. Postgres 010 adds book archive actor and floor image version metadata. Postgres 011 adds account authentication versions and management audit events. Postgres 013 consolidates Librarian into Admin. Postgres 014 adds `circulation_override_events` for checkout warning audits. Postgres 015 renames system branding. Postgres 016 adds immutable `borrowing_policy_versions` / material rules and policy FKs on loans and reservations. Next Postgres migration number: **017**. See the cutover record in the migration plan.
+- Applied Supabase Phase 2 files `012`–`014` add `book_quotations`, lost-report charge resolution, `library_job_runs`, `invoice_setup`, and `customer_invoices`. Existing payment rows now have `document_label='Legacy Receipt'`; future rows default to `Payment Record`.
+- Branding source `017_rename_system_brand.sql` changes only the default public library name and preserves customized names. It was integrated from GitHub without applying SQL; reconcile it with the existing hosted ledger before replay.
+- Invoice setup and ledger tables are retained but the invoice module is archived as of 2026-09-28. They remain in the schema health check because Admin account history and fine-payment reversal can refer to existing invoice records. The active app does not expose invoice pages or operations. Printing and fine payment records remain active and retain their original labels.
+- Applied Supabase Phase 6 file `015` adds `registration_requests` with hashed one-time codes and password hashes pending approval, the Library Staff role, a private `profile-avatars` Storage bucket, and `profile_avatar_submissions`. Current local registration puts every public role in `PendingApproval` after email verification; Admin review creates an Active account or marks the request Rejected. The API supplies standard decision notes and records the reviewer/time without a typed Audit reason. Completed/rejected requests clear their extra password hash. Applied Supabase file `016` backfills missing `accounts` links for existing Student/Faculty `users`, retaining their school ID, password hash, role, status, and operational user ID. The MySQL rollback reference `047` also extends account/user role enums with Staff but remains unapplied.
+- The 2026-09-25 historical data cutover copied local MySQL rows into Supabase after applying Postgres 008–009. Hosted users/accounts were preserved, and the pre-cutover hosted snapshot is in schema `mysql_cutover_backup_20260925100301`. Postgres 010 adds book archive actor and floor image version metadata. Postgres 011 adds account authentication versions and management audit events. Product files 012–016 are now applied; the private pre-migration snapshot of affected rows for 012–015 is `migration_backup_20260927154637`. Next unused Postgres file number: **028** (Phase 7 file 026 applied; Phase 6 file 025 applied; Phase 5 files 023/024 applied; Phase 4 file 022 applied; Revision Phase 3 file `021` and Revision Phase 1 file `020` applied; externally managed `017`–`019` preserved). The live ledger also contains two advisor-named files not present in this checkout; reconcile their sources before a whole-directory replay. See the cutover record in the migration plan.
 
-Migration `20261009_045_rename_system_brand.sql` and Supabase migration `015_rename_system_brand.sql` change only the public `library_profiles.library_name` default and replace the existing row only when it still has the previous default. Database structures, relationships, routes, stored sessions, and technical `SmartLib` identifiers are unchanged.
+## Borrowing policy management archive — 2026-10-17
+
+The owner temporarily archived the Borrowing policies editor. Navigation is removed, its protected page shows an archived notice, and the authorized management API returns HTTP 410. Saved policy versions/material rules and the direct circulation policy resolver remain active and unchanged. No schema or data changes. See [archive and restoration instructions](borrowing-policies-archive-20261017.md).
+
+## Book import formatting cleanup — 2026-10-17
+
+The importer retains original cells in `catalog_import_rows.source_json`. Optional `data_json.autoCorrections` records field/before/after/reason for safe formatting changes; optional `categoryName` and `shelfLocation` retain names from mapped file columns. Existing batches without these keys remain valid. Reviews preserve server-stored correction history instead of accepting client-supplied history. Categories now explicitly return Active status and version 1 in catalog options, reflecting their existing lack of an archive lifecycle. No table, column, migration or existing record changes are required. See [behavior and verification](book-import-auto-cleanup-20261017.md).
 
 ## Target requirements versus current baseline
+
+### Cart handovers and unavailable-book reservations — 2026-10-16
+
+Applied additive Postgres `027_cart_handover_reservation_split.sql` adds `reservations.request_kind`, constrained to `Reservation` or `CartHandover`. This ledger stores copy holds; neither kind creates a loan before physical handover. Existing rows default to Reservation and retain every original field. No attempt is made to guess their historical intent.
+
+New available-book cart submissions atomically assign available copies after existing waiting reservations have been served. CartHandover rows are `approved` (displayed as Awaiting handover), require an assigned copy, and cannot have a reservation deadline or ready timestamp. They appear in Borrow & return, not Book queue. Staff start checkout from the stored identity/copy and confirm handover. A stale cart is rejected in full; it is never silently converted into reservations.
+
+New Reserve book actions only accept titles with no available copy. These Reservation rows retain ordered Waiting, Preparing, Ready, Collected/Cancelled/Expired progression. Mark ready starts the fixed 24-hour deadline. Public and signed-in catalog actions, borrower My books, dashboard counts and request reports distinguish the flows. Reservation limits apply to reservations; the existing combined borrowing commitment limit still covers loans and both hold kinds.
+
+Migration tracker: applied Postgres 027, next 028. MySQL reference 048, next 049 unchanged. The active revised flow requires Postgres. See [implementation and verification](cart-handover-reservation-split-20261016.md).
+
+### Owner circulation amendment — 2026-10-16
+
+Completed cart cleanup now reads the authenticated borrower's active loan/request title IDs from `/api/v1/borrow/cart-state` and removes only matching local cart selections on opening, focus and periodic refresh. No database records are removed or statuses changed. See [cleanup verification](cart-completed-item-cleanup-20261016.md).
+
+Earlier repair before migration 027: no DDL was required; its tracker was Postgres 026/next 027 and MySQL reference 048/next 049. The later request-kind amendment above supersedes its all-cart-requests-enter-queue behavior. The permanent attendance credential is the sole QR generated by active user routes and remains stable across sign-ins/services; staff choose purpose. Old signed purpose codes remain readable for compatibility. Catalog actions add locally to the cart; submitting creates queue/preparation records and copy holds, not new Pending borrow transactions. Ready request checkout derives the borrower and exact copy from stored records without returning the QR secret. Explicit handover creates/promotes one Borrowed transaction and links/collects its request atomically. Existing Pending history remains compatible. Staff permissions, account/attendance/operating-policy/deadline/copy/limit guards and idempotent receipts remain enforced. See [four-fix work record](qr-cart-queue-checkout-20261016.md) for verification and limits. This supersedes earlier purpose-QR generation and Pending-request descriptions below.
+
+### Revision Phase 8 addition — 2026-10-12
+
+No DDL or new cache tables. Postgres product migration 026 remains latest / next 027, MySQL rollback reference 048 / next 049 unchanged. Role dashboards derive live task, attendance, approval, clearance and collection counts in a read-only snapshot. Staff queries exclude account/collection administration. Student/Faculty dashboard standing calls the authoritative clearance computation with cache updates disabled; missing linked profiles are unverified, never presumed cleared.
+
+Librarian-only `/api/v1/admin/reports` and its export route read 13 existing source ledgers with shared literal search/status and date/term filters, bounded to 20,000 matching rows. Historical ranges use the documented transaction timestamp; holdings/supplies/clearance describe current snapshots. Timestamp-with-zone values convert explicitly to Asia/Manila; legacy local timestamp columns retain their existing meanings. Report reads do not change loan, request, attendance, payment or clearance records. Current-account guards and ownership contracts remain enforced. See [Phase 8 work record](revision-phase8-local-implementation.md); human usability acceptance remains pending.
+
+### Revision Phase 7 addition — 2026-10-12
+
+Applied additive Postgres `026_revision_phase7_collection_review.sql`; latest product file **026**, next unused **027**. Private snapshot `revision_phase7_backup_20261012` verifies unchanged accounts, books/metadata, copies, loans and requests. `collection_reference_versions` and singleton `collection_review_settings` record the owner-approved starting year 2026 for 2026–2027. `collection_age_status` is a derived cache; reports calculate live classifications. `collection_review_decisions` and `collection_requirement_versions` are append-only, actor/evidence-linked history. Approved requirements snapshot eligible digital file IDs; new uploads need a new reviewed version. `collection_requirement_status` and `collection_review_alerts` support deduplicated notices. All seven tables use server-only RLS and client-role revocation. Review/Retain/Replace/Recommend archive never changes copy or circulation states. CHED criteria are not active until school evidence and course mappings are verified. See [work record](revision-phase7-local-implementation.md).
+
+### Revision Phase 6 addition — 2026-10-11
+
+Applied additive Postgres `025_revision_phase6_book_requests.sql`; latest product file **025**, next unused **026**, MySQL reference **048** / next **049** unchanged. A private snapshot in `revision_phase6_backup_20261011` retains accounts, users, copies, materials, reservations and borrow transactions. Existing Pending cart transactions gain request links while retaining their transaction IDs. Existing request history is retained and does not generate historical email.
+
+`reservations` remains the request ledger: `pending` means Waiting, assigned `approved` means Preparing, `ready_for_pickup` starts exactly 24 elapsed hours at staff readiness, and `claimed` means Collected. Added client request keys, preparation and readiness instants; existing Manila pickup timestamps retain their meaning. `book_request_events` holds deduplicated status history. `book_request_email_deliveries` is a durable provider delivery queue with leases, bounded retries and visible failure states. New tables have RLS enabled and browser-role grants revoked. SMTP sends happen after commit; a crash after provider acceptance can cause repeat delivery on recovery, but cannot duplicate a committed request or loan.
+
+Physical copies are allocated under the same settings-row lock as Phase 5 desk operations. Held copies reduce availability; another eligible available copy of the same title remains visible. Cancel/expiry/returns advance the next eligible waiting borrower into preparation without automatic readiness. QR lookup lists held requests; matching-copy selection, current attendance, account status, policy and deadline are checked again before one authoritative checkout. Enrollment validation remains the owner's temporary Active-account rule pending Revision Phase 2.
+
+### Revision Phase 5 addition — 2026-10-11
+
+Applied additive Postgres `023_revision_phase5_desk_circulation.sql` and `024_revision_phase5_reading_materials.sql`; latest product file **024**, next unused **025**, MySQL **047** unapplied / next **048** unchanged. `in_library_uses` references exactly one physical book-copy/material pair or native `research_inventory` row, the user and current visit. Partial unique indexes prevent two open assignments for a copy. `circulation_scan_receipts` binds a request ID to the operator, operation, intent digest and committed result. Both tables are server-only with RLS and revoked browser-role grants.
+
+Take-home lending retains `borrow_transactions` and its approved policy snapshot. In-library use requires a seat-counted visit, is due at the same-day configured closing cutoff, consumes no home-loan slot, and creates no automatic home-loan fine. Attendance checkout does not end the assignment; the job runner flags missing handbacks for staff review. Actual scanned handback ends it. Returned waiting copies enter preparation with no pickup deadline; existing staff Mark Ready starts pickup timing. Enrollment remains **Enrollment not verified** until Revision Phase 2 is built. See [work record](revision-phase5-local-implementation.md).
+
+### Revision Phase 4 addition — 2026-10-11
+
+Applied additive `022_revision_phase4_attendance.sql` after owner choices **1A, 2A, 3A**. Existing visits, credentials and loans remain authoritative. Server-only RLS tables are `attendance_operation_settings`, `library_operational_events` and `attendance_scan_receipts`. Nullable `attendance_logs.seat_visit` retains each new entry's classification; legacy visits use the approved purpose mapping. Nullable `checkout_source` identifies Scan or Automatic closing exits.
+
+Only Printing is excluded from occupied seats. Event capacity is the seats remaining for regular visitors in the affected space; overlapping events apply the minimum remaining library capacity and intersect service permissions. Open operating days retain their opening times and close at 7 PM; approved entry/automatic checkout cutoff is five minutes earlier, 6:55 PM. Attendance recovery writes the intended local cutoff, preserves history, and never returns loans. New scan/capacity/event changes serialize on the library profile row; scan receipts deduplicate stable request IDs and the credential cooldown is 30 seconds. Purpose QR is signed and expires after 15 minutes while retained permanent passes remain supported.
+
+Attendance SQL explicitly uses Asia/Manila instead of the pooler's default UTC; visit durations use full timestamps. Durable job timestamp values use explicit UTC on the existing timestamp columns and API status converts them to instants; this keeps five-minute leases and minute deduplication consistent across runtime timezones. Latest applied product file 022, next unused 023; MySQL reference remains 047/next 048 and the new extension targets the active Postgres driver. See [Phase 4 work record](revision-phase4-local-implementation.md).
+
+### Revision Phase 3 addition — 2026-10-11
+
+Applied additive Postgres `021_revision_phase3_catalog.sql`. Existing title/copy/material/research identities remain authoritative; no baseline tables were replaced. New server-only RLS tables are `catalog_resource_types`, `catalog_locations`, `catalog_programs`, `catalog_courses`, `catalog_title_details`, `catalog_title_programs`, `catalog_title_courses`, `catalog_digital_files`, `catalog_import_batches`, and `catalog_import_rows`.
+
+Title details hold an explicit copyright year separately from `titles.publication_year`, edition/pages/descriptions and versioned metadata. Programs/courses attach through joins. Foundation archival retains historical links; only active entries may be assigned to new imports. Copy shelf selection reads managed catalog locations while preserving existing category/grid information.
+
+Imports persist source provenance, mappings, overlap decisions, optimistic row versions and per-row results. Catalog writes require a reviewed Ready row and run in transactions with shared identity locks. Repeated commits retain Imported results and do not recreate copies; reusing an earlier overlapping row attaches its title/program links without adding copies. Newly imported physical copies retain the `physical_copies.material_id` bridge and asset identifiers required by existing circulation.
+
+Digital bytes use the private `catalog-digital-files` Storage bucket (PDF, maximum 4 MB). Public download is through the server only, after active-title/file and recorded distribution-permission checks. Public DTOs omit storage paths, rights notes, account IDs, QR secrets and borrower history. `/api/public/catalog` is anonymous read-only; `/api/v1/admin/maintenance` requires the main Librarian's `library.manage` authority. See [local acceptance record](revision-phase3-local-implementation.md). Next Postgres number **022**; MySQL remains a historical reference, inactive locally.
 
 The target product requirements are the preserved PDFs indexed by [source-of-truth.md](source-of-truth.md). This file documents the **currently implemented** database baseline; it must not override newer product requirements.
 
@@ -63,22 +131,24 @@ printers --< ink_repository
 
 ### Identity and access
 
-- `roles`: canonical authorization values are **Admin**, **Student**, and **Faculty**. Admin is the Librarian/Super Admin identity (approved consolidation; see `docs/admin-librarian-role-consolidation-plan.md`). Legacy `System Administrator` and `Librarian` role names are migration aliases only (`20261009_043` / Supabase `013`). The target model still separately requires a future restricted Library Staff/Student Assistant role.
-- `users`: institutional ID, JWT-compatible `school_id`, profile, normalized `role_id`, JWT-facing `user_role` (`Admin` \| `Student` \| `Faculty`), hashed password, education data, and activation state. During the compatibility window only, trusted auth boundaries still normalize legacy staff aliases to `Admin`.
+Logout revocation (2026-10-16): both logout routes use existing `accounts.auth_version` / `users.auth_version` guards to invalidate the authenticated version immediately. Account and user versions may differ; bearer logout compares the account version, while cookie logout compares the user version. Revocation locks account then user, increments both and removes related cookie sessions in one transaction only if the presented version is still current. A delayed older logout preserves a newer login. Explicit bearer credentials take precedence over a coexisting cookie on logout; CSRF remains required. No schema migration; Postgres 026 / next 027 and MySQL reference 048 / next 049 unchanged. See [repair evidence](revision-phase1-logout-repair-20261016.md).
+
+- `roles`: currently System Administrator, Librarian, Student, and Faculty. The target model also requires restricted Library Staff/Student Assistant access.
+- `users`: institutional ID, JWT-compatible `school_id`, profile, normalized `role_id`, JWT-facing `user_role`, hashed password, education data, and activation state. `System Administrator` maps to `Admin` at the JWT boundary.
 - `accounts`: normalized credential identity keyed by unique `school_id`, with contact number, bcrypt password hash, explicit JWT-facing role, and Active/Deactivated/Archived lifecycle. A nullable unique `user_id` is the backward-compatible bridge for identities imported from `users`.
 - `student_profiles`: one-to-one student academic extension containing first/last name, program or strand, and year/grade level. It never stores credentials or authorization state.
 - `auth_sessions`: expiring server-side session payloads keyed by an opaque session ID.
 
 Accounts should be deactivated through `account_status`; do not delete users with operational history.
 
-Phase 2 migration MySQL `042` (rollback reference) / applied Supabase `011` adds `auth_version` to both `accounts` and `users` and `account_management_events` with the affected account, actor, action, old/new status or changed field names, reason, and time. Admin Student account changes update the linked identity rows in one transaction; status changes increment both versions. Successful JWT and cookie logins also increment `auth_version` (and cookie login deletes other `auth_sessions` rows for that user) so only the newest device remains authenticated. Every protected JWT request checks the current account status and version, and legacy session requests check the linked operational user and account state. Archived accounts remain in the directory and keep their operational history. Archive is blocked by open loans or reservations.
+Phase 2 migration MySQL `042` (rollback reference) / applied Supabase `011` adds `auth_version` to both `accounts` and `users` and `account_management_events` with the affected account, actor, action, old/new status or changed field names, reason, and time. Current local behavior lets each active account owner edit their own name and, for Students, program and year; school email, school ID, and role stay fixed. The old Admin profile-edit route has been removed. Admin can read profile changes in the event history and deactivate/reactivate non-Admin accounts; both identity rows change status in one transaction and increment authentication versions. Every protected JWT request checks current account status and version, and legacy session requests check linked operational user and account state. The User Archive groups Deactivated and historically Archived accounts without deleting their operational history. New manual Archived transitions are disabled.
 Expired rows in `auth_sessions` are periodically removed by the API session store.
 Migration `20260816_005_jwt_role_authentication.sql` adds the unique `school_id` and indexed four-value `user_role` compatibility fields without replacing normalized roles or server-side sessions.
 Migration `20260820_007_normalized_accounts_authentication.sql` adds `accounts` and `student_profiles`, backfills existing user credentials into linked account rows, and leaves all operational `users.user_id` foreign keys unchanged. New mobile-style student registration writes only the normalized account/profile pair; downstream operational enrollment can link an account to a user through `accounts.user_id` when those workflows are introduced.
 
 ### Catalog
 
-- `categories`: unique category name, physical shelf-location tag, and creation/update timestamps. The table uses `utf8mb4_unicode_ci`; category names are case-insensitively unique.
+- `categories`: unique category name, optional description, physical shelf-location tag, and creation/update timestamps. Supabase migration `008` already added the nullable `description` text column; Phase 2 A2 reads and edits it without a new Postgres migration. MySQL reference migration `043` adds the field for rollback compatibility and is not applied locally. The MySQL table uses `utf8mb4_unicode_ci`; category names are case-insensitively unique.
 - `materials`: barcode, title, author, ISBN, year, category, shelf, type, and availability.
 
 The `department_or_program` and `abstract_text` fields support thesis/manuscript analytics and discovery.
@@ -118,7 +188,6 @@ Phase 3 migration MySQL `041` / Supabase `010` adds nullable `titles.archived_by
 ### Circulation
 
 - `borrow_transactions`: pending, borrowed, returned, and overdue activity.
-- `circulation_override_events`: append-only staff confirmation audit for checkout warnings (MySQL `044` / Supabase `014`). Does not alter `borrow_transactions`.
 - `reservations`: material waiting list and expiry status.
 - `fines`: one fine record per borrowing transaction.
 - `clearance_statuses`: one current standing row per user.
@@ -126,11 +195,10 @@ Phase 3 migration MySQL `041` / Supabase `010` adds nullable `titles.archived_by
 Borrowing triggers enforce:
 
 - One active borrower per material.
-- Active book and reservation limits, loan length, and due-time cutoff come from `borrowing_policy_versions` (Legacy seed: Student 2, Faculty unlimited, 1 operating day, 08:59). Finalized loans store `borrowing_policy_version_id`.
+- A maximum of two Borrowed/Overdue materials for Student users.
 - No active-count limit for Faculty, Librarian, or System Administrator roles.
-- Due time is calculated by the API from the active policy's operating-day count and cutoff (Legacy: next operating day at 08:59).
+- Due time at 8:59 AM on the calendar day following `borrowed_at`.
 - Material availability updates when borrowing and returning records change.
-- `borrowing_policy_versions` and `borrowing_policy_material_rules` are append-only; Admin publishes new versions via `POST /api/v1/admin/borrowing-policies`.
 
 The reservation migration expands the queue lifecycle to `pending`, `approved`, `ready_for_pickup`, `claimed`, `cancelled`, and `expired`. `material_id` remains the requested catalog/circulation material and nullable `accession_id` identifies the physical `materials` row held for pickup. Ready reservations have a pickup deadline; expiration clears the accession and restores Reserved inventory to Available in one transaction.
 
@@ -296,3 +364,35 @@ Migration `20260907_037_category_shelf_authority.sql` makes a category's selecte
 Administrators can also reassign one normalized `titles` row from the Unified catalog results table. The service locks the title and target category, verifies optimistic `row_version`, updates `titles.category_id`, synchronizes all active `physical_copies` plus their compatibility `materials` rows (or active linked `research_inventory` rows), and appends a `floor_plan_events` audit entry in one transaction. It does not update borrowing, reservation, condition, or availability fields.
 
 Migration `20260907_038_shelf_grid_locations.sql` adds the first detailed shelf-position contract. Every managed shelf has a configurable `column_count` and `row_count` (default 3 by 5, bounded to 1–12 by the API). Categories store a default `shelf_column` and `shelf_row`; active physical books and research inventory inherit that compartment whenever the category is saved or a title is reassigned. Existing records are backfilled to Column 1 / Row 1 without changing their shelf labels. Reducing a shelf grid is rejected while a category or active inventory record occupies a compartment that would be removed. The published floor plan renders these dimensions, and student location links may highlight the exact shelf compartment while preserving availability, circulation, and condition state.
+
+## Revision Phase 1 — current local auth contract (2026-10-10)
+
+2026-10-16: QA role drift on retained account 5 was repaired under explicit owner instruction. Both account and linked user now have canonical Librarian authority again; credentials/history remain intact and earlier sessions/recovery grants were revoked. No product schema change or migration replay. See [repair evidence](revision-phase1-role-repair-20261016.md).
+
+- School-ID login accepts `portal=user|personnel` and resolves the stored `accounts.role`; the optional legacy `login_as` is a portal compatibility hint, never a grant of permissions. `/staff` is the unlisted React personnel login; `/admin/login` redirects there.
+- Librarian is the main library administrator, including Users, User Archive, registration/photo reviews and administrative notifications. On 2026-10-12 the owner consolidated `ADMIN-PORTAL-001` (account/user 5) into canonical Librarian role 2 and archived `LIB-TEST-001` (account 47/user 35). This supersedes the separate active technical Admin fallback. Original IDs, credentials, profile data and historical actor links are preserved; both authentication versions were incremented and recovery grants expired. Historical Admin role/schema compatibility remains. See [consolidation record](admin-librarian-account-consolidation.md). Staff cannot manage accounts, approve pictures, adjust fines or alter catalog/policies. User profiles remain owner-editable; email/School ID are fixed.
+- Applied `020_revision_phase1_password_recovery.sql` creates `account_recovery_challenges`, keyed to accounts, with an opaque UUID, account-version binding, HMAC code/token digests, expiries, attempts and lock time. RLS is enabled; `PUBLIC`, `anon` and `authenticated` have no table privileges. Access is through the private API connection only.
+- Recovery targets active Student accounts using their stored school email. Code lifetime 10 minutes; three wrong codes lock recovery for 15 minutes; verified reset token lifetime 5 minutes. Resends preserve wrong-attempt counts. A reset changes both account/user password hashes and increments both auth versions in one transaction, consuming the recovery token. JWT/cookie guards reject earlier versions. Ordinary login is not locked by recovery failures.
+- The live database also has externally managed `password_reset_otps` and `account_password_history` plus policy/circulation/stocktake/job migrations through `019`. This checkout does not contain their migration sources. Their meanings/data were preserved; no whole-directory replay was performed.
+- See [local implementation record](revision-phase1-local-implementation.md) for acceptance evidence and limitations.
+
+
+## Main integration — 2026-10-11
+
+The main branch was reconciled with the current revision permission model and phase workflows. Borrowing policy management uses the Librarian workspace; prior login sessions are invalidated when a new login succeeds. Competing upstream SQL identities are retained as non-executable references under `database/upstream-main/`; no migration was applied. Existing phase statuses and applied migration identities remain unchanged. See `docs/main-branch-integration.md`.
+
+
+## October 16 revisions — applied contract (2026-10-17)
+
+Migration `029_october16_revisions.sql` is applied individually. Enrollment draft `028` remains unapplied. The next unused Postgres number is `030`; MySQL remains reference `048` / next `049`. These additions target the active hosted Postgres deployment; the MySQL tree remains the earlier rollback reference.
+
+- `login_attempt_windows` stores HMAC account/identifier keys, serialized failed-password counts and a ten-minute pause after eight wrong passwords. School-ID and legacy email aliases share the same account budget. Warnings appear with three, two and one attempts remaining.
+- `login_otp_challenges` binds a six-digit HMAC code to an account version and opaque UUID. Every Student and Faculty login needs a code before receiving a token. Codes expire after ten minutes; resends wait sixty seconds, preserve failed attempts and replace older codes. Three wrong codes pause new challenges for ten minutes. Verification consumes the code transactionally. Staff/personnel use their existing credentials without the Student/Faculty OTP step.
+- `library_login_sessions` stores account/version-bound JWT session IDs and last human activity. All protected Postgres JWT requests require a current session with activity within ten minutes. The browser warns during the final minute, coordinates same-account activity across tabs, and silently renews tokens during actual interaction. Background data polling does not renew activity. Older JWTs require one fresh login; passwords are unchanged.
+- `clearance_semester_schedules` stores one nullable deadline per academic term, a concurrency version, updater and update time. Only an active Librarian can edit it. `clearance_schedule_events` retains the previous and new deadline and actor for every saved change. All five new tables have RLS enabled and browser-role access revoked.
+- Student clearance requirements and operational borrowing restrictions continue to use existing circulation/fine records. A scheduled deadline controls the Student-facing overdue warning; it does not clear obligations or change borrowing permission. Faculty do not inherit the Student semester deadline.
+- New Postgres loans use the configured number of calendar days and retain the handover clock time in Philippine time. Closed due dates advance to the next open date at that same time. Existing recorded deadlines are preserved. Loan timestamp reads explicitly resolve the Manila time zone independently of the server host time zone.
+- My Books reads the owner's complete borrowed-title collection independently of paginated transaction history. Waiting requests remain in Requests & reservations. Cart Check Out continues to submit for staff handover; it does not create an early loan.
+- Printing invoices are derived from saved requests, with stable `PRINT-INV-` request identifiers, recorded charges and current payment status. They are available before payment. Existing payment records remain separate and unchanged; the general archived invoice module is not reactivated. Paper-size changes and kiosk work remain excluded.
+
+Implementation and verification evidence is tracked in `docs/october16-revisions-implementation.json`; no new Markdown implementation plan was created.

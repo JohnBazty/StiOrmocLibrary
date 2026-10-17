@@ -21,6 +21,7 @@ export type AuthSessionRepository = {
   incrementAuthVersionForUser(userId: number): Promise<number>
   clearOtherSessions(userId: number, currentSessionId: string): Promise<void>
   clearAllSessionsForUser(userId: number): Promise<void>
+  revokeCurrentVersion(identity: { accountId: number; authVersion: number } | { userId: number; authVersion: number }): Promise<boolean>
 }
 
 /**
@@ -32,6 +33,7 @@ export function createAuthSessionRepository(database: Pool = db): AuthSessionRep
     connection: PoolConnection,
     accountId: number | null,
     userId: number | null,
+    returnUserVersion = false,
   ): Promise<number> {
     if (accountId) {
       await connection.execute(
@@ -46,7 +48,7 @@ export function createAuthSessionRepository(database: Pool = db): AuthSessionRep
       )
     }
 
-    if (accountId) {
+    if (accountId && !returnUserVersion) {
       const [rows] = await connection.execute<RowDataPacket[]>(
         'SELECT auth_version FROM accounts WHERE account_id=? LIMIT 1',
         [accountId],
@@ -94,6 +96,11 @@ export function createAuthSessionRepository(database: Pool = db): AuthSessionRep
       const connection = await database.getConnection()
       try {
         await connection.beginTransaction()
+        // Use the same account -> user lock order as JWT login and logout.
+        const [accounts] = await connection.execute<RowDataPacket[]>(
+          'SELECT account_id FROM accounts WHERE user_id=? LIMIT 1 FOR UPDATE',
+          [userId],
+        )
         const [users] = await connection.execute<RowDataPacket[]>(
           'SELECT user_id FROM users WHERE user_id=? FOR UPDATE',
           [userId],
@@ -102,14 +109,11 @@ export function createAuthSessionRepository(database: Pool = db): AuthSessionRep
           await connection.rollback()
           return 1
         }
-        const [accounts] = await connection.execute<RowDataPacket[]>(
-          'SELECT account_id FROM accounts WHERE user_id=? LIMIT 1 FOR UPDATE',
-          [userId],
-        )
         const next = await bumpLinkedVersions(
           connection,
           accounts[0]?.account_id ? Number(accounts[0].account_id) : null,
           userId,
+          true,
         )
         await connection.commit()
         return next
@@ -128,6 +132,41 @@ export function createAuthSessionRepository(database: Pool = db): AuthSessionRep
 
     async clearAllSessionsForUser(userId: number): Promise<void> {
       await database.execute(clearAllSessionsSql, [userId])
+    },
+
+    async revokeCurrentVersion(identity): Promise<boolean> {
+      const connection = await database.getConnection()
+      try {
+        await connection.beginTransaction()
+        const isAccount = 'accountId' in identity
+        const [accounts] = await connection.execute<RowDataPacket[]>(
+          isAccount
+            ? 'SELECT account_id,user_id,auth_version FROM accounts WHERE account_id=? FOR UPDATE'
+            : 'SELECT account_id,user_id,auth_version FROM accounts WHERE user_id=? LIMIT 1 FOR UPDATE',
+          [isAccount ? identity.accountId : identity.userId],
+        )
+        const account = accounts[0]
+        const userId = isAccount ? (account?.user_id ? Number(account.user_id) : null) : identity.userId
+        const [users] = userId ? await connection.execute<RowDataPacket[]>(
+          'SELECT user_id,auth_version FROM users WHERE user_id=? FOR UPDATE', [userId],
+        ) : [[]]
+        const current = isAccount ? account : users[0]
+        // Authentication may have completed before a newer login committed.
+        // Never let that older logout revoke the newer session.
+        if (!current || Number(current.auth_version) !== identity.authVersion) {
+          await connection.rollback()
+          return false
+        }
+        await bumpLinkedVersions(connection, account ? Number(account.account_id) : null, userId, !isAccount)
+        if (userId) await connection.execute(clearAllSessionsSql, [userId])
+        await connection.commit()
+        return true
+      } catch (error) {
+        await connection.rollback()
+        throw error
+      } finally {
+        connection.release()
+      }
     },
   }
 }

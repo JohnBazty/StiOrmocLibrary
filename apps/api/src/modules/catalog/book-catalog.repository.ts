@@ -3,7 +3,7 @@ import { authorsAgg, isPostgres, sumEquals } from '../../config/sql-dialect.js'
 import type { BookCatalogFilters } from './book-catalog.validation.ts'
 
 const availableCopyCount = isPostgres
-  ? `COUNT(*) FILTER (WHERE pc.availability_status = 'Available' AND pc.material_id IS NOT NULL)`
+  ? `COUNT(*) FILTER (WHERE pc.availability_status = 'Available' AND pc.material_id IS NOT NULL AND pc.condition_status NOT IN ('Lost','Damaged','For Repair'))`
   : `SUM(pc.availability_status = 'Available' AND pc.material_id IS NOT NULL)`
 
 const currentConditionStatus = isPostgres
@@ -59,13 +59,13 @@ const SELECT_FIELDS = `SELECT
     COALESCE(c.category_name, 'Uncategorized') AS category_name,
     COALESCE(stock.available_shelf_location, stock.any_shelf_location, t.call_number) AS shelf_location,
     COALESCE(stock.total_copies_count, 0) AS total_copies_count,
-    CASE WHEN COALESCE(waiting.active_waiting_count, 0) > 0
-      THEN 0 ELSE COALESCE(stock.available_copies_count, 0) END AS available_copies_count,
+    ${isPostgres ? 'COALESCE(stock.available_copies_count, 0)' : `CASE WHEN COALESCE(waiting.active_waiting_count, 0) > 0
+      THEN 0 ELSE COALESCE(stock.available_copies_count, 0) END`} AS available_copies_count,
     stock.reservable_material_id,
     stock.preview_barcode,
     stock.current_condition_status,
     CASE
-      WHEN COALESCE(waiting.active_waiting_count, 0) > 0 THEN 'Reserved'
+      ${isPostgres ? '' : "WHEN COALESCE(waiting.active_waiting_count, 0) > 0 THEN 'Reserved'"}
       WHEN COALESCE(stock.available_copies_count, 0) > 0 THEN 'Available'
       WHEN COALESCE(stock.reserved_copies_count, 0) > 0 THEN 'Reserved'
       WHEN COALESCE(stock.borrowed_copies_count, 0) > 0 THEN 'Borrowed'
@@ -213,6 +213,16 @@ export async function queryBookOverview(database: Pool, titleId: number) {
     [titleId],
   )
   return rows[0] ? mapBook(rows[0]) : null
+}
+
+export async function queryBookCopyDetails(database: Pool, titleId: number) {
+  const [rows] = await database.execute<RowDataPacket[]>(
+    `SELECT physical_copy_id, accession_number, barcode, availability_status, condition_status, shelf_location
+       FROM physical_copies WHERE title_id=? AND lifecycle_status='Active'
+       ORDER BY physical_copy_id ASC`, [titleId])
+  return rows.map(row => ({ copyId: Number(row.physical_copy_id), accessionNumber: String(row.accession_number),
+    barcode: String(row.barcode), availability: String(row.availability_status), condition: String(row.condition_status),
+    shelf: String(row.shelf_location) }))
 }
 
 export async function queryViewerActiveBookCount(database: Pool, accountId: number) {

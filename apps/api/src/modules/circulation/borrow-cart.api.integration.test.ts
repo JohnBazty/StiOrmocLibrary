@@ -7,7 +7,7 @@ import { requireJwtRoles } from '../auth/jwt-auth.middleware.ts'
 import { createCirculationController } from './circulation.controller.ts'
 import { createBorrowCartRouter } from './circulation.routes.ts'
 
-function testApp(role: string, service: { submitBorrowRequest: (accountId: unknown, body: unknown) => Promise<unknown> }) {
+function testApp(role: string, service: { submitBorrowRequest: (accountId: unknown, body: unknown) => Promise<unknown>; cartState?:(accountId:unknown)=>Promise<unknown> }) {
   const app = express(); app.use(express.json())
   app.use((_request, response, next) => { response.locals.authenticatedUser = { id: 7, accountId: 7, schoolId: 'STI-7', role }; next() })
   const fullService = {
@@ -29,6 +29,17 @@ test('Faculty cart endpoint returns 201 and forwards validated title IDs', async
   assert.equal(response.status, 201)
   assert.equal(response.body.data.status, 'pending_claim')
   assert.deepEqual(received, { titleIds: [10, 11] })
+})
+
+test('cart reconciliation uses the authenticated owner and denies personnel roles',async()=>{
+  let owner:unknown,calls=0
+  const service={submitBorrowRequest:async()=>({}),cartState:async(id:unknown)=>{owner=id;calls++;return {activeTitleIds:[12]}}}
+  const response=await request(testApp('Student',service)).get('/api/v1/borrow/cart-state?accountId=999')
+  assert.equal(response.status,200);assert.equal(owner,7)
+  assert.deepEqual(response.body.data,{activeTitleIds:[12]})
+  assert.equal(response.headers['cache-control'],'private, no-store')
+  assert.equal((await request(testApp('Staff',service)).get('/api/v1/borrow/cart-state')).status,403)
+  assert.equal(calls,1)
 })
 
 test('malformed and unauthorized cart requests are rejected before service execution', async () => {

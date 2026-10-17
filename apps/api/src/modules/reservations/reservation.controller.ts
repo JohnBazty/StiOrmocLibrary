@@ -9,7 +9,7 @@ function sessionUser(request: Request) {
   return (request.session as typeof request.session & { user?: { id?: number; role?: string } }).user
 }
 function authenticatedUser(request: Request, response: Response) {
-  return sessionUser(request) ?? (response.locals.authenticatedUser as { id?: number; role?: string } | undefined)
+  return (response.locals.authenticatedUser as { id?: number; role?: string } | undefined) ?? sessionUser(request)
 }
 
 export function createReservationController(service: Service = reservationService) {

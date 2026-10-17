@@ -39,7 +39,7 @@ try {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       school_id: schoolId, first_name: 'Migration', last_name: 'Smoke',
-      contact_number: '09000000000', program_strand: 'BS Information Technology',
+      program_strand: 'BS Information Technology',
       year_grade_level: '4th Year', password, confirm_password: password,
     }),
   })

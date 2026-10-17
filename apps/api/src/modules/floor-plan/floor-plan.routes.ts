@@ -12,7 +12,7 @@ const handler = (fn: (request: Request, response: Response) => Promise<unknown>)
 export const floorPlanRouter = Router()
 floorPlanRouter.get('/image', handler(() => floorPlanImageService.current()))
 floorPlanRouter.get('/location', handler(request => floorPlanImageService.location(request.query)))
-floorPlanRouter.post('/image', requireJwtRoles('Admin'),
+floorPlanRouter.post('/image', requireJwtRoles('Librarian'),
   multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024, files: 1 } }).single('image'),
   handler((request, response) => {
     const actorId = Number(response.locals.authenticatedUser?.accountId ?? response.locals.authenticatedUser?.id)

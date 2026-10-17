@@ -11,8 +11,20 @@ async function request<T>(url: string, options: RequestInit = {}) {
   return payload.data as T
 }
 
+export type NotificationListQuery = {
+  limit?: number
+  page?: number
+  status?: 'unread' | 'all'
+}
+
 export const notificationApi = {
-  list: () => request<NotificationList>('/api/v1/notifications?limit=100'),
+  list: (query: NotificationListQuery = {}) => {
+    const params = new URLSearchParams()
+    params.set('limit', String(query.limit ?? 100))
+    if (query.page) params.set('page', String(query.page))
+    if (query.status && query.status !== 'all') params.set('status', query.status)
+    return request<NotificationList>(`/api/v1/notifications?${params}`)
+  },
   schedule: () => request<LibrarySchedule>('/api/v1/notifications/schedule'),
   markRead: (id: number) => request(`/api/v1/notifications/${id}/read`, { method: 'PATCH' }),
   markAllRead: () => request('/api/v1/notifications/read-all', { method: 'PATCH' }),

@@ -1,7 +1,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { env } from '../../config/env.js'
-import { dashboardForRole, toEffectiveRole } from './auth.constants.js'
-import { bearerToken, ensureActiveJwtAccount, verifyAccessToken } from './jwt-auth.middleware.ts'
+import { dashboardForRole } from './auth.constants.js'
+import { authenticateJwt, bearerToken, ensureActiveJwtAccount, verifyAccessToken } from './jwt-auth.middleware.ts'
 import { db } from '../../config/db.js'
 
 export function createCsrfToken() {
@@ -70,12 +70,13 @@ export function requireAuth(request, response, next) {
     return response.redirect(303, '/login?auth=required')
   }
 
+  if (env.db.driver === 'postgres' && ['Student','Faculty'].includes(user.role)) { return response.status(401).json({ success: false, code: 'SESSION_UPGRADE_REQUIRED', message: 'Use the updated web login with school-email verification.' }) }
   const lastActivity = Number(request.session.lastActivity ?? 0)
   if (lastActivity && Date.now() - lastActivity > env.session.idleTimeoutMs) {
     return request.session.destroy(() => {
       clearSessionCookie(response)
       if (isApiRequest(request)) {
-        return response.status(401).json({ success: false, code: 'SESSION_EXPIRED', message: 'Your session expired after 30 minutes of inactivity.' })
+        return response.status(401).json({ success: false, code: 'SESSION_EXPIRED', message: 'Your session expired after 10 minutes of inactivity.' })
       }
       return response.redirect(303, '/login?timeout=1')
     })
@@ -94,7 +95,8 @@ export function requireAuth(request, response, next) {
         return response.redirect(303, '/login?auth=required')
       })
     }
-    request.session.lastActivity = Date.now()
+    // Background reads must not extend an unattended cookie session.
+  if (request.method !== 'GET') request.session.lastActivity = Date.now()
     request.session.touch()
     response.locals.authenticatedUser = user
     response.locals.authenticationType = 'session'
@@ -105,8 +107,8 @@ export function requireAuth(request, response, next) {
 export function requireRoles(...allowedRoles) {
   return (request, response, next) => {
     const role = request.session?.user?.role || response.locals.authenticatedUser?.role
-    const effectiveRole = toEffectiveRole(role)
-    if (!effectiveRole || !allowedRoles.includes(effectiveRole)) {
+    const normalizedRole = role === 'Admin' ? 'System Administrator' : role === 'Staff' ? 'Library Staff' : role
+    if (!normalizedRole || !allowedRoles.includes(normalizedRole)) {
       if (isApiRequest(request)) {
         return response.status(403).json({ success: false, code: 'FORBIDDEN', message: 'You do not have permission to access this resource.' })
       }
@@ -114,6 +116,15 @@ export function requireRoles(...allowedRoles) {
     }
     next()
   }
+}
+
+// Logout must revoke the explicitly supplied token, even if an unrelated cookie
+// session is also present. Cookie-only callers retain their existing auth flow.
+export function requireLogoutAuth(request, response, next) {
+  if (bearerToken(request)) {
+    return authenticateJwt(request, response, () => ensureActiveJwtAccount(request, response, next))
+  }
+  return requireAuth(request, response, next)
 }
 
 export const sessionCookie = Object.freeze({

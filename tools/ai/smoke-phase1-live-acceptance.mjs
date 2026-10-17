@@ -106,7 +106,7 @@ try {
   const health = await api('/api/health')
   if (health.data?.database?.driver === 'mysql') throw new Error('The live API is using MySQL')
   const registration = await api('/api/v1/auth/register', 'POST', {
-    school_id: schoolId, first_name: 'Phase', last_name: 'One Test', contact_number: '09000000000',
+    school_id: schoolId, first_name: 'Phase', last_name: 'One Test',
     program_strand: 'BS Information Technology', year_grade_level: '4th Year',
     password, confirm_password: password,
   }, undefined, 201)

@@ -12,6 +12,20 @@ const legacyPolicyRow = {
   long_overdue_after_days: null, change_reason: 'Legacy baseline', created_by_user_id: null, created_at: '2000-01-01',
 }
 
+test('cart reconciliation reads only the owner active loans and queue titles without writing',async()=>{
+  let calls=0
+  const database={execute:async(sql:string,args:unknown[])=>{
+    calls++;assert.deepEqual(args,[7]);assert.match(sql,/WHERE a.account_id=\?/)
+    assert.match(sql,/transaction_status IN \('Pending','Borrowed','Overdue'\)/)
+    assert.match(sql,/reservation_status IN \('pending','approved','ready_for_pickup'\)/)
+    assert.doesNotMatch(sql,/\b(INSERT|UPDATE|DELETE)\b/)
+    return [[{title_id:'12'},{title_id:20}]]
+  }} as unknown as Pool
+  assert.deepEqual(await createCirculationService(database).cartState(7),{activeTitleIds:[12,20]})
+  await assert.rejects(createCirculationService(database).cartState(0))
+  assert.equal(calls,1)
+})
+
 function checkoutPool(role: 'Student' | 'Faculty', activeCount = 0, readyClaim: boolean | 'cart' = false, condition = 'Good') {
   const state = { commits: 0, rollbacks: 0, borrowInserts: 0, queueCompactions: 0, notifications: 0, overrideInserts: 0 }
   const connection = {
@@ -33,7 +47,7 @@ function checkoutPool(role: 'Student' | 'Faculty', activeCount = 0, readyClaim: 
       if (sql.includes('UPDATE borrow_transactions')) return [{ affectedRows: 1 }]
       if (sql.includes("UPDATE reservations SET reservation_status = 'claimed'")) return [{ affectedRows: 1 }]
       if (sql.includes('UPDATE reservations SET queue_position')) { state.queueCompactions += 1; return [{ affectedRows: 1 }] }
-      if (sql.includes('INSERT INTO notifications') || sql.includes('INSERT INTO admin_notifications')) { state.notifications += 1; return [{ insertId: 1, affectedRows: 1 }] }
+      if (sql.includes('INTO notifications') || sql.includes('INSERT INTO admin_notifications')) { state.notifications += 1; return [{ insertId: 1, affectedRows: 1 }] }
       if (sql.includes('UPDATE physical_copies') || sql.includes('UPDATE materials')) return [{ affectedRows: 1 }]
       throw new Error(`Unexpected SQL: ${sql}`)
     },
@@ -92,7 +106,7 @@ test('preflight performs no database writes', async () => {
 test('physical desk fulfillment activates only the matching ready reservation claim', async () => {
   const { state, database } = checkoutPool('Student', 1, true)
   const result = await createCirculationService(database, () => new Date(2026, 7, 24, 14, 0))
-    .fulfillClaim({ accountId: 1, role: 'Admin' }, { barcode: 'book-20', school_id: 'sti-7' })
+    .fulfillClaim({ accountId: 1, role: 'Librarian' }, { barcode: 'book-20', school_id: 'sti-7' })
   assert.equal(result.transactionId, 54)
   assert.equal(result.status, 'Borrowed')
   assert.equal(state.borrowInserts, 0)
@@ -102,7 +116,7 @@ test('physical desk fulfillment activates only the matching ready reservation cl
 test('physical desk fulfillment accepts an online-cart pending claim without a reservation link', async () => {
   const { state, database } = checkoutPool('Student', 1, 'cart')
   const result = await createCirculationService(database, () => new Date(2026, 7, 24, 14, 0))
-    .fulfillClaim({ accountId: 1, role: 'Admin' }, { barcode: 'book-20', school_id: 'sti-7' })
+    .fulfillClaim({ accountId: 1, role: 'Librarian' }, { barcode: 'book-20', school_id: 'sti-7' })
   assert.equal(result.transactionId, 54)
   assert.equal(result.status, 'Borrowed')
   assert.equal(state.commits, 1)
@@ -148,7 +162,7 @@ test('librarian cancellation releases a pending physical copy and commits the au
     },
   }
   const result = await createCirculationService({ getConnection: async () => connection } as unknown as Pool, () => new Date('2026-08-24T10:00:00+08:00'))
-    .cancelRequest({ accountId: 3, role: 'Admin' }, 41, { reason: 'Student cancelled verbally.' })
+    .cancelRequest({ accountId: 3, role: 'Librarian' }, 41, { reason: 'Student cancelled verbally.' })
   assert.equal(result.status, 'Cancelled')
   assert.equal(result.copyAvailability, 'Available')
   assert.equal(state.copyStatus, 'Available'); assert.equal(state.materialStatus, 'Available')
@@ -208,5 +222,5 @@ test('borrowing history exposes the normalized title cover path', async () => {
   const result = await createCirculationService(database).history(1, { page: 1, limit: 25 })
   assert.equal(result.items[0].coverImagePath, '/api/assets/covers/clean-code.png')
   assert.equal(result.summary.loanLimit, 2)
-  assert.equal(result.summary.dueCutoffLabel, '8:59 AM')
+  assert.equal(result.summary.dueCutoffLabel, 'See the exact due date and time for each loan')
 })
