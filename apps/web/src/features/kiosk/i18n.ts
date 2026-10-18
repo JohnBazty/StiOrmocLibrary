@@ -20,6 +20,12 @@ type Strings = {
   signIn: string
   serviceUnavailable: string
   endSession: string
+  scanQr: string
+  confirmEntry: string
+  confirmExit: string
+  processing: string
+  done: string
+  tryAgain: string
 }
 
 export const STRINGS: Record<Lang, Strings> = {
@@ -37,6 +43,12 @@ export const STRINGS: Record<Lang, Strings> = {
     signIn: 'Sign in',
     serviceUnavailable: 'The library service is unavailable. Please see a librarian.',
     endSession: 'End kiosk session',
+    scanQr: 'Scan your library QR',
+    confirmEntry: 'Confirm check-in',
+    confirmExit: 'Confirm check-out',
+    processing: 'Please wait…',
+    done: 'Done',
+    tryAgain: 'Try again',
   },
   fil: {
     welcome: 'Maligayang pagdating sa aklatan',
@@ -52,6 +64,12 @@ export const STRINGS: Record<Lang, Strings> = {
     signIn: 'Mag-sign in',
     serviceUnavailable: 'Hindi magamit ang serbisyo ng aklatan. Lumapit sa librarian.',
     endSession: 'Tapusin ang kiosk session',
+    scanQr: 'I-scan ang iyong library QR',
+    confirmEntry: 'Kumpirmahin ang check-in',
+    confirmExit: 'Kumpirmahin ang check-out',
+    processing: 'Mangyaring maghintay…',
+    done: 'Tapos',
+    tryAgain: 'Subukan muli',
   },
   ceb: {
     welcome: 'Maayong pag-abot sa library',
@@ -67,5 +85,11 @@ export const STRINGS: Record<Lang, Strings> = {
     signIn: 'Mo-sign in',
     serviceUnavailable: 'Dili magamit ang serbisyo sa library. Palihog adto sa librarian.',
     endSession: 'Tapuson ang kiosk session',
+    scanQr: 'I-scan ang imong library QR',
+    confirmEntry: 'Kumpirmaha ang check-in',
+    confirmExit: 'Kumpirmaha ang check-out',
+    processing: 'Palihog paghulat…',
+    done: 'Human',
+    tryAgain: 'Sulayi pag-usab',
   },
 }

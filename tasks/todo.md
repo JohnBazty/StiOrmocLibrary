@@ -23,7 +23,7 @@ See `tasks/plan.md` and `SPEC-kiosk.md`.
   - Flows 5 (and search/attendance) import it directly with translated labels.
   - Known limit: its camera/upload sub-strings + colors stay the desk UI's in v1.
 
-- [ ] 4. Attendance flow
+- [x] 4. Attendance flow
   - Acceptance: scan QR → resolve → show name + in/out → check-in/out → confirm → idle.
   - Verify: test the resolve→check-in/out call sequence against a mocked API.
   - Files: `features/kiosk/AttendanceFlow.tsx`, `attendance-api.ts`.

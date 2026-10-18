@@ -5,6 +5,7 @@ import { LANGUAGES, STRINGS, type Lang } from './i18n'
 import { useIdleReset } from './useIdleReset'
 import { KioskLogin } from './KioskLogin'
 import { hasKioskSession, kioskLogout } from './kiosk-session'
+import { AttendanceFlow } from './AttendanceFlow'
 
 const KIOSK_ROOT = '/kiosk'
 
@@ -72,7 +73,7 @@ export function KioskApp({ idleMs = 60000 }: { idleMs?: number }) {
             </SectionCard>
           }
         />
-        <Route path="attendance" element={<TaskPlaceholder title={t.attendance} onBack={goHome} backLabel={t.back} />} />
+        <Route path="attendance" element={<AttendanceFlow lang={lang} onDone={goHome} />} />
         <Route path="borrow" element={<TaskPlaceholder title={t.borrow} onBack={goHome} backLabel={t.back} />} />
         <Route path="search" element={<TaskPlaceholder title={t.search} onBack={goHome} backLabel={t.back} />} />
       </Routes>
