@@ -10,7 +10,8 @@ export function SearchFlow({ lang, onDone }: { lang: Lang; onDone: () => void })
         <h2>{t.search}</h2>
         <Button variant="secondary" onClick={onDone}>{t.done}</Button>
       </div>
-      <PublicCatalogPage embedded />
+      {/* Kiosk search is informational — no borrow/reserve action (it links to student login). */}
+      <PublicCatalogPage embedded renderBookAction={() => null} />
     </SectionCard>
   )
 }

@@ -13,5 +13,7 @@ it('renders the public catalog in embedded mode, no identity required', () => {
   render(<SearchFlow lang="en" onDone={() => {}} />)
   expect(screen.getByRole('heading', { name: 'Search the catalog' })).toBeTruthy()
   expect(screen.getByText('catalog results')).toBeTruthy()
-  expect(vi.mocked(PublicCatalogPage).mock.calls[0][0]).toMatchObject({ embedded: true })
+  const props = vi.mocked(PublicCatalogPage).mock.calls[0][0]
+  expect(props).toMatchObject({ embedded: true })
+  expect(props.renderBookAction?.({} as never)).toBeNull()
 })
