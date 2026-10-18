@@ -3,7 +3,7 @@
 Order = dependency order. Each ≤~5 files, TDD, committed separately.
 See `tasks/plan.md` and `SPEC-kiosk.md`.
 
-- [ ] 1. Kiosk shell + routing
+- [x] 1. Kiosk shell + routing
   - Acceptance: `/kiosk` renders idle screen with Attendance/Borrow/Search nav;
     inactivity timeout returns to idle and clears any student state; en/fil/ceb
     toggle switches visible strings.
