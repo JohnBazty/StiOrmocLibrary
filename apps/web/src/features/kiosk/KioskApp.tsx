@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowLeft, BookOpen, CalendarCheck, Search } from 'lucide-react'
 import { Button, SectionCard } from '../../components/ui'
@@ -6,12 +6,15 @@ import { LANGUAGES, STRINGS, type Lang } from './i18n'
 import { useIdleReset } from './useIdleReset'
 import { KioskLogin } from './KioskLogin'
 import { hasKioskSession, kioskLogout } from './kiosk-session'
+import { KioskStaffExit } from './KioskStaffExit'
 import { AttendanceFlow } from './AttendanceFlow'
 import { BorrowFlow } from './BorrowFlow'
 import { SearchFlow } from './SearchFlow'
 import './kiosk.css'
 
 const KIOSK_ROOT = '/kiosk'
+// Staff open the end-session panel by holding the welcome heading; students never see a button.
+const STAFF_HOLD_MS = 3000
 
 function LanguageNav({ lang, onChange }: { lang: Lang; onChange: (lang: Lang) => void }) {
   return (
@@ -28,6 +31,10 @@ function LanguageNav({ lang, onChange }: { lang: Lang; onChange: (lang: Lang) =>
 export function KioskApp({ idleMs = 60000, warnMs = 20000 }: { idleMs?: number; warnMs?: number }) {
   const [lang, setLang] = useState<Lang>('en')
   const [authed, setAuthed] = useState(() => hasKioskSession())
+  const [staffExit, setStaffExit] = useState(false)
+  const holdTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const startHold = () => { holdTimer.current = setTimeout(() => setStaffExit(true), STAFF_HOLD_MS) }
+  const cancelHold = () => clearTimeout(holdTimer.current)
   const t = STRINGS[lang]
   const navigate = useNavigate()
   const location = useLocation()
@@ -36,8 +43,8 @@ export function KioskApp({ idleMs = 60000, warnMs = 20000 }: { idleMs?: number; 
   const goHome = () => navigate(KIOSK_ROOT)
   const stillThere = useIdleReset(idleMs, goHome, inTask && authed, warnMs)
   const endSession = () => {
-    if (!window.confirm(t.endSessionConfirm)) return
     kioskLogout()
+    setStaffExit(false)
     setAuthed(false)
     navigate(KIOSK_ROOT)
   }
@@ -62,7 +69,7 @@ export function KioskApp({ idleMs = 60000, warnMs = 20000 }: { idleMs?: number; 
           index
           element={
             <SectionCard>
-              <h1>{t.welcome}</h1>
+              <h1 className="select-none" onPointerDown={startHold} onPointerUp={cancelHold} onPointerLeave={cancelHold} onContextMenu={e => e.preventDefault()}>{t.welcome}</h1>
               <p className="mb-4">{t.tapToBegin}</p>
               <div className="flex flex-col gap-4">
                 <Button className="kiosk-big" onClick={() => navigate('attendance')}><CalendarCheck aria-hidden size={32} />{t.attendance}</Button>
@@ -76,11 +83,7 @@ export function KioskApp({ idleMs = 60000, warnMs = 20000 }: { idleMs?: number; 
         <Route path="borrow" element={<BorrowFlow lang={lang} onDone={goHome} />} />
         <Route path="search" element={<SearchFlow lang={lang} />} />
       </Routes>
-      {!inTask && (
-        <footer className="mt-10 flex justify-end">
-          <Button variant="ghost" onClick={endSession}>{t.endSession}</Button>
-        </footer>
-      )}
+      {staffExit && <KioskStaffExit lang={lang} onCancel={() => setStaffExit(false)} onVerified={endSession} />}
       {stillThere && (
         // Any tap is activity: the idle hook restarts the timer and hides this.
         <div role="alertdialog" aria-modal="true" aria-labelledby="kiosk-still-there" className="kiosk-overlay">

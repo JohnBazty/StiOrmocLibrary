@@ -39,7 +39,10 @@ type Strings = {
   stillThere: string
   stillThereHint: string
   continue: string
-  endSessionConfirm: string
+  staffTitle: string
+  staffHint: string
+  cancel: string
+  staffInvalid: string
 }
 
 export const STRINGS: Record<Lang, Strings> = {
@@ -76,7 +79,10 @@ export const STRINGS: Record<Lang, Strings> = {
     stillThere: 'Are you still there?',
     stillThereHint: 'This screen will reset soon to protect your privacy.',
     continue: 'Yes, continue',
-    endSessionConfirm: 'End the kiosk session? A librarian will need to sign in again.',
+    staffTitle: 'Staff only',
+    staffHint: "Enter a librarian's Staff ID and password to end the kiosk session.",
+    cancel: 'Cancel',
+    staffInvalid: 'Staff ID or password is incorrect.',
   },
   fil: {
     welcome: 'Maligayang pagdating sa aklatan',
@@ -111,7 +117,10 @@ export const STRINGS: Record<Lang, Strings> = {
     stillThere: 'Nandiyan ka pa ba?',
     stillThereHint: 'Magre-reset ang screen na ito para sa iyong privacy.',
     continue: 'Oo, magpatuloy',
-    endSessionConfirm: 'Tapusin ang kiosk session? Kailangang mag-sign in muli ang librarian.',
+    staffTitle: 'Para sa staff lamang',
+    staffHint: 'Ilagay ang Staff ID at password ng librarian para tapusin ang kiosk session.',
+    cancel: 'Kanselahin',
+    staffInvalid: 'Mali ang Staff ID o password.',
   },
   ceb: {
     welcome: 'Maayong pag-abot sa library',
@@ -146,6 +155,9 @@ export const STRINGS: Record<Lang, Strings> = {
     stillThere: 'Naa pa ka?',
     stillThereHint: 'Mo-reset kini nga screen aron mapanalipdan ang imong privacy.',
     continue: 'Oo, padayon',
-    endSessionConfirm: 'Tapuson ang kiosk session? Kinahanglan mo-sign in pag-usab ang librarian.',
+    staffTitle: 'Para sa staff lamang',
+    staffHint: 'Isulod ang Staff ID ug password sa librarian aron tapuson ang kiosk session.',
+    cancel: 'Kanselahon',
+    staffInvalid: 'Sayop ang Staff ID o password.',
   },
 }

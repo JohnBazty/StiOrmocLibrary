@@ -1,5 +1,5 @@
 import { login } from '../auth/auth-api'
-import { clearAccessToken, getCurrentClaims, saveAccessToken, setSessionIdentity } from '../auth/auth-storage'
+import { clearAccessToken, getAccessToken, getCurrentClaims, saveAccessToken, setSessionIdentity } from '../auth/auth-storage'
 import { STRINGS, type Lang } from './i18n'
 
 // Roles allowed to operate the desk/attendance endpoints the kiosk calls.
@@ -25,6 +25,20 @@ export async function kioskLogin(schoolId: string, password: string): Promise<vo
 export function kioskLogout(): void {
   clearAccessToken()
   setSessionIdentity(null)
+}
+
+/** True when the credentials belong to a desk account. Never disturbs the kiosk's own session. */
+export async function verifyDeskStaff(schoolId: string, password: string): Promise<boolean> {
+  const kioskToken = getAccessToken()
+  try {
+    const result = await login(schoolId, password, 'staff')
+    return (DESK_ROLES as readonly string[]).includes(result.user.role)
+  } catch {
+    return false
+  } finally {
+    // login() clears the stored token before checking; put the kiosk's session back either way.
+    if (kioskToken) saveAccessToken(kioskToken)
+  }
 }
 
 /**

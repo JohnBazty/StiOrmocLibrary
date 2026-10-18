@@ -1,12 +1,13 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { blockMessageFor, hasKioskSession, kioskLogin } from './kiosk-session'
+import { blockMessageFor, hasKioskSession, kioskLogin, verifyDeskStaff } from './kiosk-session'
 import { login } from '../auth/auth-api'
-import { clearAccessToken, getCurrentClaims, saveAccessToken } from '../auth/auth-storage'
+import { clearAccessToken, getAccessToken, getCurrentClaims, saveAccessToken } from '../auth/auth-storage'
 import { STRINGS } from './i18n'
 
 vi.mock('../auth/auth-api', () => ({ login: vi.fn() }))
 vi.mock('../auth/auth-storage', () => ({
   login: vi.fn(),
+  getAccessToken: vi.fn(),
   getCurrentClaims: vi.fn(),
   saveAccessToken: vi.fn(),
   clearAccessToken: vi.fn(),
@@ -44,4 +45,21 @@ it('blockMessageFor maps network/non-JSON faults to the service-unavailable bloc
   expect(blockMessageFor(new TypeError('fetch failed'))).toBe(STRINGS.en.serviceUnavailable)
   expect(blockMessageFor({ code: 'NON_JSON_RESPONSE' })).toBe(STRINGS.en.serviceUnavailable)
   expect(blockMessageFor(new Error('Sign in failed.'))).toBe('Sign in failed.')
+})
+
+it('verifyDeskStaff accepts a desk account and restores the kiosk token', async () => {
+  vi.mocked(getAccessToken).mockReturnValue('kiosk.token')
+  vi.mocked(login).mockResolvedValue(loginResult('Librarian'))
+  await expect(verifyDeskStaff('LIB-1', 'pw')).resolves.toBe(true)
+  expect(saveAccessToken).toHaveBeenCalledWith('kiosk.token')
+})
+
+it('verifyDeskStaff rejects wrong credentials and non-desk accounts without logging the kiosk out', async () => {
+  vi.mocked(getAccessToken).mockReturnValue('kiosk.token')
+  vi.mocked(login).mockRejectedValueOnce(new Error('Sign in failed.'))
+  await expect(verifyDeskStaff('LIB-1', 'wrong')).resolves.toBe(false)
+  vi.mocked(login).mockResolvedValueOnce(loginResult('Student'))
+  await expect(verifyDeskStaff('S-1', 'pw')).resolves.toBe(false)
+  expect(saveAccessToken).toHaveBeenCalledTimes(2)
+  expect(saveAccessToken).toHaveBeenCalledWith('kiosk.token')
 })

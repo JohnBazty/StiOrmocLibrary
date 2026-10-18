@@ -2,12 +2,13 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { KioskApp } from './KioskApp'
-import { hasKioskSession, kioskLogin, kioskLogout } from './kiosk-session'
+import { hasKioskSession, kioskLogin, kioskLogout, verifyDeskStaff } from './kiosk-session'
 
 vi.mock('./kiosk-session', () => ({
   hasKioskSession: vi.fn(() => true),
   kioskLogin: vi.fn(),
   kioskLogout: vi.fn(),
+  verifyDeskStaff: vi.fn(),
   blockMessageFor: (e: unknown) => (e instanceof Error ? e.message : 'unavailable'),
 }))
 
@@ -99,15 +100,35 @@ it('returns home from a task with the Back button', () => {
   expect(screen.getByRole('heading', { name: 'Welcome to the library' })).toBeTruthy()
 })
 
-it('asks for confirmation before ending the kiosk session', () => {
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+it('shows students no end-session button and ignores a short tap on the heading', () => {
   renderKiosk()
+  expect(screen.queryByRole('button', { name: 'End kiosk session' })).toBeNull()
 
+  const heading = screen.getByRole('heading', { name: 'Welcome to the library' })
+  fireEvent.pointerDown(heading)
+  act(() => { vi.advanceTimersByTime(1000) })
+  fireEvent.pointerUp(heading)
+  act(() => { vi.advanceTimersByTime(3000) })
+  expect(screen.queryByRole('dialog', { name: 'Staff only' })).toBeNull()
+})
+
+it('ends the session only after staff hold the heading and enter librarian credentials', async () => {
+  renderKiosk()
+  fireEvent.pointerDown(screen.getByRole('heading', { name: 'Welcome to the library' }))
+  act(() => { vi.advanceTimersByTime(3000) })
+  expect(screen.getByRole('dialog', { name: 'Staff only' })).toBeTruthy()
+
+  vi.mocked(verifyDeskStaff).mockResolvedValueOnce(false)
+  fireEvent.change(screen.getByLabelText('Staff ID'), { target: { value: 'LIB-1' } })
+  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'wrong' } })
   fireEvent.click(screen.getByRole('button', { name: 'End kiosk session' }))
+  expect((await screen.findByRole('alert')).textContent).toBe('Staff ID or password is incorrect.')
   expect(kioskLogout).not.toHaveBeenCalled()
 
+  vi.mocked(verifyDeskStaff).mockResolvedValueOnce(true)
+  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'right' } })
   fireEvent.click(screen.getByRole('button', { name: 'End kiosk session' }))
+  expect(await screen.findByRole('heading', { name: 'Kiosk sign-in' })).toBeTruthy()
   expect(kioskLogout).toHaveBeenCalled()
-  expect(screen.getByRole('heading', { name: 'Kiosk sign-in' })).toBeTruthy()
-  confirm.mockRestore()
+  expect(verifyDeskStaff).toHaveBeenLastCalledWith('LIB-1', 'right')
 })
