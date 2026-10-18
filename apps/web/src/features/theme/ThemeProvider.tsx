@@ -13,7 +13,7 @@ const STORAGE_KEY = 'smartlib-theme'
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
 
-function readStoredTheme(): ThemeMode {
+export function readStoredTheme(): ThemeMode {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
     if (stored === 'dark' || stored === 'light') return stored
@@ -23,7 +23,7 @@ function readStoredTheme(): ThemeMode {
   return 'light'
 }
 
-function applyTheme(theme: ThemeMode) {
+export function applyTheme(theme: ThemeMode) {
   const root = document.documentElement
   root.classList.toggle('dark', theme === 'dark')
   root.dataset.theme = theme

@@ -179,3 +179,19 @@ it('switches between the dark (eLMS) and light themes', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Dark' }))
   expect(root().classList.contains('dark')).toBe(true)
 })
+
+it("keeps the portal's dark mode off while shown and restores it afterwards", async () => {
+  localStorage.setItem('smartlib-theme', 'dark')
+  document.documentElement.classList.add('dark')
+  const { unmount } = renderKiosk()
+  expect(document.documentElement.classList.contains('dark')).toBe(false)
+
+  // ThemeProvider may re-add the class after the kiosk mounts.
+  document.documentElement.classList.add('dark')
+  await waitFor(() => expect(document.documentElement.classList.contains('dark')).toBe(false))
+
+  unmount()
+  expect(document.documentElement.classList.contains('dark')).toBe(true)
+  document.documentElement.classList.remove('dark')
+  localStorage.removeItem('smartlib-theme')
+})

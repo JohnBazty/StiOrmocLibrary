@@ -6,6 +6,7 @@ import { LANGUAGES, STRINGS, type Lang } from './i18n'
 import { useIdleReset } from './useIdleReset'
 import { KioskLogin } from './KioskLogin'
 import { hasKioskSession, kioskLogout, renewKioskSession } from './kiosk-session'
+import { applyTheme, readStoredTheme } from '../theme/ThemeProvider'
 import { KioskStaffExit } from './KioskStaffExit'
 import { AttendanceFlow } from './AttendanceFlow'
 import { BorrowFlow } from './BorrowFlow'
@@ -63,6 +64,18 @@ export function KioskApp({ idleMs = 60000, warnMs = 20000 }: { idleMs?: number; 
   }
   // The server ended the desk session (expiry, 10 idle minutes, revoked): tell whoever is at the kiosk.
   const sessionLost = () => { setSignedOut(true); endSession() }
+
+  // The kiosk owns its theme. The portal's dark mode (html.dark) brings global !important
+  // overrides that would repaint the kiosk navy, so keep it off while the kiosk is shown
+  // (ThemeProvider may re-add it after mount) and restore the portal's saved theme on exit.
+  useEffect(() => {
+    const html = document.documentElement
+    const strip = () => { if (html.classList.contains('dark')) html.classList.remove('dark') }
+    strip()
+    const observer = new MutationObserver(strip)
+    observer.observe(html, { attributes: true, attributeFilter: ['class'] })
+    return () => { observer.disconnect(); applyTheme(readStoredTheme()) }
+  }, [])
 
   useEffect(() => {
     if (!authed) return
