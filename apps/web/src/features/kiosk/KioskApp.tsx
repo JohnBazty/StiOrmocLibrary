@@ -7,17 +7,9 @@ import { KioskLogin } from './KioskLogin'
 import { hasKioskSession, kioskLogout } from './kiosk-session'
 import { AttendanceFlow } from './AttendanceFlow'
 import { BorrowFlow } from './BorrowFlow'
+import { SearchFlow } from './SearchFlow'
 
 const KIOSK_ROOT = '/kiosk'
-
-function TaskPlaceholder({ title, onBack, backLabel }: { title: string; onBack: () => void; backLabel: string }) {
-  return (
-    <SectionCard>
-      <h2>{title}</h2>
-      <Button variant="secondary" onClick={onBack}>{backLabel}</Button>
-    </SectionCard>
-  )
-}
 
 function LanguageNav({ lang, onChange }: { lang: Lang; onChange: (lang: Lang) => void }) {
   return (
@@ -76,7 +68,7 @@ export function KioskApp({ idleMs = 60000 }: { idleMs?: number }) {
         />
         <Route path="attendance" element={<AttendanceFlow lang={lang} onDone={goHome} />} />
         <Route path="borrow" element={<BorrowFlow lang={lang} onDone={goHome} />} />
-        <Route path="search" element={<TaskPlaceholder title={t.search} onBack={goHome} backLabel={t.back} />} />
+        <Route path="search" element={<SearchFlow lang={lang} onDone={goHome} />} />
       </Routes>
     </div>
   )

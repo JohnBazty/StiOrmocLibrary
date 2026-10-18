@@ -35,7 +35,7 @@ See `tasks/plan.md` and `SPEC-kiosk.md`.
   - Verify: test full sequence + that a blocker response stops checkout.
   - Files: `features/kiosk/BorrowFlow.tsx`, `desk-api.ts`.
 
-- [ ] 6. Search
+- [x] 6. Search
   - Acceptance: no-identity search lists matches with availability.
   - Verify: renders results from a mocked `enhancedCatalog.search`.
   - Files: `features/kiosk/SearchFlow.tsx` (wraps `PublicCatalogPage embedded`).
