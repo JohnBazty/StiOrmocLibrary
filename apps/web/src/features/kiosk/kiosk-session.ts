@@ -43,6 +43,31 @@ export async function kioskSessionAlive(): Promise<boolean> {
   }
 }
 
+/**
+ * Renew the desk session (same call the portal makes on activity) and store the
+ * fresh token. The kiosk calls this on a timer so an idle kiosk isn't signed out
+ * by the server's 10-minute inactivity rule. 'offline' means try again next tick.
+ */
+export async function renewKioskSession(): Promise<'ok' | 'lost' | 'offline'> {
+  const token = getAccessToken()
+  if (!token || !hasKioskSession()) return 'lost'
+  try {
+    const response = await fetch('/api/v1/auth/activity', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: '{}',
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (response.status === 401 || response.status === 403) return 'lost'
+    if (!response.ok) return 'offline'
+    const payload = await response.json() as { data?: { token?: string } }
+    if (payload.data?.token) saveAccessToken(payload.data.token)
+    return 'ok'
+  } catch {
+    return 'offline'
+  }
+}
+
 /** True when the credentials belong to a desk account. Never disturbs the kiosk's own session. */
 export async function verifyDeskStaff(schoolId: string, password: string): Promise<boolean> {
   const kioskToken = getAccessToken()

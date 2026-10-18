@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { blockMessageFor, hasKioskSession, kioskLogin, kioskSessionAlive, verifyDeskStaff } from './kiosk-session'
+import { blockMessageFor, hasKioskSession, kioskLogin, kioskSessionAlive, renewKioskSession, verifyDeskStaff } from './kiosk-session'
 import { login } from '../auth/auth-api'
 import { clearAccessToken, getAccessToken, getCurrentClaims, saveAccessToken } from '../auth/auth-storage'
 import { STRINGS } from './i18n'
@@ -79,6 +79,30 @@ it('kioskSessionAlive asks the server and treats only a 401 or a missing token a
     vi.mocked(getAccessToken).mockReturnValue(null as never)
     await expect(kioskSessionAlive()).resolves.toBe(false)
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/auth/me', expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer kiosk.token' }) }))
+  } finally {
+    vi.unstubAllGlobals()
+  }
+})
+
+it('renewKioskSession stores the fresh token and reports a lost or unreachable session', async () => {
+  vi.mocked(getAccessToken).mockReturnValue('kiosk.token')
+  vi.mocked(getCurrentClaims).mockReturnValue({ role: 'Staff' } as never)
+  const fetchMock = vi.fn()
+  vi.stubGlobal('fetch', fetchMock)
+  try {
+    fetchMock.mockResolvedValueOnce({ status: 200, ok: true, json: async () => ({ data: { token: 'fresh.token' } }) })
+    await expect(renewKioskSession()).resolves.toBe('ok')
+    expect(saveAccessToken).toHaveBeenCalledWith('fresh.token')
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/auth/activity', expect.objectContaining({ method: 'POST', headers: expect.objectContaining({ Authorization: 'Bearer kiosk.token' }) }))
+
+    fetchMock.mockResolvedValueOnce({ status: 401, ok: false })
+    await expect(renewKioskSession()).resolves.toBe('lost')
+    fetchMock.mockResolvedValueOnce({ status: 403, ok: false })
+    await expect(renewKioskSession()).resolves.toBe('lost')
+    fetchMock.mockResolvedValueOnce({ status: 503, ok: false })
+    await expect(renewKioskSession()).resolves.toBe('offline')
+    fetchMock.mockRejectedValueOnce(new TypeError('offline'))
+    await expect(renewKioskSession()).resolves.toBe('offline')
   } finally {
     vi.unstubAllGlobals()
   }

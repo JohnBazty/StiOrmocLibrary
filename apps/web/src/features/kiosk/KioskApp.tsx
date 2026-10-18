@@ -1,11 +1,11 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowLeft, BookOpen, CalendarCheck, Search } from 'lucide-react'
 import { Button, SectionCard } from '../../components/ui'
 import { LANGUAGES, STRINGS, type Lang } from './i18n'
 import { useIdleReset } from './useIdleReset'
 import { KioskLogin } from './KioskLogin'
-import { hasKioskSession, kioskLogout } from './kiosk-session'
+import { hasKioskSession, kioskLogout, renewKioskSession } from './kiosk-session'
 import { KioskStaffExit } from './KioskStaffExit'
 import { AttendanceFlow } from './AttendanceFlow'
 import { BorrowFlow } from './BorrowFlow'
@@ -15,6 +15,8 @@ import './kiosk.css'
 const KIOSK_ROOT = '/kiosk'
 // Staff open the end-session panel by holding the welcome heading; students never see a button.
 const STAFF_HOLD_MS = 3000
+// Renew well inside the server's 10-minute idle window so one missed renewal doesn't sign the kiosk out.
+const KEEP_ALIVE_MS = 4 * 60_000
 
 function LanguageNav({ lang, onChange }: { lang: Lang; onChange: (lang: Lang) => void }) {
   return (
@@ -51,6 +53,16 @@ export function KioskApp({ idleMs = 60000, warnMs = 20000 }: { idleMs?: number; 
   }
   // The server ended the desk session (expiry, 10 idle minutes, revoked): tell whoever is at the kiosk.
   const sessionLost = () => { setSignedOut(true); endSession() }
+
+  useEffect(() => {
+    if (!authed) return
+    let stopped = false
+    const renew = async () => { if ((await renewKioskSession()) === 'lost' && !stopped) sessionLost() }
+    void renew()
+    const timer = setInterval(renew, KEEP_ALIVE_MS)
+    return () => { stopped = true; clearInterval(timer) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed])
 
   if (!authed) {
     return (

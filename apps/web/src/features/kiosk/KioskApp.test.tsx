@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { KioskApp } from './KioskApp'
-import { hasKioskSession, kioskLogin, kioskLogout, kioskSessionAlive, verifyDeskStaff } from './kiosk-session'
+import { hasKioskSession, kioskLogin, kioskLogout, kioskSessionAlive, renewKioskSession, verifyDeskStaff } from './kiosk-session'
 
 vi.mock('./kiosk-session', () => ({
   hasKioskSession: vi.fn(() => true),
@@ -10,6 +10,7 @@ vi.mock('./kiosk-session', () => ({
   kioskLogout: vi.fn(),
   verifyDeskStaff: vi.fn(),
   kioskSessionAlive: vi.fn(async () => true),
+  renewKioskSession: vi.fn(async () => 'ok'),
   blockMessageFor: (e: unknown) => (e instanceof Error ? e.message : 'unavailable'),
 }))
 
@@ -148,4 +149,20 @@ it('returns to sign-in with a librarian notice when the desk session is lost mid
   expect(await screen.findByRole('heading', { name: 'Kiosk sign-in' })).toBeTruthy()
   expect(screen.getByRole('status').textContent).toBe('This kiosk was signed out. Please ask a librarian to sign it in.')
   expect(kioskLogout).toHaveBeenCalled()
+})
+
+it('keeps the desk session alive while idle: renews at start and every 4 minutes', async () => {
+  renderKiosk()
+  await waitFor(() => expect(renewKioskSession).toHaveBeenCalledTimes(1))
+  await act(async () => { vi.advanceTimersByTime(4 * 60_000) })
+  expect(renewKioskSession).toHaveBeenCalledTimes(2)
+  await act(async () => { vi.advanceTimersByTime(4 * 60_000) })
+  expect(renewKioskSession).toHaveBeenCalledTimes(3)
+})
+
+it('shows the librarian notice when a renewal finds the session gone', async () => {
+  vi.mocked(renewKioskSession).mockResolvedValueOnce('lost')
+  renderKiosk()
+  expect(await screen.findByRole('heading', { name: 'Kiosk sign-in' })).toBeTruthy()
+  expect(screen.getByRole('status').textContent).toBe('This kiosk was signed out. Please ask a librarian to sign it in.')
 })
