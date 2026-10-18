@@ -45,13 +45,15 @@ type Strings = {
   staffInvalid: string
   signedOut: string
   lightMode: string
+  largerText: string
+  normalText: string
   darkMode: string
 }
 
 export const STRINGS: Record<Lang, Strings> = {
   en: {
     welcome: 'Welcome to the library',
-    tapToBegin: 'Choose what you want to do',
+    tapToBegin: 'How can I help you today?',
     attendance: 'Attendance',
     borrow: 'Borrow a book',
     search: 'Search the catalog',
@@ -88,11 +90,13 @@ export const STRINGS: Record<Lang, Strings> = {
     staffInvalid: 'Staff ID or password is incorrect.',
     signedOut: 'This kiosk was signed out. Please ask a librarian to sign it in.',
     lightMode: 'Light',
+    largerText: 'Larger text',
+    normalText: 'Normal text',
     darkMode: 'Dark',
   },
   fil: {
     welcome: 'Maligayang pagdating sa aklatan',
-    tapToBegin: 'Piliin ang nais mong gawin',
+    tapToBegin: 'Paano kita matutulungan ngayon?',
     attendance: 'Attendance',
     borrow: 'Humiram ng aklat',
     search: 'Maghanap sa katalogo',
@@ -129,11 +133,13 @@ export const STRINGS: Record<Lang, Strings> = {
     staffInvalid: 'Mali ang Staff ID o password.',
     signedOut: 'Na-sign out ang kiosk na ito. Pakisabihan ang librarian na mag-sign in.',
     lightMode: 'Maliwanag',
+    largerText: 'Mas malaking teksto',
+    normalText: 'Karaniwang teksto',
     darkMode: 'Madilim',
   },
   ceb: {
     welcome: 'Maayong pag-abot sa library',
-    tapToBegin: 'Pilia ang imong buhaton',
+    tapToBegin: 'Unsaon nako pagtabang nimo karon?',
     attendance: 'Attendance',
     borrow: 'Paghulam og libro',
     search: 'Pangitaa sa katalogo',
@@ -170,6 +176,8 @@ export const STRINGS: Record<Lang, Strings> = {
     staffInvalid: 'Sayop ang Staff ID o password.',
     signedOut: 'Na-sign out kini nga kiosk. Palihog ipahibalo sa librarian aron mo-sign in.',
     lightMode: 'Hayag',
+    largerText: 'Mas dako nga teksto',
+    normalText: 'Normal nga teksto',
     darkMode: 'Ngitngit',
   },
 }

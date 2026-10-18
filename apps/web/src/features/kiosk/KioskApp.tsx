@@ -21,21 +21,30 @@ const KEEP_ALIVE_MS = 4 * 60_000
 
 type Theme = 'dark' | 'light'
 
-// Light/Dark toggle plus one Language control (the native picker is large and familiar on tablets).
-function Preferences({ lang, onLang, theme, onTheme }: { lang: Lang; onLang: (lang: Lang) => void; theme: Theme; onTheme: (theme: Theme) => void }) {
+// One Language control; the native picker is large and familiar on tablets.
+function LanguageSelect({ lang, onLang }: { lang: Lang; onLang: (lang: Lang) => void }) {
+  return (
+    <label className="kiosk-lang">
+      <Globe aria-hidden size={24} />
+      <select aria-label="Language" value={lang} onChange={e => onLang(e.target.value as Lang)}>
+        {LANGUAGES.map(({ code, label }) => <option key={code} value={code}>{label}</option>)}
+      </select>
+    </label>
+  )
+}
+
+// Text size (A+ / A) and Light/Dark.
+function DisplayToggles({ lang, large, onLarge, theme, onTheme }: { lang: Lang; large: boolean; onLarge: (large: boolean) => void; theme: Theme; onTheme: (theme: Theme) => void }) {
   const t = STRINGS[lang]
   return (
-    <div className="flex justify-end gap-2">
+    <div className="flex gap-2">
+      <Button variant="secondary" onClick={() => onLarge(!large)}>
+        <span aria-hidden>{large ? 'A' : 'A+'}</span><span className="sr-only">{large ? t.normalText : t.largerText}</span>
+      </Button>
       <Button variant="secondary" onClick={() => onTheme(theme === 'dark' ? 'light' : 'dark')}>
         {theme === 'dark' ? <Sun aria-hidden size={24} /> : <Moon aria-hidden size={24} />}
         {theme === 'dark' ? t.lightMode : t.darkMode}
       </Button>
-      <label className="kiosk-lang">
-        <Globe aria-hidden size={24} />
-        <select aria-label="Language" value={lang} onChange={e => onLang(e.target.value as Lang)}>
-          {LANGUAGES.map(({ code, label }) => <option key={code} value={code}>{label}</option>)}
-        </select>
-      </label>
     </div>
   )
 }
@@ -43,6 +52,7 @@ function Preferences({ lang, onLang, theme, onTheme }: { lang: Lang; onLang: (la
 export function KioskApp({ idleMs = 60000, warnMs = 20000 }: { idleMs?: number; warnMs?: number }) {
   const [lang, setLang] = useState<Lang>('en')
   const [theme, setTheme] = useState<Theme>('dark')
+  const [large, setLarge] = useState(false)
   const [authed, setAuthed] = useState(() => hasKioskSession())
   const [staffExit, setStaffExit] = useState(false)
   const [signedOut, setSignedOut] = useState(false)
@@ -89,30 +99,42 @@ export function KioskApp({ idleMs = 60000, warnMs = 20000 }: { idleMs?: number; 
 
   if (!authed) {
     return (
-      <div className={`kiosk-root p-6 ${theme === 'dark' ? 'dark' : 'kiosk-light'}`}>
-        <Preferences lang={lang} onLang={setLang} theme={theme} onTheme={setTheme} />
+      <div className={`kiosk-root p-6 ${theme === 'dark' ? 'dark' : 'kiosk-light'}${large ? ' kiosk-large' : ''}`}>
+        <div className="kiosk-topbar">
+          <LanguageSelect lang={lang} onLang={setLang} />
+          <DisplayToggles lang={lang} large={large} onLarge={setLarge} theme={theme} onTheme={setTheme} />
+        </div>
         <KioskLogin lang={lang} notice={signedOut ? t.signedOut : undefined} onSuccess={() => { setSignedOut(false); setAuthed(true) }} />
       </div>
     )
   }
 
   return (
-    <div className={`kiosk-root p-6 ${theme === 'dark' ? 'dark' : 'kiosk-light'}`}>
-      <div className="flex justify-between items-center gap-3 mb-4">
-        {inTask ? <Button variant="secondary" onClick={goHome}><ArrowLeft aria-hidden size={24} />{t.back}</Button> : <span />}
-        <Preferences lang={lang} onLang={setLang} theme={theme} onTheme={setTheme} />
+    <div className={`kiosk-root p-6 ${theme === 'dark' ? 'dark' : 'kiosk-light'}${large ? ' kiosk-large' : ''}`}>
+      <div className="kiosk-topbar">
+        {inTask ? <Button variant="secondary" onClick={goHome}><ArrowLeft aria-hidden size={24} />{t.back}</Button> : <LanguageSelect lang={lang} onLang={setLang} />}
+        <div className="flex gap-2">
+          {inTask && <LanguageSelect lang={lang} onLang={setLang} />}
+          <DisplayToggles lang={lang} large={large} onLarge={setLarge} theme={theme} onTheme={setTheme} />
+        </div>
       </div>
       <Routes>
         <Route
           index
           element={
-            <SectionCard>
+            <SectionCard className="kiosk-home">
               <h1 className="select-none" onPointerDown={startHold} onPointerUp={cancelHold} onPointerLeave={cancelHold} onContextMenu={e => e.preventDefault()}>{t.welcome}</h1>
-              <p className="mb-4">{t.tapToBegin}</p>
-              <div className="flex flex-col gap-4">
-                <Button className="kiosk-big" onClick={() => navigate('attendance')}><CalendarCheck aria-hidden size={32} />{t.attendance}</Button>
-                <Button className="kiosk-big" onClick={() => navigate('borrow')}><BookOpen aria-hidden size={32} />{t.borrow}</Button>
-                <Button className="kiosk-big" onClick={() => navigate('search')}><Search aria-hidden size={32} />{t.search}</Button>
+              <p className="kiosk-greeting">{t.tapToBegin}</p>
+              <div className="kiosk-tiles">
+                <button type="button" className="kiosk-tile" onClick={() => navigate('attendance')}>
+                  <span className="kiosk-tile-icon kiosk-tile-teal" aria-hidden><CalendarCheck size={40} /></span>{t.attendance}
+                </button>
+                <button type="button" className="kiosk-tile" onClick={() => navigate('borrow')}>
+                  <span className="kiosk-tile-icon kiosk-tile-yellow" aria-hidden><BookOpen size={40} /></span>{t.borrow}
+                </button>
+                <button type="button" className="kiosk-tile" onClick={() => navigate('search')}>
+                  <span className="kiosk-tile-icon kiosk-tile-green" aria-hidden><Search size={40} /></span>{t.search}
+                </button>
               </div>
             </SectionCard>
           }

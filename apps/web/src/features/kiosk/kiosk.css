@@ -13,6 +13,7 @@ body:has(.kiosk-root),
   --k-accent-hover: #036a93;
   --k-yellow: #ffe600;
   --k-focus: var(--k-yellow);
+  --k-tile: #2a2c3a;
 }
 /* Light mode: white cards on pale grey, same teal accent; teal focus ring (yellow vanishes on white). */
 .kiosk-root.kiosk-light {
@@ -24,6 +25,7 @@ body:has(.kiosk-root),
   --k-muted: #555a6e;
   --k-accent-hover: #036a93;
   --k-focus: #047eaf;
+  --k-tile: #f1f2f6;
   color-scheme: light;
 }
 /* html has its own white background in the app, so it must be set too or the canvas edges stay white. */
@@ -42,10 +44,12 @@ body:has(.kiosk-light) { background: #f3f4f8; }
   color: var(--k-text);
   color-scheme: dark;
 }
-.kiosk-root h1 { font-size: 2.25rem; font-weight: 700; line-height: 1.2; color: var(--k-text); }
-.kiosk-root h2 { font-size: 1.75rem; font-weight: 700; line-height: 1.25; color: var(--k-text); }
-.kiosk-root button { min-height: 64px; font-size: 1.2rem; }
-.kiosk-root input { min-height: 60px; font-size: 1.25rem; }
+/* Sizes are in em so the A+ toggle scales every text from the root font size. */
+.kiosk-root.kiosk-large { font-size: 1.55rem; }
+.kiosk-root h1 { font-size: 1.8em; font-weight: 700; line-height: 1.2; color: var(--k-text); }
+.kiosk-root h2 { font-size: 1.4em; font-weight: 700; line-height: 1.25; color: var(--k-text); }
+.kiosk-root button { min-height: 64px; font-size: 0.96em; }
+.kiosk-root input { min-height: 60px; font-size: 1em; }
 
 /* Surfaces: kiosk cards and the embedded catalog's dark (navy) surfaces become eLMS charcoal.
    [class~=] matches a whole class token, so hover-only classes are not affected. */
@@ -102,7 +106,7 @@ body:has(.kiosk-light) { background: #f3f4f8; }
   color: var(--k-text);
   cursor: pointer;
 }
-.kiosk-lang select { min-height: 60px; border: 0; background: transparent; color: inherit; font-size: 1.2rem; cursor: pointer; }
+.kiosk-lang select { min-height: 60px; border: 0; background: transparent; color: inherit; font-size: 0.96em; cursor: pointer; }
 .kiosk-lang select option { background: var(--k-card); color: var(--k-text); }
 .kiosk-lang:focus-within { outline: 3px solid var(--k-focus); outline-offset: 2px; }
 .kiosk-lang select:focus-visible { outline: none; }
@@ -131,8 +135,40 @@ body:has(.kiosk-light) { background: #f3f4f8; }
 .kiosk-root .catalog-cover-grid > article .mt-auto { display: none; }
 
 /* Primary task buttons: biggest targets on the screen. */
-.kiosk-root .kiosk-big { min-height: 96px; font-size: 1.5rem; gap: 0.75rem; }
-.kiosk-scan-label { font-size: 1.6rem; font-weight: 700; }
+.kiosk-root .kiosk-big { min-height: 96px; font-size: 1.2em; gap: 0.75rem; }
+.kiosk-scan-label { font-size: 1.28em; font-weight: 700; }
+
+/* Top bar: language on the left, display toggles on the right (Back takes the left slot inside a task). */
+.kiosk-topbar { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; }
+
+/* Home: centered greeting and large service tiles. */
+.kiosk-root .kiosk-home { text-align: center; padding: 2rem 1.5rem; }
+.kiosk-greeting { font-size: 1.3em; margin-top: 0.25em; }
+.kiosk-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 2rem; }
+.kiosk-root .kiosk-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75em;
+  min-height: 11em;
+  padding: 1.25em 1em;
+  border: 1px solid var(--k-border);
+  border-radius: 1.25rem;
+  background: var(--k-tile);
+  color: var(--k-text);
+  font-size: 1.05em;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+.kiosk-root .kiosk-tile:active { transform: scale(0.97); }
+/* An odd last tile spans the row so the grid never leaves a gap. */
+.kiosk-root .kiosk-tile:last-child:nth-child(odd) { grid-column: 1 / -1; min-height: 8em; }
+.kiosk-tile-icon { display: grid; place-items: center; width: 4.5rem; height: 4.5rem; border-radius: 999px; }
+.kiosk-tile-teal { background: #047eaf; color: #fff; }
+.kiosk-tile-yellow { background: #ffe600; color: #14151b; }
+.kiosk-tile-green { background: #1f8a5c; color: #fff; }
 .kiosk-scanner { width: 100%; max-width: 420px; margin: 0 auto; }
 .kiosk-scanner video { width: 100%; border-radius: 0.75rem; }
 .kiosk-overlay {

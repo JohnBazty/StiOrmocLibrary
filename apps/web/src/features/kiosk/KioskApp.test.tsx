@@ -195,3 +195,15 @@ it("keeps the portal's dark mode off while shown and restores it afterwards", as
   document.documentElement.classList.remove('dark')
   localStorage.removeItem('smartlib-theme')
 })
+
+it('toggles larger text for the whole kiosk', () => {
+  const { container } = renderKiosk()
+  const root = () => container.querySelector('.kiosk-root')!
+  expect(root().classList.contains('kiosk-large')).toBe(false)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Larger text' }))
+  expect(root().classList.contains('kiosk-large')).toBe(true)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Normal text' }))
+  expect(root().classList.contains('kiosk-large')).toBe(false)
+})
