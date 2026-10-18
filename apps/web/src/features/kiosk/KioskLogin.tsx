@@ -33,11 +33,11 @@ export function KioskLogin({ lang, onSuccess, notice }: { lang: Lang; onSuccess:
       <form onSubmit={submit} className="flex flex-col gap-3">
         <label className="block font-bold">{t.schoolId}
           <input value={schoolId} onChange={e => setSchoolId(e.target.value)} autoComplete="off"
-            className="mt-1 w-full rounded-xl border border-[#003399]/20 bg-white p-3 text-[#003399]" />
+            className="kiosk-input mt-1" />
         </label>
         <label className="block font-bold">{t.password}
           <input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="off"
-            className="mt-1 w-full rounded-xl border border-[#003399]/20 bg-white p-3 text-[#003399]" />
+            className="kiosk-input mt-1" />
         </label>
         {error && <p role="alert">{error}</p>}
         <Button type="submit" disabled={busy}>{t.signIn}</Button>

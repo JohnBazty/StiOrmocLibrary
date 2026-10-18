@@ -66,7 +66,7 @@ export function KioskApp({ idleMs = 60000, warnMs = 20000 }: { idleMs?: number; 
 
   if (!authed) {
     return (
-      <div className="kiosk-root p-6">
+      <div className="kiosk-root dark p-6">
         <LanguageNav lang={lang} onChange={setLang} />
         <KioskLogin lang={lang} notice={signedOut ? t.signedOut : undefined} onSuccess={() => { setSignedOut(false); setAuthed(true) }} />
       </div>
@@ -74,7 +74,7 @@ export function KioskApp({ idleMs = 60000, warnMs = 20000 }: { idleMs?: number; 
   }
 
   return (
-    <div className="kiosk-root p-6">
+    <div className="kiosk-root dark p-6">
       <div className="flex justify-between items-center gap-3 mb-4">
         {inTask ? <Button variant="secondary" onClick={goHome}><ArrowLeft aria-hidden size={24} />{t.back}</Button> : <span />}
         <LanguageNav lang={lang} onChange={setLang} />

@@ -64,7 +64,7 @@ export function KioskScanner({ qr = false, label, onScan, lang }: { qr?: boolean
         <div className="flex gap-2">
           <input aria-label={t.manualEntry} value={manual} onChange={e => setManual(e.target.value)} autoComplete="off" autoFocus
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); submitManual() } }}
-            className="w-full rounded-xl border border-[#003399]/30 bg-white p-3 text-[#003399]" />
+            className="kiosk-input" />
           <Button onClick={submitManual} disabled={!manual.trim()}>{t.enter}</Button>
         </div>
       ) : (

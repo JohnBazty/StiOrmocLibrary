@@ -30,11 +30,11 @@ export function KioskStaffExit({ lang, onCancel, onVerified }: { lang: Lang; onC
         <form onSubmit={submit} className="flex flex-col gap-3">
           <label className="block font-bold">{t.schoolId}
             <input value={schoolId} onChange={e => setSchoolId(e.target.value)} autoComplete="off" autoFocus
-              className="mt-1 w-full rounded-xl border border-[#003399]/30 bg-white p-3 text-[#003399]" />
+              className="kiosk-input mt-1" />
           </label>
           <label className="block font-bold">{t.password}
             <input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="off"
-              className="mt-1 w-full rounded-xl border border-[#003399]/30 bg-white p-3 text-[#003399]" />
+              className="kiosk-input mt-1" />
           </label>
           {error && <p role="alert">{error}</p>}
           <div className="flex gap-3">
