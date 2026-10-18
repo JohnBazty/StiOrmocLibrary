@@ -38,6 +38,8 @@ Users: *student* (walk up, do one task, leave; shared public tablet) and
 
 ## Auth model
 
+> Deployment and security recommendations: [docs/kiosk-security.md](docs/kiosk-security.md).
+
 - The kiosk runs under one dedicated **Staff service account** holding the
   `desk.operate` library permission (both attendance scan and desk borrow are
   guarded by it). The kiosk authenticates as this account via the existing JWT
