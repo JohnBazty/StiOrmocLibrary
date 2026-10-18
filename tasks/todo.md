@@ -29,7 +29,7 @@ See `tasks/plan.md` and `SPEC-kiosk.md`.
   - Files: `features/kiosk/AttendanceFlow.tsx`, `attendance-api.ts`.
   - Pre: read attendance controller for resolve/check-in request+response shapes.
 
-- [ ] 5. Borrow flow
+- [x] 5. Borrow flow
   - Acceptance: scan QR → borrower → scan barcode → preview (title/due/blockers)
     → confirm → checkout with a fresh `requestId`; blockers surfaced verbatim.
   - Verify: test full sequence + that a blocker response stops checkout.

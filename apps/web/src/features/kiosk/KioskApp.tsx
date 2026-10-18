@@ -6,6 +6,7 @@ import { useIdleReset } from './useIdleReset'
 import { KioskLogin } from './KioskLogin'
 import { hasKioskSession, kioskLogout } from './kiosk-session'
 import { AttendanceFlow } from './AttendanceFlow'
+import { BorrowFlow } from './BorrowFlow'
 
 const KIOSK_ROOT = '/kiosk'
 
@@ -74,7 +75,7 @@ export function KioskApp({ idleMs = 60000 }: { idleMs?: number }) {
           }
         />
         <Route path="attendance" element={<AttendanceFlow lang={lang} onDone={goHome} />} />
-        <Route path="borrow" element={<TaskPlaceholder title={t.borrow} onBack={goHome} backLabel={t.back} />} />
+        <Route path="borrow" element={<BorrowFlow lang={lang} onDone={goHome} />} />
         <Route path="search" element={<TaskPlaceholder title={t.search} onBack={goHome} backLabel={t.back} />} />
       </Routes>
     </div>

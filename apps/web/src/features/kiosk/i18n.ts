@@ -26,6 +26,11 @@ type Strings = {
   processing: string
   done: string
   tryAgain: string
+  scanBook: string
+  confirmBorrow: string
+  borrowed: string
+  due: string
+  cannotBorrow: string
 }
 
 export const STRINGS: Record<Lang, Strings> = {
@@ -49,6 +54,11 @@ export const STRINGS: Record<Lang, Strings> = {
     processing: 'Please wait…',
     done: 'Done',
     tryAgain: 'Try again',
+    scanBook: 'Scan the book barcode',
+    confirmBorrow: 'Confirm borrow',
+    borrowed: 'Borrowed',
+    due: 'Due',
+    cannotBorrow: 'Cannot borrow this book',
   },
   fil: {
     welcome: 'Maligayang pagdating sa aklatan',
@@ -70,6 +80,11 @@ export const STRINGS: Record<Lang, Strings> = {
     processing: 'Mangyaring maghintay…',
     done: 'Tapos',
     tryAgain: 'Subukan muli',
+    scanBook: 'I-scan ang barcode ng aklat',
+    confirmBorrow: 'Kumpirmahin ang paghiram',
+    borrowed: 'Nahiram',
+    due: 'Dapat ibalik',
+    cannotBorrow: 'Hindi mahiram ang aklat na ito',
   },
   ceb: {
     welcome: 'Maayong pag-abot sa library',
@@ -91,5 +106,10 @@ export const STRINGS: Record<Lang, Strings> = {
     processing: 'Palihog paghulat…',
     done: 'Human',
     tryAgain: 'Sulayi pag-usab',
+    scanBook: 'I-scan ang barcode sa libro',
+    confirmBorrow: 'Kumpirmaha ang paghulam',
+    borrowed: 'Nahulaman',
+    due: 'Ibalik sa',
+    cannotBorrow: 'Dili mahulaman kini nga libro',
   },
 }
