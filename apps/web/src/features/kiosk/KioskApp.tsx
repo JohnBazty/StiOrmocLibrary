@@ -8,6 +8,7 @@ import { hasKioskSession, kioskLogout } from './kiosk-session'
 import { AttendanceFlow } from './AttendanceFlow'
 import { BorrowFlow } from './BorrowFlow'
 import { SearchFlow } from './SearchFlow'
+import './kiosk.css'
 
 const KIOSK_ROOT = '/kiosk'
 
@@ -38,7 +39,7 @@ export function KioskApp({ idleMs = 60000 }: { idleMs?: number }) {
 
   if (!authed) {
     return (
-      <div className="min-h-screen p-6">
+      <div className="kiosk-root p-6">
         <LanguageNav lang={lang} onChange={setLang} />
         <KioskLogin lang={lang} onSuccess={() => setAuthed(true)} />
       </div>
@@ -46,7 +47,7 @@ export function KioskApp({ idleMs = 60000 }: { idleMs?: number }) {
   }
 
   return (
-    <div className="min-h-screen p-6">
+    <div className="kiosk-root p-6">
       <div className="flex justify-between items-center">
         <Button variant="ghost" onClick={endSession}>{t.endSession}</Button>
         <LanguageNav lang={lang} onChange={setLang} />

@@ -40,7 +40,7 @@ See `tasks/plan.md` and `SPEC-kiosk.md`.
   - Verify: renders results from a mocked `enhancedCatalog.search`.
   - Files: `features/kiosk/SearchFlow.tsx` (wraps `PublicCatalogPage embedded`).
 
-- [ ] 7. Polish + verify
+- [x] 7. Polish + verify
   - Acceptance: full-screen kiosk layout, large touch targets, idle reset on
     every screen, all three languages complete.
   - Verify: `npm test` and `npm run typecheck` green.

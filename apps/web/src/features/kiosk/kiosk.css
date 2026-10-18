@@ -1,0 +1,11 @@
+/* Kiosk: full-screen, centered, with large touch targets for a shared tablet. */
+.kiosk-root {
+  min-height: 100vh;
+  max-width: 720px;
+  margin: 0 auto;
+  font-size: 1.125rem;
+}
+.kiosk-root h1 { font-size: 2rem; }
+.kiosk-root h2 { font-size: 1.5rem; }
+.kiosk-root button { min-height: 56px; font-size: 1.05rem; }
+.kiosk-root input { min-height: 52px; font-size: 1.1rem; }
