@@ -10,7 +10,7 @@ See `tasks/plan.md` and `SPEC-kiosk.md`.
   - Verify: component tests for idle-reset and language switch; `npm run typecheck`.
   - Files: `features/kiosk/KioskApp.tsx`, `i18n.ts`, `useIdleReset.ts`, route in `App.tsx`.
 
-- [ ] 2. Kiosk auth + API-down handling
+- [x] 2. Kiosk auth + API-down handling
   - Acceptance: kiosk logs in as the Staff `desk.operate` account via existing
     `auth-api`; `/kiosk/*` guarded; network/401 shows "see a librarian", never a blank fail.
   - Verify: test that a failed request renders the block message.
