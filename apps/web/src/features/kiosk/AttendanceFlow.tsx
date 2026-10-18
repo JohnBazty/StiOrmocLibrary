@@ -3,13 +3,13 @@ import { Button, SectionCard } from '../../components/ui'
 import { KioskScanner } from './KioskScanner'
 import { attendanceApi, type ScanResult } from '../attendance/attendance-api'
 import { STRINGS, type Lang } from './i18n'
-import { blockMessageFor } from './kiosk-session'
+import { blockMessageFor, kioskSessionAlive } from './kiosk-session'
 
 const DEFAULT_PURPOSE = 'Library Visit'
 
 type Resolved = { payload: string; scan: ScanResult }
 
-export function AttendanceFlow({ lang, onDone }: { lang: Lang; onDone: () => void }) {
+export function AttendanceFlow({ lang, onDone, onSessionLost }: { lang: Lang; onDone: () => void; onSessionLost: () => void }) {
   const t = STRINGS[lang]
   const [resolved, setResolved] = useState<Resolved | null>(null)
   const [message, setMessage] = useState('')
@@ -24,6 +24,7 @@ export function AttendanceFlow({ lang, onDone }: { lang: Lang; onDone: () => voi
     try {
       setResolved({ payload: code, scan: await attendanceApi.resolveScan(code) })
     } catch (err) {
+      if (!(await kioskSessionAlive())) { onSessionLost(); return }
       setError(blockMessageFor(err, lang))
       setAttempt(a => a + 1)
     } finally {
@@ -40,6 +41,7 @@ export function AttendanceFlow({ lang, onDone }: { lang: Lang; onDone: () => voi
         : await attendanceApi.checkIn(resolved.payload, DEFAULT_PURPOSE, crypto.randomUUID())
       setMessage(confirmation.message)
     } catch (err) {
+      if (!(await kioskSessionAlive())) { onSessionLost(); return }
       setError(blockMessageFor(err, lang))
     } finally {
       setBusy(false)

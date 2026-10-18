@@ -2,13 +2,14 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { KioskApp } from './KioskApp'
-import { hasKioskSession, kioskLogin, kioskLogout, verifyDeskStaff } from './kiosk-session'
+import { hasKioskSession, kioskLogin, kioskLogout, kioskSessionAlive, verifyDeskStaff } from './kiosk-session'
 
 vi.mock('./kiosk-session', () => ({
   hasKioskSession: vi.fn(() => true),
   kioskLogin: vi.fn(),
   kioskLogout: vi.fn(),
   verifyDeskStaff: vi.fn(),
+  kioskSessionAlive: vi.fn(async () => true),
   blockMessageFor: (e: unknown) => (e instanceof Error ? e.message : 'unavailable'),
 }))
 
@@ -131,4 +132,20 @@ it('ends the session only after staff hold the heading and enter librarian crede
   expect(await screen.findByRole('heading', { name: 'Kiosk sign-in' })).toBeTruthy()
   expect(kioskLogout).toHaveBeenCalled()
   expect(verifyDeskStaff).toHaveBeenLastCalledWith('LIB-1', 'right')
+})
+
+it('returns to sign-in with a librarian notice when the desk session is lost mid-task', async () => {
+  vi.useRealTimers()
+  vi.mocked(kioskSessionAlive).mockResolvedValueOnce(false)
+  vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('unauthorised'))
+  renderKiosk()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Attendance' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Type the code instead' }))
+  fireEvent.change(screen.getByLabelText('Enter code manually'), { target: { value: 'QR-1' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Enter' }))
+
+  expect(await screen.findByRole('heading', { name: 'Kiosk sign-in' })).toBeTruthy()
+  expect(screen.getByRole('status').textContent).toBe('This kiosk was signed out. Please ask a librarian to sign it in.')
+  expect(kioskLogout).toHaveBeenCalled()
 })

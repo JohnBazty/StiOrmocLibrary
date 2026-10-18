@@ -27,6 +27,22 @@ export function kioskLogout(): void {
   setSessionIdentity(null)
 }
 
+/**
+ * After a failed request: false when the kiosk's desk session is gone (token
+ * expired, or the server ended it, e.g. after 10 idle minutes). A network
+ * fault counts as alive so the normal "see a librarian" block handles it.
+ */
+export async function kioskSessionAlive(): Promise<boolean> {
+  const token = getAccessToken()
+  if (!token || !hasKioskSession()) return false
+  try {
+    const response = await fetch('/api/v1/auth/me', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } })
+    return response.status !== 401
+  } catch {
+    return true
+  }
+}
+
 /** True when the credentials belong to a desk account. Never disturbs the kiosk's own session. */
 export async function verifyDeskStaff(schoolId: string, password: string): Promise<boolean> {
   const kioskToken = getAccessToken()

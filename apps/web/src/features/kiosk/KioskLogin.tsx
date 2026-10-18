@@ -3,7 +3,7 @@ import { Button, SectionCard } from '../../components/ui'
 import { STRINGS, type Lang } from './i18n'
 import { blockMessageFor, kioskLogin } from './kiosk-session'
 
-export function KioskLogin({ lang, onSuccess }: { lang: Lang; onSuccess: () => void }) {
+export function KioskLogin({ lang, onSuccess, notice }: { lang: Lang; onSuccess: () => void; notice?: string }) {
   const t = STRINGS[lang]
   const [schoolId, setSchoolId] = useState('')
   const [password, setPassword] = useState('')
@@ -28,6 +28,7 @@ export function KioskLogin({ lang, onSuccess }: { lang: Lang; onSuccess: () => v
   return (
     <SectionCard>
       <h1>{t.signInTitle}</h1>
+      {notice && <p role="status" className="my-2 font-bold">{notice}</p>}
       <p>{t.signInHint}</p>
       <form onSubmit={submit} className="flex flex-col gap-3">
         <label className="block font-bold">{t.schoolId}

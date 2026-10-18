@@ -43,6 +43,7 @@ type Strings = {
   staffHint: string
   cancel: string
   staffInvalid: string
+  signedOut: string
 }
 
 export const STRINGS: Record<Lang, Strings> = {
@@ -83,6 +84,7 @@ export const STRINGS: Record<Lang, Strings> = {
     staffHint: "Enter a librarian's Staff ID and password to end the kiosk session.",
     cancel: 'Cancel',
     staffInvalid: 'Staff ID or password is incorrect.',
+    signedOut: 'This kiosk was signed out. Please ask a librarian to sign it in.',
   },
   fil: {
     welcome: 'Maligayang pagdating sa aklatan',
@@ -121,6 +123,7 @@ export const STRINGS: Record<Lang, Strings> = {
     staffHint: 'Ilagay ang Staff ID at password ng librarian para tapusin ang kiosk session.',
     cancel: 'Kanselahin',
     staffInvalid: 'Mali ang Staff ID o password.',
+    signedOut: 'Na-sign out ang kiosk na ito. Pakisabihan ang librarian na mag-sign in.',
   },
   ceb: {
     welcome: 'Maayong pag-abot sa library',
@@ -159,5 +162,6 @@ export const STRINGS: Record<Lang, Strings> = {
     staffHint: 'Isulod ang Staff ID ug password sa librarian aron tapuson ang kiosk session.',
     cancel: 'Kanselahon',
     staffInvalid: 'Sayop ang Staff ID o password.',
+    signedOut: 'Na-sign out kini nga kiosk. Palihog ipahibalo sa librarian aron mo-sign in.',
   },
 }

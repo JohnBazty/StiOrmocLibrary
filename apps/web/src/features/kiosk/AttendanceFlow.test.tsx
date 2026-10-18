@@ -1,7 +1,13 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { AttendanceFlow } from './AttendanceFlow'
 import { attendanceApi } from '../attendance/attendance-api'
+import { kioskSessionAlive } from './kiosk-session'
+
+vi.mock('./kiosk-session', async importOriginal => ({
+  ...(await importOriginal<typeof import('./kiosk-session')>()),
+  kioskSessionAlive: vi.fn(async () => true),
+}))
 
 vi.mock('../attendance/attendance-api', () => ({
   attendanceApi: { resolveScan: vi.fn(), checkIn: vi.fn(), checkOut: vi.fn() },
@@ -22,7 +28,7 @@ afterEach(() => { vi.clearAllMocks(); cleanup() })
 it('checks a visitor in when no open visit exists', async () => {
   vi.mocked(attendanceApi.resolveScan).mockResolvedValue({ visitor: { name: 'Juan Dela Cruz' }, openVisit: null } as never)
   vi.mocked(attendanceApi.checkIn).mockResolvedValue({ message: 'Checked in. Welcome!' } as never)
-  render(<AttendanceFlow lang="en" onDone={() => {}} />)
+  render(<AttendanceFlow lang="en" onDone={() => {}} onSessionLost={() => {}} />)
 
   fireEvent.click(screen.getByRole('button', { name: 'scan' }))
   expect(await screen.findByText('Juan Dela Cruz')).toBeTruthy()
@@ -36,7 +42,7 @@ it('checks a visitor in when no open visit exists', async () => {
 it('checks a visitor out when an open visit exists', async () => {
   vi.mocked(attendanceApi.resolveScan).mockResolvedValue({ visitor: { name: 'Maria Santos' }, openVisit: { log_id: 5 } } as never)
   vi.mocked(attendanceApi.checkOut).mockResolvedValue({ message: 'Checked out. See you!' } as never)
-  render(<AttendanceFlow lang="en" onDone={() => {}} />)
+  render(<AttendanceFlow lang="en" onDone={() => {}} onSessionLost={() => {}} />)
 
   fireEvent.click(screen.getByRole('button', { name: 'scan' }))
   fireEvent.click(await screen.findByRole('button', { name: 'Confirm check-out' }))
@@ -50,7 +56,7 @@ it('gives the student a fresh scanner after a failed scan', async () => {
   vi.mocked(attendanceApi.resolveScan)
     .mockRejectedValueOnce(new Error('This attendance QR code is invalid or no longer recognized.'))
     .mockResolvedValueOnce({ visitor: { name: 'Juan Dela Cruz' }, openVisit: null } as never)
-  render(<AttendanceFlow lang="en" onDone={() => {}} />)
+  render(<AttendanceFlow lang="en" onDone={() => {}} onSessionLost={() => {}} />)
 
   fireEvent.click(screen.getByRole('button', { name: 'scan' }))
   expect((await screen.findByRole('alert')).textContent).toBe('This attendance QR code is invalid or no longer recognized.')
@@ -58,4 +64,15 @@ it('gives the student a fresh scanner after a failed scan', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'scan' }))
   expect(await screen.findByText('Juan Dela Cruz')).toBeTruthy()
   expect(attendanceApi.resolveScan).toHaveBeenCalledTimes(2)
+})
+
+it('hands off to sign-in instead of showing server text when the desk session is gone', async () => {
+  vi.mocked(attendanceApi.resolveScan).mockRejectedValueOnce(new Error('A valid Bearer token is required.'))
+  vi.mocked(kioskSessionAlive).mockResolvedValueOnce(false)
+  const onSessionLost = vi.fn()
+  render(<AttendanceFlow lang="en" onDone={() => {}} onSessionLost={onSessionLost} />)
+
+  fireEvent.click(screen.getByRole('button', { name: 'scan' }))
+  await waitFor(() => expect(onSessionLost).toHaveBeenCalled())
+  expect(screen.queryByText('A valid Bearer token is required.')).toBeNull()
 })

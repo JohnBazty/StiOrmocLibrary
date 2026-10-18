@@ -3,13 +3,13 @@ import { Button, SectionCard } from '../../components/ui'
 import { KioskScanner } from './KioskScanner'
 import { deskCirculationApi, type DeskBorrower, type DeskCopy } from '../circulation/desk-circulation-api'
 import { STRINGS, type Lang } from './i18n'
-import { blockMessageFor } from './kiosk-session'
+import { blockMessageFor, kioskSessionAlive } from './kiosk-session'
 
 const MODE = 'TakeHome'
 
 type Result = { title?: string; copy?: { title: string }; dueAt?: string }
 
-export function BorrowFlow({ lang, onDone }: { lang: Lang; onDone: () => void }) {
+export function BorrowFlow({ lang, onDone, onSessionLost }: { lang: Lang; onDone: () => void; onSessionLost: () => void }) {
   const t = STRINGS[lang]
   const [payload, setPayload] = useState('')
   const [barcode, setBarcode] = useState('')
@@ -25,7 +25,10 @@ export function BorrowFlow({ lang, onDone }: { lang: Lang; onDone: () => void })
   const run = async (work: () => Promise<void>) => {
     if (busy) return
     setBusy(true); setError(''); setBlockers('')
-    try { await work() } catch (err) { setError(blockMessageFor(err, lang)); setAttempt(a => a + 1) } finally { setBusy(false) }
+    try { await work() } catch (err) {
+      if (!(await kioskSessionAlive())) { onSessionLost(); return }
+      setError(blockMessageFor(err, lang)); setAttempt(a => a + 1)
+    } finally { setBusy(false) }
   }
 
   const identify = (code: string) => run(async () => {

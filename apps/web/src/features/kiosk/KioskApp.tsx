@@ -32,6 +32,7 @@ export function KioskApp({ idleMs = 60000, warnMs = 20000 }: { idleMs?: number; 
   const [lang, setLang] = useState<Lang>('en')
   const [authed, setAuthed] = useState(() => hasKioskSession())
   const [staffExit, setStaffExit] = useState(false)
+  const [signedOut, setSignedOut] = useState(false)
   const holdTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const startHold = () => { holdTimer.current = setTimeout(() => setStaffExit(true), STAFF_HOLD_MS) }
   const cancelHold = () => clearTimeout(holdTimer.current)
@@ -48,12 +49,14 @@ export function KioskApp({ idleMs = 60000, warnMs = 20000 }: { idleMs?: number; 
     setAuthed(false)
     navigate(KIOSK_ROOT)
   }
+  // The server ended the desk session (expiry, 10 idle minutes, revoked): tell whoever is at the kiosk.
+  const sessionLost = () => { setSignedOut(true); endSession() }
 
   if (!authed) {
     return (
       <div className="kiosk-root p-6">
         <LanguageNav lang={lang} onChange={setLang} />
-        <KioskLogin lang={lang} onSuccess={() => setAuthed(true)} />
+        <KioskLogin lang={lang} notice={signedOut ? t.signedOut : undefined} onSuccess={() => { setSignedOut(false); setAuthed(true) }} />
       </div>
     )
   }
@@ -79,8 +82,8 @@ export function KioskApp({ idleMs = 60000, warnMs = 20000 }: { idleMs?: number; 
             </SectionCard>
           }
         />
-        <Route path="attendance" element={<AttendanceFlow lang={lang} onDone={goHome} />} />
-        <Route path="borrow" element={<BorrowFlow lang={lang} onDone={goHome} />} />
+        <Route path="attendance" element={<AttendanceFlow lang={lang} onDone={goHome} onSessionLost={sessionLost} />} />
+        <Route path="borrow" element={<BorrowFlow lang={lang} onDone={goHome} onSessionLost={sessionLost} />} />
         <Route path="search" element={<SearchFlow lang={lang} />} />
       </Routes>
       {staffExit && <KioskStaffExit lang={lang} onCancel={() => setStaffExit(false)} onVerified={endSession} />}

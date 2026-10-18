@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { blockMessageFor, hasKioskSession, kioskLogin, verifyDeskStaff } from './kiosk-session'
+import { blockMessageFor, hasKioskSession, kioskLogin, kioskSessionAlive, verifyDeskStaff } from './kiosk-session'
 import { login } from '../auth/auth-api'
 import { clearAccessToken, getAccessToken, getCurrentClaims, saveAccessToken } from '../auth/auth-storage'
 import { STRINGS } from './i18n'
@@ -62,4 +62,24 @@ it('verifyDeskStaff rejects wrong credentials and non-desk accounts without logg
   await expect(verifyDeskStaff('S-1', 'pw')).resolves.toBe(false)
   expect(saveAccessToken).toHaveBeenCalledTimes(2)
   expect(saveAccessToken).toHaveBeenCalledWith('kiosk.token')
+})
+
+it('kioskSessionAlive asks the server and treats only a 401 or a missing token as signed out', async () => {
+  vi.mocked(getAccessToken).mockReturnValue('kiosk.token')
+  vi.mocked(getCurrentClaims).mockReturnValue({ role: 'Staff' } as never)
+  const fetchMock = vi.fn()
+  vi.stubGlobal('fetch', fetchMock)
+  try {
+    fetchMock.mockResolvedValueOnce({ status: 200 })
+    await expect(kioskSessionAlive()).resolves.toBe(true)
+    fetchMock.mockResolvedValueOnce({ status: 401 })
+    await expect(kioskSessionAlive()).resolves.toBe(false)
+    fetchMock.mockRejectedValueOnce(new TypeError('offline'))
+    await expect(kioskSessionAlive()).resolves.toBe(true)
+    vi.mocked(getAccessToken).mockReturnValue(null as never)
+    await expect(kioskSessionAlive()).resolves.toBe(false)
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/auth/me', expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer kiosk.token' }) }))
+  } finally {
+    vi.unstubAllGlobals()
+  }
 })
