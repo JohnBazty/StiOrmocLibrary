@@ -33,15 +33,20 @@ No new DB, adapter, or BFF. Returns out of scope. Offline = block.
 2. **Kiosk auth.** Log in as the Staff `desk.operate` account using existing
    `auth-api`; store token; guard `/kiosk/*`. Surface "API unavailable → see a
    librarian" on any network/401 failure (the offline-block behavior).
-3. **Camera input module.** `features/kiosk/scan.ts` — start camera, decode a
-   QR or barcode, return the raw string; manual-entry fallback component.
-   Precondition read: confirm one decoder handles both symbologies (open #3);
-   else split into two.
+3. **Camera input — reuse `features/circulation/DeskScanInput.tsx`.** It already
+   decodes QR and CODE_128/39/EAN (via its `qr` flag), with camera, image upload,
+   and typed/USB fallback, and an `onScan(value)` callback. Open #3 resolved — one
+   component handles both. The kiosk flows import it directly; pass translated
+   `label`/`actionLabel`. No new scan module.
+   Known limit: DeskScanInput's camera/upload sub-strings and colors are the desk
+   UI's (English, portal blue); not re-themed for the kiosk in v1 to avoid
+   editing the shared desk component.
 4. **Attendance flow.** Scan QR → `POST .../attendance/scan/resolve` → show name
    + whether checking in or out → `POST .../scan/check-in|check-out` → confirm →
    idle. (First task: read the attendance controller to confirm resolve/check-in
    request+response shapes.)
-5. **Borrow flow.** Scan QR → `POST .../circulation-desk/borrower {payload,mode:'TakeHome'}`
+5. **Borrow flow.** Reuse `DeskScanInput` (qr for the student QR, barcode for the
+   copy). Scan QR → `POST .../circulation-desk/borrower {payload,mode:'TakeHome'}`
    → scan copy barcode → `POST .../preview {payload,barcode,mode}` → show title,
    due date, blockers → on confirm `POST .../checkout {payload,barcode,mode,requestId}`
    with a fresh `requestId` per attempt → success or the API's blocker message.
