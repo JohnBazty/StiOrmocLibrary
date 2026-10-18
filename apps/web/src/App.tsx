@@ -44,6 +44,7 @@ import { AdminClearancePage } from './features/clearance/AdminClearancePage'
 import { AdminFinesPage } from './features/fines/AdminFinesPage'
 import { StudentFinesPage } from './features/fines/StudentFinesPage'
 import { PublicCatalogPage } from './features/catalog/PublicCatalogPage'
+import { KioskApp } from './features/kiosk/KioskApp'
 import { BorrowingPoliciesArchivedPage } from './features/borrowing-policies/BorrowingPoliciesArchivedPage'
 import { CatalogMaintenancePage } from './features/catalog/CatalogMaintenancePage'
 import { CatalogReportsPage } from './features/catalog/CatalogReportsPage'
@@ -57,6 +58,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<PublicCatalogPage />} />
+      <Route path="/kiosk/*" element={<KioskApp />} />
       <Route path="/workspace" element={<AuthenticatedHome />} />
       <Route element={<PublicAuthLayout />}>
         <Route path="/login" element={<LoginPage popup />} />
