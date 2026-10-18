@@ -44,6 +44,8 @@ type Strings = {
   cancel: string
   staffInvalid: string
   signedOut: string
+  lightMode: string
+  darkMode: string
 }
 
 export const STRINGS: Record<Lang, Strings> = {
@@ -85,6 +87,8 @@ export const STRINGS: Record<Lang, Strings> = {
     cancel: 'Cancel',
     staffInvalid: 'Staff ID or password is incorrect.',
     signedOut: 'This kiosk was signed out. Please ask a librarian to sign it in.',
+    lightMode: 'Light',
+    darkMode: 'Dark',
   },
   fil: {
     welcome: 'Maligayang pagdating sa aklatan',
@@ -124,6 +128,8 @@ export const STRINGS: Record<Lang, Strings> = {
     cancel: 'Kanselahin',
     staffInvalid: 'Mali ang Staff ID o password.',
     signedOut: 'Na-sign out ang kiosk na ito. Pakisabihan ang librarian na mag-sign in.',
+    lightMode: 'Maliwanag',
+    darkMode: 'Madilim',
   },
   ceb: {
     welcome: 'Maayong pag-abot sa library',
@@ -163,5 +169,7 @@ export const STRINGS: Record<Lang, Strings> = {
     cancel: 'Kanselahon',
     staffInvalid: 'Sayop ang Staff ID o password.',
     signedOut: 'Na-sign out kini nga kiosk. Palihog ipahibalo sa librarian aron mo-sign in.',
+    lightMode: 'Hayag',
+    darkMode: 'Ngitngit',
   },
 }

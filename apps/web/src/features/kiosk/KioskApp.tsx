@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { ArrowLeft, BookOpen, CalendarCheck, Globe, Search } from 'lucide-react'
+import { ArrowLeft, BookOpen, CalendarCheck, Globe, Moon, Search, Sun } from 'lucide-react'
 import { Button, SectionCard } from '../../components/ui'
 import { LANGUAGES, STRINGS, type Lang } from './i18n'
 import { useIdleReset } from './useIdleReset'
@@ -18,13 +18,20 @@ const STAFF_HOLD_MS = 3000
 // Renew well inside the server's 10-minute idle window so one missed renewal doesn't sign the kiosk out.
 const KEEP_ALIVE_MS = 4 * 60_000
 
-// One Language control; the native picker is large and familiar on tablets.
-function LanguageNav({ lang, onChange }: { lang: Lang; onChange: (lang: Lang) => void }) {
+type Theme = 'dark' | 'light'
+
+// Light/Dark toggle plus one Language control (the native picker is large and familiar on tablets).
+function Preferences({ lang, onLang, theme, onTheme }: { lang: Lang; onLang: (lang: Lang) => void; theme: Theme; onTheme: (theme: Theme) => void }) {
+  const t = STRINGS[lang]
   return (
-    <div className="flex justify-end">
+    <div className="flex justify-end gap-2">
+      <Button variant="secondary" onClick={() => onTheme(theme === 'dark' ? 'light' : 'dark')}>
+        {theme === 'dark' ? <Sun aria-hidden size={24} /> : <Moon aria-hidden size={24} />}
+        {theme === 'dark' ? t.lightMode : t.darkMode}
+      </Button>
       <label className="kiosk-lang">
         <Globe aria-hidden size={24} />
-        <select aria-label="Language" value={lang} onChange={e => onChange(e.target.value as Lang)}>
+        <select aria-label="Language" value={lang} onChange={e => onLang(e.target.value as Lang)}>
           {LANGUAGES.map(({ code, label }) => <option key={code} value={code}>{label}</option>)}
         </select>
       </label>
@@ -34,6 +41,7 @@ function LanguageNav({ lang, onChange }: { lang: Lang; onChange: (lang: Lang) =>
 
 export function KioskApp({ idleMs = 60000, warnMs = 20000 }: { idleMs?: number; warnMs?: number }) {
   const [lang, setLang] = useState<Lang>('en')
+  const [theme, setTheme] = useState<Theme>('dark')
   const [authed, setAuthed] = useState(() => hasKioskSession())
   const [staffExit, setStaffExit] = useState(false)
   const [signedOut, setSignedOut] = useState(false)
@@ -68,18 +76,18 @@ export function KioskApp({ idleMs = 60000, warnMs = 20000 }: { idleMs?: number; 
 
   if (!authed) {
     return (
-      <div className="kiosk-root dark p-6">
-        <LanguageNav lang={lang} onChange={setLang} />
+      <div className={`kiosk-root p-6 ${theme === 'dark' ? 'dark' : 'kiosk-light'}`}>
+        <Preferences lang={lang} onLang={setLang} theme={theme} onTheme={setTheme} />
         <KioskLogin lang={lang} notice={signedOut ? t.signedOut : undefined} onSuccess={() => { setSignedOut(false); setAuthed(true) }} />
       </div>
     )
   }
 
   return (
-    <div className="kiosk-root dark p-6">
+    <div className={`kiosk-root p-6 ${theme === 'dark' ? 'dark' : 'kiosk-light'}`}>
       <div className="flex justify-between items-center gap-3 mb-4">
         {inTask ? <Button variant="secondary" onClick={goHome}><ArrowLeft aria-hidden size={24} />{t.back}</Button> : <span />}
-        <LanguageNav lang={lang} onChange={setLang} />
+        <Preferences lang={lang} onLang={setLang} theme={theme} onTheme={setTheme} />
       </div>
       <Routes>
         <Route

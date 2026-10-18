@@ -166,3 +166,16 @@ it('shows the librarian notice when a renewal finds the session gone', async () 
   expect(await screen.findByRole('heading', { name: 'Kiosk sign-in' })).toBeTruthy()
   expect(screen.getByRole('status').textContent).toBe('This kiosk was signed out. Please ask a librarian to sign it in.')
 })
+
+it('switches between the dark (eLMS) and light themes', () => {
+  const { container } = renderKiosk()
+  const root = () => container.querySelector('.kiosk-root')!
+  expect(root().classList.contains('dark')).toBe(true)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Light' }))
+  expect(root().classList.contains('kiosk-light')).toBe(true)
+  expect(root().classList.contains('dark')).toBe(false)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Dark' }))
+  expect(root().classList.contains('dark')).toBe(true)
+})
