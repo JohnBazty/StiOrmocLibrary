@@ -10,7 +10,7 @@ vi.mock('../catalog/PublicCatalogPage', () => ({
 afterEach(() => { vi.clearAllMocks(); cleanup() })
 
 it('renders the public catalog in embedded mode, no identity required', () => {
-  render(<SearchFlow lang="en" onDone={() => {}} />)
+  render(<SearchFlow lang="en" />)
   expect(screen.getByRole('heading', { name: 'Search the catalog' })).toBeTruthy()
   expect(screen.getByText('catalog results')).toBeTruthy()
   const props = vi.mocked(PublicCatalogPage).mock.calls[0][0]

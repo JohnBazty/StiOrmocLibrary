@@ -34,6 +34,12 @@ type Strings = {
   manualEntry: string
   enter: string
   cameraUnavailable: string
+  holdToCamera: string
+  typeInstead: string
+  stillThere: string
+  stillThereHint: string
+  continue: string
+  endSessionConfirm: string
 }
 
 export const STRINGS: Record<Lang, Strings> = {
@@ -65,6 +71,12 @@ export const STRINGS: Record<Lang, Strings> = {
     manualEntry: 'Enter code manually',
     enter: 'Enter',
     cameraUnavailable: 'Camera unavailable. Type the code or see a librarian.',
+    holdToCamera: 'Hold your code in front of the camera.',
+    typeInstead: 'Type the code instead',
+    stillThere: 'Are you still there?',
+    stillThereHint: 'This screen will reset soon to protect your privacy.',
+    continue: 'Yes, continue',
+    endSessionConfirm: 'End the kiosk session? A librarian will need to sign in again.',
   },
   fil: {
     welcome: 'Maligayang pagdating sa aklatan',
@@ -94,6 +106,12 @@ export const STRINGS: Record<Lang, Strings> = {
     manualEntry: 'I-type ang code',
     enter: 'Ipasok',
     cameraUnavailable: 'Hindi magamit ang camera. I-type ang code o lumapit sa librarian.',
+    holdToCamera: 'Itapat ang iyong code sa camera.',
+    typeInstead: 'I-type na lang ang code',
+    stillThere: 'Nandiyan ka pa ba?',
+    stillThereHint: 'Magre-reset ang screen na ito para sa iyong privacy.',
+    continue: 'Oo, magpatuloy',
+    endSessionConfirm: 'Tapusin ang kiosk session? Kailangang mag-sign in muli ang librarian.',
   },
   ceb: {
     welcome: 'Maayong pag-abot sa library',
@@ -123,5 +141,11 @@ export const STRINGS: Record<Lang, Strings> = {
     manualEntry: 'I-type ang code',
     enter: 'Isulod',
     cameraUnavailable: 'Dili magamit ang camera. I-type ang code o adto sa librarian.',
+    holdToCamera: 'Ibutang ang imong code atubangan sa camera.',
+    typeInstead: 'I-type na lang ang code',
+    stillThere: 'Naa pa ka?',
+    stillThereHint: 'Mo-reset kini nga screen aron mapanalipdan ang imong privacy.',
+    continue: 'Oo, padayon',
+    endSessionConfirm: 'Tapuson ang kiosk session? Kinahanglan mo-sign in pag-usab ang librarian.',
   },
 }

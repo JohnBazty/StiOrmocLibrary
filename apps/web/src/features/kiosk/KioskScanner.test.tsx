@@ -31,6 +31,7 @@ it('falls back to manual entry', async () => {
   render(<KioskScanner qr label="Scan your library QR" onScan={onScan} lang="en" />)
   await waitFor(() => expect(lastOnSuccess).toBeTruthy())
 
+  fireEvent.click(screen.getByRole('button', { name: 'Type the code instead' }))
   fireEvent.change(screen.getByLabelText('Enter code manually'), { target: { value: 'MANUAL-1' } })
   fireEvent.click(screen.getByRole('button', { name: 'Enter' }))
   await waitFor(() => expect(onScan).toHaveBeenCalledWith('MANUAL-1'))

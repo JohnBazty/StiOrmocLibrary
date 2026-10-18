@@ -14,7 +14,9 @@ export function KioskScanner({ qr = false, label, onScan, lang }: { qr?: boolean
   const scanner = useRef<Html5Qrcode | null>(null)
   const done = useRef(false)
   const [manual, setManual] = useState('')
+  const [showManual, setShowManual] = useState(false)
   const [error, setError] = useState('')
+  const manualOpen = showManual || !!error
 
   const stop = async () => {
     const instance = scanner.current
@@ -53,19 +55,21 @@ export function KioskScanner({ qr = false, label, onScan, lang }: { qr?: boolean
   const submitManual = () => { if (manual.trim()) void emit(manual.trim()) }
 
   return (
-    <div className="space-y-3">
-      <p className="font-bold">{label}</p>
+    <div className="space-y-4">
+      <p className="kiosk-scan-label">{label}</p>
+      <p>{t.holdToCamera}</p>
       <div id={readerId} className="kiosk-scanner" />
       {error && <p role="alert">{error}</p>}
-      <details className="rounded-xl border border-[#003399]/15 p-3">
-        <summary className="cursor-pointer text-sm font-semibold opacity-70">{t.manualEntry}</summary>
-        <div className="mt-2 flex gap-2">
-          <input aria-label={t.manualEntry} value={manual} onChange={e => setManual(e.target.value)} autoComplete="off"
+      {manualOpen ? (
+        <div className="flex gap-2">
+          <input aria-label={t.manualEntry} value={manual} onChange={e => setManual(e.target.value)} autoComplete="off" autoFocus
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); submitManual() } }}
-            className="w-full rounded-xl border border-[#003399]/20 bg-white p-3 text-[#003399]" />
+            className="w-full rounded-xl border border-[#003399]/30 bg-white p-3 text-[#003399]" />
           <Button onClick={submitManual} disabled={!manual.trim()}>{t.enter}</Button>
         </div>
-      </details>
+      ) : (
+        <Button variant="secondary" onClick={() => setShowManual(true)}>{t.typeInstead}</Button>
+      )}
     </div>
   )
 }

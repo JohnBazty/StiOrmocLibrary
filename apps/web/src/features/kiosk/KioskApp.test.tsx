@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { KioskApp } from './KioskApp'
-import { hasKioskSession, kioskLogin } from './kiosk-session'
+import { hasKioskSession, kioskLogin, kioskLogout } from './kiosk-session'
 
 vi.mock('./kiosk-session', () => ({
   hasKioskSession: vi.fn(() => true),
@@ -11,11 +11,11 @@ vi.mock('./kiosk-session', () => ({
   blockMessageFor: (e: unknown) => (e instanceof Error ? e.message : 'unavailable'),
 }))
 
-function renderKiosk(idleMs = 1000) {
+function renderKiosk(idleMs = 1000, warnMs?: number) {
   return render(
     <MemoryRouter initialEntries={['/kiosk']}>
       <Routes>
-        <Route path="/kiosk/*" element={<KioskApp idleMs={idleMs} />} />
+        <Route path="/kiosk/*" element={<KioskApp idleMs={idleMs} warnMs={warnMs} />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -74,4 +74,40 @@ it('shows a block message when sign-in fails', async () => {
   await waitFor(() =>
     expect(screen.getByRole('alert').textContent).toBe('The library service is unavailable. Please see a librarian.'),
   )
+})
+
+it('warns before the idle reset and a tap keeps the user on the task', () => {
+  renderKiosk(1000, 400)
+  fireEvent.click(screen.getByRole('button', { name: 'Attendance' }))
+
+  act(() => { vi.advanceTimersByTime(600) })
+  expect(screen.getByRole('alertdialog', { name: 'Are you still there?' })).toBeTruthy()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Yes, continue' }))
+  expect(screen.queryByRole('alertdialog')).toBeNull()
+
+  act(() => { vi.advanceTimersByTime(700) })
+  expect(screen.getByRole('heading', { name: 'Attendance' })).toBeTruthy()
+})
+
+it('returns home from a task with the Back button', () => {
+  renderKiosk()
+  fireEvent.click(screen.getByRole('button', { name: 'Borrow a book' }))
+  expect(screen.getByRole('heading', { name: 'Borrow a book' })).toBeTruthy()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+  expect(screen.getByRole('heading', { name: 'Welcome to the library' })).toBeTruthy()
+})
+
+it('asks for confirmation before ending the kiosk session', () => {
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+  renderKiosk()
+
+  fireEvent.click(screen.getByRole('button', { name: 'End kiosk session' }))
+  expect(kioskLogout).not.toHaveBeenCalled()
+
+  fireEvent.click(screen.getByRole('button', { name: 'End kiosk session' }))
+  expect(kioskLogout).toHaveBeenCalled()
+  expect(screen.getByRole('heading', { name: 'Kiosk sign-in' })).toBeTruthy()
+  confirm.mockRestore()
 })
