@@ -45,10 +45,10 @@ it('switches visible strings when the language changes', () => {
   renderKiosk()
   expect(screen.getByRole('heading', { name: 'Welcome to the library' })).toBeTruthy()
 
-  fireEvent.click(screen.getByRole('button', { name: 'Cebuano' }))
+  fireEvent.change(screen.getByRole('combobox', { name: 'Language' }), { target: { value: 'ceb' } })
   expect(screen.getByRole('heading', { name: 'Maayong pag-abot sa library' })).toBeTruthy()
 
-  fireEvent.click(screen.getByRole('button', { name: 'Filipino' }))
+  fireEvent.change(screen.getByRole('combobox', { name: 'Language' }), { target: { value: 'fil' } })
   expect(screen.getByRole('heading', { name: 'Maligayang pagdating sa aklatan' })).toBeTruthy()
 })
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { ArrowLeft, BookOpen, CalendarCheck, Search } from 'lucide-react'
+import { ArrowLeft, BookOpen, CalendarCheck, Globe, Search } from 'lucide-react'
 import { Button, SectionCard } from '../../components/ui'
 import { LANGUAGES, STRINGS, type Lang } from './i18n'
 import { useIdleReset } from './useIdleReset'
@@ -18,15 +18,17 @@ const STAFF_HOLD_MS = 3000
 // Renew well inside the server's 10-minute idle window so one missed renewal doesn't sign the kiosk out.
 const KEEP_ALIVE_MS = 4 * 60_000
 
+// One Language control; the native picker is large and familiar on tablets.
 function LanguageNav({ lang, onChange }: { lang: Lang; onChange: (lang: Lang) => void }) {
   return (
-    <nav aria-label="Language" className="flex gap-2 justify-end">
-      {LANGUAGES.map(({ code, label }) => (
-        <Button key={code} variant={code === lang ? 'primary' : 'secondary'} onClick={() => onChange(code)}>
-          {label}
-        </Button>
-      ))}
-    </nav>
+    <div className="flex justify-end">
+      <label className="kiosk-lang">
+        <Globe aria-hidden size={24} />
+        <select aria-label="Language" value={lang} onChange={e => onChange(e.target.value as Lang)}>
+          {LANGUAGES.map(({ code, label }) => <option key={code} value={code}>{label}</option>)}
+        </select>
+      </label>
+    </div>
   )
 }
 

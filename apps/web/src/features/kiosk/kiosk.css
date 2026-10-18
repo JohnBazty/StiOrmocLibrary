@@ -74,6 +74,24 @@ body:has(.kiosk-root) { background: #0f0f11; }
 /* High-visibility STI yellow focus ring for keyboard and switch users. */
 .kiosk-root :focus-visible { outline: 3px solid var(--k-yellow); outline-offset: 2px; }
 
+/* Language control: one button-styled box around a native select. */
+.kiosk-lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 64px;
+  padding: 0 0.75rem 0 1rem;
+  border: 1px solid var(--k-border);
+  border-radius: 0.75rem;
+  background: var(--k-surface);
+  color: var(--k-text);
+  cursor: pointer;
+}
+.kiosk-lang select { min-height: 60px; border: 0; background: transparent; color: inherit; font-size: 1.2rem; cursor: pointer; }
+.kiosk-lang select option { background: var(--k-card); color: var(--k-text); }
+.kiosk-lang:focus-within { outline: 3px solid var(--k-yellow); outline-offset: 2px; }
+.kiosk-lang select:focus-visible { outline: none; }
+
 /* Primary task buttons: biggest targets on the screen. */
 .kiosk-root .kiosk-big { min-height: 96px; font-size: 1.5rem; gap: 0.75rem; }
 .kiosk-scan-label { font-size: 1.6rem; font-weight: 700; }
