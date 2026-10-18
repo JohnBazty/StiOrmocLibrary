@@ -19,11 +19,13 @@ export function BorrowFlow({ lang, onDone }: { lang: Lang; onDone: () => void })
   const [blockers, setBlockers] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  // The scanner emits once per mount; a new key gives the student a fresh scanner to retry.
+  const [attempt, setAttempt] = useState(0)
 
   const run = async (work: () => Promise<void>) => {
     if (busy) return
     setBusy(true); setError(''); setBlockers('')
-    try { await work() } catch (err) { setError(blockMessageFor(err, lang)) } finally { setBusy(false) }
+    try { await work() } catch (err) { setError(blockMessageFor(err, lang)); setAttempt(a => a + 1) } finally { setBusy(false) }
   }
 
   const identify = (code: string) => run(async () => {
@@ -83,7 +85,7 @@ export function BorrowFlow({ lang, onDone }: { lang: Lang; onDone: () => void })
       <SectionCard>
         <h2>{t.borrow}</h2>
         <p>{borrower.user.name}</p>
-        <KioskScanner label={t.scanBook} onScan={scanCopy} lang={lang} />
+        <KioskScanner key={`book-${attempt}`} label={t.scanBook} onScan={scanCopy} lang={lang} />
         {error && <p role="alert">{error}</p>}
       </SectionCard>
     )
@@ -92,7 +94,7 @@ export function BorrowFlow({ lang, onDone }: { lang: Lang; onDone: () => void })
   return (
     <SectionCard>
       <h2>{t.borrow}</h2>
-      <KioskScanner qr label={t.scanQr} onScan={identify} lang={lang} />
+      <KioskScanner key={`qr-${attempt}`} qr label={t.scanQr} onScan={identify} lang={lang} />
       {error && <p role="alert">{error}</p>}
     </SectionCard>
   )

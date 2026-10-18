@@ -6,11 +6,16 @@ import { attendanceApi } from '../attendance/attendance-api'
 vi.mock('../attendance/attendance-api', () => ({
   attendanceApi: { resolveScan: vi.fn(), checkIn: vi.fn(), checkOut: vi.fn() },
 }))
-vi.mock('./KioskScanner', () => ({
-  KioskScanner: ({ onScan }: { onScan: (v: string) => void }) => (
-    <button onClick={() => onScan('QR123')}>scan</button>
-  ),
-}))
+// One-shot like the real scanner: it emits a single code per mount.
+vi.mock('./KioskScanner', async () => {
+  const { useRef } = await import('react')
+  return {
+    KioskScanner: ({ onScan }: { onScan: (v: string) => void }) => {
+      const done = useRef(false)
+      return <button onClick={() => { if (done.current) return; done.current = true; onScan('QR123') }}>scan</button>
+    },
+  }
+})
 
 afterEach(() => { vi.clearAllMocks(); cleanup() })
 
@@ -39,4 +44,18 @@ it('checks a visitor out when an open visit exists', async () => {
   expect(await screen.findByText('Checked out. See you!')).toBeTruthy()
   expect(attendanceApi.checkOut).toHaveBeenCalledWith('QR123')
   expect(attendanceApi.checkIn).not.toHaveBeenCalled()
+})
+
+it('gives the student a fresh scanner after a failed scan', async () => {
+  vi.mocked(attendanceApi.resolveScan)
+    .mockRejectedValueOnce(new Error('This attendance QR code is invalid or no longer recognized.'))
+    .mockResolvedValueOnce({ visitor: { name: 'Juan Dela Cruz' }, openVisit: null } as never)
+  render(<AttendanceFlow lang="en" onDone={() => {}} />)
+
+  fireEvent.click(screen.getByRole('button', { name: 'scan' }))
+  expect((await screen.findByRole('alert')).textContent).toBe('This attendance QR code is invalid or no longer recognized.')
+
+  fireEvent.click(screen.getByRole('button', { name: 'scan' }))
+  expect(await screen.findByText('Juan Dela Cruz')).toBeTruthy()
+  expect(attendanceApi.resolveScan).toHaveBeenCalledTimes(2)
 })

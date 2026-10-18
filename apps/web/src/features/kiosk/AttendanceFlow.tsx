@@ -15,6 +15,8 @@ export function AttendanceFlow({ lang, onDone }: { lang: Lang; onDone: () => voi
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  // The scanner emits once per mount; a new key gives the student a fresh scanner to retry.
+  const [attempt, setAttempt] = useState(0)
 
   const resolve = async (code: string) => {
     if (busy) return
@@ -23,6 +25,7 @@ export function AttendanceFlow({ lang, onDone }: { lang: Lang; onDone: () => voi
       setResolved({ payload: code, scan: await attendanceApi.resolveScan(code) })
     } catch (err) {
       setError(blockMessageFor(err, lang))
+      setAttempt(a => a + 1)
     } finally {
       setBusy(false)
     }
@@ -68,7 +71,7 @@ export function AttendanceFlow({ lang, onDone }: { lang: Lang; onDone: () => voi
   return (
     <SectionCard>
       <h2>{t.attendance}</h2>
-      <KioskScanner qr label={t.scanQr} onScan={resolve} lang={lang} />
+      <KioskScanner key={attempt} qr label={t.scanQr} onScan={resolve} lang={lang} />
       {error && <p role="alert">{error}</p>}
     </SectionCard>
   )
