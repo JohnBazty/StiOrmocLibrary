@@ -48,14 +48,22 @@ export function parseAttendanceQr(value: unknown, now = new Date()) {
 
 export async function issueAttendanceCredential(executor: Executor, userId: number): Promise<AttendanceCredential> {
   const [existing] = await executor.execute<RowDataPacket[]>(
-    `SELECT credential_id,user_id,public_id,credential_version,issued_at,credential_status
+    `SELECT credential_id,user_id,public_id,credential_version,issued_at,credential_status,secret_hash
        FROM attendance_qr_credentials WHERE user_id=? LIMIT 1`, [userId],
   )
   if (existing[0]?.credential_status === 'Active') {
     const version = Number(existing[0].credential_version)
     const publicId = String(existing[0].public_id)
     const secret = credentialSecret(publicId, userId, version)
-    return { credentialId: Number(existing[0].credential_id), userId, publicId, payload: payload(publicId, secret), issuedAt: new Date(existing[0].issued_at) }
+    // Only reuse when the stored hash still matches the secret derived from the
+    // current ATTENDANCE_QR_SECRET. If the secret changed since issuance the
+    // derived pass would never validate, so fall through and rotate (rewriting
+    // secret_hash) instead of handing out a permanently invalid QR.
+    const stored = existing[0].secret_hash as Buffer | undefined
+    const supplied = digest(secret)
+    if (stored && stored.length === supplied.length && timingSafeEqual(stored, supplied)) {
+      return { credentialId: Number(existing[0].credential_id), userId, publicId, payload: payload(publicId, secret), issuedAt: new Date(existing[0].issued_at) }
+    }
   }
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
