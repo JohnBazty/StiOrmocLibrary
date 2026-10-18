@@ -6,8 +6,8 @@ import { attendanceApi } from '../attendance/attendance-api'
 vi.mock('../attendance/attendance-api', () => ({
   attendanceApi: { resolveScan: vi.fn(), checkIn: vi.fn(), checkOut: vi.fn() },
 }))
-vi.mock('../circulation/DeskScanInput', () => ({
-  DeskScanInput: ({ onScan }: { onScan: (v: string) => void }) => (
+vi.mock('./KioskScanner', () => ({
+  KioskScanner: ({ onScan }: { onScan: (v: string) => void }) => (
     <button onClick={() => onScan('QR123')}>scan</button>
   ),
 }))

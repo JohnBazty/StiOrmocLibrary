@@ -16,12 +16,11 @@ See `tasks/plan.md` and `SPEC-kiosk.md`.
   - Verify: test that a failed request renders the block message.
   - Files: `features/kiosk/kiosk-session.ts`, guard in `KioskApp.tsx`.
 
-- [x] 3. Camera scan — reuse `features/circulation/DeskScanInput.tsx`
-  - Resolved by reuse: DeskScanInput already decodes QR + CODE_128/39/EAN (its
-    `qr` flag), with camera, image upload, and typed/USB fallback, and an
-    `onScan` callback + `role="alert"` errors. Open #3 closed. No new code.
-  - Flows 5 (and search/attendance) import it directly with translated labels.
-  - Known limit: its camera/upload sub-strings + colors stay the desk UI's in v1.
+- [x] 3. Camera scan — `features/kiosk/KioskScanner.tsx`
+  - Tablet kiosk: the camera auto-starts and decodes (QR, or CODE_128/39/EAN
+    when qr is false) via html5-qrcode; manual entry is the fallback. Translated
+    labels, `role="alert"` on camera errors. Open #3 closed (one decoder, both
+    symbologies). DeskScanInput left untouched for the desk UI.
 
 - [x] 4. Attendance flow
   - Acceptance: scan QR → resolve → show name + in/out → check-in/out → confirm → idle.

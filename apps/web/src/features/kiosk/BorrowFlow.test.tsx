@@ -6,8 +6,8 @@ import { deskCirculationApi } from '../circulation/desk-circulation-api'
 vi.mock('../circulation/desk-circulation-api', () => ({
   deskCirculationApi: { borrower: vi.fn(), preview: vi.fn(), checkout: vi.fn() },
 }))
-vi.mock('../circulation/DeskScanInput', () => ({
-  DeskScanInput: ({ qr, onScan }: { qr?: boolean; onScan: (v: string) => void }) => (
+vi.mock('./KioskScanner', () => ({
+  KioskScanner: ({ qr, onScan }: { qr?: boolean; onScan: (v: string) => void }) => (
     <button onClick={() => onScan(qr ? 'QR1' : 'BC1')}>{qr ? 'scan-qr' : 'scan-barcode'}</button>
   ),
 }))

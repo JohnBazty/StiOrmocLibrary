@@ -9,3 +9,5 @@
 .kiosk-root h2 { font-size: 1.5rem; }
 .kiosk-root button { min-height: 56px; font-size: 1.05rem; }
 .kiosk-root input { min-height: 52px; font-size: 1.1rem; }
+.kiosk-scanner { width: 100%; max-width: 360px; margin: 0 auto; }
+.kiosk-scanner video { width: 100%; border-radius: 0.75rem; }

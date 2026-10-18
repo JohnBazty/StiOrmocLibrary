@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button, SectionCard } from '../../components/ui'
-import { DeskScanInput } from '../circulation/DeskScanInput'
+import { KioskScanner } from './KioskScanner'
 import { attendanceApi, type ScanResult } from '../attendance/attendance-api'
 import { STRINGS, type Lang } from './i18n'
 import { blockMessageFor } from './kiosk-session'
@@ -11,7 +11,6 @@ type Resolved = { payload: string; scan: ScanResult }
 
 export function AttendanceFlow({ lang, onDone }: { lang: Lang; onDone: () => void }) {
   const t = STRINGS[lang]
-  const [payload, setPayload] = useState('')
   const [resolved, setResolved] = useState<Resolved | null>(null)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -69,15 +68,7 @@ export function AttendanceFlow({ lang, onDone }: { lang: Lang; onDone: () => voi
   return (
     <SectionCard>
       <h2>{t.attendance}</h2>
-      <DeskScanInput
-        qr
-        label={t.scanQr}
-        value={payload}
-        onChange={setPayload}
-        onScan={resolve}
-        disabled={busy}
-        actionLabel={t.scanQr}
-      />
+      <KioskScanner qr label={t.scanQr} onScan={resolve} lang={lang} />
       {error && <p role="alert">{error}</p>}
     </SectionCard>
   )

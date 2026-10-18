@@ -31,6 +31,9 @@ type Strings = {
   borrowed: string
   due: string
   cannotBorrow: string
+  manualEntry: string
+  enter: string
+  cameraUnavailable: string
 }
 
 export const STRINGS: Record<Lang, Strings> = {
@@ -59,6 +62,9 @@ export const STRINGS: Record<Lang, Strings> = {
     borrowed: 'Borrowed',
     due: 'Due',
     cannotBorrow: 'Cannot borrow this book',
+    manualEntry: 'Enter code manually',
+    enter: 'Enter',
+    cameraUnavailable: 'Camera unavailable. Type the code or see a librarian.',
   },
   fil: {
     welcome: 'Maligayang pagdating sa aklatan',
@@ -85,6 +91,9 @@ export const STRINGS: Record<Lang, Strings> = {
     borrowed: 'Nahiram',
     due: 'Dapat ibalik',
     cannotBorrow: 'Hindi mahiram ang aklat na ito',
+    manualEntry: 'I-type ang code',
+    enter: 'Ipasok',
+    cameraUnavailable: 'Hindi magamit ang camera. I-type ang code o lumapit sa librarian.',
   },
   ceb: {
     welcome: 'Maayong pag-abot sa library',
@@ -111,5 +120,8 @@ export const STRINGS: Record<Lang, Strings> = {
     borrowed: 'Nahulaman',
     due: 'Ibalik sa',
     cannotBorrow: 'Dili mahulaman kini nga libro',
+    manualEntry: 'I-type ang code',
+    enter: 'Isulod',
+    cameraUnavailable: 'Dili magamit ang camera. I-type ang code o adto sa librarian.',
   },
 }
