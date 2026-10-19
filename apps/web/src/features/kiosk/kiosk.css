@@ -138,6 +138,10 @@ body:has(.kiosk-light) { background: #f3f4f8; }
 .kiosk-root .kiosk-big { min-height: 96px; font-size: 1.2em; gap: 0.75rem; }
 .kiosk-scan-label { font-size: 1.28em; font-weight: 700; }
 
+/* Borrower identity: account photo next to the name, so borrowing on someone else's QR is obvious. */
+.kiosk-borrower { display: flex; align-items: center; gap: 0.75rem; font-weight: 700; margin: 0.5rem 0; }
+.kiosk-photo { width: 4.5rem; height: 4.5rem; border-radius: 999px; object-fit: cover; border: 2px solid var(--k-border); }
+
 /* Top bar: language on the left, display toggles on the right (Back takes the left slot inside a task). */
 .kiosk-topbar { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; }
 

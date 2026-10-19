@@ -8,7 +8,7 @@ Related: [SPEC-kiosk.md](../SPEC-kiosk.md) · [docs/kiosk-security.md](../docs/k
 
 ---
 
-## 1. Pick up a reserved book
+## 1. Pick up a reserved book — done
 
 **Why:** Students reserve books online, but today only a librarian can hand
 them over. This closes the reserve → pick up loop at the kiosk.
@@ -26,13 +26,13 @@ their shelf location → student picks one → scans that copy's barcode → con
 → checkout with the `reservationId`.
 
 **Acceptance:**
-- [ ] Ready-for-pickup reservations show after the QR scan, with title and shelf.
-- [ ] Scanning the wrong copy shows the server's mismatch message and lets the student rescan.
-- [ ] A student with no reservations goes straight to the normal borrow flow.
+- [x] Ready-for-pickup reservations show after the QR scan, with title and shelf.
+- [x] Scanning the wrong copy shows the server's mismatch message and lets the student rescan.
+- [x] A student with no reservations goes straight to the normal borrow flow.
 
 **Effort:** small (BorrowFlow only).
 
-## 2. Show the student's photo when borrowing
+## 2. Show the student's photo when borrowing — done
 
 **Why:** The attendance QR is permanent and can be photographed. Showing the
 account photo on the borrow screen makes borrowing on someone else's QR obvious
@@ -42,8 +42,8 @@ to the student and to staff nearby.
 URL, approved photos only).
 
 **Acceptance:**
-- [ ] The borrow confirm screen shows the photo next to the name when one exists.
-- [ ] No photo → the name alone, no broken image.
+- [x] The borrow confirm screen shows the photo next to the name when one exists.
+- [x] No photo → the name alone, no broken image.
 
 **Effort:** very small. Pairs naturally with #1.
 

@@ -46,6 +46,9 @@ type Strings = {
   signedOut: string
   lightMode: string
   largerText: string
+  pickupTitle: string
+  pickupHint: string
+  borrowOther: string
   normalText: string
   darkMode: string
 }
@@ -91,6 +94,9 @@ export const STRINGS: Record<Lang, Strings> = {
     signedOut: 'This kiosk was signed out. Please ask a librarian to sign it in.',
     lightMode: 'Light',
     largerText: 'Larger text',
+    pickupTitle: 'Books ready for you',
+    pickupHint: 'Tap the book you came to pick up, then scan its barcode.',
+    borrowOther: 'Borrow a different book',
     normalText: 'Normal text',
     darkMode: 'Dark',
   },
@@ -134,6 +140,9 @@ export const STRINGS: Record<Lang, Strings> = {
     signedOut: 'Na-sign out ang kiosk na ito. Pakisabihan ang librarian na mag-sign in.',
     lightMode: 'Maliwanag',
     largerText: 'Mas malaking teksto',
+    pickupTitle: 'Mga aklat na handa para sa iyo',
+    pickupHint: 'Pindutin ang aklat na kukunin mo, saka i-scan ang barcode nito.',
+    borrowOther: 'Humiram ng ibang aklat',
     normalText: 'Karaniwang teksto',
     darkMode: 'Madilim',
   },
@@ -177,6 +186,9 @@ export const STRINGS: Record<Lang, Strings> = {
     signedOut: 'Na-sign out kini nga kiosk. Palihog ipahibalo sa librarian aron mo-sign in.',
     lightMode: 'Hayag',
     largerText: 'Mas dako nga teksto',
+    pickupTitle: 'Mga libro nga andam para nimo',
+    pickupHint: 'Pindota ang libro nga imong kuhaon, dayon i-scan ang barcode niini.',
+    borrowOther: 'Paghulam og laing libro',
     normalText: 'Normal nga teksto',
     darkMode: 'Ngitngit',
   },
