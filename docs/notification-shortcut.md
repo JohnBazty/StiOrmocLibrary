@@ -23,3 +23,4 @@ The bell previews the five most recent notices in the Student, Faculty, Staff an
 ## Change log
 
 - **2026-11-10:** Added the header notification preview and synchronized it with the existing inbox.
+- **2026-11-10:** Simplified the shared portal header by removing the “Search anywhere” field and sidebar collapse button. The remaining controls sit on the right.
