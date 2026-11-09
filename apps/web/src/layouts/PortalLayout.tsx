@@ -1,3 +1,4 @@
+import { useLiveQuery } from '../hooks/useLiveQuery'
 import {
   Archive,
   BadgeCheck,
@@ -67,7 +68,6 @@ const adminNav: NavItem[] = [
   { label: 'Users', to: '/admin/users', icon: Users },
   { label: 'User archive', to: '/admin/user-archive', icon: Archive },
   { label: 'Clearance', to: '/admin/clearance', icon: ClipboardCheck },
-  { label: 'Approvals', to: '/admin/approvals', icon: BadgeCheck },
   { label: 'Notifications', to: '/admin/notifications', icon: Bell },
 ]
 const librarianNav: NavItem[] = [
@@ -90,7 +90,6 @@ const librarianNav: NavItem[] = [
   { label: 'Account overview', to: '/librarian/accounts', icon: LayoutDashboard, section: 'Account administration' },
   { label: 'Users', to: '/librarian/users', icon: Users },
   { label: 'User archive', to: '/librarian/user-archive', icon: Archive },
-  { label: 'Approvals', to: '/librarian/approvals', icon: BadgeCheck },
   { label: 'Notifications', to: '/librarian/notifications', icon: Bell },
   { label: 'My profile', to: '/librarian/profile', icon: UserRound },
 ]
@@ -153,7 +152,6 @@ export function PortalLayout({ role }: { role: Role }) {
   const nav = navigation(role)
   const current = nav.find((item) => location.pathname.startsWith(item.to))
   const [unreadCount, setUnreadCount] = useState(0)
-  const [hasAdminAlerts, setHasAdminAlerts] = useState(false)
   useEffect(() => {
     const media = window.matchMedia?.('(min-width: 1024px)')
     const closeOnDesktop = () => { if (media?.matches) setSidebarOpen(false) }
@@ -180,31 +178,15 @@ export function PortalLayout({ role }: { role: Role }) {
     document.addEventListener('keydown', keydown)
     return () => { document.body.style.overflow = previousOverflow; document.removeEventListener('keydown', keydown); previousFocus?.focus() }
   }, [sidebarOpen])
-  useEffect(() => {
-    let active = true
-    const loadAlerts = async () => {
-      const token = getAccessToken()
-      if (!token) return
-      try {
-        const requestHeaders = { Accept: 'application/json', Authorization: `Bearer ${token}` }
-        let pending = false
-        if (role === 'admin' || role === 'librarian') {
-          const response = await fetch('/api/v1/admin/notifications', { headers: requestHeaders, credentials: 'include' })
-          const payload = await response.json() as { data?: { pendingCount?: number } }
-          pending = response.ok && Number(payload.data?.pendingCount ?? 0) > 0
-          if (role === 'admin') { if (active) setHasAdminAlerts(pending); return }
-        }
-        const response = await fetch('/api/v1/notifications?status=unread&limit=1', { headers: requestHeaders, credentials: 'include' })
-        const payload = await response.json() as { success?: boolean; data?: unknown[] | { unreadCount?: number } }
-        if (active && response.ok) setUnreadCount(Array.isArray(payload.data) ? payload.data.length : Number(payload.data?.unreadCount ?? 0))
-        const hasAlerts = Array.isArray(payload.data) ? Boolean(payload.data.length) : Number(payload.data?.unreadCount ?? 0) > 0
-        if (active) setHasAdminAlerts(pending || (response.ok && Boolean(payload.success) && hasAlerts))
-      } catch { /* The page-level operational modules surface connectivity errors. */ }
-    }
-    const update = () => { if (!document.hidden) void loadAlerts() }; window.addEventListener('smartlib:notifications-updated', update);
-    void loadAlerts(); const timer = window.setInterval(() => { if (!document.hidden) void loadAlerts() }, 5000)
-    return () => { active = false; window.clearInterval(timer); window.removeEventListener('smartlib:notifications-updated', update) }
-  }, [role])
+  const alerts=useLiveQuery(`notification-unread:${role}`,async signal=>{
+    const token=getAccessToken()
+    if(!token)return 0
+    const response=await fetch('/api/v1/notifications?status=unread&limit=1',{signal,headers:{Accept:'application/json',Authorization:`Bearer ${token}`},credentials:'include'})
+    const payload=await response.json() as {success?:boolean;data?:unknown[]|{unreadCount?:number};message?:string}
+    if(!response.ok||!payload.success)throw new Error(payload.message??'Notification count is unavailable.')
+    return Array.isArray(payload.data)?payload.data.length:Number(payload.data?.unreadCount??0)
+  },{enabled:role!=='admin',events:['smartlib:notifications-updated']})
+  useEffect(() => { setUnreadCount(alerts.data ?? 0) }, [alerts.data])
   const signOut = () => { void logout(); navigate('/login', { replace: true }) }
 
   return (
@@ -217,7 +199,7 @@ export function PortalLayout({ role }: { role: Role }) {
           <label className="relative ml-auto hidden w-64 xl:block"><Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#003399]/45 dark:text-white/45" size={15} /><input placeholder="Search anywhere..." className="h-10 w-full rounded-xl border border-[#003399]/15 bg-[#003399]/5 pl-9 pr-3 text-sm outline-none transition focus:border-[#003399]/15 focus:bg-white focus:ring-4 focus:ring-[#003399]/10 dark:border-white/15 dark:bg-white/5 dark:text-white dark:focus:bg-[#002266]" /></label>
           <div className="ml-auto flex items-center gap-2 xl:ml-3">
             <ThemeToggle />
-            <button onClick={() => navigate(role === 'admin' ? '/admin/notifications' : role === 'librarian' ? '/librarian/notifications' : role === 'staff' ? '/staff/notifications' : role === 'faculty' ? '/faculty/notifications' : '/student/notifications')} aria-label="Notifications" className="relative rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 transition hover:bg-[#003399]/5 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><Bell size={18} />{unreadCount > 0 ? <span aria-label={`${unreadCount} unread notifications`} className="absolute -right-2 -top-2 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-700 px-1 text-[10px] font-bold tabular-nums text-white">{unreadCount > 99 ? '99+' : unreadCount}</span> : hasAdminAlerts ? <span className="absolute right-2 top-2 size-2 rounded-full bg-[#FFF200]" /> : null}</button>
+            <button onClick={() => navigate(role === 'admin' ? '/admin/notifications' : role === 'librarian' ? '/librarian/notifications' : role === 'staff' ? '/staff/notifications' : role === 'faculty' ? '/faculty/notifications' : '/student/notifications')} aria-label="Notifications" className="relative rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 transition hover:bg-[#003399]/5 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><Bell size={18} />{unreadCount > 0 ? <span aria-label={`${unreadCount} unread notifications`} className="absolute -right-2 -top-2 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-700 px-1 text-[10px] font-bold tabular-nums text-white">{unreadCount > 99 ? '99+' : unreadCount}</span> : null}</button>
             <button onClick={signOut} aria-label="Sign out" title="Sign out" className="rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 transition hover:bg-[#003399]/5 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><LogOut size={18} /></button>
             <button aria-label="Collapse sidebar" className="hidden rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 lg:block dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80"><PanelLeftClose size={18} /></button>
           </div>

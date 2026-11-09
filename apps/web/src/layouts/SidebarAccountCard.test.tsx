@@ -18,8 +18,8 @@ it('shows the approved picture, full name and school ID while a replacement awai
   setup()
   expect(await screen.findByText('Alex Rivera')).toBeTruthy()
   expect(screen.getByText('STI-9')).toBeTruthy()
-  expect(screen.getByAltText('Your approved profile picture').getAttribute('src')).toBe('/approved.png')
-  fireEvent.error(screen.getByAltText('Your approved profile picture'))
+  expect(screen.getByAltText('Your profile picture').getAttribute('src')).toBe('/approved.png')
+  fireEvent.error(screen.getByAltText('Your profile picture'))
   expect(screen.getByLabelText('Profile initials').textContent).toBe('AR')
 })
 
@@ -38,13 +38,13 @@ it('updates the account display after the owner saves a profile', async () => {
   api.myAvatar.mockResolvedValue({ currentUrl: '/new-approved.png', pending: null })
   fireEvent(window, new Event(PROFILE_UPDATED_EVENT))
   expect(await screen.findByText('Alex Santos')).toBeTruthy()
-  expect(screen.getByAltText('Your approved profile picture').getAttribute('src')).toBe('/new-approved.png')
+  expect(screen.getByAltText('Your profile picture').getAttribute('src')).toBe('/new-approved.png')
 })
 
 it('uses initials when there is only a pending picture', async () => {
   api.myAvatar.mockResolvedValue({ currentUrl: null, pending: { id: 10, submittedAt: '2026-10-11' } })
   setup()
   await screen.findByText('Alex Rivera')
-  expect(screen.queryByAltText('Your approved profile picture')).toBeNull()
+  expect(screen.queryByAltText('Your profile picture')).toBeNull()
   expect(screen.getByLabelText('Profile initials').textContent).toBe('AR')
 })

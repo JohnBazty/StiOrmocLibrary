@@ -5,8 +5,11 @@ import { HttpError } from '../../core/http-error.ts'
 import { validateXlsxArchive } from '../catalog/holdings-parser.ts'
 
 export type EnrollmentData = { schoolId:string; name:string; firstName:string; lastName:string; program:string; yearLevel:string; section:string; email:string; status:'Enrolled'|'Not Enrolled'|'' }
-export type EnrollmentImportRow = { sheet:string; row:number; data:EnrollmentData; errors:string[]; warnings:string[] }
-export type EnrollmentFile = { fingerprint:string; rows:EnrollmentImportRow[]; errors:number; warnings:number; sheets:string[] }
+export type EnrollmentImportRow = { sheet:string; row:number; data:EnrollmentData; errors:string[]; warnings:string[]; source?:string[] }
+export type EnrollmentFile = { fingerprint:string; rows:EnrollmentImportRow[]; errors:number; warnings:number; sheets:string[]; headings:Record<string,string[]> }
+const schoolIdPattern=/^[A-Z0-9][A-Z0-9._-]{2,49}$/
+const ormocEmail=/^[^\s@]+@ormoc\.sti\.edu\.ph$/i
+const stiEmail=/^[^\s@]+@(?:[a-z0-9-]+\.)*sti\.edu\.ph$/i
 const text=(value:unknown)=>String(value??'').normalize('NFKC').trim().replace(/\s+/g,' ')
 const header=(value:unknown)=>text(value).toLowerCase().replace(/[^a-z0-9]/g,'')
 const aliases:Record<string,string[]>= {
@@ -31,7 +34,7 @@ export function normalizeRegistrarLevel(value:string) {
 }
 
 /** Read-only recognition. No enrollment or account is written here. */
-export async function parseEnrollmentFile(file:{buffer:Buffer;originalname:string},options:{listedEnrolled:boolean;academicYear:string;termName:string;columns?:Record<string,string>}) : Promise<EnrollmentFile> {
+export async function parseEnrollmentFile(file:{buffer:Buffer;originalname:string},options:{listedEnrolled:boolean;academicYear:string;termName:string;columns?:Record<string,string>;includeSource?:boolean}) : Promise<EnrollmentFile> {
  if(!file.buffer.length||file.buffer.length>4*1024*1024)throw bad('Choose an XLSX workbook or UTF-8 CSV up to 4 MB.')
  const workbook=new ExcelJS.Workbook()
  try {
@@ -41,6 +44,7 @@ export async function parseEnrollmentFile(file:{buffer:Buffer;originalname:strin
  } catch(error){if(error instanceof HttpError)throw error;throw bad('The file cannot be read. Save it as an unencrypted XLSX or UTF-8 CSV.')}
  if(workbook.worksheets.length>20)throw bad('Use at most 20 sheets per file.')
  const rows:EnrollmentImportRow[]=[],sheets:string[]=[]
+ const headings:Record<string,string[]>=Object.create(null)
  for(const sheet of workbook.worksheets) {
   if(sheet.rowCount>10001||sheet.columnCount>40)throw bad('Each sheet must have at most 10,000 students and 40 columns.')
   if(!sheet.rowCount)continue
@@ -52,6 +56,7 @@ export async function parseEnrollmentFile(file:{buffer:Buffer;originalname:strin
   }
   if(!headerRow)throw bad(`Sheet “${sheet.name}” needs Student ID and Name, or First Name and Last Name, column headings.`)
   sheets.push(sheet.name)
+  if(options.includeSource) headings[sheet.name]=Array.from({length:sheet.columnCount},(_,i)=>cell(sheet.getRow(headerRow).getCell(i+1).value).value||`Column ${i+1}`)
   for(let n=headerRow+1;n<=sheet.rowCount;n++) {
    const source=sheet.getRow(n),values:Record<string,ReturnType<typeof cell>>={}
    for(const [field,index] of Object.entries(columns))values[field]=cell(source.getCell(index).value)
@@ -61,21 +66,29 @@ export async function parseEnrollmentFile(file:{buffer:Buffer;originalname:strin
    const name=get('name')||[get('first'),get('middle'),get('last'),get('suffix')].filter(Boolean).join(' ')
    const words=name.split(' '),lastName=get('last')||words.pop()||'',firstName=get('first')||words.join(' ')||name
    const data:EnrollmentData={schoolId:get('schoolId').toUpperCase(),name,firstName,lastName,program:get('program'),yearLevel:normalizeRegistrarLevel(get('yearLevel')),section:get('section'),email:get('email').toLowerCase(),status}
-   if(!/^[A-Z0-9][A-Z0-9._-]{2,49}$/.test(data.schoolId))errors.push('School ID is missing or invalid.')
+   if(!schoolIdPattern.test(data.schoolId))errors.push('School ID is missing or invalid.')
    if(values.schoolId?.numeric)errors.push('School ID is stored as a number. Restore its exact ID, including leading zeros, as text.')
    if(!data.name||data.name.length>150)errors.push('A student name of at most 150 characters is required.')
    if(data.firstName.length>100||data.lastName.length>100)errors.push('First and last names must each be at most 100 characters.')
    if(!data.program||data.program.length>150)errors.push('A program or strand of at most 150 characters is required.')
    if(!data.yearLevel||data.yearLevel.length>50)errors.push('A year or grade level of at most 50 characters is required.')
    if(data.section.length>100)errors.push('Section must have at most 100 characters.')
-   if(data.email&&(data.email.length>191||!/^[^\s@]+@ormoc\.sti\.edu\.ph$/i.test(data.email)))errors.push('Use a valid Ormoc school email, or leave an unavailable email blank.')
-   if(!data.email)warnings.push('Enrolled, but the registrar must supply a school email before this student can register.')
+   if(!data.email)warnings.push('Enrolled. An Ormoc school email is needed for registration.')
+   else if(data.email.length>191||!stiEmail.test(data.email))errors.push('Use a valid school email, or leave an unavailable email blank.')
+   else if(!ormocEmail.test(data.email)){
+    warnings.push('Enrolled. The email belongs to another STI campus. An Ormoc school email is needed for registration.')
+    data.email=''
+   }
    if(!status)errors.push('Confirm the listed students are enrolled, or use Enrolled / Not Enrolled in the enrollment-status column.')
    if(options.listedEnrolled&&rawStatus&&status!=='Enrolled')errors.push('The status conflicts with the declaration that everyone listed is enrolled.')
    if(get('academicYear')&&get('academicYear').replace(/[–—]/g,'-')!==options.academicYear)errors.push('The school year differs from the selected term.')
    if(get('term')&&header(get('term'))!==header(options.termName))errors.push('The semester differs from the selected term.')
    if(Object.values(values).some(v=>v.unsafe))errors.push('Formula, date or unsupported cell found in a required column. Use plain values.')
-   rows.push({sheet:sheet.name,row:n,data,errors,warnings})
+   const original=options.includeSource?headings[sheet.name].map((_,i)=>{
+    const value=cell(source.getCell(i+1).value)
+    return value.unsafe?'Unsupported cell':value.value
+   }):undefined
+   rows.push({sheet:sheet.name,row:n,data,errors,warnings,source:original})
    if(rows.length>10000)throw bad('Import at most 10,000 students at a time.')
   }
  }
@@ -83,5 +96,5 @@ export async function parseEnrollmentFile(file:{buffer:Buffer;originalname:strin
  const byId=new Map<string,EnrollmentImportRow[]>()
  for(const row of rows){const group=byId.get(row.data.schoolId)??[];group.push(row);byId.set(row.data.schoolId,group)}
  for(const group of byId.values())if(group.length>1)for(const row of group)row.errors.push('Duplicate School ID in this file. Keep one authoritative row.')
- return {fingerprint:createHash('sha256').update(file.buffer).digest('hex'),rows,errors:rows.filter(r=>r.errors.length).length,warnings:rows.filter(r=>r.warnings.length).length,sheets}
+ return {fingerprint:createHash('sha256').update(file.buffer).digest('hex'),rows,errors:rows.filter(r=>r.errors.length).length,warnings:rows.filter(r=>r.warnings.length).length,sheets,headings}
 }

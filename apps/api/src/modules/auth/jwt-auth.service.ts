@@ -84,20 +84,6 @@ export function createJwtAuthService(database: Pool = db, passwordHasher = bcryp
         [validation.schoolId],
       )
       const account = rows[0]
-      if (!account) {
-        const requestedRoleFilter = validation.portal === 'user'
-          ? "requested_role IN ('Student','Faculty')"
-          : "requested_role IN ('Admin','Librarian','Staff')"
-        const [requests] = await database.execute<RowDataPacket[]>(
-          `SELECT status,password_hash FROM registration_requests WHERE school_id=? AND ${requestedRoleFilter} LIMIT 1`,
-          [validation.schoolId],
-        )
-        const pendingRequest = requests[0]
-        if (pendingRequest?.password_hash && await passwordHasher.compare(validation.password, pendingRequest.password_hash)) {
-          if (pendingRequest.status === 'PendingEmail') throw new HttpError(403, 'EMAIL_VERIFICATION_REQUIRED', 'Verify the code sent to your school email before signing in.')
-          if (pendingRequest.status === 'PendingApproval') throw new HttpError(403, 'ACCOUNT_APPROVAL_PENDING', 'Your school email is verified. The librarian must approve your account before you can sign in.')
-        }
-      }
       const matches = await passwordHasher.compare(validation.password, account?.password_hash ?? DUMMY_BCRYPT_HASH)
       if (!account || !matches) throw new HttpError(401, 'INVALID_CREDENTIALS', INVALID_CREDENTIALS_MESSAGE)
       if (!JWT_ROLES.has(account.role)) throw new HttpError(403, 'ROLE_NOT_AUTHORIZED', 'Your assigned role is not authorized.')

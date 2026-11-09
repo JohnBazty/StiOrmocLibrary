@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { Camera, CheckCircle2, Clock3, GraduationCap, ImagePlus, LockKeyhole, Save, ShieldCheck, UserRound } from 'lucide-react'
+import { Camera, CheckCircle2, GraduationCap, ImagePlus, LockKeyhole, Save, ShieldCheck, UserRound } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { SelectedFilePreview } from '../../components/SelectedFilePreview'
 import { PageHeader } from '../../components/ui'
@@ -29,7 +29,11 @@ export function ProfileAvatarPage() {
     setPreview(url)
     return () => URL.revokeObjectURL(url)
   }, [file])
-  function clearPicture() { setFile(null); if (fileInput.current) fileInput.current.value = '' }
+  function clearPicture() {
+    setFile(null)
+    setPreview(null)
+    if (fileInput.current) fileInput.current.value = ''
+  }
   function selectPicture(selected: File | null) {
     if (selected && (!['image/png', 'image/jpeg', 'image/webp'].includes(selected.type) || selected.size > 2 * 1024 * 1024)) {
       clearPicture(); setMessageError(true); setMessage('Choose a PNG, JPEG, or WebP image up to 2 MB.'); return
@@ -68,7 +72,11 @@ export function ProfileAvatarPage() {
       })
       const payload = await response.json() as { message?: string }
       if (!response.ok) throw new Error(payload.message ?? 'Unable to upload your picture.')
-      clearPicture(); setMessageError(false); setMessage('Your new picture is awaiting Librarian approval.'); await load()
+      clearPicture()
+      await load()
+      notifyProfileUpdated()
+      setMessageError(false)
+      setMessage('Your profile picture has been updated.')
     } catch (cause) { setMessageError(true); setMessage(cause instanceof Error ? cause.message : 'Unable to upload your picture.') }
     finally { setBusy(false); setOperation(null) }
   }
@@ -85,17 +93,15 @@ export function ProfileAvatarPage() {
       {showAll || section === 'photo' ? <section className="profile-panel profile-photo-panel" aria-labelledby="profile-photo-heading">
         <div className="profile-photo-banner"><Camera size={19} /><span>Make it yours</span></div>
         <div className="profile-photo-body">
-          <div className="profile-avatar">{preview || data?.currentUrl ? <img src={preview ?? data!.currentUrl!} alt={preview ? 'New picture preview' : 'Your approved profile picture'} /> : <span aria-label="No approved profile picture">{initials || <UserRound size={40} />}</span>}<span className="profile-avatar-camera"><Camera size={15} /></span></div>
+          <div className="profile-avatar">{preview || data?.currentUrl ? <img src={preview ?? data!.currentUrl!} alt={preview ? 'New picture preview' : 'Your profile picture'} /> : <span aria-label="No profile picture">{initials || <UserRound size={40} />}</span>}<span className="profile-avatar-camera"><Camera size={15} /></span></div>
           <h2 id="profile-photo-heading">Profile picture</h2><p className="profile-muted">A familiar face for your library account.</p>
-          <p className="profile-photo-status">{preview ? <><ImagePlus size={14} />New picture preview</> : data?.pending ? <><Clock3 size={14} />Awaiting approval</> : data?.currentUrl ? <><CheckCircle2 size={14} />Approved picture</> : <><Camera size={14} />No picture yet</>}</p>
-          {data?.pending ? <p role="status" className="profile-photo-note">Your submitted picture is awaiting Librarian review. Your approved picture stays visible until then.</p> : null}
-          {data?.lastRejection ? <p role="status" className="profile-photo-note">Your previous picture was not approved: {data.lastRejection.reason}</p> : null}
+          <p className="profile-photo-status">{preview ? <><ImagePlus size={14} />New picture preview</> : data?.currentUrl ? <><CheckCircle2 size={14} />Current picture</> : <><Camera size={14} />No picture yet</>}</p>
+          {data?.pending ? <p role="status" className="profile-photo-note">To use a picture submitted under the old review process, select it again and save it here.</p> : null}
           <form onSubmit={submit} className="profile-upload-form">
             <label className="profile-upload"><ImagePlus size={24} /><span>{file ? 'Choose a different picture' : 'Choose a picture'}</span><span className="profile-upload-hint">PNG, JPEG or WebP · up to 2 MB</span><input ref={fileInput} aria-label="New picture" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={event => selectPicture(event.target.files?.[0] ?? null)} /></label>
             <SelectedFilePreview file={file} onRemove={clearPicture} removeLabel="Remove selected picture" disabled={busy} />
-            <button disabled={busy || !file} className="profile-primary-button"><ShieldCheck size={16} />{operation === 'photo' ? 'Uploading…' : 'Submit for approval'}</button>
+            <button disabled={busy || !file} className="profile-primary-button"><Save size={16} />{operation === 'photo' ? 'Uploading…' : 'Save picture'}</button>
           </form>
-          <p className="profile-photo-note">New pictures appear on your account after Librarian approval.</p>
         </div>
       </section> : null}
       {showAll || section !== 'photo' ? <section className="profile-panel profile-details-panel" aria-labelledby="profile-details-heading">

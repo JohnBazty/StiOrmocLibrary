@@ -47,8 +47,6 @@ export function createWorkspaceTasksService(database: Pool = db) {
       if (actor.role === 'Librarian') {
         const [admin] = await q.execute<RowDataPacket[]>(`SELECT
           (SELECT COUNT(*) FROM accounts WHERE account_status='Active') users,
-          (SELECT COUNT(*) FROM registration_requests WHERE status='PendingApproval'${rosterOnly ? " AND requested_role<>'Student'" : ''}) registrations,
-          (SELECT COUNT(*) FROM profile_avatar_submissions WHERE status='Pending') photos,
           (SELECT COUNT(*) FROM lost_book_reports WHERE report_status='Pending') losses,
           (SELECT COUNT(*) FROM ink_repository WHERE available_bottles<=low_stock_threshold_bottles)+
           (SELECT COUNT(*) FROM bond_paper_stocks WHERE unopened_reams<=low_stock_threshold_reams) low_supplies`)
@@ -58,8 +56,6 @@ export function createWorkspaceTasksService(database: Pool = db) {
           { label: 'Active accounts', value: Number(admin[0].users), path: '/librarian/users' },
           { label: 'Cleared active students', value: clearance.cleared, path: '/librarian/clearance?active=1&status=Cleared' },
           { label: 'Not-cleared active students', value: clearance.notCleared, path: '/librarian/clearance?active=1&status=Not%20Cleared' },
-          { label: 'Account approvals', value: Number(admin[0].registrations), path: '/librarian/approvals' },
-          { label: 'Picture approvals', value: Number(admin[0].photos), path: '/librarian/approvals' },
           { label: 'Lost-book reports to review', value: Number(admin[0].losses), path: '/librarian/clearance' },
           { label: 'Low supply items', value: Number(admin[0].low_supplies), path: '/librarian/supplies' },
           { label: 'Aging active book records', value: collection.books.filter(b => b.status === 'Active' && b.ageStatus === 'Outdated').length, path: '/librarian/collection-review' },

@@ -45,14 +45,14 @@ it('previews a selected picture without replacing the approved photo and clears 
   Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: vi.fn() })
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ data: { currentUrl: '/approved.jpg', pending: { id: 1, submittedAt: '2026-10-11' } } }) })))
   render(<ProfileAvatarPage />)
-  expect((await screen.findByAltText('Your approved profile picture')).getAttribute('src')).toBe('/approved.jpg')
+  expect((await screen.findByAltText('Your profile picture')).getAttribute('src')).toBe('/approved.jpg')
   fireEvent.change(screen.getByLabelText('New picture'), { target: { files: [new File(['image'], 'new-picture.png', { type: 'image/png' })] } })
   expect((await screen.findByAltText('New picture preview')).getAttribute('src')).toBe('blob:picture-preview')
-  expect(screen.getByText(/awaiting Librarian review/)).toBeTruthy()
+  expect(screen.getByText(/select it again/)).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'Remove selected picture' }))
-  expect(screen.getByAltText('Your approved profile picture').getAttribute('src')).toBe('/approved.jpg')
+  expect(screen.getByAltText('Your profile picture').getAttribute('src')).toBe('/approved.jpg')
   expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:picture-preview')
-  expect((screen.getByRole('button', { name: 'Submit for approval' }) as HTMLButtonElement).disabled).toBe(true)
+  expect((screen.getByRole('button', { name: 'Save picture' }) as HTMLButtonElement).disabled).toBe(true)
 })
 
 it('rejects an unsupported image before it can be submitted', async () => {
@@ -60,26 +60,26 @@ it('rejects an unsupported image before it can be submitted', async () => {
   await screen.findByDisplayValue('STI-9')
   fireEvent.change(screen.getByLabelText('New picture'), { target: { files: [new File(['document'], 'file.pdf', { type: 'application/pdf' })] } })
   expect(screen.getByRole('alert').textContent).toContain('Choose a PNG, JPEG, or WebP image up to 2 MB.')
-  expect((screen.getByRole('button', { name: 'Submit for approval' }) as HTMLButtonElement).disabled).toBe(true)
+  expect((screen.getByRole('button', { name: 'Save picture' }) as HTMLButtonElement).disabled).toBe(true)
 })
 
-it('submits the selected file for review and keeps the approved picture after upload', async () => {
+it('shows the new picture immediately after it is saved', async () => {
   Object.defineProperty(URL, 'createObjectURL', { configurable: true, writable: true, value: vi.fn(() => 'blob:picture-preview') })
   Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: vi.fn() })
   let uploaded = false
   const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
     if (init?.method === 'POST') { uploaded = true; return { ok: true, json: async () => ({ message: 'Submitted' }) } }
-    return { ok: true, json: async () => ({ data: { currentUrl: '/approved.jpg', pending: uploaded ? { id: 1, submittedAt: '2026-10-11' } : null } }) }
+    return { ok: true, json: async () => ({ data: { currentUrl: uploaded ? '/new-picture.png' : '/approved.jpg', pending: null } }) }
   })
   vi.stubGlobal('fetch', fetchMock)
   render(<ProfileAvatarPage />)
-  await screen.findByAltText('Your approved profile picture')
+  await screen.findByAltText('Your profile picture')
   const image = new File(['image'], 'new-picture.png', { type: 'image/png' })
   fireEvent.change(screen.getByLabelText('New picture'), { target: { files: [image] } })
-  fireEvent.click(screen.getByRole('button', { name: 'Submit for approval' }))
-  await screen.findByText('Awaiting approval')
+  fireEvent.click(screen.getByRole('button', { name: 'Save picture' }))
+  await screen.findByText('Your profile picture has been updated.')
   const upload = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')
   expect((upload?.[1]?.body as FormData).get('image')).toBe(image)
-  expect(screen.getByAltText('Your approved profile picture').getAttribute('src')).toBe('/approved.jpg')
+  expect(screen.getByAltText('Your profile picture').getAttribute('src')).toBe('/new-picture.png')
   expect(screen.queryByAltText('New picture preview')).toBeNull()
 })

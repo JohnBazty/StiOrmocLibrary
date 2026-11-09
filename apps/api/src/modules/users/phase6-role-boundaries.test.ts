@@ -5,6 +5,7 @@ import request from 'supertest'
 import { adminClearanceV1Router } from '../clearance/clearance.routes.ts'
 import { profileAvatarRouter } from './profile-avatar.routes.ts'
 import { adminUsersV1Router } from './users.routes.ts'
+import { jwtAuthRouter } from '../auth/jwt-auth.routes.ts'
 
 function appFor(role: string) {
   const app = express()
@@ -29,10 +30,26 @@ test('Admin cannot use Librarian lost-book finance actions', async () => {
   }
 })
 
-test('profile-picture approval requests are restricted to account administrators', async () => {
-  const response = await request(appFor('Staff')).get('/profile/avatar/submissions')
+test('Staff cannot provision accounts', async () => {
+  const response = await request(appFor('Staff')).post('/admin/users/staff').send({})
   assert.equal(response.status, 403)
   assert.equal(response.body.code, 'JWT_ROLE_FORBIDDEN')
+})
+
+test('profile-picture review routes have been retired', async () => {
+  const app = appFor('Librarian')
+  assert.equal((await request(app).get('/profile/avatar/submissions')).status, 404)
+  assert.equal((await request(app).post('/profile/avatar/submissions/1/review').send({ decision: 'approve' })).status, 404)
+})
+
+test('legacy registration endpoints cannot create another approval request', async () => {
+  const app = express()
+  app.use('/auth', jwtAuthRouter)
+  for (const path of ['/register', '/register/resend', '/register/verify']) {
+    const response = await request(app).post('/auth' + path).send({})
+    assert.equal(response.status, 410)
+    assert.equal(response.body.code, 'REGISTRATION_FLOW_REPLACED')
+  }
 })
 
 test('Admin has no route to edit another account profile', async () => {

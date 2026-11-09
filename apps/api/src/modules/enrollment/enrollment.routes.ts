@@ -19,6 +19,10 @@ export function createEnrollmentRouter(service=enrollmentService) {
   router.post('/semesters/:id/start',run((req,actor)=>service.start(actor,req.params.id)))
   router.post('/semesters/:id/end',run((req,actor)=>service.end(actor,req.params.id)))
   router.get('/semesters/:id/roster',run((req,actor)=>service.roster(actor,req.params.id,req.query.page,req.query.q)))
+  router.post('/semesters/:id/roster/preview',upload.single('roster'),run((req,actor)=>{
+    if(!req.file)throw new HttpError(422,'ENROLLMENT_FILE_REQUIRED','Choose a CSV or Excel roster.')
+    return service.preview(actor,req.params.id,req.file)
+  }))
   router.post('/semesters/:id/roster',upload.single('roster'),run((req,actor)=>{
     if(!req.file)throw new HttpError(422,'ENROLLMENT_FILE_REQUIRED','Choose a CSV or Excel roster.')
     return service.upload(actor,req.params.id,req.file,req.body)

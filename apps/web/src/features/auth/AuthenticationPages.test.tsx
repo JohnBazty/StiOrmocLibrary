@@ -24,53 +24,13 @@ describe('authentication pages', () => {
     expect(screen.getByRole('link', { name: 'Forgot Password?' }).getAttribute('href')).toBe('/forgot-password')
   })
 
-  it('shows role-aware account registration and school email when roster signup is inactive', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { required: false } }) }))
+  it('pauses signup before the first semester starts and directs existing users to sign in', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { enabled: true, open: false } }) }))
     render(<MemoryRouter><RegistrationPage /></MemoryRouter>)
-    await screen.findByLabelText('First Name')
-    for (const label of ['Register as', 'First Name', 'Last Name', 'School Email', 'School ID', 'Program / Strand', 'Year / Grade Level', 'Password', 'Confirm Password']) {
-      expect(screen.getByLabelText(label)).toBeTruthy()
-    }
-    expect(screen.queryByLabelText('Contact Number')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Register' })).toBeTruthy()
-  })
-
-  it('directs an existing registrant to sign in without claiming the new password was saved', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ data: { required: false } }) }).mockResolvedValue({
-      ok: false,
-      headers: { get: () => 'application/json' },
-      json: async () => ({ code: 'REGISTRATION_UNAVAILABLE', message: 'These details may already be in the library system. The password entered here was not saved.' }),
-    }))
-    render(<MemoryRouter><RegistrationPage /></MemoryRouter>)
-    await screen.findByLabelText('First Name')
-    for (const [label, value] of [
-      ['First Name', 'Example'], ['Last Name', 'Student'], ['School Email', 'example@ormoc.sti.edu.ph'],
-      ['School ID', 'STUDENT-123'], ['Password', 'ExamplePass123'], ['Confirm Password', 'ExamplePass123'],
-      ['Program / Strand', 'Bachelor of Science in Information Technology'], ['Year / Grade Level', '4th Year'],
-    ]) fireEvent.change(screen.getByLabelText(label), { target: { value } })
-    fireEvent.click(screen.getByRole('button', { name: 'Register' }))
-    expect((await screen.findByRole('alert')).textContent).toContain('password entered here was not saved')
-    expect(screen.getByRole('link', { name: 'Go to Sign In' }).getAttribute('href')).toBe('/login')
-  })
-
-  it('shows an approval wait after a Student verifies the school email', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (input: string) => ({
-      ok: true, headers: { get: () => 'application/json' },
-      json: async () => ({ data: input.endsWith('/roster-registration') ? { required: false } : input.endsWith('/verify') ? { status: 'PendingApproval', role: 'Student' } : { requestId: 5, status: 'PendingEmail' } }),
-    })))
-    render(<MemoryRouter><RegistrationPage popup /></MemoryRouter>)
-    await screen.findByLabelText('First Name')
-    for (const [label, value] of [
-      ['First Name', 'Example'], ['Last Name', 'Student'], ['School Email', 'example@ormoc.sti.edu.ph'],
-      ['School ID', 'STUDENT-123'], ['Password', 'ExamplePass123'], ['Confirm Password', 'ExamplePass123'],
-      ['Program / Strand', 'Bachelor of Science in Information Technology'], ['Year / Grade Level', '4th Year'],
-    ]) fireEvent.change(screen.getByLabelText(label), { target: { value } })
-    fireEvent.click(screen.getByRole('button', { name: 'Register' }))
-    fireEvent.change(await screen.findByLabelText('Verification code'), { target: { value: '123456' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Verify school email' }))
-    expect((await screen.findByRole('status')).textContent).toContain('approve your account')
-    expect(screen.queryByRole('button', { name: 'Resend code' })).toBeNull()
-    expect(screen.getByText(/registration is awaiting Librarian approval/)).toBeTruthy()
+    expect(await screen.findByText(/Student registration opens when the library starts the semester/)).toBeTruthy()
+    expect(screen.queryByLabelText('Register as')).toBeNull()
+    expect(screen.queryByLabelText('Student ID')).toBeNull()
+    expect(screen.getByRole('link', { name: 'Sign In Here' })).toBeTruthy()
   })
 
   it('verifies the roster email before accepting a password and continues to sign-in without approval', async () => {
@@ -78,7 +38,7 @@ describe('authentication pages', () => {
       ok: true,
       json: async () => ({ data: path.endsWith('/begin') ? { challengeId: 'test-challenge' }
         : path.endsWith('/verify') ? { grant: 'test-grant' }
-        : path.endsWith('/complete') ? { schoolId: '0001234' } : { required: true } }),
+        : path.endsWith('/complete') ? { schoolId: '0001234' } : { enabled: true, open: true } }),
     }))
     vi.stubGlobal('fetch', request)
     function SignInDestination() {

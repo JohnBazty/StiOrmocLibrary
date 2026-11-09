@@ -32,7 +32,7 @@ export function AdminAccountDashboardPage() {
       <Link to={`${prefix}/clearance?status=Cleared&active=1`}><StatCard label="Cleared active students" value={data?.cleared ?? '—'} icon={BadgeCheck} /></Link>
       <Link to={`${prefix}/clearance?status=Not%20Cleared&active=1`}><StatCard label="Not-cleared active students" value={data?.notCleared ?? '—'} icon={UserRoundX} /></Link>
     </div>
-    <SectionCard className="mt-5 p-5"><h2 className="font-bold text-[#003399]">Account review</h2><p className="mt-2 text-sm text-[#003399]/70">Review newly registered accounts and pending profile pictures.</p><Link to={`${prefix}/approvals`} className="mt-4 inline-flex rounded-xl bg-[#003399] px-4 py-2 font-bold text-white">Open account approvals</Link></SectionCard>
+    <SectionCard className="mt-5 p-5"><h2 className="font-bold text-[#003399]">Account setup</h2><p className="mt-2 text-sm text-[#003399]/70">Set up Staff accounts or manage the Student enrollment roster.</p><Link to={`${prefix}/users`} className="mt-4 inline-flex rounded-xl bg-[#003399] px-4 py-2 font-bold text-white">Open library users</Link></SectionCard>
     {data ? <p className="mt-4 text-sm text-[#003399]/60">{data.unknown} active students have an unknown clearance state. Updated {new Date(data.generatedAt).toLocaleString('en-PH')}.</p> : null}
   </>
 }

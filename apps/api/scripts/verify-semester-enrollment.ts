@@ -11,7 +11,9 @@ import { createRosterRegistration } from '../src/modules/enrollment/roster-regis
 import { enrollmentDecision, semesterAccessEnded } from '../src/modules/enrollment/enrollment-policy.ts'
 import { createJwtAuthService } from '../src/modules/auth/jwt-auth.service.ts'
 import { createLoginSecurityService } from '../src/modules/auth/login-security.service.ts'
-import { createRegistrationService } from '../src/modules/auth/registration.service.ts'
+import { parseUserFilters, UsersRepository } from '../src/modules/users/users.repository.ts'
+import { createStaffAccount } from '../src/modules/auth/registration.service.ts'
+import { createPasswordRecoveryService } from '../src/modules/auth/password-recovery.service.ts'
 
 if (!process.argv.includes('--isolated-schema') || env.db.driver !== 'postgres') {
   throw new Error('Use --isolated-schema with a configured Postgres connection.')
@@ -62,16 +64,17 @@ const row = async (sql: string, values: unknown[] = []) => {
 const header = ['Student ID', 'Name', 'Program', 'Level', 'Campus Email Address']
 const newStudent = ['00000123', 'QA New Student', 'BSIT', '1Y', 'new-fixture@ormoc.sti.edu.ph']
 const restrictedStudent = ['00000456', 'QA Restricted Student', 'BSIT', '2Y', 'restricted-fixture@ormoc.sti.edu.ph']
-const missingEmail = ['00000789', 'QA Without Email', 'BSIT', '1Y', '']
+const missingEmail = ['00000789', 'QA Other Campus', 'BSIT', '1Y', 'fixture@other-campus.sti.edu.ph']
 const csv = (...rows: string[][]) => ({ originalname: 'synthetic.csv', buffer: Buffer.from([header, ...rows].map(columns => columns.join(',')).join('\r\n')) })
 const manilaDate = (value: number) => new Date(value + 8 * 3_600_000).toISOString().slice(0, 10)
 const password = 'FakeFixturePass123'
 
 let created = false
 try {
-  const [base, roles, qr, loginDdl, enrollment] = await Promise.all([
+  const [base, roles, qr, loginDdl, enrollment, events, recoveryDdl] = await Promise.all([
     file('001_from_baseline.sql'), file('015_phase6_registration_roles.sql'), file('005_main_product_gapfill.sql'),
     file('029_october16_revisions.sql'), file('031_semester_enrollment.sql'),
+    file('011_phase2_user_management.sql'), file('020_revision_phase1_password_recovery.sql'),
   ])
   await connection.execute(`CREATE SCHEMA ${schema}`)
   created = true
@@ -84,12 +87,14 @@ try {
       ...['login_attempt_windows', 'login_otp_challenges', 'library_login_sessions'].map(name => table(loginDdl, name)),
       'ALTER TABLE accounts ADD COLUMN auth_version integer NOT NULL DEFAULT 1;',
       'ALTER TABLE users ADD COLUMN auth_version integer NOT NULL DEFAULT 1;',
+      table(events, 'account_management_events'),
+      table(recoveryDdl.replaceAll('public.', ''), 'account_recovery_challenges'),
       'CREATE TABLE loan_fixture(account_id bigint REFERENCES accounts(account_id), due_at timestamptz, state text);',
     ]
     await q.execute(fixtures.join('\n'))
     await q.execute(enrollment)
     await q.execute(`WITH inserted AS (
-      INSERT INTO roles(role_name) VALUES ('Librarian'),('Staff'),('Faculty'),('Student') RETURNING role_id,role_name
+      INSERT INTO roles(role_name) VALUES ('Librarian'),('Staff'),('Library Staff'),('Faculty'),('Student') RETURNING role_id,role_name
     ), identities AS (
       INSERT INTO users(role_id,user_role,institutional_id,school_id,full_name,email,password_hash,account_status)
       SELECT role_id,role_name,school,school,name,email,'unused',status FROM inserted JOIN (VALUES
@@ -124,6 +129,14 @@ try {
   const sheet = workbook.addWorksheet('Fixture')
   sheet.addRows([header, newStudent, restrictedStudent, missingEmail])
   const excel = { originalname: 'synthetic.xlsx', buffer: Buffer.from(await workbook.xlsx.writeBuffer()) }
+  await assert.rejects(service.preview(staff, semesterId, excel), { status: 403 })
+  const preview = await service.preview(library, semesterId, excel)
+  assert.equal(preview.studentCount, 3)
+  assert.equal(preview.errorCount, 0)
+  assert.equal(preview.warningCount, 1)
+  assert.deepEqual(preview.sheets[0].headings, header)
+  assert.deepEqual(preview.sheets[0].rows[2].cells, missingEmail)
+  assert.equal(Number((await row('SELECT COUNT(*) n FROM enrollment_roster_imports')).n), 0)
   const upload = await service.upload(library, semesterId, excel, scope)
   assert.equal(upload.students, 3)
   assert.equal(upload.missingEmail, 1)
@@ -131,6 +144,16 @@ try {
   await service.upload(library, semesterId, csv(newStudent), { ...scope, scope: 'Partial' })
   const beforeStart = await service.roster(library, semesterId, 1, '00000')
   assert.deepEqual(beforeStart.rows.map(student => student.school_id), ['00000123', '00000456', '00000789'])
+  const users = new UsersRepository(pool)
+  const notRegistered = parseUserFilters({ status: 'Not registered', limit: 1 })
+  const firstPage = await users.directory(notRegistered)
+  assert.equal(firstPage.pagination.total, 2)
+  assert.equal(firstPage.rows[0].id, null)
+  const secondPage = await users.directory({ ...notRegistered, page: 2 })
+  assert.notEqual(firstPage.rows[0].school_id, secondPage.rows[0].school_id)
+  assert.deepEqual(await users.programs(notRegistered.status), ['BSIT'])
+  assert.equal((await users.directory({ ...notRegistered, q: 'new-fixture' })).pagination.total, 1)
+  assert.equal((await users.directory({ ...notRegistered, q: restrictedStudent[0] })).pagination.total, 0)
   assert.equal(Number((await row('SELECT COUNT(*) n FROM accounts')).n), 4)
   await service.start(library, semesterId)
   await assert.rejects(service.start(library, nextId), { code: 'SEMESTER_INVALID' })
@@ -158,11 +181,7 @@ try {
   assert.deepEqual(attempts.find(result => result.status === 'fulfilled')?.value, { schoolId: newStudent[0], status: 'Active' })
   const student = await row('SELECT account_id,user_id,account_status FROM accounts WHERE school_id=?', [newStudent[0]])
   assert.equal(student.account_status, 'Active')
-  await assert.rejects(createRegistrationService(pool, sender).register({
-    school_id: '00000111', school_email: 'legacy-fixture@ormoc.sti.edu.ph', first_name: 'Legacy', last_name: 'Student',
-    role: 'Student', program_strand: 'BSIT', year_grade_level: '1st Year', password, confirm_password: password,
-  }), { status: 409 })
-
+  assert.equal((await users.directory({ ...notRegistered, q: newStudent[0] })).pagination.total, 0)
   let loginTime = Date.now()
   const login = createJwtAuthService(pool)
   const security = createLoginSecurityService(pool, body => login.login(body, true), sender, () => loginTime)
@@ -216,7 +235,23 @@ try {
   await service.end(library, nextId)
   assert.equal((await row('SELECT end_kind FROM enrollment_semesters WHERE semester_id=?', [nextId])).end_kind, 'Manual')
   assert.equal(Number((await row('SELECT COUNT(*) n FROM enrollment_semester_members WHERE account_id=?', [student.account_id])).n), 2)
-  console.log('Enrollment checks passed: CSV/XLSX, role and timing rules, email signup, scheduled and manual closure, archive, and same-account restoration.')
+  const provisioned = await createStaffAccount(library, {
+    school_id: 'QA-NEW-STAFF', school_email: 'new-staff-fixture@ormoc.sti.edu.ph', first_name: 'New', last_name: 'Staff',
+  }, pool, 'postgres')
+  const staffCredentials = { school_id: provisioned.schoolId, password, portal: 'staff' }
+  await assert.rejects(security.login(staffCredentials), { code: 'INVALID_CREDENTIALS' })
+  const recovery = createPasswordRecoveryService(pool, sender)
+  const deliveryCount = deliveries.length
+  await recovery.request({ identifier: provisioned.schoolId })
+  await recovery.request({ identifier: 'QA-STAFF', portal: 'staff' })
+  await recovery.request({ identifier: 'QA-LIB', portal: 'staff' })
+  assert.equal(deliveries.length, deliveryCount)
+  const staffSetup = await recovery.request({ identifier: provisioned.schoolId, portal: 'staff' })
+  assert.equal(deliveries.at(-1)?.email, 'new-staff-fixture@ormoc.sti.edu.ph')
+  const verifiedStaff = await recovery.verify({ challenge_id: staffSetup.challengeId, code: deliveries.at(-1)?.code })
+  await recovery.reset({ challenge_id: staffSetup.challengeId, reset_token: verifiedStaff.resetToken, password, confirm_password: password })
+  assert.equal((await security.login(staffCredentials))?.user?.accountId, provisioned.accountId)
+  console.log('Enrollment and account checks passed, including Staff provisioning and first password setup.')
 } finally {
   try {
     if (created) {

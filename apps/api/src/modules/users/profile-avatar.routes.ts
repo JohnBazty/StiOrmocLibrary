@@ -2,12 +2,11 @@ import { randomUUID } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 import { Router, type NextFunction, type Request, type Response } from 'express'
 import multer from 'multer'
+import { rateLimit } from 'express-rate-limit'
 import type { RowDataPacket } from 'mysql2/promise'
 import { db } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
-import { requireLibraryActor } from '../../core/library-permissions.ts'
-import { requireLibraryPermission } from '../auth/jwt-auth.middleware.ts'
 
 const bucket = 'profile-avatars'
 const allowed: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }
@@ -53,14 +52,14 @@ profileAvatarRouter.get('/me', handle(async (_request, response) => {
   const approved = rows.find(row => row.status === 'Approved')
   const pending = rows.find(row => row.status === 'Pending')
   const rejected = rows.find(row => row.status === 'Rejected' && row.review_reason !== 'Superseded by a newer upload')
-  response.json({ success: true, data: {
+  response.set('Cache-Control', 'private, no-store').json({ success: true, data: {
     currentUrl: approved ? await signedUrl(String(approved.storage_path)) : null,
     pending: pending ? { id: Number(pending.submission_id), submittedAt: pending.submitted_at } : null,
     lastRejection: rejected && (!approved || new Date(rejected.submitted_at).getTime() > new Date(approved.submitted_at).getTime())
       ? { reviewedAt: rejected.reviewed_at, reason: rejected.review_reason } : null,
   } })
 }))
-profileAvatarRouter.post('/me', (request, response, next) => upload(request, response, error => {
+profileAvatarRouter.post('/me', rateLimit({ windowMs: 60_000, limit: 15, standardHeaders: true, legacyHeaders: false }), (request, response, next) => upload(request, response, error => {
   if ((error as { code?: string } | undefined)?.code === 'LIMIT_FILE_SIZE') return next(new HttpError(422, 'AVATAR_INVALID', 'Choose an image up to 2 MB.'))
   return error ? next(error) : next()
 }), handle(async (request, response) => {
@@ -69,58 +68,30 @@ profileAvatarRouter.post('/me', (request, response, next) => upload(request, res
   const path = `${id}/${randomUUID()}.${allowed[file.mimetype]}`
   const { error } = await storage!.upload(path, file.buffer, { contentType: file.mimetype, upsert: false })
   if (error) throw new HttpError(503, 'AVATAR_STORAGE_UNAVAILABLE', 'Image upload failed. Try again.')
-  const connection = await db.getConnection()
+  let connection: Awaited<ReturnType<typeof db.getConnection>> | undefined
+  let committing = false
   try {
+    connection = await db.getConnection()
     await connection.beginTransaction()
+    const [accounts] = await connection.execute<RowDataPacket[]>(
+      "SELECT account_id FROM accounts WHERE account_id=? AND account_status='Active' FOR UPDATE", [id],
+    )
+    if (!accounts.length) throw new HttpError(403, 'ACCOUNT_ACCESS_REVOKED', 'Your account access changed. Sign in again.')
     await connection.execute(
       `UPDATE profile_avatar_submissions SET status='Rejected',review_reason='Superseded by a newer upload',reviewed_at=NOW()
        WHERE account_id=? AND status='Pending'`, [id],
     )
     await connection.execute(
-      `INSERT INTO profile_avatar_submissions(account_id,storage_path,mime_type,status)
-       VALUES (?,?,?,'Pending')`, [id, path, file.mimetype],
+      `INSERT INTO profile_avatar_submissions(account_id,storage_path,mime_type,status,submitted_at)
+       VALUES (?,?,?,'Approved',clock_timestamp())`, [id, path, file.mimetype],
     )
+    committing = true
     await connection.commit()
   } catch (cause) {
-    await connection.rollback(); await storage!.remove([path]); throw cause
-  } finally { connection.release() }
-  response.status(201).json({ success: true, data: { status: 'Pending' } })
-}))
-profileAvatarRouter.get('/submissions', requireLibraryPermission('accounts.manage'), handle(async (_request, response) => {
-  requireSupabase()
-  const [rows] = await db.execute<RowDataPacket[]>(
-    `SELECT p.submission_id,p.account_id,p.storage_path,p.submitted_at,a.school_id,
-            COALESCE(u.full_name,a.school_id) AS full_name
-       FROM profile_avatar_submissions p JOIN accounts a ON a.account_id=p.account_id
-       LEFT JOIN users u ON u.user_id=a.user_id WHERE p.status='Pending'
-      ORDER BY p.submitted_at ASC LIMIT 100`, [],
-  )
-  response.json({ success: true, data: await Promise.all(rows.map(async row => ({
-    id: Number(row.submission_id), accountId: Number(row.account_id), schoolId: row.school_id,
-    name: row.full_name, submittedAt: row.submitted_at, previewUrl: await signedUrl(String(row.storage_path)),
-  }))) })
-}))
-profileAvatarRouter.post('/submissions/:id/review', requireLibraryPermission('accounts.manage'), handle(async (request, response) => {
-  requireSupabase()
-  const id = Number(request.params.id)
-  const decision = String(request.body?.decision ?? '')
-  if (!Number.isSafeInteger(id) || id < 1 || !['approve', 'reject'].includes(decision)) {
-    throw new HttpError(422, 'AVATAR_REVIEW_INVALID', 'Choose approve or reject.')
-  }
-  const connection = await db.getConnection()
-  try {
-    await connection.beginTransaction()
-    await requireLibraryActor(connection, accountId(response), 'accounts.manage')
-    const [rows] = await connection.execute<RowDataPacket[]>(
-      'SELECT submission_id,account_id FROM profile_avatar_submissions WHERE submission_id=? AND status=\'Pending\' FOR UPDATE', [id],
-    )
-    if (!rows.length) throw new HttpError(409, 'AVATAR_ALREADY_REVIEWED', 'This image is no longer awaiting review.')
-    await connection.execute(
-      `UPDATE profile_avatar_submissions SET status=?,reviewed_by_account_id=?,reviewed_at=NOW(),review_reason=?
-       WHERE submission_id=?`, [decision === 'approve' ? 'Approved' : 'Rejected', accountId(response), decision === 'approve' ? 'Profile picture approved by the library administrator.' : 'Profile picture rejected by the library administrator.', id],
-    )
-    await connection.commit()
-    response.json({ success: true, data: { id, status: decision === 'approve' ? 'Approved' : 'Rejected' } })
-  } catch (cause) { await connection.rollback(); throw cause }
-  finally { connection.release() }
+    await connection?.rollback().catch(() => undefined)
+    // A lost commit response may still have saved the picture. Keep its object in that case.
+    if (!committing) await storage!.remove([path])
+    throw cause
+  } finally { connection?.release() }
+  response.set('Cache-Control', 'private, no-store').status(201).json({ success: true, data: { status: 'Approved' } })
 }))

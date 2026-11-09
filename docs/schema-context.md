@@ -397,12 +397,18 @@ Migration `029_october16_revisions.sql` is applied individually. Enrollment draf
 
 Implementation and verification evidence is tracked in `docs/october16-revisions-implementation.json`; no new Markdown implementation plan was created.
 
-## Student enrollment and Semester Archive — prepared (2026-11-09)
+## Student enrollment and Semester Archive — applied (2026-11-09)
 
-Unapplied Postgres migration `031_semester_enrollment.sql` supersedes draft 028. Existing account and academic-term structures retain their meanings. Migration 030 remains the latest applied product migration. The next unused Postgres number is 032.
+Applied Postgres migration `031_semester_enrollment.sql` supersedes draft 028. Existing account and academic-term structures retain their meanings. The next unused Postgres number is 032.
 
 - `enrollment_semesters` records the single active enrollment term, both locked end times, and closure actors and timestamps. These records are separate from the reporting and clearance calendar.
 - `enrollment_roster_imports` and `enrollment_roster_students` store validated versions. The latest complete roster and later partial updates determine enrollment. An upload does not create or reactivate an account.
 - `enrollment_semester_members` preserves the account and Student ID for the Semester Archive. Closure saves each status and revokes sessions. The closure version identifies accounts eligible for restoration with a matching next-term roster and successful password and email verification.
 - `enrollment_signup_challenges` binds hashed codes and one-time password setup grants to the effective roster row. A returning student's login challenge is bound to the active semester via `login_otp_challenges.restoration_semester_id`. New enrollment tables use RLS and are accessible through the private API.
 - Enforcement requires Postgres and `ENROLLMENT_ROSTER_ENABLED=true`. The first semester start switches Student registration and new borrowing to the roster. The server enforces the cutoff even if a job is delayed. The existing job runner or a subsequent enrollment overview saves scheduled closure.
+
+### Account setup without a review queue — implementation
+
+- Public signup uses the active Student roster. Existing Faculty accounts continue to sign in with a password and school email code. New Faculty signup is paused.
+- Admin and Librarian can create Staff accounts from Users. Setup records a `StaffAccountCreated` audit event and generates a private random credential. The Staff member sets a password through the personnel login page. Existing password-recovery challenges also handle this Staff flow, limited to active Staff accounts created through the new setup.
+- New profile pictures publish on save. The storage bucket remains private, and the existing `Approved` storage status marks the published image for compatibility. Previously submitted pictures remain in history. Users can select and save an older pending picture again.

@@ -62,6 +62,7 @@ export function AdminLoginPage() {
               <label className="flex cursor-pointer items-center gap-3 text-sm font-semibold text-[#003399]/65"><input type="checkbox" checked={showPassword} onChange={(event) => setShowPassword(event.target.checked)} className="h-4 w-4 accent-[#003399]" />Show password</label>
               <button disabled={busy} className="flex h-13 w-full items-center justify-center rounded-xl bg-[#003399] text-sm font-black uppercase tracking-[.12em] text-[#FFFFFF] shadow-lg shadow-[#003399]/20 transition hover:ring-4 hover:ring-[#FFF200] disabled:cursor-wait disabled:opacity-60">{busy ? 'Verifying account…' : 'Log In'}</button>
             </form>
+            <Link to="/forgot-password?portal=staff" className="mt-5 inline-block text-sm font-bold text-[#003399] underline">Set or reset Staff password</Link>
           </div>
         </section>
       </div>

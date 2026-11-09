@@ -9,6 +9,12 @@ export type Semester = {
 }
 export type RosterRow = {school_id:string; student_name:string; program:string|null; year_level:string|null; closed_status:string|null; deactivated_at_end:boolean; account_id:number|null; email_mismatch:boolean}
 export type RowIssue = {sheet:string;row:number;errors:string[]}
+export type RosterPreview = {
+  studentCount: number
+  errorCount: number
+  warningCount: number
+  sheets: { name: string; headings: string[]; rows: { row: number; cells: string[]; errors: string[]; warnings: string[] }[] }[]
+}
 export class EnrollmentError extends Error {
   constructor(message:string,public issues:RowIssue[] = []){super(message)}
 }
@@ -30,6 +36,11 @@ export const enrollmentApi={
   save:(body:unknown)=>request<{semesterId:number}>('/semesters',body),
   start:(id:number)=>request(`/semesters/${id}/start`,{}),
   end:(id:number)=>request(`/semesters/${id}/end`,{}),
+  preview:(id:number,file:File,signal:AbortSignal)=>{
+    const body = new FormData()
+    body.set('roster', file)
+    return request<RosterPreview>(`/semesters/${id}/roster/preview`, body, signal)
+  },
   upload:(id:number,body:FormData)=>request<{alreadyUploaded:boolean;students:number;missingEmail:number}>(`/semesters/${id}/roster`,body),
   roster:(id:number,page:number,q:string,signal?:AbortSignal)=>request<{rows:RosterRow[];more:boolean;archived:boolean}>(`/semesters/${id}/roster?${new URLSearchParams({page:String(page),q})}`,undefined,signal),
 }

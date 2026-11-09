@@ -3,9 +3,13 @@ import { db } from '../../config/db.js'
 import { isPostgres } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { requireLibraryActor } from '../../core/library-permissions.ts'
+import { currentRosterSql, enrollmentEnabled } from '../enrollment/enrollment-policy.ts'
 
 const statuses = ['Active', 'Deactivated', 'Archived'] as const
 type Status = typeof statuses[number]
+const notRegistered = 'Not registered'
+const unregisteredStudents = `FROM (${currentRosterSql}) r
+  WHERE NOT EXISTS (SELECT 1 FROM accounts a WHERE a.school_id=r.school_id)`
 export type UserFilters = { q: string; role: string; program: string; clearance: string; status: string; page: number; limit: number }
 
 function id(value: unknown) {
@@ -27,7 +31,7 @@ function profile(body: Record<string, unknown>) {
 }
 export function parseUserFilters(q: Record<string, unknown>): UserFilters {
   const status = String(q.status ?? '').trim()
-  if (status && status !== 'Inactive' && !statuses.includes(status as Status)) throw new HttpError(422, 'USER_STATUS_INVALID', 'Choose a valid account status.')
+  if (status && status !== 'Inactive' && status !== notRegistered && !statuses.includes(status as Status)) throw new HttpError(422, 'USER_STATUS_INVALID', 'Choose a valid account status.')
   const page = Number(q.page), limit = Number(q.limit)
   return { q: String(q.q ?? '').trim().slice(0, 150), role: String(q.role ?? '').trim().slice(0, 30),
     program: String(q.program ?? '').trim().slice(0, 150), clearance: String(q.clearance ?? '').trim().slice(0, 30), status,
@@ -64,11 +68,48 @@ export class UsersRepository {
     const [rows] = await this.pool.execute<RowDataPacket[]>(`SELECT ${counts} FROM accounts`)
     return rows[0]
   }
-  async programs() {
+  private async latestImportedSemester() {
+    if (!enrollmentEnabled()) return null
+    const [rows] = await this.pool.execute<RowDataPacket[]>(`SELECT s.semester_id
+      FROM enrollment_roster_imports b JOIN enrollment_semesters s USING(semester_id)
+      WHERE s.ended_at IS NULL AND (s.started_at IS NULL OR s.scheduled_end_at>clock_timestamp())
+      ORDER BY b.roster_id DESC LIMIT 1`)
+    return rows[0]?.semester_id ?? null
+  }
+  async programs(status = '') {
+    if (status === notRegistered) {
+      const semesterId = await this.latestImportedSemester()
+      if (semesterId === null) return []
+      const [rows] = await this.pool.execute<RowDataPacket[]>(`SELECT DISTINCT r.program ${unregisteredStudents} ORDER BY r.program`, [semesterId])
+      return rows.map(row => row.program)
+    }
     const [rows] = await this.pool.execute<RowDataPacket[]>(`SELECT DISTINCT COALESCE(sp.program_strand,u.course_or_strand) program ${this.base()} WHERE COALESCE(sp.program_strand,u.course_or_strand) IS NOT NULL ORDER BY program`)
     return rows.map(row => row.program)
   }
+  private async rosterDirectory(filters: UserFilters) {
+    const { q, program, role, clearance, page, limit } = filters
+    const pagination = { page, limit, total: 0, total_pages: 0 }
+    if (clearance || (role && role !== 'Student')) return { rows: [], pagination }
+    const semesterId = await this.latestImportedSemester()
+    if (semesterId === null) return { rows: [], pagination }
+    const [results] = await this.pool.execute<RowDataPacket[]>(`WITH matches AS (
+      SELECT NULL AS id, r.school_id, 'Student' AS role, 'Not registered' AS account_status,
+        r.student_name AS full_name, COALESCE(r.school_email,'—') AS email,
+        r.program, r.year_level AS year_or_unit, '—' AS clearance_status
+      ${unregisteredStudents}
+        AND STRPOS(LOWER(CONCAT_WS(' ',r.school_id,r.student_name,r.school_email)),LOWER(?))>0
+        AND (?='' OR r.program=?)
+    ), visible AS (
+      SELECT * FROM matches ORDER BY full_name,school_id LIMIT ? OFFSET ?
+    )
+    SELECT (SELECT COUNT(*) FROM matches) AS total,
+      COALESCE(json_agg(visible ORDER BY full_name,school_id),'[]'::json) AS rows FROM visible`,
+    [semesterId, q, program, program, limit, (page - 1) * limit])
+    const total = Number(results[0]?.total ?? 0)
+    return { rows: results[0]?.rows ?? [], pagination: { ...pagination, total, total_pages: Math.ceil(total / limit) } }
+  }
   async directory(filters: UserFilters) {
+    if (filters.status === notRegistered) return this.rosterDirectory(filters)
     const where = this.where(filters), offset = (filters.page - 1) * filters.limit
     const [counts] = await this.pool.execute<RowDataPacket[]>(`SELECT COUNT(*) total ${this.base()} WHERE ${where.sql}`, where.values)
     const [rows] = await this.pool.execute<RowDataPacket[]>(

@@ -80,12 +80,11 @@ test('rejects invalid credentials without revealing whether the account exists',
   )
 })
 
-test('correct pending role credentials explain the approval wait without issuing a token', async () => {
-  let queries = 0
-  const database = { execute: async () => { queries++; return queries === 1 ? [[]] : [[{ status: 'PendingApproval', password_hash: 'hashed' }]] } } as never
+test('a pending legacy signup without an account cannot sign in', async () => {
+  const database = { execute: async () => [[]] } as never
   const service = createJwtAuthService(database, { compare: async () => true } as never, jwt)
   await assert.rejects(service.login({ school_id: 'STAFF-123', login_as: 'Staff', password: 'CorrectHorse1' }),
-    (error: unknown) => error instanceof HttpError && error.code === 'ACCOUNT_APPROVAL_PENDING')
+    (error: unknown) => error instanceof HttpError && error.code === 'INVALID_CREDENTIALS')
 })
 
 test('does not include a client-selected role in credential queries', async () => {

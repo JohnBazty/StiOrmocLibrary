@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, PageHeader, SectionCard } from '../../components/ui'
 import { SelectedFilePreview } from '../../components/SelectedFilePreview'
-import { enrollmentApi, EnrollmentError, type RowIssue, type Semester } from './enrollment-api'
+import { enrollmentApi, EnrollmentError, type RosterPreview, type RowIssue, type Semester } from './enrollment-api'
+import { RosterPreviewTable } from './RosterPreviewTable'
 import { usersApi, type UserDetail } from './users-api'
 
 const field='mt-1 block min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-950 dark:border-slate-600 dark:bg-slate-900 dark:text-white'
@@ -72,8 +73,8 @@ export function EnrollmentPage({area='librarian'}:{area?:'admin'|'librarian'}) {
           <SemesterAction action="end" disabled={busy||!term.can_end} count={Number(term.active_accounts)} onConfirm={()=>transition('end')}/>
         </div>}
       </SectionCard>
-      {term.status!=='Ended'&&<RosterUpload key={term.semester_id} term={term} onSaved={message=>{setNotice(message);reload()}}/>}
-      <RosterRecords key={term.semester_id} term={term} revision={revision}/>
+      {term.status!=='Ended'&&<RosterUpload key={`upload-${term.semester_id}`} term={term} onSaved={message=>{setNotice(message);reload()}}/>}
+      <RosterRecords key={`records-${term.semester_id}`} term={term} revision={revision}/>
     </>}
   </div>
 }
@@ -124,9 +125,27 @@ function RosterUpload({term,onSaved}:{term:Semester;onSaved:(message:string)=>vo
   const [file,setFile]=useState<File|null>(null),[sourceDate,setSourceDate]=useState(''),[scope,setScope]=useState('Complete')
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[issues,setIssues]=useState<RowIssue[]>([])
   const input=useRef<HTMLInputElement>(null)
-  const remove=()=>{setFile(null);if(input.current)input.current.value=''}
+  const [preview, setPreview] = useState<RosterPreview | null>(null)
+  const [previewError, setPreviewError] = useState('')
+  const [retry, setRetry] = useState(0)
+  function selectFile(next: File | null) {
+    setPreview(null)
+    setPreviewError('')
+    setError('')
+    setIssues([])
+    setFile(next)
+  }
+  const remove=()=>{selectFile(null);if(input.current)input.current.value=''}
+  useEffect(() => {
+    if (!file) return
+    const controller = new AbortController()
+    enrollmentApi.preview(term.semester_id, file, controller.signal)
+      .then(result => { if (!controller.signal.aborted) setPreview(result) })
+      .catch(error => { if (!controller.signal.aborted) setPreviewError(errorText(error)) })
+    return () => controller.abort()
+  }, [file, term.semester_id, retry])
   async function upload(e:FormEvent){
-    e.preventDefault();if(!file)return;setError('');setIssues([]);setBusy(true)
+    e.preventDefault();if(!file || !preview || preview.errorCount || busy)return;setError('');setIssues([]);setBusy(true)
     try{
       const body=new FormData();body.set('roster',file);body.set('sourceDate',sourceDate);body.set('scope',scope)
       const result=await enrollmentApi.upload(term.semester_id,body)
@@ -143,10 +162,15 @@ function RosterUpload({term,onSaved}:{term:Semester;onSaved:(message:string)=>vo
       <label className="text-sm font-semibold">Roster date<input className={field} type="date" value={sourceDate} onChange={e=>setSourceDate(e.target.value)} required/></label>
       <label className="text-sm font-semibold">Roster type<select className={field} value={scope} onChange={e=>setScope(e.target.value)}><option value="Complete">Complete school roster</option><option value="Partial">Partial update</option></select></label>
     </div>
-    <label className="block text-sm font-semibold">Roster file<input ref={input} type="file" accept=".csv,.xlsx" className={field} disabled={busy} onChange={e=>setFile(e.target.files?.[0]??null)}/></label>
-    <SelectedFilePreview file={file} onRemove={remove} disabled={busy}/>
+    <label className="block text-sm font-semibold">Roster file<input ref={input} type="file" accept=".csv,.xlsx" className={field} disabled={busy} onChange={e=>selectFile(e.target.files?.[0]??null)}/></label>
+    <SelectedFilePreview file={file} onRemove={remove} disabled={busy} display="icon"/>
+    {file && !preview && !previewError && <p role="status" className="text-sm">Reading roster and counting students…</p>}
+    {previewError && <div role="alert" className="space-y-2 text-sm text-red-700 dark:text-red-300">
+      <p>{previewError}</p><Button type="button" variant="secondary" onClick={() => { setPreviewError(''); setRetry(value => value + 1) }}>Retry preview</Button>
+    </div>}
+    {preview && <RosterPreviewTable preview={preview}/>}
     {error&&<div role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-900"><p>{error}</p>{issues.length>0&&<ul className="mt-2 list-disc pl-5">{issues.map(issue=><li key={issue.sheet+issue.row}>{issue.sheet}, row {issue.row}: {issue.errors.join(' ')}</li>)}</ul>}</div>}
-    <Button disabled={busy||!file} type="submit">{busy?'Checking and importing…':'Upload roster'}</Button>
+    <Button disabled={busy||!preview||preview.errorCount>0} type="submit">{busy?'Importing…':'Import roster'}</Button>
   </form></SectionCard>
 }
 

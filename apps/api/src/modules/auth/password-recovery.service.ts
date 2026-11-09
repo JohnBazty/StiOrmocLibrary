@@ -17,6 +17,10 @@ const LOCK_LIFETIME = 15 * 60_000
 const RESET_LIFETIME = 5 * 60_000
 const PUBLIC_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 const neutralMessage = 'If an active student account matches, a six-digit code will be sent to its school email. Check your inbox and junk folder. If no code arrives, wait one minute and try again or contact the library.'
+const staffMessage = 'If a Staff account set up by the library matches, a six-digit code will be sent to its school email. Check your inbox and junk folder.'
+const provisionedStaff = `a.role='Staff' AND EXISTS (
+  SELECT 1 FROM account_management_events e WHERE e.account_id=a.account_id AND e.action_code='StaffAccountCreated'
+)`
 const invalidCode = () => new HttpError(422, 'RECOVERY_CODE_INVALID', 'The code is incorrect, expired, or already used. Request a new code if needed.')
 const locked = () => new HttpError(429, 'RECOVERY_LOCKED', 'Three incorrect codes were entered. Wait 15 minutes before requesting or verifying another code. Normal login is still available.')
 const invalidReset = () => new HttpError(422, 'RECOVERY_TOKEN_INVALID', 'This password reset has expired or already been used. Start again.')
@@ -46,10 +50,11 @@ export function createPasswordRecoveryService(
     } catch (error) { await connection.rollback(); throw error }
     finally { connection.release() }
   }
-  async function eligible(connection: PoolConnection, clause: string, values: Array<string | number>) {
+  async function eligible(connection: PoolConnection, clause: string, values: Array<string | number>, portal?: 'student' | 'staff') {
+    const role = portal === 'student' ? "a.role='Student'" : portal === 'staff' ? provisionedStaff : `(a.role='Student' OR (${provisionedStaff}))`
     const [rows] = await connection.execute<Account[]>(`SELECT a.account_id,a.user_id,a.password_hash,a.auth_version,u.email
       FROM accounts a JOIN users u ON u.user_id=a.user_id
-      WHERE ${clause} AND a.role='Student' AND a.account_status='Active' AND u.account_status='Active'
+      WHERE ${clause} AND ${role} AND a.account_status='Active' AND u.account_status='Active'
       FOR UPDATE OF a,u`, values)
     const account = rows[0]
     return account && /^[^\s@]+@ormoc\.sti\.edu\.ph$/i.test(account.email) ? account : null
@@ -67,11 +72,12 @@ export function createPasswordRecoveryService(
     async request(body: unknown) {
       const input = object(body)
       const identifier = String(input.identifier ?? '').trim()
+      const portal = input.portal === 'staff' ? 'staff' : 'student'
       if (!identifier || identifier.length > 254) throw new HttpError(422, 'AUTH_VALIDATION_FAILED', 'Enter your School ID or school email.')
       const publicId = randomUUID()
       const timestamp = now()
       const delivery = await transaction(async connection => {
-        const account = await eligible(connection, '(UPPER(a.school_id)=? OR LOWER(u.email)=?)', [identifier.toUpperCase(), identifier.toLowerCase()])
+        const account = await eligible(connection, '(UPPER(a.school_id)=? OR LOWER(u.email)=?)', [identifier.toUpperCase(), identifier.toLowerCase()], portal)
         if (!account) return null
         const [rows] = await connection.execute<Challenge[]>('SELECT * FROM account_recovery_challenges WHERE account_id=? FOR UPDATE', [account.account_id])
         const previous = rows[0]
@@ -96,7 +102,7 @@ export function createPasswordRecoveryService(
           console.warn('[Password recovery] Email delivery failed. No recipient or code is logged.')
         }
       }
-      return { challengeId: publicId, message: neutralMessage }
+      return { challengeId: publicId, message: portal === 'staff' ? staffMessage : neutralMessage }
     },
     async verify(body: unknown) {
       const input = object(body)

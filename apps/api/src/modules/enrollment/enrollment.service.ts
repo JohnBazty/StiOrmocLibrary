@@ -136,6 +136,25 @@ export function createEnrollmentService(database: Pool = db, enabled = enrollmen
         return { semesterId:Number(result.insertId) }
       })
     },
+    async preview(actor: number, semesterId: unknown, file: {buffer:Buffer;originalname:string}) {
+      const term = await run(actor, false, q => semester(q, semesterId))
+      if (term.ended_at) throw fail('An ended semester is read-only.')
+      const roster = await parseEnrollmentFile(file, { academicYear: term.academic_year, termName: term.term_name, listedEnrolled: true, includeSource: true })
+      const preview = {
+        studentCount: new Set(roster.rows.map(row => row.data.schoolId).filter(Boolean)).size,
+        errorCount: roster.errors,
+        warningCount: roster.warnings,
+        sheets: roster.sheets.map(name => ({
+          name, headings: roster.headings[name],
+          rows: roster.rows.filter(row => row.sheet === name)
+            .map(row => ({ row: row.row, cells: row.source!, errors: row.errors, warnings: row.warnings })),
+        })),
+      }
+      if (Buffer.byteLength(JSON.stringify(preview)) > 4 * 1024 * 1024) {
+        throw fail('The preview is too large. Split the workbook into smaller files, or remove columns the library does not use.')
+      }
+      return preview
+    },
     async upload(actor: number, semesterId: unknown, file: {buffer:Buffer;originalname:string}, body:unknown) {
       const input=object(body), sourceDate=day(input.sourceDate), scope=text(input.scope)
       if (!['Complete','Partial'].includes(scope)) throw fail('Choose complete or partial roster.')

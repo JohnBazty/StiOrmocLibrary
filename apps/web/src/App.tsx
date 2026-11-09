@@ -4,7 +4,6 @@ import { UserAttendancePage } from './features/attendance/UserAttendancePage'
 import { AdminDashboardPage } from './features/dashboard/AdminDashboardPage'
 import { AdminAccountDashboardPage } from './features/dashboard/AdminAccountDashboardPage'
 import { StaffDashboardPage } from './features/dashboard/StaffDashboardPage'
-import { AccountApprovalsPage } from './features/users/AccountApprovalsPage'
 import { ProfileAvatarPage } from './features/users/ProfileAvatarPage'
 import { UserDashboardPage } from './features/dashboard/UserDashboardPage'
 import { FloorPlanImagePage } from './features/floor-plan/FloorPlanImagePage'
@@ -93,7 +92,7 @@ export default function App() {
           <Route path="/admin/users" element={<AdminUsersPage />} />
           <Route path="/admin/users/enrollment" element={<EnrollmentPage area="admin" />} />
           <Route path="/admin/user-archive" element={<AdminUsersPage archive />} />
-          <Route path="/admin/approvals" element={<AccountApprovalsPage />} />
+          <Route path="/admin/approvals" element={<Navigate to="/admin/users" replace />} />
           <Route path="/admin/notifications" element={<AdminNotificationsPage />} />
           <Route path="/admin/clearance" element={<AdminClearancePage />} />
         </Route>
@@ -106,7 +105,7 @@ export default function App() {
           <Route path="/librarian/users" element={<AdminUsersPage />} />
           <Route path="/librarian/users/enrollment" element={<EnrollmentPage />} />
           <Route path="/librarian/user-archive" element={<AdminUsersPage archive />} />
-          <Route path="/librarian/approvals" element={<AccountApprovalsPage />} />
+          <Route path="/librarian/approvals" element={<Navigate to="/librarian/users" replace />} />
           <Route path="/librarian/notifications" element={<LibrarianNotificationsPage />} />
           <Route path="/librarian/catalog" element={<Navigate to="/librarian/maintenance" replace />} />
           <Route path="/librarian/borrowing-policies" element={<BorrowingPoliciesArchivedPage />} />

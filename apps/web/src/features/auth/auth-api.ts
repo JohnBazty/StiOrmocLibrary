@@ -17,25 +17,6 @@ export type LoginResult = {
   user: { id: number; accountId: number; schoolId: string; fullName: string | null; email?: string; role: AuthRole }
 }
 
-export type StudentRegistrationInput = {
-  role?: Exclude<AuthRole, 'Admin'>
-  school_id: string
-  school_email?: string
-  first_name: string
-  last_name: string
-  program_strand: string
-  year_grade_level: string
-  password: string
-  confirm_password: string
-}
-
-export type RegistrationResult = {
-  requestId: number
-  schoolId: string
-  email: string
-  status: 'PendingEmail'
-}
-
 export type LoginPortal = 'user' | 'staff' | 'personnel'
 export type LoginChallenge = { otpRequired: true; challengeId: string; emailHint: string; expiresIn: number; resendAfter: number }
 
@@ -96,46 +77,6 @@ export async function rosterRegistrationRequest<T>(step = '', body?: object, sig
   return payload.data
 }
 
-export async function registerStudent(input: StudentRegistrationInput): Promise<RegistrationResult> {
-  const response = await fetch('/api/v1/auth/register', {
-    method: 'POST',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  })
-  if (!(response.headers.get('content-type') ?? '').includes('application/json')) {
-    throw new AuthenticationError('The registration service returned an unexpected response.', 'NON_JSON_RESPONSE')
-  }
-  const payload = await response.json() as {
-    data?: RegistrationResult
-    message?: string
-    code?: string
-    details?: { errors?: Record<string, string> }
-  }
-  if (!response.ok || !payload.data) {
-    throw new AuthenticationError(payload.message ?? 'Registration failed.', payload.code, payload.details?.errors)
-  }
-  return payload.data
-}
-
-export async function verifyRegistration(schoolId: string, code: string): Promise<{ status: 'Active' | 'PendingApproval'; role: AuthRole }> {
-  const response = await fetch('/api/v1/auth/register/verify', {
-    method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ school_id: schoolId, code }),
-  })
-  const payload = await response.json() as { data?: { status: 'Active' | 'PendingApproval'; role: AuthRole }; message?: string; code?: string }
-  if (!response.ok || !payload.data) throw new AuthenticationError(payload.message ?? 'Code verification failed.', payload.code)
-  return payload.data
-}
-
-export async function resendRegistrationCode(schoolId: string) {
-  const response = await fetch('/api/v1/auth/register/resend', {
-    method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ school_id: schoolId }),
-  })
-  const payload = await response.json() as { message?: string; code?: string }
-  if (!response.ok) throw new AuthenticationError(payload.message ?? 'Unable to resend the code.', payload.code)
-}
-
 async function recoveryRequest<T>(action: string, body: Record<string, string>): Promise<T> {
   const response = await fetch(`/api/v1/auth/password-recovery/${action}`, {
     method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -146,7 +87,8 @@ async function recoveryRequest<T>(action: string, body: Record<string, string>):
   if (!response.ok || !payload.data) throw new AuthenticationError(payload.message ?? 'Password recovery failed.', payload.code)
   return payload.data
 }
-export const requestPasswordRecovery = (identifier: string) => recoveryRequest<{ challengeId: string; message: string }>('request', { identifier })
+export const requestPasswordRecovery = (identifier: string, portal?: 'staff') =>
+  recoveryRequest<{ challengeId: string; message: string }>('request', portal ? { identifier, portal } : { identifier })
 export const verifyPasswordRecovery = (challengeId: string, code: string) => recoveryRequest<{ resetToken: string; expiresIn: number }>('verify', { challenge_id: challengeId, code })
 export const resetPassword = (challengeId: string, token: string, password: string, confirmation: string) => recoveryRequest<{ message: string }>('reset', { challenge_id: challengeId, reset_token: token, password, confirm_password: confirmation })
 

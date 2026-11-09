@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { login, logout, registerStudent } from './auth-api'
+import { login, logout } from './auth-api'
 import { saveAccessToken, getAccessToken } from './auth-storage'
 
 function token(payload: Record<string, unknown>) {
@@ -41,22 +41,7 @@ describe('normalized authentication API client', () => {
     expect(JSON.parse(String(options?.body))).toEqual({ portal: 'staff', school_id: 'ADMIN-001', password: 'admin123' })
   })
 
-  it('submits every normalized student profile field to registration', async () => {
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _options?: RequestInit) => new Response(JSON.stringify({
-      success: true,
-      data: { account: { id: 40, schoolId: 'STI-2026-0040', role: 'Student', firstName: 'Ana', lastName: 'Reyes' } },
-    }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
-    vi.stubGlobal('fetch', fetchMock)
-    const input = {
-      school_id: 'STI-2026-0040', first_name: 'Ana', last_name: 'Reyes',
-      program_strand: 'BS Information Technology', year_grade_level: '2nd Year', password: 'LibraryPass9', confirm_password: 'LibraryPass9',
-    }
 
-    await registerStudent(input)
-    const [url, options] = fetchMock.mock.calls[0]
-    expect(url).toBe('/api/v1/auth/register')
-    expect(JSON.parse(String(options?.body))).toEqual(input)
-  })
 })
 
 afterEach(() => { vi.unstubAllGlobals(); sessionStorage.clear() })
