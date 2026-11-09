@@ -47,7 +47,7 @@ export function SidebarAccountCard({ identity, preview = false }: { identity: Au
   const initials = name === 'Library account' ? role.slice(0, 2).toUpperCase() : `${parts[0]?.[0] ?? ''}${parts.length > 1 ? parts.at(-1)?.[0] ?? '' : ''}`.toUpperCase()
   return <section aria-label="Signed-in account" className="mt-2 rounded-2xl bg-white/5 p-3 ring-1 ring-white/10">
     <div className="flex items-center gap-3">
-      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#FFF200] text-sm font-black text-[#0b5ea2] ring-2 ring-white/20">
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#FFF200] text-sm font-black text-[#003399] ring-2 ring-white/20">
         {photo && photo !== failedPhoto ? <img src={photo} alt="Your profile picture" onError={() => setFailedPhoto(photo)} className="h-full w-full object-cover" /> : <span aria-label="Profile initials">{initials}</span>}
       </div>
       <div className="min-w-0 flex-1"><p className="break-words text-xs font-bold leading-snug text-white">{name}</p><p className="mt-1 break-all text-[10px] font-medium text-white/80">{schoolId}</p><p className="mt-0.5 text-[10px] text-white/55">{role === 'Librarian' ? 'Librarian / Admin' : role}</p></div>

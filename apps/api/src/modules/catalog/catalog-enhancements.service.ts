@@ -58,27 +58,14 @@ const publicSelect=`SELECT t.title_id AS id,t.title,t.record_type AS kind,t.cove
  COALESCE((SELECT jsonb_agg(jsonb_build_object('id',s.course_id,'name',s.name,'programId',s.program_id,'code',s.code)) FROM catalog_title_courses tc JOIN catalog_courses s ON s.course_id=tc.course_id WHERE tc.title_id=t.title_id),'[]') AS courses,
  (SELECT COUNT(*) FROM physical_copies pc WHERE pc.title_id=t.title_id AND pc.lifecycle_status='Active') AS "copyCount",
  (SELECT COUNT(*) FROM physical_copies pc JOIN materials m ON m.material_id=pc.material_id WHERE pc.title_id=t.title_id AND pc.lifecycle_status='Active' AND pc.availability_status='Available' AND m.availability_status='Available' AND pc.condition_status NOT IN ('Lost','Damaged','For Repair')) AS available,
- COALESCE(research.abstract_text,'') AS abstract, research.department_or_program AS department, research.adviser_name AS adviser
- FROM titles t LEFT JOIN categories c ON c.category_id=t.category_id LEFT JOIN catalog_title_details d ON d.title_id=t.title_id LEFT JOIN catalog_resource_types rt ON rt.type_id=d.type_id
- LEFT JOIN LATERAL (SELECT rr.abstract_text,rr.department_or_program,rr.adviser_name
-   FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived'
-   ORDER BY rr.research_record_id LIMIT 1) research ON t.record_type<>'Book'`
+ COALESCE((SELECT abstract_text FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived' LIMIT 1),'') AS abstract
+ FROM titles t LEFT JOIN categories c ON c.category_id=t.category_id LEFT JOIN catalog_title_details d ON d.title_id=t.title_id LEFT JOIN catalog_resource_types rt ON rt.type_id=d.type_id`
 function publicWhere(query:Record<string,unknown>){
  const clauses=["t.lifecycle_status='Active'","(t.record_type='Book' OR EXISTS(SELECT 1 FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived'))"],values:any[]=[]
  const q=clean(query.q).slice(0,120);if(q){clauses.push('(t.title ILIKE ? OR t.isbn ILIKE ? OR EXISTS(SELECT 1 FROM authors a WHERE a.title_id=t.title_id AND a.author_name ILIKE ?))');values.push(`%${q}%`,`%${q}%`,`%${q}%`)}
  if(['Book','Research/Thesis'].includes(String(query.kind))){clauses.push('t.record_type=?');values.push(query.kind)}
  if(positiveId(query.categoryId)){clauses.push('t.category_id=?');values.push(positiveId(query.categoryId))}
  for(const [param,table,col] of [['programId','catalog_title_programs','program_id'],['courseId','catalog_title_courses','course_id'],['typeId','catalog_title_details','type_id']])if(positiveId(query[param])){clauses.push(`EXISTS(SELECT 1 FROM ${table} f WHERE f.title_id=t.title_id AND f.${col}=?)`);values.push(positiveId(query[param]))}
- const year=clean(query.publicationYear)
- if(/^\d{4}$/.test(year)&&Number(year)>=1000){clauses.push('t.publication_year=?');values.push(Number(year))}
- const author=clean(query.author).slice(0,120)
- if(author){clauses.push('EXISTS(SELECT 1 FROM authors a WHERE a.title_id=t.title_id AND STRPOS(LOWER(a.author_name),LOWER(?))>0)');values.push(author)}
- const researchFilters:string[]=[]
- for(const [parameter,column] of [['department','department_or_program'],['adviser','adviser_name']] as const){
-  const value=clean(query[parameter]).slice(0,150)
-  if(value){researchFilters.push('STRPOS(LOWER(rr.'+column+'),LOWER(?))>0');values.push(value)}
- }
- if(researchFilters.length)clauses.push("EXISTS(SELECT 1 FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived' AND "+researchFilters.join(' AND ')+")")
  return {sql:clauses.join(' AND '),values}
 }
 export async function publicCatalog(query:Record<string,unknown>){pg();const where=publicWhere(query),page=Math.max(1,Math.min(10000,positiveId(query.page)??1)),limit=24

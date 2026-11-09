@@ -100,7 +100,7 @@ export function RosterRegistrationForm({ fieldClass, busy, onBusy, onComplete }:
           className={fieldClass} value={confirmation} disabled={busy} onChange={event => setConfirmation(event.target.value)} />
       </label>
     </>}
-    <button className="min-h-12 w-full rounded-xl bg-[#FFF200] px-4 font-bold text-[#0b5ea2] disabled:opacity-55"
+    <button className="min-h-12 w-full rounded-xl bg-[#FFF200] px-4 font-bold text-[#003399] disabled:opacity-55"
       disabled={busy || (!challengeId ? !validId : !grant && code.length !== 6)}>
       {busy ? 'Please wait…' : !challengeId ? 'Send email code' : !grant ? 'Verify email code' : 'Create account'}
     </button>

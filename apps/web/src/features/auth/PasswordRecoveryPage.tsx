@@ -4,7 +4,7 @@ import { AuthMessage } from './AuthMessage'
 import { requestPasswordRecovery, verifyPasswordRecovery, resetPassword } from './auth-api'
 import { clearAccessToken, setSessionIdentity } from './auth-storage'
 
-const field = 'mt-2 h-12 w-full rounded-xl border border-[#0b5ea2]/20 bg-white px-4 text-[#0b5ea2] focus:outline-none focus:ring-4 focus:ring-[#0b5ea2]/15'
+const field = 'mt-2 h-12 w-full rounded-xl border border-[#003399]/20 bg-white px-4 text-[#003399] focus:outline-none focus:ring-4 focus:ring-[#003399]/15'
 export function PasswordRecoveryPage() {
   const [params] = useSearchParams()
   const staff = params.get('portal') === 'staff'
@@ -45,8 +45,8 @@ export function PasswordRecoveryPage() {
     try { await requestCode() } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to request a code.') }
     finally { setBusy(false) }
   }
-  return <main className="flex min-h-screen items-center justify-center bg-[#0b5ea2] px-4 py-10">
-    <section className="w-full max-w-md rounded-3xl bg-white p-7 text-[#0b5ea2] shadow-xl sm:p-9">
+  return <main className="flex min-h-screen items-center justify-center bg-[#003399] px-4 py-10">
+    <section className="w-full max-w-md rounded-3xl bg-white p-7 text-[#003399] shadow-xl sm:p-9">
       <p className="text-xs font-black tracking-widest">STI COLLEGE ORMOC Â· SMART LIBRARY</p>
       <h1 className="mt-3 font-display text-3xl font-black">{staff ? 'Set or reset Staff password' : 'Forgot Password'}</h1>
       <p className="mt-3 text-sm">{staff ? 'Use the School ID or email the library entered when setting up your Staff account.' : 'Student accounts can recover access using the school email saved on their account.'}</p>
@@ -56,7 +56,7 @@ export function PasswordRecoveryPage() {
         {stage === 'request' ? <label className="block text-sm font-bold">{staff ? 'Staff School ID or school email' : 'Student Number or school email'}<input className={field} required autoComplete="username" value={identifier} onChange={event => setIdentifier(event.target.value)} maxLength={254} /></label> : null}
         {stage === 'verify' ? <><label className="block text-sm font-bold">Verification code<input className={field} autoFocus required inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={event => setCode(event.target.value.replace(/\D/g, ''))} /></label><p className="text-sm">The code expires in 10 minutes. Three incorrect codes lock recovery for 15 minutes.</p></> : null}
         {stage === 'reset' ? <><label className="block text-sm font-bold">New password<input type="password" className={field} required minLength={8} autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)} /></label><label className="block text-sm font-bold">Confirm new password<input type="password" className={field} required autoComplete="new-password" value={confirmation} onChange={event => setConfirmation(event.target.value)} /></label></> : null}
-        <button disabled={busy} className="h-12 w-full rounded-xl bg-[#0b5ea2] font-bold text-white disabled:opacity-60">{busy ? 'Please waitâ€¦' : stage === 'request' ? 'Send verification code' : stage === 'verify' ? 'Verify code' : 'Update password'}</button>
+        <button disabled={busy} className="h-12 w-full rounded-xl bg-[#003399] font-bold text-white disabled:opacity-60">{busy ? 'Please waitâ€¦' : stage === 'request' ? 'Send verification code' : stage === 'verify' ? 'Verify code' : 'Update password'}</button>
         {stage === 'verify' ? <button type="button" disabled={busy} onClick={() => void resend()} className="text-sm font-bold underline">Resend code</button> : null}
         {stage !== 'request' ? <button type="button" disabled={busy} onClick={() => { setStage('request'); setResetToken(''); setChallengeId(''); setCode(''); setPassword(''); setConfirmation(''); setMessage(''); setError('') }} className="ml-4 text-sm underline">Start again</button> : null}
       </form> : null}

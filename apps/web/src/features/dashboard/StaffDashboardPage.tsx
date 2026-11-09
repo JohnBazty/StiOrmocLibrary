@@ -14,9 +14,9 @@ export function StaffDashboardPage() {
   return <>
     <PageHeader eyebrow="Library operations" title="Staff dashboard" />
     <WorkspaceTasks />
-    <p className="mb-5 text-sm text-[#0b5ea2]/70">Open a task from your assigned workspace.</p>
+    <p className="mb-5 text-sm text-[#003399]/70">Open a task from your assigned workspace.</p>
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{links.map(([path, label]) =>
-      <Link key={path} to={path} className="rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4"><SectionCard className="p-6 transition hover:border-[#0b5ea2]"><h2 className="font-display text-lg font-bold text-[#0b5ea2]">{label}</h2><p className="mt-2 text-sm text-[#0b5ea2]/60">Open {label.toLowerCase()}</p></SectionCard></Link>
+      <Link key={path} to={path} className="rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4"><SectionCard className="p-6 transition hover:border-[#003399]"><h2 className="font-display text-lg font-bold text-[#003399]">{label}</h2><p className="mt-2 text-sm text-[#003399]/60">Open {label.toLowerCase()}</p></SectionCard></Link>
     )}</div>
   </>
 }
