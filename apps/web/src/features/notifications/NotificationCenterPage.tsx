@@ -1,64 +1,49 @@
-import { AlertTriangle, Bell, BookMarked, CalendarClock, CheckCircle2, Megaphone, Printer, RefreshCw, Trash2 } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useLiveQuery } from '../../hooks/useLiveQuery'
+import { AlertTriangle, CheckCircle2, RefreshCw, Trash2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, PageHeader, SectionCard } from '../../components/ui'
-import { getCurrentIdentity } from '../auth/auth-storage'
 import { notificationApi } from './notification-api'
-import type { LibrarySchedule, NotificationItem, NotificationList } from './types'
+import { formatNotificationDate, notificationIcon, notificationRoute, notificationsUpdated } from './notification-display'
+import type { NotificationItem } from './types'
 
 const days = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-function date(value: string) { const parsed = new Date(value); return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) }
-function icon(type: string) {
-  if (type === 'Due Date' || type === 'Overdue Penalty') return CalendarClock
-  if (type === 'Reservation Arrival') return BookMarked
-  if (type === 'Printing Update') return Printer
-  if (type === 'Announcement') return Megaphone
-  return Bell
-}
-function route(path: string | null) {
-  if (!path) return null
-  const role = getCurrentIdentity()?.role
-  if (role === 'Faculty') return path.replace('/student/', '/faculty/')
-  if (role === 'Librarian' || role === 'Staff') {
-    const prefix = role === 'Librarian' ? '/librarian' : '/staff'
-    if (path === '/student/notifications') return `${prefix}/notifications`
-    return path.replace('/admin/', `${prefix}/`)
-  }
-  return path
-}
 
 export function NotificationCenterPage() {
-  const [data, setData] = useState<NotificationList | null>(null)
-  const [schedule, setSchedule] = useState<LibrarySchedule | null>(null)
-  const [error, setError] = useState('')
+  const inbox=useLiveQuery('notification-inbox',signal=>notificationApi.list(signal),{poll:false,events:[notificationsUpdated]})
+  const hours=useLiveQuery('notification-schedule',()=>notificationApi.schedule(),{poll:false})
+  const data=inbox.data,schedule=hours.data
+  const refreshInbox = inbox.refresh
+  const refreshSchedule = hours.refresh
+  useEffect(() => {
+    const timer = window.setInterval(() => { void refreshInbox(); void refreshSchedule() }, 30_000)
+    return () => window.clearInterval(timer)
+  }, [refreshInbox, refreshSchedule])
+  const [actionError,setError]=useState('')
+  const error=actionError||inbox.error?.message||hours.error?.message||''
   const [busy, setBusy] = useState(false)
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false)
   const navigate = useNavigate()
-  const load = useCallback(async () => {
-    setError('')
-    try { const [items, hours] = await Promise.all([notificationApi.list(), notificationApi.schedule()]); setData(items); setSchedule(hours); window.dispatchEvent(new Event('smartlib:notifications-updated')) }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Notifications are unavailable.') }
-  }, [])
-  useEffect(() => { void load(); const timer = window.setInterval(() => { if (!document.hidden) void load() }, 30_000); return () => window.clearInterval(timer) }, [load])
+  const load=async()=>{setError('');await Promise.all([refreshInbox(),refreshSchedule()])}
+  const refreshAfterChange=()=>window.dispatchEvent(new Event(notificationsUpdated))
   async function read(item: NotificationItem) {
     setError('')
     try {
-      if (!item.isRead) { await notificationApi.markRead(item.notificationId); window.dispatchEvent(new Event('smartlib:notifications-updated')) }
-      const target = route(item.actionPath); if (target) navigate(target)
-      else await load()
+      if (!item.isRead) { await notificationApi.markRead(item.notificationId); refreshAfterChange() }
+      const target = notificationRoute(item.actionPath); if (target) navigate(target)
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'The notification could not be opened. Try again.') }
   }
-  async function readAll() { setBusy(true); setError(''); try { await notificationApi.markAllRead(); await load() } catch (reason) { setError(reason instanceof Error ? reason.message : 'Notifications could not be marked read. Try again.') } finally { setBusy(false) } }
+  async function readAll() { setBusy(true); setError(''); try { await notificationApi.markAllRead(); refreshAfterChange() } catch (reason) { setError(reason instanceof Error ? reason.message : 'Notifications could not be marked read. Try again.') } finally { setBusy(false) } }
   async function remove(item: NotificationItem) {
     setDeletingId(item.notificationId); setError('')
-    try { await notificationApi.remove(item.notificationId); await load() }
+    try { await notificationApi.remove(item.notificationId); refreshAfterChange() }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'The notification could not be deleted.') }
     finally { setDeletingId(null) }
   }
   async function removeAll() {
     setBusy(true); setError('')
-    try { await notificationApi.removeAll(); setShowDeleteAllConfirm(false); await load() }
+    try { await notificationApi.removeAll(); setShowDeleteAllConfirm(false); refreshAfterChange() }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'The notifications could not be deleted.') }
     finally { setBusy(false) }
   }
@@ -67,7 +52,7 @@ export function NotificationCenterPage() {
     {error ? <div role="alert" className="mb-5 flex gap-2 rounded-xl bg-[#FFF200] p-4 font-bold text-[#003399]"><AlertTriangle size={18} />{error}</div> : null}
     <div className="mb-5 grid gap-4 xl:grid-cols-[1fr_1.5fr]">
       <SectionCard className="p-5"><h2 className="font-display text-lg font-bold text-[#003399]">Library schedule</h2><p className="mt-1 text-xs text-[#003399]/60">Asia/Manila campus time</p><div className="mt-4 grid grid-cols-2 gap-2 text-sm">{schedule?.weekly.map((entry) => <div key={entry.dayOfWeek} className="rounded-xl bg-[#003399]/5 p-3"><p className="font-bold text-[#003399]">{days[entry.dayOfWeek]}</p><p className="mt-1 text-xs text-[#003399]/65">{entry.isOpen ? `${String(entry.opensAt).slice(0,5)} - ${String(entry.closesAt).slice(0,5)}` : 'Closed'}</p></div>)}</div></SectionCard>
-      <SectionCard className="p-5"><h2 className="font-display text-lg font-bold text-[#003399]">Upcoming closures</h2><div className="mt-4 space-y-2">{schedule?.upcomingClosures.length ? schedule.upcomingClosures.map((closure) => <div key={closure.date} className="rounded-xl border border-[#003399]/15 p-3"><p className="font-bold text-[#003399]">{date(closure.date)}</p><p className="mt-1 text-sm text-[#003399]/65">{closure.reason}</p></div>) : <p className="rounded-xl bg-[#003399]/5 p-4 text-sm text-[#003399]/65">No upcoming closures are recorded.</p>}</div></SectionCard>
+      <SectionCard className="p-5"><h2 className="font-display text-lg font-bold text-[#003399]">Upcoming closures</h2><div className="mt-4 space-y-2">{schedule?.upcomingClosures.length ? schedule.upcomingClosures.map((closure) => <div key={closure.date} className="rounded-xl border border-[#003399]/15 p-3"><p className="font-bold text-[#003399]">{formatNotificationDate(closure.date)}</p><p className="mt-1 text-sm text-[#003399]/65">{closure.reason}</p></div>) : <p className="rounded-xl bg-[#003399]/5 p-4 text-sm text-[#003399]/65">No upcoming closures are recorded.</p>}</div></SectionCard>
     </div>
     <SectionCard className="overflow-hidden">
       <div className="border-b border-[#003399]/15 px-5 py-4">
@@ -76,7 +61,7 @@ export function NotificationCenterPage() {
       </div>
       <div className="divide-y divide-[#003399]/10">
         {data?.items.length ? data.items.map((item) => {
-          const Icon = icon(item.type)
+          const Icon = notificationIcon(item.type)
           return <div key={item.notificationId} className={`flex items-start gap-2 p-3 transition hover:bg-[#003399]/5 ${item.isRead ? 'bg-white' : 'bg-[#FFF200]/20'}`}>
             <button type="button" onClick={() => void read(item)} className="flex min-w-0 flex-1 gap-4 rounded-xl p-2 text-left">
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#003399]/10 text-[#003399]"><Icon size={20} /></span>
@@ -87,7 +72,7 @@ export function NotificationCenterPage() {
                   {!item.isRead ? <span className="h-2 w-2 rounded-full bg-[#003399]" /> : null}
                 </span>
                 <span className="mt-1 block text-sm leading-6 text-[#003399]/70">{item.body}</span>
-                <span className="mt-2 block text-xs text-[#003399]/50">{item.type} · {date(item.createdAt)}</span>
+                <span className="mt-2 block text-xs text-[#003399]/50">{item.type} · {formatNotificationDate(item.createdAt)}</span>
               </span>
             </button>
             <button type="button" aria-label={`Delete ${item.title}`} title="Delete notification" disabled={deletingId===item.notificationId} onClick={() => void remove(item)} className="mt-2 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-red-200 text-red-600 transition hover:bg-red-50 disabled:cursor-wait disabled:opacity-45">

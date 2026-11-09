@@ -96,24 +96,25 @@ export function useLiveQuery<T>(key: string, read: (signal: AbortSignal) => Prom
       if (visible()) void run(entry)
     }
     const events = eventKey ? eventKey.split('\n') : []
+    const refreshAfterEvent = () => { void refresh() }
     // Only the first consumer installs the initial read. Identical consumers share
-    // the same in-flight request and timer; their event reads coalesce as well.
+    // the same in-flight request and timer; mutation events wait out older reads.
     if (entry.listeners.size === 1) void run(entry)
     window.addEventListener('focus', resume)
     window.addEventListener('online', resume)
     window.addEventListener('offline', resume)
     document.addEventListener('visibilitychange', resume)
-    events.forEach(event => window.addEventListener(event, resume))
+    events.forEach(event => window.addEventListener(event, refreshAfterEvent))
     return () => {
       window.removeEventListener('focus', resume)
       window.removeEventListener('online', resume)
       window.removeEventListener('offline', resume)
       document.removeEventListener('visibilitychange', resume)
-      events.forEach(event => window.removeEventListener(event, resume))
+      events.forEach(event => window.removeEventListener(event, refreshAfterEvent))
       entry.listeners.delete(listener)
       if (!entry.listeners.size) { stop(entry); if (entries.get(key) === entry) entries.delete(key) }
     }
-  }, [entry, key, enabled, eventKey])
+  }, [entry, key, enabled, eventKey, refresh])
   const snapshot = useSyncExternalStore(subscribe, () => entry.snapshot)
   const update = useCallback((change: T | ((current: T | undefined) => T | undefined)) => {
     const data = typeof change === 'function' ? (change as (current: T | undefined) => T | undefined)(entry.snapshot.data) : change
