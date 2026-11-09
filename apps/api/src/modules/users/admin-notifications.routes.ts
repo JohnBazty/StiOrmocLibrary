@@ -1,14 +1,17 @@
 import { Router, type NextFunction, type Request, type Response } from 'express'
 import type { RowDataPacket } from 'mysql2/promise'
 import { db } from '../../config/db.js'
+import { rosterRegistrationRequired } from '../enrollment/enrollment-policy.ts'
 
 type Notice = { id: string; kind: 'registration' | 'avatar' | 'profile' | 'status'; title: string; body: string; createdAt: string; actionPath: string }
 const timestamp = (value: unknown) => new Date(value as string | number | Date).toISOString()
 
 export async function listAdminNotifications(database: Pick<typeof db, 'execute'> = db, prefix: '/admin' | '/librarian' = '/admin') {
+  const rosterOnly = await rosterRegistrationRequired(database)
+  const pendingRegistration = `status='PendingApproval'${rosterOnly ? " AND requested_role<>'Student'" : ''}`
   const [[registrations], [pictures], [events], [registrationCount], [pictureCount]] = await Promise.all([
     database.execute<RowDataPacket[]>(`SELECT request_id,school_id,first_name,last_name,requested_role,created_at
-      FROM registration_requests WHERE status='PendingApproval' ORDER BY created_at DESC LIMIT 100`, []),
+      FROM registration_requests WHERE ${pendingRegistration} ORDER BY created_at DESC LIMIT 100`, []),
     database.execute<RowDataPacket[]>(`SELECT p.submission_id,p.submitted_at,a.school_id,
       COALESCE(NULLIF(u.full_name,''),a.school_id) AS full_name
       FROM profile_avatar_submissions p JOIN accounts a ON a.account_id=p.account_id
@@ -20,7 +23,7 @@ export async function listAdminNotifications(database: Pick<typeof db, 'execute'
       LEFT JOIN users u ON u.user_id=a.user_id
       WHERE e.action_code IN ('ProfileEdited','Activated','Deactivated')
       ORDER BY e.created_at DESC,e.event_id DESC LIMIT 30`, []),
-    database.execute<RowDataPacket[]>("SELECT COUNT(*) AS total FROM registration_requests WHERE status='PendingApproval'", []),
+    database.execute<RowDataPacket[]>(`SELECT COUNT(*) AS total FROM registration_requests WHERE ${pendingRegistration}`, []),
     database.execute<RowDataPacket[]>("SELECT COUNT(*) AS total FROM profile_avatar_submissions WHERE status='Pending'", []),
   ])
   const pending: Notice[] = [

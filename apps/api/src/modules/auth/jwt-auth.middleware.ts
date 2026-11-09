@@ -4,6 +4,7 @@ import { env } from '../../config/env.js'
 import { db, dbDriver } from '../../config/db.js'
 import type { JwtRole } from './jwt-auth.service.ts'
 import { hasLibraryPermission, type LibraryPermission } from '../../core/library-permissions.ts'
+import { semesterAccessEnded } from '../enrollment/enrollment-policy.ts'
 
 export type AuthenticatedJwtUser = { id: number; accountId: number; schoolId: string; role: JwtRole; authVersion: number; sessionId?: string }
 
@@ -44,6 +45,10 @@ export function createActiveJwtAccountGuard(database: Pick<typeof db, 'execute'>
       return
     }
     if (!identity.sessionId && dbDriver === 'postgres') { response.status(401).json({ success: false, code: 'SESSION_UPGRADE_REQUIRED', message: 'Sign in again to start your updated secure session.' }); return }
+    if (identity.role==='Student' && await semesterAccessEnded(database,identity.accountId)) {
+      response.status(401).json({success:false,code:'ACCOUNT_ACCESS_REVOKED',message:'Your semester has ended.'})
+      return
+    }
     if (identity.sessionId) {
       const [sessions] = await database.execute('SELECT 1 FROM library_login_sessions WHERE session_id=? AND account_id=? AND auth_version=? AND revoked_at IS NULL AND last_activity_at>NOW()-INTERVAL \'10 minutes\'', [identity.sessionId, identity.accountId, identity.authVersion])
       if (!(sessions as unknown[]).length) { response.status(401).json({ success: false, code: 'SESSION_EXPIRED', message: 'Your session expired after 10 minutes of inactivity. Sign in again.' }); return }

@@ -396,3 +396,13 @@ Migration `029_october16_revisions.sql` is applied individually. Enrollment draf
 - Printing invoices are derived from saved requests, with stable `PRINT-INV-` request identifiers, recorded charges and current payment status. They are available before payment. Existing payment records remain separate and unchanged; the general archived invoice module is not reactivated. Paper-size changes and kiosk work remain excluded.
 
 Implementation and verification evidence is tracked in `docs/october16-revisions-implementation.json`; no new Markdown implementation plan was created.
+
+## Student enrollment and Semester Archive — prepared (2026-11-09)
+
+Unapplied Postgres migration `031_semester_enrollment.sql` supersedes draft 028. Existing account and academic-term structures retain their meanings. Migration 030 remains the latest applied product migration. The next unused Postgres number is 032.
+
+- `enrollment_semesters` records the single active enrollment term, both locked end times, and closure actors and timestamps. These records are separate from the reporting and clearance calendar.
+- `enrollment_roster_imports` and `enrollment_roster_students` store validated versions. The latest complete roster and later partial updates determine enrollment. An upload does not create or reactivate an account.
+- `enrollment_semester_members` preserves the account and Student ID for the Semester Archive. Closure saves each status and revokes sessions. The closure version identifies accounts eligible for restoration with a matching next-term roster and successful password and email verification.
+- `enrollment_signup_challenges` binds hashed codes and one-time password setup grants to the effective roster row. A returning student's login challenge is bound to the active semester via `login_otp_challenges.restoration_semester_id`. New enrollment tables use RLS and are accessible through the private API.
+- Enforcement requires Postgres and `ENROLLMENT_ROSTER_ENABLED=true`. The first semester start switches Student registration and new borrowing to the roster. The server enforces the cutoff even if a job is delayed. The existing job runner or a subsequent enrollment overview saves scheduled closure.

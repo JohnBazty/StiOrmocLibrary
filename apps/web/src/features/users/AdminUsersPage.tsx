@@ -9,7 +9,8 @@ const field = 'h-10 w-full rounded-xl border border-[#003399]/20 bg-white px-3 t
 const initial: UserFilters = { q: '', role: '', program: '', clearance: '', status: 'Active', page: 1, limit: 25 }
 
 export function AdminUsersPage({ archive = false }: { archive?: boolean }) {
-  const canManage = ['Admin', 'Librarian'].includes(getCurrentIdentity()?.role ?? '')
+  const role = getCurrentIdentity()?.role
+  const canManage = role === 'Admin' || role === 'Librarian'
   const [filters, setFilters] = useState<UserFilters>(() => ({ ...initial, status: archive ? 'Inactive' : 'Active' }))
   const [refresh, setRefresh] = useState(0)
   const [summary, setSummary] = useState<UserSummary | null>(null)
@@ -66,7 +67,10 @@ export function AdminUsersPage({ archive = false }: { archive?: boolean }) {
   }
 
   return <>
-    <PageHeader eyebrow="Access management" title={archive ? 'User archive' : 'Library users'} action={<Button variant="secondary" onClick={() => setRefresh(value => value + 1)}><RefreshCw size={15} /> Refresh</Button>} />
+    <PageHeader eyebrow="Access management" title={archive ? 'User archive' : 'Library users'} action={<div className="flex flex-wrap gap-2">
+      {canManage && <a href={`/${role === 'Admin' ? 'admin' : 'librarian'}/users/enrollment`} className="inline-flex items-center rounded-xl border border-current/20 px-4 py-2 text-sm font-semibold">Student enrollment</a>}
+      <Button variant="secondary" onClick={() => setRefresh(value => value + 1)}><RefreshCw size={15} /> Refresh</Button>
+    </div>} />
     {error && <p role="alert" className="mb-4 rounded-xl bg-[#FFF200] p-3 text-sm font-bold text-[#003399]">{error}</p>}
     {notice && <p role="status" className="mb-4 rounded-xl border border-[#003399]/20 p-3 text-sm font-bold text-[#003399]">{notice}</p>}
     <div className="mb-5 grid gap-3 sm:grid-cols-3"><StatCard label="Active accounts" value={String(summary?.active_accounts ?? 0)} icon={UserCheck} /><StatCard label="Deactivated" value={String(summary?.deactivated_accounts ?? 0)} icon={Users} /><StatCard label="Archived" value={String(summary?.archived_accounts ?? 0)} icon={BadgeCheck} /></div>

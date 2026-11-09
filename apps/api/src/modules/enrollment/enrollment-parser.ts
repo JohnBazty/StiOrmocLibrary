@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { HttpError } from '../../core/http-error.ts'
 import { validateXlsxArchive } from '../catalog/holdings-parser.ts'
 
-export type EnrollmentData = { schoolId:string; name:string; program:string; yearLevel:string; section:string; email:string; status:'Enrolled'|'Not Enrolled'|'' }
+export type EnrollmentData = { schoolId:string; name:string; firstName:string; lastName:string; program:string; yearLevel:string; section:string; email:string; status:'Enrolled'|'Not Enrolled'|'' }
 export type EnrollmentImportRow = { sheet:string; row:number; data:EnrollmentData; errors:string[]; warnings:string[] }
 export type EnrollmentFile = { fingerprint:string; rows:EnrollmentImportRow[]; errors:number; warnings:number; sheets:string[] }
 const text=(value:unknown)=>String(value??'').normalize('NFKC').trim().replace(/\s+/g,' ')
@@ -58,15 +58,18 @@ export async function parseEnrollmentFile(file:{buffer:Buffer;originalname:strin
    if(!Object.values(values).some(v=>v.value||v.unsafe))continue
    const get=(field:string)=>values[field]?.value??'',errors:string[]=[],warnings:string[]=[]
    const rawStatus=get('status'),status=rawStatus==='Enrolled'?'Enrolled':rawStatus==='Not Enrolled'?'Not Enrolled':!rawStatus&&options.listedEnrolled?'Enrolled':''
-   const data:EnrollmentData={schoolId:get('schoolId').toUpperCase(),name:get('name')||[get('first'),get('middle'),get('last'),get('suffix')].filter(Boolean).join(' '),program:get('program'),yearLevel:normalizeRegistrarLevel(get('yearLevel')),section:get('section'),email:get('email').toLowerCase(),status}
+   const name=get('name')||[get('first'),get('middle'),get('last'),get('suffix')].filter(Boolean).join(' ')
+   const words=name.split(' '),lastName=get('last')||words.pop()||'',firstName=get('first')||words.join(' ')||name
+   const data:EnrollmentData={schoolId:get('schoolId').toUpperCase(),name,firstName,lastName,program:get('program'),yearLevel:normalizeRegistrarLevel(get('yearLevel')),section:get('section'),email:get('email').toLowerCase(),status}
    if(!/^[A-Z0-9][A-Z0-9._-]{2,49}$/.test(data.schoolId))errors.push('School ID is missing or invalid.')
    if(values.schoolId?.numeric)errors.push('School ID is stored as a number. Restore its exact ID, including leading zeros, as text.')
-   if(!data.name||data.name.length>200)errors.push('A student name of at most 200 characters is required.')
+   if(!data.name||data.name.length>150)errors.push('A student name of at most 150 characters is required.')
+   if(data.firstName.length>100||data.lastName.length>100)errors.push('First and last names must each be at most 100 characters.')
    if(!data.program||data.program.length>150)errors.push('A program or strand of at most 150 characters is required.')
    if(!data.yearLevel||data.yearLevel.length>50)errors.push('A year or grade level of at most 50 characters is required.')
    if(data.section.length>100)errors.push('Section must have at most 100 characters.')
-   if(data.email&&!/^[^\s@]+@ormoc\.sti\.edu\.ph$/i.test(data.email))errors.push('Use a valid Ormoc school email, or leave an unavailable email blank.')
-   if(!data.email)warnings.push('No school email in roster. Email ownership and Librarian identity review are still required.')
+   if(data.email&&(data.email.length>191||!/^[^\s@]+@ormoc\.sti\.edu\.ph$/i.test(data.email)))errors.push('Use a valid Ormoc school email, or leave an unavailable email blank.')
+   if(!data.email)warnings.push('Enrolled, but the registrar must supply a school email before this student can register.')
    if(!status)errors.push('Confirm the listed students are enrolled, or use Enrolled / Not Enrolled in the enrollment-status column.')
    if(options.listedEnrolled&&rawStatus&&status!=='Enrolled')errors.push('The status conflicts with the declaration that everyone listed is enrolled.')
    if(get('academicYear')&&get('academicYear').replace(/[–—]/g,'-')!==options.academicYear)errors.push('The school year differs from the selected term.')

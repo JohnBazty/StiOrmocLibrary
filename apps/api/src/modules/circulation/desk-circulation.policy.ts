@@ -3,6 +3,7 @@ import { HttpError } from '../../core/http-error.ts'
 import { closeAttendanceAtCutoff, libraryState } from '../attendance/attendance-operations.service.ts'
 import { manilaDate, nextDate } from '../attendance/attendance-intervals.ts'
 import { exactLoanDeadline } from './exact-loan-deadline.ts'
+import { enrollmentDecision } from '../enrollment/enrollment-policy.ts'
 
 export async function borrowingPolicy(q: PoolConnection, now: Date) {
   const [rows] = await q.execute<RowDataPacket[]>(`SELECT * FROM borrowing_policy_versions WHERE effective_on<=?::date ORDER BY effective_on DESC,borrowing_policy_version_id DESC LIMIT 1`,[manilaDate(now)])
@@ -18,6 +19,8 @@ export async function borrowerEligibility(q: PoolConnection,userId:number,now:Da
   if (!user?.account_id) blockers.push('This user has no linked sign-in account.')
   if (!user || user.account_status!=='Active' || user.login_status!=='Active') blockers.push('The account must be approved and active.')
   if (!['Student','Faculty','Staff','Librarian'].includes(String(user?.user_role))) blockers.push('This account is not eligible to borrow.')
+  const enrollment = user ? await enrollmentDecision(q,String(user.school_id),String(user.user_role)) : {allowed:true,label:'Enrollment not verified'}
+  if (!enrollment.allowed) blockers.push(enrollment.label)
   const [visits]=await q.execute<RowDataPacket[]>(`SELECT log_id,seat_visit,reason_for_visit FROM attendance_logs WHERE user_id=? AND checked_out_at IS NULL AND time_out IS NULL AND attendance_date=?::date ORDER BY log_id DESC LIMIT 1 FOR UPDATE`,[userId,manilaDate(now)])
   if (mode !== 'Online' && !visits[0]) blockers.push('Check in at the library entrance before borrowing.')
   if (mode==='InLibrary'&&visits[0]&&(visits[0].seat_visit===false || visits[0].reason_for_visit==='Printing')) blockers.push('In-library reading requires a seat-counted visit. End the Printing visit and check in for reading first.')
@@ -34,7 +37,7 @@ export async function borrowerEligibility(q: PoolConnection,userId:number,now:Da
   const limit=user?.user_role==='Student'?Number(policy.student_max_active_books):user?.user_role==='Faculty'&&policy.faculty_max_active_books!=null?Number(policy.faculty_max_active_books):null
   const state=await libraryState(q,now)
   if(mode !== 'Online' && !state.allowBorrowing)blockers.push('The library is not accepting borrowing at this time.')
-  return {user,visit:visits[0]??null,blockers,balance,loans,limit,policy,state,enrollment:'Enrollment not verified'}
+  return {user,visit:visits[0]??null,blockers,balance,loans,limit,policy,state,enrollment:enrollment.label}
 }
 export function requireEligible(result:Awaited<ReturnType<typeof borrowerEligibility>>) {
   if(result.blockers.length)throw new HttpError(422,'CIRCULATION_ELIGIBILITY_BLOCKED',result.blockers.join(' '),{blockers:result.blockers})

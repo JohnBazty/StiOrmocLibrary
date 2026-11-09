@@ -7,6 +7,7 @@ import { HttpError } from '../../core/http-error.ts'
 import { validateLoginInput } from './auth.validation.js'
 import { validateRoleLogin } from './account-auth.validation.ts'
 import { createAuthSessionRepository, type AuthSessionRepository } from './auth-session.repository.ts'
+import { restorationEvidence } from '../enrollment/enrollment-policy.ts'
 
 export type JwtRole = 'Admin' | 'Librarian' | 'Student' | 'Faculty' | 'Staff'
 const JWT_ROLES = new Set<JwtRole>(['Admin', 'Librarian', 'Student', 'Faculty', 'Staff'])
@@ -46,8 +47,10 @@ export function createJwtAuthService(database: Pool = db, passwordHasher = bcryp
     const user = rows[0]
     const matches = await passwordHasher.compare(validation.password, user?.password_hash ?? DUMMY_BCRYPT_HASH)
     if (!user || !matches) throw new HttpError(401, 'INVALID_CREDENTIALS', 'Wrong credentials.')
-    if (user.account_status !== 'Active') throw new HttpError(403, 'ACCOUNT_DEACTIVATED', 'Your account is currently deactivated. Please coordinate with the campus librarian.')
-    if (!user.account_id || user.linked_status !== 'Active') throw new HttpError(403, 'ACCOUNT_DEACTIVATED', 'Your account needs to be active and linked. Please coordinate with the campus librarian.')
+    if (!user.account_id || user.account_status !== 'Active' || user.linked_status !== 'Active') {
+      if (!(verifyOnly && user.user_role==='Student' && user.account_id && await restorationEvidence(database,Number(user.account_id),String(user.school_id),String(user.email??''))))
+        throw new HttpError(403, 'ACCOUNT_DEACTIVATED', 'Your account is currently deactivated. Please coordinate with the campus librarian.')
+    }
     if (!JWT_ROLES.has(user.user_role)) throw new HttpError(403, 'ROLE_NOT_AUTHORIZED', 'Your assigned role is not authorized.')
     const accountId = Number(user.account_id)
     const role = user.user_role as JwtRole
@@ -103,7 +106,10 @@ export function createJwtAuthService(database: Pool = db, passwordHasher = bcryp
       const role = account.role as JwtRole
       const portalRoles = validation.portal === 'user' ? USER_PORTAL_ROLES : STAFF_PORTAL_ROLES
       if (validation.portal && !portalRoles.has(role)) throw new HttpError(401, 'INVALID_CREDENTIALS', INVALID_CREDENTIALS_MESSAGE)
-      if (account.account_status !== 'Active' || (account.linked_status && account.linked_status !== 'Active')) throw new HttpError(403, 'ACCOUNT_DEACTIVATED', 'Your account is currently deactivated. Please coordinate with the campus librarian.')
+      if (account.account_status !== 'Active' || (account.linked_status && account.linked_status !== 'Active')) {
+        if (!(verifyOnly && role==='Student' && await restorationEvidence(database,accountId,String(account.school_id),String(account.email??''))))
+          throw new HttpError(403, 'ACCOUNT_DEACTIVATED', 'Your account is currently deactivated. Please coordinate with the campus librarian.')
+      }
       if (verifyOnly) return { accountId, userId: account.user_id ? Number(account.user_id) : null, schoolId: String(account.school_id), role, authVersion: Number(account.auth_version), email: String(account.email ?? ''), fullName: [account.first_name, account.last_name].filter(Boolean).join(' ') || account.full_name || null }
       const authVersion = await sessions.incrementAuthVersionForAccount(accountId)
       if (account.user_id) await sessions.clearAllSessionsForUser(Number(account.user_id))

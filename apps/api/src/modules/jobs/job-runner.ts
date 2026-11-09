@@ -10,6 +10,7 @@ import { flagUnreturnedInLibrary } from '../circulation/desk-circulation.service
 import { createBookRequestService } from '../reservations/book-request.service.ts'
 import { deliverBookRequestEmails } from '../reservations/book-request-email.worker.ts'
 import { createCollectionReviewService } from '../catalog/collection-review.service.ts'
+import { createEnrollmentService } from '../enrollment/enrollment.service.ts'
 
 const name = 'operational-minute'
 const jobNow=isPostgres?"(NOW() AT TIME ZONE 'UTC')":'NOW()'
@@ -44,6 +45,7 @@ export async function runOperationalJobs(now = new Date(), database: Pool = db) 
   const {claimed,token}=await claimOperationalMinute(now,database)
   if (!claimed) return { skipped: true, reason: 'already running or completed this minute' }
   try {
+    await createEnrollmentService(database).closeDue()
     const attendance = await createAttendanceOperations(database,()=>now).autoCheckout()
     const inLibrary = isPostgres ? await flagUnreturnedInLibrary(database,now) : {flagged:0}
     const expiration = await expireReadyReservations(database, now)

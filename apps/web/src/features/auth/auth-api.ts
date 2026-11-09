@@ -82,6 +82,20 @@ export async function resendLoginCode(challengeId: string) {
   if (!response.ok) throw new AuthenticationError(payload?.message ?? 'The code could not be sent.')
 }
 
+export async function rosterRegistrationRequest<T>(step = '', body?: object, signal?: AbortSignal): Promise<T> {
+  const response = await fetch('/api/v1/auth/roster-registration' + step, {
+    method: body ? 'POST' : 'GET',
+    headers: { Accept: 'application/json', ...(body && { 'Content-Type': 'application/json' }) },
+    body: body ? JSON.stringify(body) : undefined,
+    signal,
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok || !payload?.data) {
+    throw new AuthenticationError(payload?.message ?? 'Student registration is temporarily unavailable. Try again.')
+  }
+  return payload.data
+}
+
 export async function registerStudent(input: StudentRegistrationInput): Promise<RegistrationResult> {
   const response = await fetch('/api/v1/auth/register', {
     method: 'POST',

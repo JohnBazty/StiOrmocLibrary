@@ -1,5 +1,6 @@
 import type { Pool, RowDataPacket } from 'mysql2/promise'
 import { db, dbDriver } from '../config/db.js'
+import { enrollmentEnabled } from '../modules/enrollment/enrollment-policy.ts'
 
 const REQUIRED_COLUMNS: Record<string, string[]> = {
   categories: ['category_id', 'category_name', 'shelf_location', 'created_at', 'updated_at'],
@@ -65,7 +66,7 @@ export async function checkSchemaReadiness(database: Pool = db as Pool): Promise
   const requiredColumns = dbDriver === 'postgres' ? {
     ...REQUIRED_COLUMNS,
     login_attempt_windows: ['identifier_hash', 'failed_count', 'window_started_at', 'locked_until'],
-    login_otp_challenges: ['challenge_id', 'account_id', 'auth_version', 'code_hash', 'failed_count', 'expires_at', 'sent_at', 'consumed_at', 'resend_count'],
+    login_otp_challenges: ['challenge_id', 'account_id', 'auth_version', 'code_hash', 'failed_count', 'expires_at', 'sent_at', 'consumed_at', 'resend_count', ...(enrollmentEnabled() ? ['restoration_semester_id'] : [])],
     library_login_sessions: ['session_id', 'account_id', 'auth_version', 'last_activity_at', 'revoked_at'],
     clearance_semester_schedules: ['academic_term_id', 'deadline_at', 'row_version', 'updated_by', 'updated_at'],
     clearance_schedule_events: ['event_id', 'academic_term_id', 'previous_deadline', 'deadline_at', 'actor_id', 'created_at'],
@@ -86,6 +87,14 @@ export async function checkSchemaReadiness(database: Pool = db as Pool): Promise
     attendance_scan_receipts:['request_id','user_id','actor_account_id','log_id','action'],
     attendance_logs:[...REQUIRED_COLUMNS.attendance_logs,'seat_visit','checkout_source','checked_in_at','checked_out_at'],
     account_recovery_challenges: ['account_id', 'public_id', 'account_version', 'code_hash', 'code_expires_at', 'code_sent_at', 'code_attempts', 'locked_until', 'reset_token_hash', 'reset_expires_at'],
+    ...(enrollmentEnabled() ? {
+      enrollment_lifecycle: ['id', 'started'],
+      enrollment_semesters: ['semester_id', 'academic_year', 'term_name', 'end_date', 'manual_end_at', 'scheduled_end_at', 'started_at', 'ended_at'],
+      enrollment_roster_imports: ['roster_id', 'semester_id', 'source_date', 'complete', 'file_hash', 'file_name'],
+      enrollment_roster_students: ['roster_id', 'school_id', 'school_email', 'student_name', 'first_name', 'last_name', 'program', 'year_level'],
+      enrollment_semester_members: ['semester_id', 'account_id', 'school_id', 'student_name', 'closed_status', 'closed_auth_version'],
+      enrollment_signup_challenges: ['challenge_id', 'semester_id', 'roster_id', 'school_id', 'school_email', 'code_hash', 'grant_hash', 'attempts', 'sent_at', 'expires_at'],
+    } : {}),
   } : REQUIRED_COLUMNS
   const tableNames = Object.keys(requiredColumns)
   const placeholders = tableNames.map(() => '?').join(', ')

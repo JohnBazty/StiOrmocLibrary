@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { LoginPage } from './LoginPage'
 import { RegistrationPage } from './RegistrationPage'
@@ -24,8 +24,10 @@ describe('authentication pages', () => {
     expect(screen.getByRole('link', { name: 'Forgot Password?' }).getAttribute('href')).toBe('/forgot-password')
   })
 
-  it('shows role-aware account registration and school email', () => {
+  it('shows role-aware account registration and school email when roster signup is inactive', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { required: false } }) }))
     render(<MemoryRouter><RegistrationPage /></MemoryRouter>)
+    await screen.findByLabelText('First Name')
     for (const label of ['Register as', 'First Name', 'Last Name', 'School Email', 'School ID', 'Program / Strand', 'Year / Grade Level', 'Password', 'Confirm Password']) {
       expect(screen.getByLabelText(label)).toBeTruthy()
     }
@@ -34,12 +36,13 @@ describe('authentication pages', () => {
   })
 
   it('directs an existing registrant to sign in without claiming the new password was saved', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ data: { required: false } }) }).mockResolvedValue({
       ok: false,
       headers: { get: () => 'application/json' },
       json: async () => ({ code: 'REGISTRATION_UNAVAILABLE', message: 'These details may already be in the library system. The password entered here was not saved.' }),
     }))
     render(<MemoryRouter><RegistrationPage /></MemoryRouter>)
+    await screen.findByLabelText('First Name')
     for (const [label, value] of [
       ['First Name', 'Example'], ['Last Name', 'Student'], ['School Email', 'example@ormoc.sti.edu.ph'],
       ['School ID', 'STUDENT-123'], ['Password', 'ExamplePass123'], ['Confirm Password', 'ExamplePass123'],
@@ -53,9 +56,10 @@ describe('authentication pages', () => {
   it('shows an approval wait after a Student verifies the school email', async () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async (input: string) => ({
       ok: true, headers: { get: () => 'application/json' },
-      json: async () => ({ data: String(input).endsWith('/verify') ? { status: 'PendingApproval', role: 'Student' } : { requestId: 5, status: 'PendingEmail' } }),
+      json: async () => ({ data: input.endsWith('/roster-registration') ? { required: false } : input.endsWith('/verify') ? { status: 'PendingApproval', role: 'Student' } : { requestId: 5, status: 'PendingEmail' } }),
     })))
     render(<MemoryRouter><RegistrationPage popup /></MemoryRouter>)
+    await screen.findByLabelText('First Name')
     for (const [label, value] of [
       ['First Name', 'Example'], ['Last Name', 'Student'], ['School Email', 'example@ormoc.sti.edu.ph'],
       ['School ID', 'STUDENT-123'], ['Password', 'ExamplePass123'], ['Confirm Password', 'ExamplePass123'],
@@ -67,6 +71,35 @@ describe('authentication pages', () => {
     expect((await screen.findByRole('status')).textContent).toContain('approve your account')
     expect(screen.queryByRole('button', { name: 'Resend code' })).toBeNull()
     expect(screen.getByText(/registration is awaiting Librarian approval/)).toBeTruthy()
+  })
+
+  it('verifies the roster email before accepting a password and continues to sign-in without approval', async () => {
+    const request = vi.fn(async (path: string, _options?: RequestInit) => ({
+      ok: true,
+      json: async () => ({ data: path.endsWith('/begin') ? { challengeId: 'test-challenge' }
+        : path.endsWith('/verify') ? { grant: 'test-grant' }
+        : path.endsWith('/complete') ? { schoolId: '0001234' } : { required: true } }),
+    }))
+    vi.stubGlobal('fetch', request)
+    function SignInDestination() {
+      const location = useLocation()
+      return <p>Sign in {location.state.registrationSchoolId} {location.search}</p>
+    }
+    render(<MemoryRouter initialEntries={['/register?catalogTitleId=42']}><Routes>
+      <Route path="/register" element={<RegistrationPage popup />} />
+      <Route path="/login" element={<SignInDestination />} />
+    </Routes></MemoryRouter>)
+    fireEvent.change(await screen.findByLabelText('Student ID'), { target: { value: '0001234' } })
+    expect(screen.queryByLabelText('School Email')).toBeNull()
+    expect(screen.queryByLabelText('Password')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Send email code' }))
+    fireEvent.change(await screen.findByLabelText('Email verification code'), { target: { value: '123456' } })
+    expect(request.mock.calls[1][1]?.body).toBe(JSON.stringify({ school_id: '0001234' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Verify email code' }))
+    fireEvent.change(await screen.findByLabelText('Password'), { target: { value: 'ExamplePass123' } })
+    fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'ExamplePass123' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create account' }))
+    expect(await screen.findByText('Sign in 0001234 ?catalogTitleId=42')).toBeTruthy()
   })
 
   it('provides a shared personnel login without a selectable role', () => {

@@ -12,6 +12,7 @@ import { BookArchivePage } from './features/catalog/BookArchivePage'
 import { AdminAttendancePage } from './features/attendance/AdminAttendancePage'
 import { StaffAttendancePage } from './features/attendance/StaffAttendancePage'
 import { AdminUsersPage } from './features/users/AdminUsersPage'
+import { EnrollmentPage } from './features/users/EnrollmentPage'
 import { CatalogManagementPage } from './features/catalog/CatalogManagementPage'
 import { CategoryManagementPage } from './features/categories/CategoryManagementPage'
 import { AdminReservationQueuePage } from './features/reservations/AdminReservationQueuePage'
@@ -90,6 +91,7 @@ export default function App() {
         <Route element={<PortalLayout role="admin" />}>
           <Route path="/admin/dashboard" element={<AdminAccountDashboardPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />
+          <Route path="/admin/users/enrollment" element={<EnrollmentPage area="admin" />} />
           <Route path="/admin/user-archive" element={<AdminUsersPage archive />} />
           <Route path="/admin/approvals" element={<AccountApprovalsPage />} />
           <Route path="/admin/notifications" element={<AdminNotificationsPage />} />
@@ -102,6 +104,7 @@ export default function App() {
           <Route path="/librarian/dashboard" element={<AdminDashboardPage />} />
           <Route path="/librarian/accounts" element={<AdminAccountDashboardPage />} />
           <Route path="/librarian/users" element={<AdminUsersPage />} />
+          <Route path="/librarian/users/enrollment" element={<EnrollmentPage />} />
           <Route path="/librarian/user-archive" element={<AdminUsersPage archive />} />
           <Route path="/librarian/approvals" element={<AccountApprovalsPage />} />
           <Route path="/librarian/notifications" element={<LibrarianNotificationsPage />} />

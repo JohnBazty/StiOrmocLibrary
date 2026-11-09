@@ -5,6 +5,7 @@ import { HttpError } from '../../core/http-error.ts'
 import { libraryState } from '../attendance/attendance-operations.service.ts'
 import { createClearanceService } from '../clearance/clearance.service.ts'
 import { readCollectionSnapshot } from '../catalog/collection-review.service.ts'
+import { activeEnrollmentSemester, rosterRegistrationRequired } from '../enrollment/enrollment-policy.ts'
 
 export function createWorkspaceTasksService(database: Pool = db) {
   return { async read(accountId: number) {
@@ -42,10 +43,11 @@ export function createWorkspaceTasksService(database: Pool = db) {
         FROM reservations r JOIN users u ON u.user_id=r.user_id JOIN titles t ON t.title_id=r.book_title_id
         WHERE r.reservation_status='ready_for_pickup' AND r.pickup_deadline>(NOW() AT TIME ZONE 'Asia/Manila')
         ORDER BY r.pickup_deadline,r.reservation_id LIMIT 5`)
+      const rosterOnly = await rosterRegistrationRequired(q)
       if (actor.role === 'Librarian') {
         const [admin] = await q.execute<RowDataPacket[]>(`SELECT
           (SELECT COUNT(*) FROM accounts WHERE account_status='Active') users,
-          (SELECT COUNT(*) FROM registration_requests WHERE status='PendingApproval') registrations,
+          (SELECT COUNT(*) FROM registration_requests WHERE status='PendingApproval'${rosterOnly ? " AND requested_role<>'Student'" : ''}) registrations,
           (SELECT COUNT(*) FROM profile_avatar_submissions WHERE status='Pending') photos,
           (SELECT COUNT(*) FROM lost_book_reports WHERE report_status='Pending') losses,
           (SELECT COUNT(*) FROM ink_repository WHERE available_bottles<=low_stock_threshold_bottles)+
@@ -65,12 +67,18 @@ export function createWorkspaceTasksService(database: Pool = db) {
           { label: 'Approved collection shortfalls', value: collection.requirements.filter(r => r.status === 'Shortfall').length, path: '/librarian/collection-review' },
         )
       }
+      let enrollment = 'Enrollment not verified. Active accounts can borrow temporarily.'
+      if (rosterOnly) {
+        const term = await activeEnrollmentSemester(q)
+        enrollment = term ? `Student borrowing uses the roster for ${term.academic_year}, ${term.term_name}.`
+          : 'Student borrowing is paused until the next semester starts.'
+      }
       await q.commit()
       return { generatedAt: new Date().toISOString(), role: actor.role, cards, pickups,
         operations: { state: state.state, capacity: state.capacity, serviceVisits: state.serviceVisits,
           allowBorrowing: state.allowBorrowing, allowPrinting: state.allowPrinting && Number(printStatus[0]?.accepting_requests) === 1,
           events: state.events.map(e => ({title:e.title})) },
-        enrollment: 'Enrollment not verified — approved active-account policy is temporary.' }
+        enrollment }
     } catch (e) { await q.rollback(); throw e } finally { q.release() }
   } }
 }

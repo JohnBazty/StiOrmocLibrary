@@ -15,6 +15,7 @@ import { dashboardForRole, ROLES, STAFF_ROLES, USER_ROLES, webDashboardForRole }
 import { requireAuth, requireCsrfForStateChanges, requireRoles, sessionCookie } from './modules/auth/auth.middleware.js'
 import { authRouter, logoutRouter } from './modules/auth/auth.routes.js'
 import { jwtAuthRouter, jwtProtectedRouter } from './modules/auth/jwt-auth.routes.ts'
+import { enrollmentRouter } from './modules/enrollment/enrollment.routes.ts'
 import { authenticateJwt, ensureActiveJwtAccount, requireJwtRoles, requireLibraryPermission } from './modules/auth/jwt-auth.middleware.ts'
 import { inventoryPreviewRouter } from './modules/inventory/inventory-preview.routes.ts'
 import { thesisInventoryV1AdminRouter } from './modules/inventory/thesis-inventory.routes.ts'
@@ -101,6 +102,7 @@ export function createApp() {
   app.use('/api/v1/auth', jwtAuthRouter)
   app.use('/api/public/catalog', publicCatalogRouter)
   app.use('/api/v1', authenticateJwt, ensureActiveJwtAccount)
+  app.use('/api/v1/admin/enrollment', enrollmentRouter)
   app.use('/api/v1/admin/borrowing-policies', requireLibraryPermission('library.manage'), archivedBorrowingPolicyRouter)
   app.use('/api/v1/admin/maintenance', requireLibraryPermission('library.manage'), catalogMaintenanceRouter)
   app.use('/api/v1/admin/collection-review', requireLibraryPermission('library.manage'), collectionReviewRouter)

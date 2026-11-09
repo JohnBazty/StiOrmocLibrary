@@ -1,10 +1,11 @@
 import { Eye, EyeOff, IdCard, LibraryBig, LockKeyhole, Mail, UserRound } from 'lucide-react'
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { catalogAuthLink } from '../catalog/catalog-login-continuation'
 import { AuthMessage } from './AuthMessage'
 import { useAuthPopupBusy } from './PublicAuthLayout'
-import { AuthenticationError, registerStudent, resendRegistrationCode, verifyRegistration, type StudentRegistrationInput } from './auth-api'
+import { AuthenticationError, registerStudent, resendRegistrationCode, rosterRegistrationRequest, verifyRegistration, type StudentRegistrationInput } from './auth-api'
+import { RosterRegistrationForm } from './RosterRegistrationForm'
 
 const SCHOOL_ID = /^[A-Z0-9][A-Z0-9._-]{2,49}$/
 const SCHOOL_EMAIL = /^[^\s@]+@ormoc\.sti\.edu\.ph$/i
@@ -30,7 +31,19 @@ export function RegistrationPage({ popup = false }: { popup?: boolean }) {
   const [registrationUnavailable, setRegistrationUnavailable] = useState(false)
   const [busy, setBusy] = useState(false)
   const [showPasswords, setShowPasswords] = useState(false)
+  const [rosterMode, setRosterMode] = useState<'loading' | 'required' | 'legacy' | 'unavailable'>('loading')
+  const [retry, setRetry] = useState(0)
   useAuthPopupBusy(busy)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    rosterRegistrationRequest<{ required: boolean }>('', undefined, controller.signal)
+      .then(result => { if (!controller.signal.aborted) setRosterMode(result.required ? 'required' : 'legacy') })
+      .catch(() => { if (!controller.signal.aborted) setRosterMode('unavailable') })
+    return () => controller.abort()
+  }, [retry])
+
+  const roleSelect = <Field label="Register as" error={errors.role}><select value={form.role} disabled={busy} onChange={event => { update('role', event.target.value); setMessage('') }} className={fieldClass}>{roles.map(role => <option key={role}>{role}</option>)}</select></Field>
 
   function update(field: keyof StudentRegistrationInput, value: string) {
     setForm((current) => ({ ...current, [field]: value }))
@@ -60,6 +73,7 @@ export function RegistrationPage({ popup = false }: { popup?: boolean }) {
 
   async function submit(event: FormEvent) {
     event.preventDefault()
+    if (form.role === 'Student' && rosterMode !== 'legacy') return
     if (!validate()) { setMessageError(true); setMessage('Please correct the highlighted fields.'); return }
     setBusy(true); setMessage(''); setMessageError(true); setRegistrationUnavailable(false)
     const schoolId = form.school_id.trim().toUpperCase()
@@ -121,9 +135,15 @@ export function RegistrationPage({ popup = false }: { popup?: boolean }) {
             <Field label="Verification code"><input inputMode="numeric" maxLength={6} autoComplete="one-time-code" value={code} onChange={event => setCode(event.target.value.replace(/\D/g, ''))} placeholder="Six-digit code" className={fieldClass} /></Field>
             <button disabled={busy || code.length !== 6} className="h-12 w-full rounded-xl bg-[#FFF200] font-bold text-[#003399] disabled:opacity-50">Verify school email</button>
             <button type="button" disabled={busy} onClick={() => void resendCode()} className="text-sm font-bold text-[#003399] underline">Resend code</button>
-          </form> :
+          </form> : form.role === 'Student' && rosterMode !== 'legacy' ? <div className="mt-6">
+            {roleSelect}
+            {rosterMode === 'required' ? <RosterRegistrationForm fieldClass={fieldClass} busy={busy} onBusy={setBusy}
+              onComplete={schoolId => navigate(loginLink, { replace: true, state: { ...location.state, registrationSuccess: true, registrationSchoolId: schoolId } })} /> :
+              rosterMode === 'loading' ? <p className="mt-4 text-sm" role="status">Loading student registration…</p> :
+              <AuthMessage error>Student registration is temporarily unavailable. <button type="button" className="font-bold underline" onClick={() => { setRosterMode('loading'); setRetry(value => value + 1) }}>Try again</button></AuthMessage>}
+          </div> :
           <form className="mt-6 grid gap-4 sm:grid-cols-2" onSubmit={submit} noValidate>
-            <Field label="Register as" error={errors.role}><select value={form.role} onChange={event => update('role', event.target.value)} className={fieldClass}>{roles.map(role => <option key={role}>{role}</option>)}</select></Field>
+            {roleSelect}
             <div className="hidden sm:block" />
             <Field label="First Name" error={errors.first_name}><span className="relative block"><UserRound className="absolute left-4 top-1/2 -translate-y-1/2 text-[#003399]/45" size={17} /><input autoFocus autoComplete="given-name" value={form.first_name} onChange={(event) => update('first_name', event.target.value)} placeholder="First name" className={`${fieldClass} pl-11`} /></span></Field>
             <Field label="Last Name" error={errors.last_name}><input autoComplete="family-name" value={form.last_name} onChange={(event) => update('last_name', event.target.value)} placeholder="Last name" className={fieldClass} /></Field>
