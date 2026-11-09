@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { InventoryDashboard } from './InventoryDashboard'
 
@@ -28,7 +28,7 @@ describe('InventoryDashboard', () => {
     expect(screen.getByRole('button', { name: 'Download Thesis PDF' })).toBeTruthy()
   })
 
-  it('enables book and thesis removal only for Lost copies with no active allocation', async () => {
+  it('opens row actions and enables removal only for Lost copies with no active allocation', async () => {
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
       const url = String(input)
       if (url.includes('/inventory/thesis/summary')) return json({ success: true, data: { total_thesis_materials: 2, damaged_thesis_count: 1, lost_thesis_count: 1 } })
@@ -47,19 +47,47 @@ describe('InventoryDashboard', () => {
 
     render(<InventoryDashboard />)
 
-    const borrowedDelete = await screen.findByRole('button', { name: 'Delete ACC-1' }) as HTMLButtonElement
-    const availableDelete = screen.getByRole('button', { name: 'Delete ACC-2' }) as HTMLButtonElement
-    const lostDelete = screen.getByRole('button', { name: 'Delete ACC-3' }) as HTMLButtonElement
+    async function openActions(accession: string) {
+      const trigger = await screen.findByLabelText(`Actions for ${accession}`)
+      const dropdown = trigger.closest('details')!
+      expect(dropdown.open).toBe(false)
+      fireEvent.click(trigger)
+      expect(dropdown.open).toBe(true)
+      return { trigger, dropdown, actions: within(dropdown) }
+    }
+
+    const borrowed = await openActions('ACC-1')
+    const borrowedDelete = borrowed.actions.getByRole('button', { name: 'Delete ACC-1' }) as HTMLButtonElement
+    expect((borrowed.actions.getByRole('button', { name: 'Report lost' }) as HTMLButtonElement).disabled).toBe(true)
+    const available = await openActions('ACC-2')
+    const availableDelete = available.actions.getByRole('button', { name: 'Delete ACC-2' }) as HTMLButtonElement
+    const lost = await openActions('ACC-3')
+    const lostDelete = lost.actions.getByRole('button', { name: 'Delete ACC-3' }) as HTMLButtonElement
     expect(borrowedDelete.disabled).toBe(true)
     expect(borrowedDelete.title).toContain('Process the return')
     expect(availableDelete.disabled).toBe(true)
     expect(availableDelete.title).toContain('Mark this copy as Lost')
     expect(lostDelete.disabled).toBe(false)
-    const damagedThesisDelete = await screen.findByRole('button', { name: 'Delete TH-10' }) as HTMLButtonElement
-    const lostThesisDelete = screen.getByRole('button', { name: 'Delete TH-11' }) as HTMLButtonElement
+    const damagedThesis = await openActions('TH-10')
+    const damagedThesisDelete = damagedThesis.actions.getByRole('button', { name: 'Delete TH-10' }) as HTMLButtonElement
+    const lostThesis = await openActions('TH-11')
+    const lostThesisDelete = lostThesis.actions.getByRole('button', { name: 'Delete TH-11' }) as HTMLButtonElement
     expect(damagedThesisDelete.disabled).toBe(true)
     expect(damagedThesisDelete.title).toContain('Mark this research copy as Lost')
     expect(lostThesisDelete.disabled).toBe(false)
+
+    fireEvent.keyDown(lostThesis.trigger, { key: 'Escape' })
+    expect(lostThesis.dropdown.open).toBe(false)
+    available.dropdown.open = true
+    fireEvent.click(available.actions.getByRole('button', { name: 'Make unavailable' }))
+    expect(available.dropdown.open).toBe(false)
+    expect(screen.getByRole('alertdialog', { name: 'Make copy unavailable?' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    fireEvent.click(available.trigger)
+    fireEvent.click(available.actions.getByRole('button', { name: 'Report lost' }))
+    const reportLost = within(screen.getByRole('dialog', { name: 'Update physical condition' }))
+    expect((reportLost.getByRole('radio', { name: 'lost' }) as HTMLInputElement).checked).toBe(true)
   })
 })
 
