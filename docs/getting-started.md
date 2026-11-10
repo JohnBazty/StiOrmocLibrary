@@ -16,8 +16,6 @@ From the repository root:
 
 ```bash
 npm install
-npm run db:schema -w @sti-library/api
-npm run db:migrate -w @sti-library/api
 npm run dev
 ```
 
@@ -29,7 +27,7 @@ The command starts both applications:
 
 Open `http://localhost:5173/login` for the secure React login screen. Port `4000` is the API only. Follow [Login and Authentication Setup](authentication-setup.md) before starting the API for the first time.
 
-`db:migrate` executes pending SQL files in filename order and records their SHA-256 checksums in `schema_migrations`. It is safe to run again; applied migrations are skipped, and edited migration files are rejected.
+The API needs `DATABASE_URL` (Supabase Postgres) in `apps/api/.env`. Schema changes live in `database/supabase/`; apply one reviewed file at a time with `npm run db:supabase -w @sti-library/api -- <file>.sql` (see `database/supabase/README.md`).
 
 ## Run one application
 
@@ -80,4 +78,4 @@ The duplication is temporary and deliberate: the interface remains easy to previ
 
 ## Database readiness
 
-`GET http://localhost:4000/api/health` returns `databaseSchema.ready: true` when the required catalog, category, reservation, and authentication columns are available. A `503 DATABASE_MIGRATION_REQUIRED` response means `npm run db:migrate -w @sti-library/api` must be run.
+`GET http://localhost:4000/api/health` returns `databaseSchema.ready: true` when the required catalog, category, reservation, and authentication columns are available. A `503 DATABASE_MIGRATION_REQUIRED` response means a pending `database/supabase/` migration must be applied with `npm run db:supabase -w @sti-library/api -- <file>.sql`.

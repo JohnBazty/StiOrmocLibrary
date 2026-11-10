@@ -19,7 +19,7 @@ Use this order when designing a feature or database change:
 2. `docs/source/Final-Draft.pdf` for product behavior and business policy.
 3. `docs/source/Admin-System-Flow.pdf` for administrative workflow and screen coverage.
 4. This index and `agent.md` for normalized architecture guidance.
-5. `docs/schema-context.md` and `database/mysql56-schema.sql` for the currently implemented database baseline.
+5. `docs/schema-context.md` and `database/supabase/` for the currently implemented database baseline.
 
 If the current schema or application differs from the PDFs, do not silently reinterpret the requirement and do not destructively replace existing data. Identify the difference, create a planned migration, update tests, and update the schema context.
 

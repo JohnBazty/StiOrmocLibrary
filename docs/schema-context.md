@@ -17,7 +17,7 @@ The target product requirements are the preserved PDFs indexed by [source-of-tru
 
 Known target gaps include Library Staff/Student Assistant authorization, renewals, expanded reservation states, richer catalog/research data, and the future time-synchronized dynamic QR mode. Permanent offline attendance passes, cash fine collection, fine caps and infractions, operating-calendar calculation, print revenue/supply history, and archive/clearance audit trails now have additive schema support. Add remaining gaps through versioned, backward-safe migrations before depending on them in application code.
 
-The structural catalog migration [20260816_002_book_research_management.sql](../database/migrations/20260816_002_book_research_management.sql) supplies the active four-table `titles`, `authors`, `research_records`, and `physical_copies` model used by the API. `physical_copies.material_id` is the explicit compatibility mapping to the existing `materials.material_id` value. Deployments with legacy material rows still require a separately reconciled data backfill.
+The structural catalog migration `20260816_002_book_research_management.sql` (retired MySQL migration (removed 2026-11-10; restore with `git show a767d88:database/migrations/<file>`); its tables are in `database/supabase/001_from_baseline.sql`) supplies the active four-table `titles`, `authors`, `research_records`, and `physical_copies` model used by the API. `physical_copies.material_id` is the explicit compatibility mapping to the existing `materials.material_id` value. Deployments with legacy material rows still require a separately reconciled data backfill.
 
 ## Canonical executable schema
 

@@ -257,4 +257,4 @@ The deployed app URL and its production `DATABASE_URL` have not been verified he
 
 ## Approval gate
 
-Build is **approved**. The local MySQL history has been transferred. Keep local credentials out of Git and verify the deployed app's connection and flows before retiring MySQL or the pre-cutover backup.
+Build is **approved**. The local MySQL history has been transferred. MySQL was retired on 2026-11-10 (`docs/mysql-removal-plan.md`). Keep local credentials out of Git; the pre-cutover backup schema stays until that plan's gate drops it.
