@@ -11,7 +11,7 @@ export function buildReservationQueueQuery(filters: QueueFilters) {
   if (filters.role) { where.push('ro.role_name = ?'); parameters.push(filters.role) }
   if (filters.user) {
     const like = `%${filters.user}%`
-    where.push('(u.full_name LIKE ? OR u.institutional_id LIKE ? OR u.email LIKE ?)')
+    where.push('(u.full_name ILIKE ? OR u.institutional_id ILIKE ? OR u.email ILIKE ?)')
     parameters.push(like, like, like)
   }
   const from = `FROM reservations r

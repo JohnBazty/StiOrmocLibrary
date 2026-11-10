@@ -39,18 +39,18 @@ function contains(value: string) { return `%${value}%` }
 export function buildResearchCatalogQuery(filters: ResearchCatalogFilters) {
   const where = ["t.record_type = 'Research/Thesis'", "t.lifecycle_status = 'Active'", "rr.viewing_status <> 'Archived'"]
   const parameters: Array<string | number> = []
-  if (filters.title) { where.push('t.title LIKE ?'); parameters.push(contains(filters.title)) }
+  if (filters.title) { where.push('t.title ILIKE ?'); parameters.push(contains(filters.title)) }
   if (filters.authors) {
-    where.push('EXISTS (SELECT 1 FROM authors author_filter WHERE author_filter.title_id = t.title_id AND author_filter.normalized_name LIKE ?)')
+    where.push('EXISTS (SELECT 1 FROM authors author_filter WHERE author_filter.title_id = t.title_id AND author_filter.normalized_name ILIKE ?)')
     parameters.push(contains(filters.authors.toLocaleLowerCase('en-US')))
   }
-  if (filters.adviser) { where.push('rr.adviser_name LIKE ?'); parameters.push(contains(filters.adviser)) }
-  if (filters.department) { where.push('rr.department_or_program LIKE ?'); parameters.push(contains(filters.department)) }
+  if (filters.adviser) { where.push('rr.adviser_name ILIKE ?'); parameters.push(contains(filters.adviser)) }
+  if (filters.department) { where.push('rr.department_or_program ILIKE ?'); parameters.push(contains(filters.department)) }
   if (filters.publicationYear !== null) { where.push('t.publication_year = ?'); parameters.push(filters.publicationYear) }
   if (filters.query) {
     const pattern = contains(filters.query)
-    where.push(`(t.title LIKE ? OR credits.authors LIKE ? OR rr.adviser_name LIKE ? OR
-      rr.department_or_program LIKE ? OR rr.research_code LIKE ? OR CAST(t.publication_year AS TEXT) = ?)`)
+    where.push(`(t.title ILIKE ? OR credits.authors ILIKE ? OR rr.adviser_name ILIKE ? OR
+      rr.department_or_program ILIKE ? OR rr.research_code ILIKE ? OR CAST(t.publication_year AS TEXT) = ?)`)
     parameters.push(pattern, pattern, pattern, pattern, pattern, filters.query)
   }
 

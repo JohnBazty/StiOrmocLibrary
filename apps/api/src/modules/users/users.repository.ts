@@ -44,7 +44,7 @@ export class UsersRepository {
   private where(f: UserFilters) {
     const clauses = ['1=1'], values: Array<string | number> = []
     if (f.status) { clauses.push('a.account_status=?'); values.push(f.status) }
-    if (f.q) { const q = `%${f.q}%`; clauses.push("(a.school_id LIKE ? OR CONCAT_WS(' ',sp.first_name,sp.last_name) LIKE ? OR u.full_name LIKE ? OR u.email LIKE ?)"); values.push(q, q, q, q) }
+    if (f.q) { const q = `%${f.q}%`; clauses.push("(a.school_id ILIKE ? OR CONCAT_WS(' ',sp.first_name,sp.last_name) ILIKE ? OR u.full_name ILIKE ? OR u.email ILIKE ?)"); values.push(q, q, q, q) }
     if (f.role) { clauses.push('a.role=?'); values.push(f.role) }
     if (f.program) { clauses.push("COALESCE(sp.program_strand,u.course_or_strand,'')=?"); values.push(f.program) }
     if (f.clearance) { clauses.push("COALESCE(cs.standing_status,'Cleared')=?"); values.push(f.clearance) }
