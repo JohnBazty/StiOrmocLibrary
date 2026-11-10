@@ -36,7 +36,8 @@ import { adminDashboardV1Router, userDashboardV1Router } from './modules/dashboa
 import { liveReportsRouter, workspaceTasksRouter } from './modules/reports/live-reports.routes.ts'
 import { floorPlanRouter } from './modules/floor-plan/floor-plan.routes.ts'
 import { catalogAdminRouter } from './modules/catalog/catalog-admin.routes.ts'
-import { authorizedJobToken, jobRunnerStatus, runOperationalJobs } from './modules/jobs/job-runner.ts'
+import { jobRunner } from './modules/job-runner/index.ts'
+import { createAdminJobRouter, createInternalJobRouter } from './modules/job-runner/job-runner.routes.ts'
 import { archivedInvoiceRouter } from './modules/invoices/invoice-archive.routes.ts'
 import { usersRepository } from './modules/users/users.repository.ts'
 import { clearanceService } from './modules/clearance/clearance.service.ts'
@@ -70,6 +71,8 @@ export function createApp() {
   app.use(cors({ origin: env.webOrigin, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }))
   app.use(express.json({ limit: '3mb' }))
   app.use(express.urlencoded({ extended: false, limit: '32kb' }))
+  // D1: Supabase Cron only; before the session, JWT and CSRF middleware, authorized by X-Job-Runner-Secret alone.
+  app.use('/api/internal/jobs', createInternalJobRouter(jobRunner, () => env.jobRunner.secret))
   app.use(session({
     name: env.session.name,
     secret: env.session.secret,
@@ -94,10 +97,6 @@ export function createApp() {
       })
     } catch (error) { next(error) }
   })
-  app.post('/api/jobs/run', async (request, response, next) => {
-    if (!authorizedJobToken(request.get('authorization'))) return response.status(401).json({ success: false, message: 'Scheduled job authorization failed.' })
-    try { return response.json({ success: true, data: await runOperationalJobs() }) } catch (error) { return next(error) }
-  })
   app.use('/api/auth', authRouter)
   app.use('/api/v1/auth', jwtAuthRouter)
   app.use('/api/public/catalog', publicCatalogRouter)
@@ -116,9 +115,7 @@ export function createApp() {
       } })
     } catch (error) { next(error) }
   })
-  app.get('/api/v1/admin/jobs/status', authenticateJwt, requireLibraryPermission('library.manage'), async (_request, response, next) => {
-    try { response.json({ success: true, data: await jobRunnerStatus() }) } catch (error) { next(error) }
-  })
+  app.use('/api/v1/admin/jobs', requireLibraryPermission('library.manage'), createAdminJobRouter(jobRunner))
   app.use('/api/v1/catalog', authenticateJwt, requireJwtRoles('Student', 'Faculty', 'Librarian'), bookCatalogRouter)
   app.use('/api/v1/floor-plan', authenticateJwt, requireJwtRoles('Librarian', 'Student', 'Faculty'), floorPlanRouter)
   app.use('/api/v1/catalog', authenticateJwt, requireJwtRoles('Student', 'Faculty', 'Librarian'), researchCatalogRouter)
