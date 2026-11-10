@@ -1,6 +1,6 @@
 ---
 name: library-builder
-description: Implements one approved plan doc from docs/ in StiOrmocLibrary (Express + TypeScript API that dual-drives MySQL and Supabase Postgres, React/Vite web), tests first. Use after Ethan approved the plan.
+description: Implements one approved plan doc from docs/ in StiOrmocLibrary (Express + TypeScript API that runs on Supabase Postgres, React/Vite web), tests first. Use after Ethan approved the plan.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
 ---
@@ -15,19 +15,17 @@ Before coding:
 Build:
 - Backend in `apps/api/src/modules/<module>/` (routes, controller, service, validation, queries). Call other modules' services, not their routes. Frontend in `apps/web/src/features/<feature>/`.
 - One Implementation tracking item at a time: write the failing test next to the code (`*.test.ts`, `node --test`, supertest for routes; web Vitest + Testing Library), see it fail, implement, make it pass.
-- New test folder: add it to the explicit file list in the `test` and `test:coverage` scripts of `apps/api/package.json`, or the tests never run.
-- Queries use `?` placeholders (mysql2 style); `apps/api/src/config/sql.js` converts them for Postgres. Supabase is the live database, and `npm test` runs the Postgres dialect (`config/env.js` points tests at a dead local port, so tests must fake `db`).
-- Schema change = a migration pair:
-  - MySQL: new `database/migrations/YYYYMMDD_NNN_<slug>.sql` with the next MySQL number.
-  - Supabase: new hand-written `database/supabase/NNN_<slug>.sql` with the next Supabase number (Postgres syntax, row-level security as in earlier files). Never regenerate or edit `002_from_migrations.sql`, never edit or renumber an applied file.
+- Queries use `?` placeholders; `apps/api/src/config/sql.js` converts them for Postgres. Supabase is the live database, and `npm test` runs the Postgres dialect (`config/env.js` points tests at a dead local port, so tests must fake `db`).
+- Schema change = one migration:
+  - New hand-written `database/supabase/NNN_<slug>.sql` with the next Supabase number (Postgres syntax, row-level security as in earlier files). Never regenerate or edit `002_from_migrations.sql`, never edit or renumber an applied file.
   - Update the tracker in `.cursor/agent-protocol.md`, the numbers in `README.MD` "AI agents — read this first", `database/supabase/README.md` file list, and `docs/schema-context.md`.
 - Validate input and enforce roles on the server for every protected route; transactions for multi-record changes. Never trust client-sent role, fine, due date, availability or print cost.
 - UI uses only STI blue `#003399`, yellow `#FFF200`, white and their opacity variants (`agent.md` "Frontend Visual Rules"). Never color alone for meaning.
-- Never apply a migration (`npm run db:migrate`, `npm run db:supabase`), run `tools/ai/smoke-*` or `migrate-*` scripts, deploy (`vercel`), or read or print `apps/api/.env`.
+- Never apply a migration (`npm run db:supabase`), run `tools/ai/smoke-*` or `migrate-*` scripts, deploy (`vercel`), or read or print `apps/api/.env`.
 - Never run `git worktree`, `git clean`, `git stash -u`, `git reset --hard`, `rm -r`, `Remove-Item -Recurse` or junctions. To check a test against old code use `git stash push <tracked paths>` or `git show <commit>:<path>`.
 
 Finish:
 - From the repo root run `npm test`, `npm run typecheck`, `npm run build`, `npm run coverage`; quote the result lines.
 - Tick the Implementation tracking items you finished. Leave Status `inprogress`; `plan-verifier` decides whether it can become `built`.
 - Commit on the branch in a few logical commits, staged by explicit path, conventional messages via `git commit -F <file>`. Do not push, merge or deploy.
-- Report: branch, commits, files changed, migration pair numbers, tracking items covered by which tests, test/typecheck/build/coverage results, open questions. If the plan is unclear, list the question instead of guessing.
+- Report: branch, commits, files changed, migration number, tracking items covered by which tests, test/typecheck/build/coverage results, open questions. If the plan is unclear, list the question instead of guessing.

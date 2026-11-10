@@ -1,7 +1,7 @@
 -- ============================================================================
 -- STI College Ormoc Integrated Library Management System — Supabase / Postgres schema drafts
 -- ============================================================================
--- Status: drafts from MySQL baseline + migrations via tools/ai/mysql_to_pg.py,
+-- Status: Postgres is the only schema. 001-002 were converted from the retired MySQL tree,
 --         plus curated MAIN product gap-fill for migrations 033–040.
 -- Apply a reviewed file with: npm run db:supabase -w @sti-library/api -- 009_inventory_audit_orphan_history.sql
 -- Requires DATABASE_URL=postgresql://… in apps/api/.env
@@ -24,8 +24,9 @@
 --   016_configurable_borrowing_policies.sql — immutable borrowing policy versions
 -- Next Postgres schema number: 017. Apply reviewed files individually.
 --
--- MySQL tree under database/mysql56-schema.sql and database/migrations/ remains
--- the historical contract and local rollback path (latest MySQL migration: 046).
+-- The MySQL tree (database/mysql56-schema.sql, database/migrations/) was removed
+-- on 2026-11-10. Last commit that has it: a767d8825d645658bbec38e31e194471ede46b5f.
+-- Restore one file: git show a767d88:database/migrations/<file> > <file>
 --
 -- Connection note: free-tier direct db.* host is often IPv6-only. Use Session
 -- pooler (port 5432) with user postgres.<project-ref> when on IPv4 networks.

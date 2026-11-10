@@ -11,8 +11,8 @@ Product PDFs and `agent.md` historically name MySQL as the baseline; those docs 
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-10-09 |
-| **Status** | `inprogress` |
+| **Date last updated** | 2026-11-10 |
+| **Status** | `built` |
 
 Allowed status values: `planned` → `inprogress` → `built`.
 
@@ -252,8 +252,9 @@ The deployed app URL and its production `DATABASE_URL` have not been verified he
 | 2026-09-25 | Corrected PostgreSQL admin checkout and bulk book row-lock queries and added public Supabase Storage for new covers; checked rollback-only database flows and a live image upload. | Agent Alpha |
 | 2026-10-09 | Added branding-only MySQL migration `045` and Supabase migration `015`; no database structures or API response shapes changed. | Agent Alpha |
 
+| 2026-11-10 | Status → built. The MySQL rollback path was retired; see `docs/mysql-removal-plan.md`. | Agent Alpha |
 ---
 
 ## Approval gate
 
-Build is **approved**. The local MySQL history has been transferred. Keep local credentials out of Git and verify the deployed app's connection and flows before retiring MySQL or the pre-cutover backup.
+Build is **approved**. The local MySQL history has been transferred. MySQL was retired on 2026-11-10 (`docs/mysql-removal-plan.md`). Keep local credentials out of Git; the pre-cutover backup schema stays until that plan's gate drops it.

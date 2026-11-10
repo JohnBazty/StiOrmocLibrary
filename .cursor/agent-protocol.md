@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-11-10 (start session reads the wiki first; MySQL `046` / next `047`; Supabase `016` / next `017`) |
+| **Date last updated** | 2026-11-10 (MySQL retired; tracker is Supabase only, `016` / next `017`) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---
@@ -99,32 +99,20 @@ Always know and document:
 
 | Item | Value |
 | --- | --- |
-| Migrations directory | `database/migrations/` |
-| Latest migration | `20261009_046_configurable_borrowing_policies.sql` |
-| Latest number | `046` |
-| **Next available number** | **`047`** |
-| Supabase / Postgres files | `database/supabase/` through `016_configurable_borrowing_policies.sql`; next **017**. Earlier files through `015` remain in tree; reconcile ledger gaps before whole-directory replay. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set. |
+| Migrations directory | `database/supabase/` (Postgres only; MySQL was retired 2026-11-10) |
+| Latest migration | `016_configurable_borrowing_policies.sql` |
+| Latest number | `016` |
+| **Next available number** | **`017`** |
 
-Naming pattern in this repo:
+Earlier files through `015` remain in tree; reconcile ledger gaps before whole-directory replay. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set.
 
-```text
-YYYYMMDD_NNN_short_snake_description.sql
-```
+Naming pattern: `NNN_short_snake_description.sql`, hand-written Postgres with row-level security as in earlier files. Never regenerate or edit `002_from_migrations.sql`.
 
-Example next file (date prefix chosen on authoring day):
+When a new migration lands:
 
-```text
-20260926_042_example_change.sql
-```
-
-When a new **MySQL** migration lands:
-
-1. Update this table’s **Latest** and **Next available** values in this file.
-2. Mention the new number in the related work doc’s change log / How section.
+1. Update this table's **Latest** and **Next available** values in this file.
+2. Mention the new number in the related work doc's change log / How section.
 3. Do not reuse or renumber an already-applied migration; add a new file instead.
-4. Re-run `python tools/ai/mysql_to_pg.py --migrations -o database/supabase/002_from_migrations.sql` (or add a new numbered Supabase file) and review before applying to Supabase.
-
-Note: Supabase / PostgreSQL conversion is **in progress** (`docs/supabase-migration-plan.md`). Until cutover is trusted, the MySQL tree above remains authoritative for numbering additive MySQL fixes. After cutover, prefer new DDL under `database/supabase/`.
 
 ---
 
@@ -167,3 +155,4 @@ Prefer simple, readable scripts under a clear folder (for example `tools/` or `s
 | 2026-10-09 | Added branding migrations `045` and Supabase `015`; tracker advanced to MySQL `045` / next `046` and Supabase next `016`. |
 | 2026-10-09 | Configurable borrowing policies: MySQL `046` / Supabase `016`; tracker advanced to MySQL next `047` and Supabase next `017`. |
 | 2026-11-10 | Start session now reads the Obsidian wiki first and scans only what it does not cover; added the `start-session` skill. Migration numbers unchanged. |
+| 2026-11-10 | MySQL retired (`docs/mysql-removal-plan.md`): tracker is Supabase only, `016` / next `017`; MySQL rows and the `mysql_to_pg.py` step removed. |

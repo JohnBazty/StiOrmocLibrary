@@ -11,11 +11,11 @@ This is the `.cursor/agent-protocol.md` "Start session protocol", done the lean 
 2. **Wiki first.** Read `C:\Users\Ethan\Ethan's Vault\wiki\hot.md` "Active Threads" and `wiki/entities/StiOrmocLibrary.md`. Trust them; do not re-read docs, transcripts or git history they already summarise.
 3. **Repo state** (cheap checks only):
    - `git branch --show-current`, `git status --short`, `git log --oneline -5`, and `git branch --list` for unmerged work.
-   - The migration tracker table in `.cursor/agent-protocol.md`: latest and next MySQL and Supabase numbers. Confirm the newest files with `ls database/migrations | tail -1` and `ls database/supabase | tail -2`.
+   - The migration tracker table in `.cursor/agent-protocol.md`: latest and next Supabase numbers. Confirm the newest files with `ls database/supabase | tail -2`.
    - Plan statuses: `grep -n -E '\*\*Status(:\*\*|\*\* \|)' docs/*.md` (status header lines only). Open a plan doc only if it is `planned` / `inprogress` and newer than the wiki's last update. Plans without a Status line are older docs; ignore them.
 4. **Brief** in under 150 words, plain language:
    - Latest thing completed or left pending.
-   - Migration numbers: MySQL latest / next, Supabase latest / next. Flag any mismatch between the tracker, the files and the wiki.
+   - Migration numbers: Supabase latest / next. Flag any mismatch between the tracker, the files and the wiki.
    - Open `planned` / `inprogress` work and unmerged branches.
    - Ready state for the next command.
    Where git or the repo docs disagree with the wiki, trust git and the docs, and say so.

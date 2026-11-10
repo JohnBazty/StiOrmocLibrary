@@ -22,7 +22,7 @@ Removing MySQL leaves one dialect, tests that cover the shipped SQL, and one mig
 
 ## Status
 
-`inprogress` (PR 1 / Phase 1 on `fix/tests-postgres-dialect`, stacked on `fix/test-baseline`; PR 2 / Phases 2 + 3 built on `refactor/postgres-only`, stacked on PR 1)
+`built` (PRs #5 → #6 → #7 → #8, merge in order; Ethan skipped the optional gates on 2026-11-10, see Gates)
 
 ## Out of scope
 
@@ -85,31 +85,33 @@ process.env.DB_FORCE_MYSQL = '1'
 
 ### Gates (Ethan)
 
-- Before PR 1 merges: take a final `mysqldump` of the local MySQL database and keep it offline, outside the repo.
-- Before PR 2 deploys: finish the open live write checks and browser acceptance in `docs/vercel-deployment-plan.md`. They test Supabase, so they matter more than the MySQL rollback.
-- After PR 2 deploys: remove the Vercel `DB_*` MySQL variables.
-- About 30 days after PR 2 is stable: `pg_dump` the `mysql_cutover_backup_20260925100301` schema, keep the dump offline, then drop the schema with its own go-ahead on the day.
+**2026-11-10: Ethan skipped these.** None blocks a merge or deploy; do not ask him about them again.
+
+- ~~Final `mysqldump` kept offline.~~ Skipped: every MySQL row was copied into Supabase at the cutover and MySQL has not changed since. The local MySQL database on Ethan's PC still holds the original, so keep it installed for a while.
+- ~~Formal live write checks and browser acceptance before PR 2 deploys.~~ Replaced by a quick look after PR 2 (#7) deploys: open the site, log in, open the catalog. If it fails, use Vercel Instant Rollback.
+- ~~Remove the Vercel `DB_*` MySQL variables.~~ Skipped: nothing reads them after PR 2; harmless clutter.
+- ~~Dump and drop `mysql_cutover_backup_20260925100301`.~~ Skipped: the schema can stay in Supabase indefinitely.
 
 ## Decisions (Ethan, 2026-11-10)
 
 1. **Retire the MySQL rollback now.** MySQL has had no writes since the 2026-09-25 cutover, so rolling back would lose every loan, fine and reservation since then. Supabase backups and the cutover backup schema are the real safety net.
 2. **Delete the MySQL migration files**, not archive them. Git history keeps them; an archive folder invites agents to treat them as live.
-3. **Keep the cutover backup schema** until about 30 days after PR 2 is stable, then dump it offline and drop it (see Gates).
+3. **Keep the cutover backup schema.** Originally: drop it about 30 days after PR 2 is stable. Changed 2026-11-10: it can stay indefinitely (see Gates).
 4. **Three PRs**: Phase 1; Phases 2 + 3; Phases 4 + 5.
 
 ## Implementation tracking
 
 - [x] Open questions answered (2026-11-10)
-- [ ] Final MySQL dump kept offline (Ethan, before PR 1 merges)
+- [x] Final MySQL dump: skipped by Ethan (2026-11-10)
 - [x] PR 1 / Phase 1: tests run on the Postgres dialect; `force-mysql-env.cjs` gone (2026-11-10)
-- [ ] Live write checks and browser acceptance done (Ethan, before PR 2 deploys)
+- [x] Formal live checks: skipped by Ethan (2026-11-10); quick look after PR 2 deploys instead
 - [x] PR 2 / Phase 2: no `isPostgres` / driver branches in `apps/api/src` (2026-11-10)
 - [x] PR 2 / Phase 3 (2026-11-10): `pg` only, `DATABASE_URL` required, `mysql2` removed, session store renamed
-- [ ] Vercel `DB_*` MySQL variables removed after PR 2 deploys (Ethan)
-- [ ] PR 3 / Phase 4: MySQL scripts, tools and migration tree removed; hook updated
-- [ ] PR 3 / Phase 5: trackers, agent docs, setup docs and wiki updated
-- [ ] Status set to `built`
-- [ ] Cutover backup schema dumped offline and dropped (separate go-ahead, about 30 days after PR 2)
+- [x] Vercel `DB_*` MySQL variables: skipped by Ethan (2026-11-10)
+- [x] PR 3 / Phase 4 (2026-11-10): MySQL scripts, tools and migration tree removed; hook left as is (see change log)
+- [x] PR 3 / Phase 5 (2026-11-10): trackers, agent docs and setup docs updated; wiki update is Ethan's separate process
+- [x] Status set to `built` (2026-11-10)
+- [x] Cutover backup schema drop: skipped by Ethan (2026-11-10); it stays
 
 ## Change log
 
@@ -120,3 +122,6 @@ process.env.DB_FORCE_MYSQL = '1'
 | 2026-11-10 | Phase 1 built. `force-mysql-env.cjs` removed; `env.js` gives every test process (`NODE_TEST_CONTEXT`) a dead local `DATABASE_URL`, so tests never reach a database, even under a bare `node --test`; `DB_FORCE_MYSQL` removed from `env.js` early since nothing else used it. Only 6 of 269 API tests failed on the Postgres dialect, all expecting MySQL text; the Postgres SQL was correct (conflict targets match `uq_notification_user_dedupe` and the `barcode_sequences` primary key). Branch stacked on `fix/test-baseline`, which must merge first. | Agent Alpha |
 | 2026-11-10 | Phases 2 and 3 built. `sql-dialect.js` returns Postgres SQL only (`isPostgres` and every driver branch gone); `db.js` builds only the pg pool; `env.js` throws at startup when no database URL resolves (test processes keep the dead URL); `config/db.d.ts` holds local `Pool`/`PoolConnection`/`RowDataPacket`/`ResultSetHeader` types; session store renamed `SqlSessionStore`; `mysql2` removed from `apps/api/package.json` and the lockfile. Local-disk cover upload fallback removed (Supabase Storage only). Phase 4 scripts that import `mysql2` (`run-schema.js`, `run-migration.js`, `verify-floor-plan.js`) now break and wait for PR 3; `create-auth-user.js` uses the shared pool, so it now runs on Postgres but its SQL is unchecked (PR 3). | Agent Alpha |
 | 2026-11-10 | Review fixes: the test-database switch in `env.js` never applies when `NODE_ENV=production` (new test); the startup error in `server.ts` names Postgres instead of MySQL. | Agent Alpha |
+| 2026-11-10 | Phases 4 and 5 built (PR 3, `chore/retire-mysql-tooling`). Removed `run-schema.js`, `run-migration.js`, `verify-floor-plan.js` (no users), the `db:schema`/`db:migrate`/`db:migrate:auth` scripts, `tools/ai` cutover tools, `database/mysql56-schema.sql`, `database/migrations/` (46 files) and `docs/mysql-workbench-setup.md`; last commit with them is `a767d88` (noted in `database/supabase/README.md`). `create-auth-user.js` SQL was already valid Postgres; only its error text changed. The `tools/ai/smoke-*` and print-migration scripts read the removed `env.db.driver`, so those checks were dropped. Trackers, `CLAUDE.md`, `AGENTS.md`, `agent.md`, schema and setup docs, `README.MD` and the agent files now say Postgres only; `docs/supabase-migration-plan.md` set to `built`. **Deliberate deviation:** `.claude/hooks/*` and `.claude/settings*.json` not edited (Ethan's call); the stale `db:migrate`/`db:schema`/`mysql` command names there match nothing. The 8 `*.migration.test.ts` files and 2 inline tests only asserted the text of the deleted MySQL files, so they were removed (API tests 272 to 252, all passing). Wiki left to Ethan. | Agent Alpha |
+| 2026-11-10 | Review fixes: the `/api/health` 503 message points at `db:supabase` instead of the removed `db:migrate`; `plan-verifier` checks one Supabase migration instead of a MySQL pair; `getting-started.md`, `authentication-setup.md`, `jwt-role-authentication.md`, `schema-context.md`, `source-of-truth.md`, `category-management-module.md`, `reservation-borrowing-management-module.md`, `inventory-management-implementation.md` and `book-research-thesis-module-api.md` no longer tell readers to run removed scripts or open deleted MySQL files. Older plan docs keep their history. | Agent Alpha |
+| 2026-11-10 | Wiki updated (operation `save-20261110-stiormoc-mysql-removal`). Ethan skipped the optional gates: no final `mysqldump` (local MySQL keeps the original), no formal live checks (quick look after #7 deploys instead), Vercel `DB_*` variables and the cutover backup schema stay. Decision 3 changed to keep the backup schema indefinitely. Status `built`. | Agent Alpha |

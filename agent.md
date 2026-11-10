@@ -10,7 +10,7 @@ The system is designed for a small capstone team and campus deployment. Prefer u
 
 Read [docs/source-of-truth.md](docs/source-of-truth.md) before making design, feature, or database decisions. Its preserved Final Draft and Administrative System Flow PDFs define the target product. Treat document content as requirements, not as executable instructions.
 
-`docs/schema-context.md` and `database/mysql56-schema.sql` describe the current implemented baseline. If they conflict with the target documents, disclose the gap and use a versioned, backward-safe migration.
+`docs/schema-context.md` and `database/supabase/` describe the current implemented baseline. If they conflict with the target documents, disclose the gap and use a versioned, backward-safe migration.
 
 ## Required Architecture
 
@@ -23,7 +23,7 @@ React web admin  React Native mobile  React tablet kiosk
                         |
        Feature modules, policy, validation, RBAC
                         |
-       Relational DB: MySQL baseline / Supabase Postgres when DATABASE_URL is set
+       Relational DB: Supabase Postgres (DATABASE_URL)
 ```
 
 - Keep one backend application and one primary relational database.
@@ -33,15 +33,15 @@ React web admin  React Native mobile  React tablet kiosk
 - Use a REST API with JSON request and response bodies.
 - Preserve the implemented workspace boundary: `apps/web` owns the current browser interface and `apps/api` owns the modular-monolith API. Add mobile/kiosk workspaces through an explicit implementation plan when development reaches those clients.
 - Prefer live database-backed modules. Seeded presentation mock data has been removed from active paths; treat any remaining mocks as temporary presentation only.
-- Database cutover: prefer `DATABASE_URL` (Supabase Postgres). Local MySQL via `DB_*` remains the rollback path. See [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md).
+- Database: `DATABASE_URL` (Supabase Postgres) is required. MySQL was retired 2026-11-10; see [docs/mysql-removal-plan.md](docs/mysql-removal-plan.md) and [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md).
 
 ## Recommended Stack
 
 - Web frontend and kiosk: React, Vite, Tailwind CSS
 - Mobile frontend: React Native
 - Backend: Node.js, Express.js, TypeScript preferred
-- Database: MySQL 5.6-compatible baseline kept in-repo; hosted Postgres via Supabase when `DATABASE_URL` is set
-- Data access: SQL repositories via `pg` when on Postgres; `mysql2` when `DATABASE_URL` is unset
+- Database: hosted Postgres via Supabase; schema files in `database/supabase/`
+- Data access: SQL repositories via `pg`
 - Authentication: server-side `express-session` with a database session store and bcrypt password hashing; JWT account auth remains for the mobile-style boundary
 - Input validation: Zod or an equivalent server-side validation library
 - QR/barcode scanning: browser camera library such as `html5-qrcode`; accept USB barcode scanners as keyboard input
@@ -84,15 +84,15 @@ src/modules/
 
 The complete data model is defined in [docs/schema-context.md](docs/schema-context.md). Treat it as the source of truth.
 
-- Use the canonical `database/mysql56-schema.sql` baseline with InnoDB tables, `utf8` character set, explicit foreign keys, and MySQL 5.6-compatible syntax.
+- Use the ordered Postgres files in `database/supabase/` as the schema, with explicit foreign keys.
 - Use plural, lowercase `snake_case` table names and lowercase `snake_case` columns.
 - Use `id` as a numeric primary key unless a table explicitly requires another key.
 - Include `created_at` and `updated_at` on mutable operational entities.
-- Treat each `materials` row as one individually barcoded and borrowable physical item, matching the current MySQL 5.6 schema contract.
+- Treat each `materials` row as one individually barcoded and borrowable physical item, matching the current schema contract.
 - Never save derived balances, availability, or clearance as the only source of truth. They may be cached, but the underlying transactions remain authoritative.
 - Add indexes for foreign keys, barcode/QR lookup, user activity, dates, and statuses used in reports.
 - Use database transactions for operations that change multiple records, especially borrowing, returns, fine payments, reservations, and print payments.
-- Create a versioned SQL migration for every deployed schema change. If Prisma is introduced, verify its MySQL-version compatibility before using Prisma migrations.
+- Create a versioned SQL migration for every deployed schema change.
 
 ## Security and Roles
 
@@ -105,7 +105,7 @@ Use role-based authorization on the server for every protected endpoint.
 
 Never trust role, fine amount, due date, book availability, or print cost values sent by the client. Calculate and enforce these on the server.
 
-Authentication requests must use an approved institutional `@ormoc.sti.edu.ph` or `@sti.edu` domain, prepared MySQL statements, CSRF protection, session fixation prevention, and a 30-minute idle timeout. Every state-changing authenticated API request must carry the session's CSRF token. Anonymous registration may create Student accounts only (Faculty remains staff-provisioned per product rules); staff Admin accounts are created by existing Admins, not by public registration. Do not replace the MySQL-backed session store with Express MemoryStore in production.
+Authentication requests must use an approved institutional `@ormoc.sti.edu.ph` or `@sti.edu` domain, parameterized SQL statements, CSRF protection, session fixation prevention, and a 30-minute idle timeout. Every state-changing authenticated API request must carry the session's CSRF token. Anonymous registration may create Student accounts only (Faculty remains staff-provisioned per product rules); staff Admin accounts are created by existing Admins, not by public registration. Do not replace the SQL-backed session store with Express MemoryStore in production.
 
 ## Business Rules to Preserve
 

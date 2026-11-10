@@ -6,7 +6,6 @@ import { randomBytes } from 'node:crypto'
 
 dotenv.config({ path: new URL('../../apps/api/.env', import.meta.url), quiet: true })
 const { env } = await import('../../apps/api/src/config/env.js')
-if (env.db.driver !== 'postgres') throw new Error('Supabase Postgres is required')
 const dbUrl = new URL(env.db.connectionString)
 dbUrl.port = '6543'
 const db = new pg.Client({ connectionString: dbUrl.toString() })
@@ -104,7 +103,6 @@ try {
   await db.connect()
   connected = true
   const health = await api('/api/health')
-  if (health.data?.database?.driver === 'mysql') throw new Error('The live API is using MySQL')
   const registration = await api('/api/v1/auth/register', 'POST', {
     school_id: schoolId, first_name: 'Phase', last_name: 'One Test', contact_number: '09000000000',
     program_strand: 'BS Information Technology', year_grade_level: '4th Year',

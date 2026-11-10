@@ -5,7 +5,6 @@ import { db } from '../../apps/api/src/config/db.js'
 import { env } from '../../apps/api/src/config/env.js'
 import { DashboardRepository } from '../../apps/api/src/modules/dashboard/dashboard.repository.ts'
 
-if (env.db.driver !== 'postgres') throw new Error('This check requires Supabase Postgres.')
 const connection = await db.getConnection()
 const marker = `Phase 3 ${randomUUID().slice(0, 8)}`
 try {

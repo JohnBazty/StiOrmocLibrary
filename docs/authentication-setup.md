@@ -7,8 +7,8 @@ The Express application now provides a server-rendered vanilla HTML/CSS/JavaScri
 - Institutional email validation: `@ormoc.sti.edu.ph` and `@sti.edu`
 - One canonical self-service Student registration page at `http://localhost:5173/register`. The API address `http://localhost:4000/register` redirects to this page.
 - bcrypt password verification with cost 12 for newly created accounts
-- MySQL prepared statements through `mysql2/promise`
-- MySQL-backed `express-session` records
+- parameterized Postgres queries through `pg`
+- Postgres-backed `express-session` records (`SqlSessionStore`)
 - `HttpOnly`, `SameSite=Lax`, and production-only `Secure` cookies
 - 30-minute rolling inactivity timeout
 - session-ID regeneration after login
@@ -19,34 +19,13 @@ The Express application now provides a server-rendered vanilla HTML/CSS/JavaScri
 
 Public registration cannot grant the Admin (Librarian) role. Staff accounts are provisioned with role `Admin` only; the backend rejects anonymous staff creation.
 
-## 1. Prepare MySQL
+## 1. Prepare the database
 
-For a new database, execute [database/mysql56-schema.sql](../database/mysql56-schema.sql) in MySQL Workbench.
+The API runs on Supabase Postgres only (MySQL was retired on 2026-11-10). The schema is in `database/supabase/`; apply reviewed files one at a time with `npm run db:supabase -w @sti-library/api -- <file>.sql`. See `database/supabase/README.md`.
 
-If you already executed the earlier 15-table schema, execute only:
+## 2. Database credentials
 
-```text
-database/migrations/20260815_001_auth_sessions.sql
-```
-
-The completed database contains 16 tables and 8 triggers.
-
-## 2. Create a least-privilege application account
-
-Run the following in Workbench while connected as `root`. Replace the example password before executing it.
-
-```sql
-CREATE USER 'sti_library_app'@'localhost'
-  IDENTIFIED BY 'replace_with_a_long_unique_password';
-
-GRANT SELECT, INSERT, UPDATE, DELETE
-  ON sti_ormoc_library.*
-  TO 'sti_library_app'@'localhost';
-
-FLUSH PRIVILEGES;
-```
-
-If Node connects with `127.0.0.1` and MySQL treats that as a different host on your installation, create the same account for `'sti_library_app'@'127.0.0.1'` or change `DB_HOST` to `localhost`.
+Use the Supabase connection string (session pooler) as `DATABASE_URL`. Never commit it.
 
 ## 3. Configure the API
 
@@ -57,7 +36,7 @@ Copy-Item apps\api\.env.example apps\api\.env
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
-Open `apps/api/.env`, paste the generated value into `SESSION_SECRET`, and set the MySQL username and password.
+Open `apps/api/.env`, paste the generated value into `SESSION_SECRET`, and set `DATABASE_URL`.
 
 For local HTTP development, keep `NODE_ENV=development`. In production, set `NODE_ENV=production`, serve the application through HTTPS, and keep `SESSION_SECRET` outside source control. Production startup refuses secrets shorter than 32 characters.
 

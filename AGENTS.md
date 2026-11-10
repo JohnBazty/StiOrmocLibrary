@@ -3,7 +3,7 @@
 ## First stop for AI agents
 
 1. Read the **AI agents — read this first** section at the top of [README.MD](README.MD) when present, otherwise continue below.
-2. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) for session start, plan status values, and the MySQL migration tracker.
+2. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) for session start, plan status values, and the Supabase migration tracker.
 3. When Ethan says **`start session`**, run that Start session protocol before building.
 
 ## Before making design, implementation, or database decisions
@@ -13,7 +13,7 @@
 3. Check the currently implemented schema contract in [docs/schema-context.md](docs/schema-context.md).
 4. For hosted database work, also read [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md).
 
-The PDFs define the target product. The schema context describes the current database implementation. When they differ, plan a backward-safe migration instead of silently changing table meanings. The MySQL tree remains the rollback reference while the API dual-drives MySQL and Supabase Postgres.
+The PDFs define the target product. The schema context describes the current database implementation. When they differ, plan a backward-safe migration instead of silently changing table meanings. Supabase Postgres is the only database (`database/supabase/`).
 
 `CLAUDE.md` holds the same working rules for Claude Code and points back here. Keep the two in sync: a rule changed in one is changed in the other.
 
@@ -85,11 +85,12 @@ Pages read as dated facts (`YYYY-MM-DD`), short summaries and links, not copies 
 
 ### Standing decisions (from Claude's private memory, which other tools cannot read)
 - **No destructive commands (incident in STI ILMS REA, 2026-11-04):** a `git worktree remove --force` followed junctions and deleted `apps/api/.env`. See "Safety rules".
+- **MySQL retired (Ethan, 2026-11-10):** Supabase Postgres is the only database; the MySQL migration tree and rollback path are deleted (last commit with them: `a767d88`). See `docs/mysql-removal-plan.md`.
 - **Lean sessions (Ethan, 2026-11-06):** one feature per session; at most 3 review agents (one combined security, correctness and React review, plus a database review for migrations or concurrent SQL); fix LOW findings directly instead of re-running reviews.
 
 ### Automation Claude Code has that you replace by hand
 - **Destructive-command hook** (`.claude/hooks/guard-destructive.mjs`, wired in `.claude/settings.json`): read its `RULES` list and refuse those commands yourself. Its `ASK_RULES` list (database migration, schema, backfill and user-creation scripts, `tools/ai` smoke, migration and audit scripts, the Vercel CLI) touches the live database or production: run those only after Ethan approves that exact step. Keep command approval on.
-- **Subagents** (`.claude/agents/*.md`): run each role as a separate step or prompt. Per feature, after Ethan approves the plan doc: `library-builder.md` (build, tests first, migration pairs), then `plan-verifier.md` (read-only check of tracking items, migration pairs, trackers and status), then one combined security review of `git diff main...HEAD` (plus a database review when there is a migration), fixes, then ask Ethan before push or PR.
+- **Subagents** (`.claude/agents/*.md`): run each role as a separate step or prompt. Per feature, after Ethan approves the plan doc: `library-builder.md` (build, tests first, one Supabase migration per schema change), then `plan-verifier.md` (read-only check of tracking items, migrations, trackers and status), then one combined security review of `git diff main...HEAD` (plus a database review when there is a migration), fixes, then ask Ethan before push or PR.
 - **Start session** (`.claude/skills/start-session/SKILL.md`, mirrored in `.agents/skills/start-session/`): follow it when Ethan says `start session`.
 - **Dev server** (`.claude/launch.json`): `npm run dev`, web on port 5173, API on 4000.
 - **MCP servers** (set up at Ethan's user level, not in the repo): Supabase (read-only checks; schema changes only through reviewed migration files), Serena (code navigation), graphify (`graphify-out/` knowledge graph). If your tool lacks one, say so instead of guessing what it would return.

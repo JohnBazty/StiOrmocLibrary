@@ -77,7 +77,7 @@ export function createApp() {
       const status = schema.ready ? 'healthy' : 'migration_required'
       response.status(schema.ready ? 200 : 503).json({
         success: schema.ready,
-        ...(schema.ready ? {} : { code: 'DATABASE_MIGRATION_REQUIRED', message: 'The database schema is not ready. Run npm run db:migrate -w @sti-library/api.' }),
+        ...(schema.ready ? {} : { code: 'DATABASE_MIGRATION_REQUIRED', message: 'The database schema is not ready. Apply the pending database/supabase/ migration with npm run db:supabase -w @sti-library/api -- <file>.sql.' }),
         data: { service: 'sti-library-api', architecture: 'modular-monolith', status, databaseSchema: schema },
       })
     } catch (error) { next(error) }
