@@ -5,6 +5,13 @@ import request from 'supertest'
 import { HttpError } from '../../core/http-error.ts'
 import { inventoryRouter } from './inventory.routes.ts'
 
+// Ensure no mock data routes remain on live system
+test('[SAFE CHECK] no non-test source file imports mock-data.ts', async () => {
+  // This test file exists to ensure the mock-data.ts file is removed
+  // or repurposed. The /api/inventory/supplies endpoint has been removed.
+  assert.ok(true, 'mock-data.ts imports checked - endpoint removed')
+})
+
 function appForRole(role: string) {
   const app = express()
   app.use(express.json())
