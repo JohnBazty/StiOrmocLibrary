@@ -7,7 +7,7 @@ The API runs on Supabase PostgreSQL only (`DATABASE_URL`, `pg`). MySQL was retir
 - The schema lives in [database/supabase/](../database/supabase/) as numbered Postgres files. `001` and `002` were converted from the retired MySQL tree; later files are hand-written.
 - The deleted MySQL files (`database/mysql56-schema.sql`, `database/migrations/` 001-046) are in git at commit `a767d88`.
 - Additive MAIN product tables for Postgres land in `database/supabase/005_main_product_gapfill.sql` (033–040).
-- The 2026-09-25 historical data cutover copied the retired local MySQL rows into Supabase after applying Postgres 008–009. Hosted users/accounts were preserved, and the pre-cutover hosted snapshot is in schema `mysql_cutover_backup_20260925100301`. Postgres 010 adds book archive actor and floor image version metadata. Postgres 011 adds account authentication versions and management audit events. Postgres 013 consolidates Librarian into Admin. Postgres 014 adds `circulation_override_events` for checkout warning audits. Postgres 015 renames system branding. Postgres 016 adds immutable `borrowing_policy_versions` / material rules and policy FKs on loans and reservations. Postgres 017 adds loan renewal state and immutable renewal decisions. Next Postgres migration number: **018**. See the cutover record in the migration plan.
+- The 2026-09-25 historical data cutover copied the retired local MySQL rows into Supabase after applying Postgres 008–009. Hosted users/accounts were preserved, and the pre-cutover hosted snapshot is in schema `mysql_cutover_backup_20260925100301`. Postgres 010 adds book archive actor and floor image version metadata. Postgres 011 adds account authentication versions and management audit events. Postgres 013 consolidates Librarian into Admin. Postgres 014 adds `circulation_override_events` for checkout warning audits. Postgres 015 renames system branding. Postgres 016 adds immutable `borrowing_policy_versions` / material rules and policy FKs on loans and reservations. Postgres 017 adds loan renewal state and immutable renewal decisions; 018 hardens that table (indexes, RLS). Next Postgres migration number: **019**. See the cutover record in the migration plan.
 
 Migration `20261009_045_rename_system_brand.sql` and Supabase migration `015_rename_system_brand.sql` change only the public `library_profiles.library_name` default and replace the existing row only when it still has the previous default. Database structures, relationships, routes, stored sessions, and technical `SmartLib` identifiers are unchanged.
 
@@ -110,7 +110,7 @@ Phase 3 migration Supabase `010` adds nullable `titles.archived_by_account_id` f
 ### Circulation
 
 - `borrow_transactions`: pending, borrowed, returned, and overdue activity; includes `initial_due_at` and `renewal_count`.
-- `loan_renewal_requests`: immutable Approved/Rejected renewal decisions (Supabase `017`).
+- `loan_renewal_requests`: immutable Approved/Rejected renewal decisions (Supabase `017`; `018` adds a unique Approved `(transaction_id, renewal_number)` index, lookup and FK indexes, and RLS).
 - `circulation_override_events`: append-only staff confirmation audit for checkout warnings (Supabase `014`). Does not alter `borrow_transactions`.
 - `reservations`: material waiting list and expiry status.
 - `fines`: one fine record per borrowing transaction.

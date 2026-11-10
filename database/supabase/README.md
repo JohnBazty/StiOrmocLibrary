@@ -23,7 +23,8 @@
 --   015_rename_system_brand.sql             — public library name branding
 --   016_configurable_borrowing_policies.sql — immutable borrowing policy versions
 --   017_loan_renewals.sql                   — initial_due_at, renewal_count, loan_renewal_requests
--- Next Postgres schema number: 018. Apply reviewed files individually.
+--   018_loan_renewal_hardening.sql          — approved-renewal unique index, renewal indexes, RLS/grants
+-- Next Postgres schema number: 019. Apply reviewed files individually.
 --
 -- The MySQL tree (database/mysql56-schema.sql, database/migrations/) was removed
 -- on 2026-11-10. Last commit that has it: a767d8825d645658bbec38e31e194471ede46b5f.

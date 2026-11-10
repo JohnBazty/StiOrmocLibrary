@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-11-10 (loan renewals; Supabase `017` / next `018`) |
+| **Date last updated** | 2026-11-11 (loan renewals; Supabase `018` / next `019`) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---
@@ -100,9 +100,9 @@ Always know and document:
 | Item | Value |
 | --- | --- |
 | Migrations directory | `database/supabase/` (Postgres only; MySQL was retired 2026-11-10) |
-| Latest migration | `017_loan_renewals.sql` |
-| Latest number | `017` |
-| **Next available number** | **`018`** |
+| Latest migration | `018_loan_renewal_hardening.sql` |
+| Latest number | `018` |
+| **Next available number** | **`019`** |
 
 Earlier files through `015` remain in tree; reconcile ledger gaps before whole-directory replay. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set.
 
@@ -157,3 +157,4 @@ Prefer simple, readable scripts under a clear folder (for example `tools/` or `s
 | 2026-11-10 | Start session now reads the Obsidian wiki first and scans only what it does not cover; added the `start-session` skill. Migration numbers unchanged. |
 | 2026-11-10 | MySQL retired (`docs/mysql-removal-plan.md`): tracker is Supabase only, `016` / next `017`; MySQL rows and the `mysql_to_pg.py` step removed. |
 | 2026-11-10 | Loan renewals (revived from draft #4 on Postgres-only `main`): Supabase `017_loan_renewals.sql`; tracker advanced to `017` / next `018`. |
+| 2026-11-11 | Ethan confirmed `017` is already applied live, so review fixes went to `018_loan_renewal_hardening.sql` (approved-renewal unique index, indexes, RLS/grants); tracker `018` / next `019`. Planned numbers shift: long-overdue/damage `019`, job runner `020`, stocktake `021`. |

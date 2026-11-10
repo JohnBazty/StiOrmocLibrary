@@ -10,7 +10,7 @@ STI ILMS already implements much of the foundation described in the feature revi
 - **Date last updated:** 2026-11-10
 - **Status:** `planned`
 - **Active database:** Supabase PostgreSQL (only database; MySQL retired 2026-11-10)
-- **Next migration number:** Supabase `018` (renewals took `017`; planned: long-overdue/damage `018`, job runner `019`, stocktake `020`)
+- **Next migration number:** Supabase `019` (renewals took `017` and `018`; planned: long-overdue/damage `019`, job runner `020`, stocktake `021`)
 
 ## Objective
 
