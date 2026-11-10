@@ -1,12 +1,11 @@
-import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
-import { excluded, forUpdate, isPostgres, timestampDiffSeconds } from '../../config/sql-dialect.js'
+import { excluded, forUpdate, timestampDiffSeconds } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { createFinesService } from '../fines/fines.service.ts'
 import { positiveId, validateLostDecision, validateOverride, validateRevocation } from './clearance.validation.ts'
 
 function insertIgnoreNotification(sql: string) {
-  if (!isPostgres) return sql
   return `${sql.replace(/^\s*INSERT\s+IGNORE\s+INTO/i, 'INSERT INTO')} ON CONFLICT (user_id, dedupe_key) DO NOTHING`
 }
 
@@ -160,14 +159,9 @@ export function createClearanceService(database: Pool = db) {
     ].filter(Boolean)
     const reason = activeOverride ? `Authorized override: ${activeOverride.reason}` : reasons.join('; ') || 'No library obligations'
     await database.execute(
-      isPostgres
-        ? `INSERT INTO clearance_statuses(user_id,standing_status,reason_block_details,reviewed_by_user_id,last_checked_at,updated_at)
+      `INSERT INTO clearance_statuses(user_id,standing_status,reason_block_details,reviewed_by_user_id,last_checked_at,updated_at)
        VALUES (?,?,?,NULL,NOW(),NOW())
        ON CONFLICT (user_id) DO UPDATE SET standing_status=${excluded('standing_status')},reason_block_details=${excluded('reason_block_details')},
-         last_checked_at=NOW(),updated_at=NOW()`
-        : `INSERT INTO clearance_statuses(user_id,standing_status,reason_block_details,reviewed_by_user_id,last_checked_at,updated_at)
-       VALUES (?,?,?,NULL,NOW(),NOW())
-       ON DUPLICATE KEY UPDATE standing_status=VALUES(standing_status),reason_block_details=VALUES(reason_block_details),
          last_checked_at=NOW(),updated_at=NOW()`, [userId, status, reason],
     )
     return {

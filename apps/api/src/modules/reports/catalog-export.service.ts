@@ -1,4 +1,4 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise'
+import type { Pool, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { authorsAgg } from '../../config/sql-dialect.js'
 import type { CatalogSearchFilters } from '../catalog/catalog-search.repository.ts'

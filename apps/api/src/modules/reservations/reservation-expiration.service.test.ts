@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Pool } from 'mysql2/promise'
+import type { Pool } from '../../config/db.js'
 import { expireReadyReservations } from './reservation-expiration.service.ts'
 
 test('expiration transaction marks ready reservation expired and releases its accession', async () => {

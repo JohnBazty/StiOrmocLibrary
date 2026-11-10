@@ -6,7 +6,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { db } from './config/db.js'
 import { env } from './config/env.js'
-import { MySqlSessionStore } from './core/mysql-session-store.js'
+import { SqlSessionStore } from './core/sql-session-store.js'
 import { HttpError } from './core/http-error.ts'
 import { checkSchemaReadiness, isMissingSchemaError } from './core/schema-readiness.ts'
 import { registerModules } from './modules/index.ts'
@@ -61,7 +61,7 @@ export function createApp() {
   app.use(session({
     name: env.session.name,
     secret: env.session.secret,
-    store: new MySqlSessionStore(db),
+    store: new SqlSessionStore(db),
     resave: false,
     saveUninitialized: false,
     rolling: true,

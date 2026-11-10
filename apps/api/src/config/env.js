@@ -33,7 +33,7 @@ const developmentJwtSecret = configuredJwtSecret || configuredSecret || randomBy
 const TEST_DATABASE_URL = 'postgresql://test:test@127.0.0.1:1/never_connects'
 
 function resolveDatabaseUrl() {
-  if (process.env.NODE_TEST_CONTEXT) return TEST_DATABASE_URL
+  if (process.env.NODE_TEST_CONTEXT && !isProduction) return TEST_DATABASE_URL
 
   const explicit = process.env.DATABASE_URL?.trim() || process.env.SUPABASE_DB_URL?.trim() || ''
   if (explicit.startsWith('postgres')) return explicit
@@ -52,11 +52,10 @@ function resolveDatabaseUrl() {
     }
     return `postgresql://postgres:${encoded}@db.${projectRef}.supabase.co:5432/postgres`
   }
-  return ''
+  throw new Error('DATABASE_URL is required (postgresql://...). Set it, or set SUPABASE_URL plus DB_PASS, in apps/api/.env.')
 }
 
 const databaseUrl = resolveDatabaseUrl()
-const dbDriver = databaseUrl.startsWith('postgres') ? 'postgres' : 'mysql'
 
 export const env = Object.freeze({
   isProduction,
@@ -71,13 +70,7 @@ export const env = Object.freeze({
     jwksUrl: process.env.SUPABASE_JWKS_URL?.trim() || '',
   },
   db: {
-    driver: dbDriver,
     connectionString: databaseUrl,
-    host: process.env.DB_HOST ?? '127.0.0.1',
-    port: Number(process.env.DB_PORT ?? 3306),
-    user: process.env.DB_USER ?? 'root',
-    password: process.env.DB_PASSWORD ?? '',
-    database: process.env.DB_NAME ?? 'sti_ormoc_library',
     // A Vercel deployment can run many API instances at once. Keep each
     // instance's pool small so bursts do not exhaust Supabase connections.
     connectionLimit: Number(process.env.DB_CONNECTION_LIMIT ?? (process.env.VERCEL ? 1 : 10)),

@@ -1,12 +1,11 @@
-import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
-import { excluded, forUpdate, isPostgres } from '../../config/sql-dialect.js'
+import { excluded, forUpdate } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { receiptVerificationCode } from './fine-receipt-verification.ts'
 import { fineId, parseFineFilters, receiptId, validateAdjustment, validateCashPayment, validateInfraction, validateReversal, type FineFilters } from './fines.validation.ts'
 
 function insertIgnoreNotification(sql: string) {
-  if (!isPostgres) return sql
   return `${sql.replace(/^\s*INSERT\s+IGNORE\s+INTO/i, 'INSERT INTO')} ON CONFLICT (user_id, dedupe_key) DO NOTHING`
 }
 
@@ -212,9 +211,7 @@ async function recomputeFineStatus(connection: PoolConnection, targetFineId: num
   if (!row) throw new HttpError(404, 'FINE_NOT_FOUND', 'The fine was not found.')
   const remaining = Math.max(0, number(row.fine_amount) - number(row.paid) - number(row.adjusted))
   const status = Number(row.is_void) ? 'Voided' : remaining <= 0 ? (number(row.adjusted) > 0 ? 'Waived' : 'Paid') : number(row.paid) > 0 ? 'Partially Paid' : 'Unpaid'
-  const paidAtSql = isPostgres
-    ? `CASE WHEN ? = 'Paid' THEN NOW() ELSE NULL END`
-    : `IF(?='Paid',NOW(),NULL)`
+  const paidAtSql = `CASE WHEN ? = 'Paid' THEN NOW() ELSE NULL END`
   await connection.execute(`UPDATE fines SET payment_status=?,paid_at=${paidAtSql},updated_at=NOW() WHERE fine_id=?`, [status, status, targetFineId])
   return { status, remaining, paid: number(row.paid), adjusted: number(row.adjusted), assessed: number(row.fine_amount) }
 }
@@ -229,11 +226,8 @@ async function refreshClearance(connection: PoolConnection, userId: number) {
   )
   const blocked = Number(rows[0]?.has_loan) || Number(rows[0]?.has_fine) || Number(rows[0]?.has_loss)
   await connection.execute(
-    isPostgres
-      ? `INSERT INTO clearance_statuses(user_id,standing_status,reason_block_details,last_checked_at,updated_at)
-     VALUES (?,?,?,NOW(),NOW()) ON CONFLICT (user_id) DO UPDATE SET standing_status=${excluded('standing_status')},reason_block_details=${excluded('reason_block_details')},last_checked_at=NOW(),updated_at=NOW()`
-      : `INSERT INTO clearance_statuses(user_id,standing_status,reason_block_details,last_checked_at,updated_at)
-     VALUES (?,?,?,NOW(),NOW()) ON DUPLICATE KEY UPDATE standing_status=VALUES(standing_status),reason_block_details=VALUES(reason_block_details),last_checked_at=NOW(),updated_at=NOW()`,
+    `INSERT INTO clearance_statuses(user_id,standing_status,reason_block_details,last_checked_at,updated_at)
+     VALUES (?,?,?,NOW(),NOW()) ON CONFLICT (user_id) DO UPDATE SET standing_status=${excluded('standing_status')},reason_block_details=${excluded('reason_block_details')},last_checked_at=NOW(),updated_at=NOW()`,
     [userId, blocked ? 'Not Cleared' : 'Cleared', blocked ? 'Outstanding library obligations remain.' : 'No outstanding library obligations.'],
   )
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Pool } from 'mysql2/promise'
+import type { Pool } from '../../config/db.js'
 import { PDFDocument } from 'pdf-lib'
 import { PrintingRepository } from './printing.repository.ts'
 import { createPrintingService } from './printing.service.ts'

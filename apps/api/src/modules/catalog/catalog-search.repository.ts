@@ -1,12 +1,9 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise'
-import { authorsAggDistinct, isPostgres } from '../../config/sql-dialect.js'
+import type { Pool, RowDataPacket } from '../../config/db.js'
+import { authorsAggDistinct } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 
 function shelfLocationsAgg(expr: string, alias: string) {
-  if (isPostgres) {
-    return `string_agg(DISTINCT ${expr}, ', ' ORDER BY ${expr}) AS ${alias}`
-  }
-  return `GROUP_CONCAT(DISTINCT ${expr} ORDER BY ${expr} SEPARATOR ', ') AS ${alias}`
+  return `string_agg(DISTINCT ${expr}, ', ' ORDER BY ${expr}) AS ${alias}`
 }
 
 export type CatalogScope = 'all' | 'books' | 'research'

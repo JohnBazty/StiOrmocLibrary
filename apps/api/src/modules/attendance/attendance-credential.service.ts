@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
-import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise'
+import type { Pool, PoolConnection, RowDataPacket } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
 

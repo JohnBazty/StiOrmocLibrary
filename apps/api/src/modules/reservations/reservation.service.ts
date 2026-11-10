@@ -1,6 +1,6 @@
-import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import type { Pool, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
-import { forUpdate, isPostgres } from '../../config/sql-dialect.js'
+import { forUpdate } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { createBorrowingPolicyService } from '../circulation/borrowing-policy.service.ts'
 import { roleBookLimit, roleReservationLimit } from '../circulation/borrowing-policy.types.ts'
@@ -11,8 +11,8 @@ import { cancelPendingCounterClaim, createPendingCounterClaim } from './reservat
 // Claimed reservations are represented by their authoritative open loan and
 // must not remain in a user's capacity forever after that loan is returned.
 const ACTIVE_STATUSES = "('pending','approved','ready_for_pickup')"
-const nullableId = isPostgres ? 'CAST(? AS BIGINT)' : '?'
-const nullableText = isPostgres ? 'CAST(? AS TEXT)' : '?'
+const nullableId = 'CAST(? AS BIGINT)'
+const nullableText = 'CAST(? AS TEXT)'
 const TRANSITIONS: Record<string, ReservationStatus[]> = {
   pending: ['approved', 'cancelled'], approved: ['ready_for_pickup', 'cancelled'],
   ready_for_pickup: ['cancelled'], claimed: [], cancelled: [], expired: [],
@@ -20,7 +20,7 @@ const TRANSITIONS: Record<string, ReservationStatus[]> = {
 
 type ActiveBorrowConflict = RowDataPacket & { transaction_id: number; transaction_status: string }
 
-async function findActiveBorrowConflict(connection: import('mysql2/promise').PoolConnection, input: {
+async function findActiveBorrowConflict(connection: import('../../config/db.js').PoolConnection, input: {
   userId: number
   titleId: number | null
   isbn: string | null

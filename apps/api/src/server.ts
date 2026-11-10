@@ -19,6 +19,6 @@ try {
     console.log(`Open the ${SYSTEM_SHORT_NAME} web application at ${env.webOrigin}/login`)
   })
 } catch (error) {
-  console.error('Unable to connect to MySQL. Check apps/api/.env and run the database schema.', error)
+  console.error('Unable to connect to the Postgres database. Check DATABASE_URL in apps/api/.env.', error)
   process.exitCode = 1
 }

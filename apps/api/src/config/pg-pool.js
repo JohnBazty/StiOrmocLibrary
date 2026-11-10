@@ -69,7 +69,7 @@ function wrapClient(client) {
 }
 
 /**
- * mysql2-shaped pool over node-postgres for gradual repository migration.
+ * Pool over node-postgres with a `?`-placeholder execute (see config/db.d.ts).
  * Supports execute/query/getConnection with `?` placeholders and insertId/affectedRows.
  */
 export function createPgPool(connectionString, connectionLimit) {

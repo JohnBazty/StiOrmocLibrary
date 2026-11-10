@@ -1,4 +1,4 @@
-import type { Pool, PoolConnection, RowDataPacket, ResultSetHeader } from 'mysql2/promise'
+import type { Pool, PoolConnection, RowDataPacket, ResultSetHeader } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { authorsAgg } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'

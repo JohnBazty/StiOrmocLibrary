@@ -14,7 +14,7 @@ test('reports missing module tables and columns without exposing SQL errors', as
 })
 
 test('recognizes database errors caused by an unapplied schema migration', () => {
-  assert.equal(isMissingSchemaError({ code: 'ER_NO_SUCH_TABLE' }), true)
-  assert.equal(isMissingSchemaError({ code: 'ER_BAD_FIELD_ERROR' }), true)
-  assert.equal(isMissingSchemaError({ code: 'ER_DUP_ENTRY' }), false)
+  assert.equal(isMissingSchemaError({ code: '42P01' }), true)
+  assert.equal(isMissingSchemaError({ code: '42703' }), true)
+  assert.equal(isMissingSchemaError({ code: '23505' }), false)
 })

@@ -1,5 +1,5 @@
-import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
-import { forUpdate, isPostgres } from '../../../config/sql-dialect.js'
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../../config/db.js'
+import { forUpdate } from '../../../config/sql-dialect.js'
 import type { CategoryInput } from './category.validation.ts'
 
 export type CategoryRecord = {
@@ -95,16 +95,10 @@ export async function synchronizeCategoryShelf(connection: PoolConnection, categ
       ${forUpdate('ri')}`, [categoryId],
   )
   await connection.execute(
-    isPostgres
-      ? `UPDATE physical_copies pc
+    `UPDATE physical_copies pc
             SET shelf_location = ?, shelf_column = ?, shelf_row = ?, updated_at = NOW()
            FROM titles t
           WHERE t.title_id = pc.title_id AND t.category_id = ? AND t.record_type = 'Book'
-            AND t.lifecycle_status = 'Active' AND pc.lifecycle_status = 'Active'`
-      : `UPDATE physical_copies pc
-           JOIN titles t ON t.title_id = pc.title_id
-            SET pc.shelf_location = ?, pc.shelf_column = ?, pc.shelf_row = ?, pc.updated_at = NOW()
-          WHERE t.category_id = ? AND t.record_type = 'Book'
             AND t.lifecycle_status = 'Active' AND pc.lifecycle_status = 'Active'`,
     [shelfLocation, shelfColumn, shelfRow, categoryId],
   )
@@ -113,16 +107,10 @@ export async function synchronizeCategoryShelf(connection: PoolConnection, categ
     [shelfLocation, categoryId],
   )
   await connection.execute(
-    isPostgres
-      ? `UPDATE research_inventory ri
+    `UPDATE research_inventory ri
             SET shelf_location = ?, shelf_column = ?, shelf_row = ?, updated_at = NOW(), row_version = ri.row_version + 1
            FROM titles t
           WHERE t.title_id = ri.title_id AND t.category_id = ? AND t.record_type = 'Research/Thesis'
-            AND t.lifecycle_status = 'Active' AND ri.lifecycle_status = 'Active'`
-      : `UPDATE research_inventory ri
-           JOIN titles t ON t.title_id = ri.title_id
-            SET ri.shelf_location = ?, ri.shelf_column = ?, ri.shelf_row = ?, ri.updated_at = NOW(), ri.row_version = ri.row_version + 1
-          WHERE t.category_id = ? AND t.record_type = 'Research/Thesis'
             AND t.lifecycle_status = 'Active' AND ri.lifecycle_status = 'Active'`,
     [shelfLocation, shelfColumn, shelfRow, categoryId],
   )

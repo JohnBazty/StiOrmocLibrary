@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Pool } from 'mysql2/promise'
+import type { Pool } from '../../config/db.js'
 import { findAdminAssetById, findCatalogAssetByBarcode } from './asset-code.repository.ts'
 
 test('asset lookups use indexed identity predicates and student SQL never selects QR data', async () => {

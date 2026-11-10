@@ -1,4 +1,4 @@
-import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import type { PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 
 export async function createPendingCounterClaim(
   connection: PoolConnection,

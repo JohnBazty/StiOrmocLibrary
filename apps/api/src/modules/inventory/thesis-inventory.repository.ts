@@ -1,4 +1,4 @@
-import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise'
+import type { Pool, PoolConnection, RowDataPacket } from '../../config/db.js'
 import type { InventoryActor } from './inventory.repository.ts'
 import type { ThesisAvailability, ThesisCondition, ThesisInventoryFilters } from './thesis-inventory.validation.ts'
 

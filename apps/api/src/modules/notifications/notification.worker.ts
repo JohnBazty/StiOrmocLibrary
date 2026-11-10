@@ -1,15 +1,13 @@
-import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import type { Pool, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import {
   currentDate,
   dateAddDays,
   dateAddHours,
   formatDate,
-  isPostgres,
 } from '../../config/sql-dialect.js'
 
 function insertIgnoreNotifications(sql: string) {
-  if (!isPostgres) return sql
   return `${sql.replace(/^\s*INSERT\s+IGNORE\s+INTO/i, 'INSERT INTO')} ON CONFLICT (user_id, dedupe_key) DO NOTHING`
 }
 
@@ -30,7 +28,7 @@ async function publishScheduledAnnouncements(database: Pool, now: Date) {
            (user_id, message_title, message_body, trigger_type, source_type, source_id,
             action_path, priority, dedupe_key, scheduled_for, delivered_at, expires_at)
          SELECT u.user_id, ?, ?, 'Announcement', 'Announcement', ?, '/student/notifications', ?,
-                CONCAT('announcement:', ${isPostgres ? 'CAST(? AS text)' : '?'}), ?, NOW(), ?
+                CONCAT('announcement:', CAST(? AS text)), ?, NOW(), ?
            FROM users u WHERE u.account_status = 'Active'`),
         [row.title, row.message_body, row.announcement_id, row.priority, row.announcement_id, row.publish_at, row.expires_at],
       )
@@ -52,9 +50,7 @@ export async function generateNotifications(database: Pool = db, now: Date = new
   const closureLabel = formatDate('c.closed_date', '%b %e, %Y', 'Mon FMDD, YYYY')
   const closureSourceId = formatDate('c.closed_date', '%Y%m%d', 'YYYYMMDD')
   const closureDedupe = formatDate('c.closed_date', '%Y-%m-%d', 'YYYY-MM-DD')
-  const sourceIdCast = isPostgres
-    ? `CAST(${closureSourceId} AS INTEGER)`
-    : `CAST(${closureSourceId} AS UNSIGNED)`
+  const sourceIdCast = `CAST(${closureSourceId} AS INTEGER)`
 
   const queries: Array<[string, Array<string | number | Date | null>]> = [
     [insertIgnoreNotifications(`INSERT IGNORE INTO notifications

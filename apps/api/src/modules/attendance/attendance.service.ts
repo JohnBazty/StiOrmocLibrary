@@ -1,7 +1,6 @@
-import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import {
-  isPostgres,
   formatDate,
   formatTime,
   currentDate,
@@ -125,9 +124,9 @@ export function createAttendanceService(pool: Pool = db) {
         await connection.execute('UPDATE attendance_qr_credentials SET last_used_at=NOW(),updated_at=NOW() WHERE credential_id=?',[visitor.credentialId])
         const actionPath=visitor.role==='Faculty'?'/faculty/attendance':visitor.role==='Student'?'/student/attendance':'/admin/attendance'
         await connection.execute(
-          `INSERT ${isPostgres ? '' : 'IGNORE '}INTO notifications
+          `INSERT INTO notifications
              (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,delivered_at)
-           VALUES (?,'Library check-in',?,'Attendance','Attendance',?,?,'Normal',?,NOW())${isPostgres ? ' ON CONFLICT (user_id, dedupe_key) DO NOTHING' : ''}`,
+           VALUES (?,'Library check-in',?,'Attendance','Attendance',?,?,'Normal',?,NOW()) ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
           [visitor.userId,`Your library entry was recorded for ${input.purpose}.`,insert.insertId,actionPath,`attendance:checkin:${insert.insertId}`],
         )
         await connection.commit()
