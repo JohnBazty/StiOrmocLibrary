@@ -17,7 +17,7 @@ Checked and safe (no work): the copy and thesis `DELETE` routes only remove a Lo
 | **Date last updated** | 2026-11-11 |
 | **Status** | `planned` |
 | **Sources** | `docs/rea-comparison-report.md` F1, F2, F3, F5, F8; REA specs `job-runner` (#8) and `accounts-sign-in` (#1); earlier plan `docs/durable-job-runner-plan.md` on `feat/long-overdue-and-damage-case` (decisions D1 to D5 approved by Ethan 2026-10-10) |
-| **Migrations** | **The live database is ahead of `main`** (read-only check of `public.schema_migrations`, 2026-11-11). Applied live: `013` to `016` (two files each), `017_loan_renewals`, `017_circulation_cases`, `018_loan_renewal_hardening`, `018_stocktake_sessions`, `019_durable_job_runner`, `020_revision_phase1_password_recovery`, `021` to `027`, `029` (`028` is not applied). These come from unmerged branches: `codex/library-revision-updates` and `ui/library-theme` (JohnBazty and Keith; `013` to `016`, `020` to `029`) and `integration/2026-10` (`017` to `019`). `main` has files only to `016`. **Next free live number: `030`.** Part C's migration therefore takes `030` or later, not `020` |
+| **Migrations** | `main` matches the live database since 2026-11-11: John's merge `d0321a0` and PR #16 (`bead6ce`, which restored 35 of 36 applied migrations byte for byte; `003_readiness_gapfill` differs, its schema verified live). Latest applied `032_login_devices`, `033_rename_system_brand` pending review, **next available `034`**. Re-check `.cursor/agent-protocol.md` before writing a migration |
 
 Allowed status values: `planned` → `inprogress` → `built`.
 
@@ -87,7 +87,7 @@ Scope is the JWT sign-in (`/api/v1/auth`). The old session sign-in (`/api/auth`)
 **Check first:** JohnBazty's `codex/library-revision-updates` already has `020_revision_phase1_password_recovery.sql` (applied live) and, on 2026-11-10, "remembered browser sign-in and device switching". Read both before building C1 to C3, reuse what fits, and plan only the gaps.
 
 **C1. Per-account lockout** (REA #1 R13 to R16):
-- A new migration (`030` or later) adds `failed_sign_in_count`, `locked_until`, `last_sign_in_at` and `must_change_password` to `accounts`.
+- A new migration (`034` or later) adds `failed_sign_in_count`, `locked_until`, `last_sign_in_at` and `must_change_password` to `accounts`.
 - A wrong password for an existing active account adds 1 to `failed_sign_in_count`. At the threshold, `locked_until` is set to the database `NOW()` plus the lock period.
 - A locked account gets the same `401 INVALID_CREDENTIALS` reply as a wrong password. The existing `DUMMY_BCRYPT_HASH` check keeps the timing the same.
 - A successful sign-in resets the count and clears the lock. A lock ends on its own when `locked_until` passes. An Admin can unlock an account from user management; that is recorded in `account_management_events` with the actor and reason.
@@ -122,7 +122,7 @@ Scope is the JWT sign-in (`/api/v1/auth`). The old session sign-in (`/api/auth`)
 | S4 | Token storage | **`httpOnly` cookie**, with CSRF on every `/api/v1` write |
 | S5 | Forgotten password | **Admin-set temporary password** with a forced change at next sign-in; email reset later with notices |
 | S6 | Merging the two sign-ins | **Separate plan** after this sprint |
-| S7 | Which branch is the product baseline? The live database follows `codex/library-revision-updates` and `integration/2026-10`, not `main` | **Merge John's branch into `main` first** (Ethan, 2026-11-11). A dry run gave 28 conflicts across 513 files, MySQL files still present on his branch, and edits to five applied migrations, so **JohnBazty merges `main` into his branch** and opens a PR (Ethan, 2026-11-11). Building waits for that PR to merge |
+| S7 | Which branch is the product baseline? | **Resolved 2026-11-11:** John merged `codex/library-revision-updates` into `main` (`d0321a0`) and Ethan merged PR #16 (migration history). Build this sprint on current `main` |
 
 ## Implementation tracking
 
@@ -142,4 +142,5 @@ Scope is the JWT sign-in (`/api/v1/auth`). The old session sign-in (`/api/auth`)
 | --- | --- |
 | 2026-11-11 | Created from `docs/rea-comparison-report.md`; status `planned`. Copy delete routes checked and found safe, so they are not part of the sprint. |
 | 2026-11-11 | Ethan answered S1 to S6, all as recommended. Status stays `planned` until he approves building. |
+| 2026-11-11 | S7 resolved: `main` now matches the live database (PR #16 merged). Next migration `034`. Part A follows the runner decision in PR #16's review item (John proposes moving all jobs to the `019` tables, matching D1 to D5). |
 | 2026-11-11 | Read-only check of the live database: migrations applied up to `029` from unmerged branches; `019_durable_job_runner` already applied but never run. Part A reuses that `019` file; Part C moves to `030` or later and first reads JohnBazty's password-recovery work. Added open decision S7 (product baseline branch), which blocks building. |
