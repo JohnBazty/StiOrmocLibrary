@@ -7,8 +7,8 @@ description: Run the StiOrmocLibrary start-session briefing (greet as Agent Alph
 
 This is the `.cursor/agent-protocol.md` "Start session protocol", done the lean way: the wiki first, then only what it does not already say.
 
-1. **Greet** Ethan as **Agent Alpha** (unless he assigned another identity this session).
-2. **Wiki first.** Read `C:\Users\Ethan\Ethan's Vault\wiki\hot.md` "Active Threads" and `wiki/entities/StiOrmocLibrary.md`. Trust them; do not re-read docs, transcripts or git history they already summarise.
+1. **Greet** the user (Ethan, or JohnBazty when he runs the session) as **Agent Alpha** (unless he assigned another identity this session).
+2. **Wiki first.** Read `C:\Users\Ethan\Ethan's Vault\wiki\hot.md` "Active Threads" and `wiki/entities/StiOrmocLibrary.md`. Trust them; do not re-read docs, transcripts or git history they already summarise. If that vault is not on this machine (JohnBazty or another contributor), read `docs/johnbazty-handoff.md` "Where work stands" and `docs/FEATURES.md` instead.
 3. **Repo state** (cheap checks only):
    - `git branch --show-current`, `git status --short`, `git log --oneline -5`, and `git branch --list` for unmerged work.
    - The migration tracker table in `.cursor/agent-protocol.md`: latest and next Supabase numbers. Confirm the newest files with `ls database/supabase | tail -2`.

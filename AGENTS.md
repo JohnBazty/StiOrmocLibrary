@@ -5,6 +5,7 @@
 1. Read the **AI agents — read this first** section at the top of [README.MD](README.MD) when present, otherwise continue below.
 2. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) for session start, plan status values, and the Supabase migration tracker.
 3. When Ethan says **`start session`**, run that Start session protocol before building.
+4. **Working for JohnBazty, or without access to Ethan's Obsidian wiki?** Start from [docs/johnbazty-handoff.md](docs/johnbazty-handoff.md) ("Where work stands" replaces the wiki's hot cache) and [docs/reference-features-roadmap.md](docs/reference-features-roadmap.md). Skip the wiki steps below and update the handoff's "Where work stands" at session end instead.
 
 ## Before making design, implementation, or database decisions
 
