@@ -48,7 +48,7 @@ test('single-record lookup uses the inventory primary key and preserves author o
   } as unknown as Pool
 
   const record = await queryResearchOverview(database, 12)
-  assert.match(capturedSql, /GROUP_CONCAT\(a\.author_name ORDER BY a\.author_order/)
+  assert.match(capturedSql, /string_agg\(a\.author_name, ', ' ORDER BY a\.author_order\)/)
   assert.match(capturedSql, /WHERE ri\.research_inventory_id = \?/)
   assert.deepEqual(capturedValues, [12])
   assert.equal(record?.abstract, 'Complete abstract.')

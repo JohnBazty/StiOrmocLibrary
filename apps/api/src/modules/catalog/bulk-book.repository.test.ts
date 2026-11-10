@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { reserveBarcodeSequence } from './bulk-book.repository.ts'
 
-test('barcode sequence allocator quotes MySQL identifiers and reserves one contiguous range', async () => {
+test('barcode sequence allocator locks the year row and reserves one contiguous range', async () => {
   const statements: Array<{ sql: string; values: unknown[] }> = []
   const connection = {
     async execute(sql: string, values: unknown[]) {
@@ -16,8 +16,8 @@ test('barcode sequence allocator quotes MySQL identifiers and reserves one conti
 
   assert.equal(first, 42)
   assert.equal(statements.length, 3)
-  assert.match(statements[0].sql, /`sequence_year`.*`last_value`/)
-  assert.match(statements[1].sql, /SELECT `last_value`.*`sequence_year` = \? FOR UPDATE/)
-  assert.match(statements[2].sql, /SET `last_value` = \?.*`sequence_year` = \?/)
+  assert.match(statements[0].sql, /\(sequence_year, last_value\).*ON CONFLICT \(sequence_year\) DO NOTHING/)
+  assert.match(statements[1].sql, /SELECT last_value.*sequence_year = \? FOR UPDATE/)
+  assert.match(statements[2].sql, /SET last_value = \?.*sequence_year = \?/)
   assert.deepEqual(statements[2].values, [44, 2026])
 })
