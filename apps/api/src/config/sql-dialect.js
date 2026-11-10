@@ -30,10 +30,6 @@ export function excluded(column) {
   return `EXCLUDED.${column}`
 }
 
-export function insertIgnore(insertSql) {
-  return insertSql.replace(/^\s*INSERT\s+IGNORE\s+INTO/i, 'INSERT INTO') + ' ON CONFLICT DO NOTHING'
-}
-
 export function dateAddDays(expr, days = 1) {
   return `(${expr})::timestamp + INTERVAL '${days} day'`
 }
@@ -50,12 +46,12 @@ export function currentTime() {
   return 'LOCALTIME'
 }
 
-export function formatDate(expr, _mysqlFormat, pgFormat) {
+export function formatDate(expr, pgFormat) {
   return `to_char((${expr})::timestamp, '${pgFormat}')`
 }
 
 /** Clock display helper */
-export function formatTime(expr, _mysqlFormat, pgFormat = 'FMHH12:MI AM') {
+export function formatTime(expr, pgFormat = 'FMHH12:MI AM') {
   return `to_char((${expr})::time, '${pgFormat}')`
 }
 

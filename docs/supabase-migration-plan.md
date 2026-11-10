@@ -4,7 +4,7 @@
 
 ## November 10 browser sign-in migration
 
-Applied **032_login_devices.sql** individually on 2026-11-10 after matching the production database target. Verified the migration checksum, row-level security, and browser-role access restrictions on the three authentication tables. The next unused number is **033**. The API requires **032** before enabling `LOGIN_DEVICES_ENABLED`. See the [device sign-in plan](plans/2026-11-10-remember-this-device.md).
+Applied **032_login_devices.sql** individually on 2026-11-10 after matching the production database target. Verified the migration checksum, row-level security, and browser-role access restrictions on the three authentication tables. Branding migration **033** is pending review. The next unused number is **034**. The API requires **032** before enabling `LOGIN_DEVICES_ENABLED`. See the [device sign-in plan](plans/2026-11-10-remember-this-device.md).
 
 
 ## Historical cutover plan
@@ -86,7 +86,7 @@ Custom `MySqlSessionStore` (`apps/api/src/core/mysql-session-store.js`) on table
 | --- | --- |
 | MySQL baseline | `database/mysql56-schema.sql` |
 | MySQL reference migrations | **48** (`001`…`048`); next MySQL number **`049`**; `043`–`048` are prepared locally and unapplied; the active database remains Supabase Postgres |
-| Postgres drafts | Revision product files through applied `025`; next unused `026`. Remote branding `017` source integrated; reconcile with existing ledger before replay. |
+| Postgres drafts | See the current tracker and the live ledger audit in [main branch integration](main-branch-integration.md). |
 | Views | `borrow_records`, `book_titles` |
 | Seed files | None |
 

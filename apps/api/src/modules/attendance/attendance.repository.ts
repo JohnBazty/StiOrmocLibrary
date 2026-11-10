@@ -12,13 +12,13 @@ type TermRow=RowDataPacket&{academic_term_id:number;academic_year:string;term_na
 function manilaToday(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())}
 const plusDays=nextDate
 
-const dateYmd = (expr: string) => formatDate(expr, '%Y-%m-%d', 'YYYY-MM-DD')
+const dateYmd = (expr: string) => formatDate(expr, 'YYYY-MM-DD')
 const timeAmpm = (expr: string) => (`to_char(${expr}, 'HH12:MI AM')`)
 const averageVisitSql = `ROUND(AVG(CASE WHEN al.time_out IS NOT NULL THEN GREATEST(0,EXTRACT(EPOCH FROM (COALESCE(al.checked_out_at,al.attendance_date+al.time_out)-COALESCE(al.checked_in_at,al.attendance_date+al.time_in))))/60 END))::text || ' min'`
 // Preserve MAIN's COALESCE(al.checked_in_at, <attendance_date + time_in>) precedence when deriving the visit hour.
 const checkinTimestamp = `COALESCE(al.checked_in_at,(al.attendance_date + al.time_in))`
 const hourOfDay = `EXTRACT(HOUR FROM ${checkinTimestamp})`
-// MySQL WEEKDAY() is Monday=0..Sunday=6; Postgres ISODOW is Monday=1..Sunday=7.
+// Convert Postgres ISO weekdays to the application’s Monday=0 through Sunday=6.
 const weekdayOfDate = `(EXTRACT(ISODOW FROM al.attendance_date) - 1)`
 
 export class AttendanceRepository{

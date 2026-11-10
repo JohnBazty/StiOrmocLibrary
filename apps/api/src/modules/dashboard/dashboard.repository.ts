@@ -57,7 +57,7 @@ export class DashboardRepository {
          FROM library_operating_schedule ORDER BY day_of_week`,
     )
     const [closureRows] = await this.pool.execute<RowDataPacket[]>(
-      `SELECT ${formatDate('closed_date', '%Y-%m-%d', 'YYYY-MM-DD')} closed_date,reason
+      `SELECT ${formatDate('closed_date', 'YYYY-MM-DD')} closed_date,reason
          FROM library_closed_days WHERE closed_date>=${currentDate()} ORDER BY closed_date LIMIT 1`,
     )
     const profile = profileRows[0] ?? {}
@@ -105,11 +105,11 @@ export class DashboardRepository {
         WHERE COALESCE(bt.borrowed_at,bt.created_at)>=${last30Days}
         GROUP BY c.category_id,c.category_name ORDER BY value DESC,label LIMIT 5`),
       this.pool.execute<RowDataPacket[]>(`SELECT bt.transaction_id,u.full_name,u.school_id,t.title,pc.barcode,bt.transaction_status,
-        ${formatDate('COALESCE(bt.returned_at,bt.due_at,bt.created_at)', '%Y-%m-%d %h:%i %p', 'YYYY-MM-DD HH12:MI AM')} event_at
+        ${formatDate('COALESCE(bt.returned_at,bt.due_at,bt.created_at)', 'YYYY-MM-DD HH12:MI AM')} event_at
         FROM borrow_transactions bt JOIN users u ON u.user_id=bt.user_id
         JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id JOIN titles t ON t.title_id=pc.title_id
         ORDER BY COALESCE(bt.updated_at,bt.created_at) DESC,bt.transaction_id DESC LIMIT 6`),
-      this.pool.execute<RowDataPacket[]>(`SELECT admin_notification_id,event_type,message_title,message_body,${formatDate('created_at', '%Y-%m-%d %h:%i %p', 'YYYY-MM-DD HH12:MI AM')} created_at
+      this.pool.execute<RowDataPacket[]>(`SELECT admin_notification_id,event_type,message_title,message_body,${formatDate('created_at', 'YYYY-MM-DD HH12:MI AM')} created_at
         FROM admin_notifications ORDER BY created_at DESC,admin_notification_id DESC LIMIT 6`),
       this.pool.execute<RowDataPacket[]>(`SELECT
         ${sumCondition(`attendance_date=${currentDate()} AND time_out IS NULL`)} currently_inside,
@@ -158,25 +158,25 @@ export class DashboardRepository {
         + COALESCE((SELECT SUM(replacement_charge) FROM lost_book_reports WHERE user_id=? AND report_status='Confirmed' AND payment_status='Unpaid'),0) outstanding_fines`, [userId,userId,userId,userId,userId,userId,userId]),
       this.pool.execute<RowDataPacket[]>(`SELECT bt.transaction_id,COALESCE(t.title,m.title) title,
         COALESCE((SELECT ${authorsAgg('a')} FROM authors a WHERE a.title_id=t.title_id),m.author,'Unknown author') author,
-        pc.barcode,pc.shelf_location,bt.transaction_status,${formatDate('bt.due_at', '%Y-%m-%d %h:%i %p', 'YYYY-MM-DD HH12:MI AM')} due_at,t.cover_image_path
+        pc.barcode,pc.shelf_location,bt.transaction_status,${formatDate('bt.due_at', 'YYYY-MM-DD HH12:MI AM')} due_at,t.cover_image_path
         FROM borrow_transactions bt JOIN materials m ON m.material_id=bt.material_id
         LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id LEFT JOIN titles t ON t.title_id=pc.title_id
         WHERE bt.user_id=? AND bt.transaction_status IN ('Borrowed','Overdue') AND bt.lost_confirmed_at IS NULL
         ORDER BY (bt.transaction_status='Overdue') DESC,bt.due_at ASC LIMIT 1`, [userId]),
-      this.pool.execute<RowDataPacket[]>(`SELECT r.reservation_id,${'r.request_kind,'}COALESCE(t.title,m.title) title,t.cover_image_path,r.queue_position,r.reservation_status,r.assigned_physical_copy_id,${formatDate('r.pickup_deadline', '%Y-%m-%d %h:%i %p', 'YYYY-MM-DD HH12:MI AM')} pickup_deadline
+      this.pool.execute<RowDataPacket[]>(`SELECT r.reservation_id,${'r.request_kind,'}COALESCE(t.title,m.title) title,t.cover_image_path,r.queue_position,r.reservation_status,r.assigned_physical_copy_id,${formatDate('r.pickup_deadline', 'YYYY-MM-DD HH12:MI AM')} pickup_deadline
         FROM reservations r JOIN materials m ON m.material_id=r.material_id LEFT JOIN titles t ON t.title_id=r.book_title_id
         WHERE r.user_id=? AND r.reservation_status IN ('pending','approved','ready_for_pickup') ORDER BY (r.reservation_status='ready_for_pickup') DESC,r.reserved_at LIMIT 1`, [userId]),
-      this.pool.execute<RowDataPacket[]>(`SELECT request_id,file_name,number_of_copies,print_type,calculated_cost,job_status,${formatDate('created_at', '%Y-%m-%d %h:%i %p', 'YYYY-MM-DD HH12:MI AM')} created_at
+      this.pool.execute<RowDataPacket[]>(`SELECT request_id,file_name,number_of_copies,print_type,calculated_cost,job_status,${formatDate('created_at', 'YYYY-MM-DD HH12:MI AM')} created_at
         FROM print_requests WHERE user_id=? AND job_status<>'Completed' ORDER BY created_at DESC,request_id DESC LIMIT 1`, [userId]),
-      this.pool.execute<RowDataPacket[]>(`SELECT notification_id,message_title,message_body,trigger_type,action_path,${formatDate('notification_timestamp', '%Y-%m-%d %h:%i %p', 'YYYY-MM-DD HH12:MI AM')} created_at
+      this.pool.execute<RowDataPacket[]>(`SELECT notification_id,message_title,message_body,trigger_type,action_path,${formatDate('notification_timestamp', 'YYYY-MM-DD HH12:MI AM')} created_at
         FROM notifications WHERE user_id=? AND deleted_at IS NULL AND (delivered_at IS NULL OR delivered_at<=NOW()) AND (expires_at IS NULL OR expires_at>NOW()) ORDER BY notification_timestamp DESC LIMIT 1`, [userId]),
-      this.pool.execute<RowDataPacket[]>(`SELECT a.announcement_id,a.title,a.message_body,a.priority,${formatDate('COALESCE(a.published_at,a.publish_at)', '%Y-%m-%d %h:%i %p', 'YYYY-MM-DD HH12:MI AM')} published_at
+      this.pool.execute<RowDataPacket[]>(`SELECT a.announcement_id,a.title,a.message_body,a.priority,${formatDate('COALESCE(a.published_at,a.publish_at)', 'YYYY-MM-DD HH12:MI AM')} published_at
         FROM announcements a
         WHERE ((a.announcement_status='Published' AND (a.publish_at IS NULL OR a.publish_at<=NOW()))
           OR (a.announcement_status='Scheduled' AND a.publish_at<=NOW()))
           AND (a.expires_at IS NULL OR a.expires_at>NOW())
         ORDER BY COALESCE(a.published_at,a.publish_at) DESC,a.announcement_id DESC LIMIT 1`),
-      this.pool.execute<RowDataPacket[]>(`SELECT bt.transaction_id,t.title,t.cover_image_path,bt.transaction_status,${formatDate('COALESCE(bt.returned_at,bt.due_at)', '%Y-%m-%d %h:%i %p', 'YYYY-MM-DD HH12:MI AM')} event_at
+      this.pool.execute<RowDataPacket[]>(`SELECT bt.transaction_id,t.title,t.cover_image_path,bt.transaction_status,${formatDate('COALESCE(bt.returned_at,bt.due_at)', 'YYYY-MM-DD HH12:MI AM')} event_at
         FROM borrow_transactions bt LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id LEFT JOIN titles t ON t.title_id=pc.title_id
         WHERE bt.user_id=? ORDER BY COALESCE(bt.returned_at,bt.borrowed_at,bt.created_at) DESC LIMIT 4`, [userId]),
       this.pool.execute<RowDataPacket[]>(`SELECT t.title_id,t.title,

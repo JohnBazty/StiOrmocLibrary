@@ -6,7 +6,7 @@ This guide explains how to prepare a Windows development computer, run and test 
 
 ## AI agents — read this first
 
-1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) (start-session protocol, plan statuses, Supabase migration tracker: latest applied **032**, next unused **033**).
+1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) (start-session protocol, plan statuses, Supabase migration tracker: latest applied **032**, **033** pending review, next unused **034**).
 2. Read [AGENTS.md](AGENTS.md) and [agent.md](agent.md).
 3. Database history: [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md) and [docs/mysql-removal-plan.md](docs/mysql-removal-plan.md).
 
@@ -455,7 +455,7 @@ StiOrmocLibrary/
 - [ ] Install Git, Node.js, and access to the Supabase project.
 - [ ] Clone the repository and run `npm install`.
 - [ ] Copy and configure `apps/api/.env`.
-- [ ] Apply the `database/supabase/` files with `db:supabase`.
+- [ ] Check the live migration ledger. Apply only individually reviewed Supabase SQL files.
 - [ ] Create and synchronize an Admin (Librarian) account.
 - [ ] Run `npm run dev`.
 - [ ] Confirm `/api/health` reports a ready schema.
@@ -465,4 +465,4 @@ StiOrmocLibrary/
 
 ## Main integration — 2026-10-11
 
-The main branch was reconciled with the current revision permission model and phase workflows. Borrowing policy management uses the Librarian workspace; prior login sessions are invalidated when a new login succeeds. Competing upstream SQL identities are retained as non-executable references under `database/upstream-main/`; no migration was applied. Existing phase statuses and applied migration identities remain unchanged. See `docs/main-branch-integration.md`.
+The main branch was reconciled with the current revision permission model and phase workflows. Borrowing policy management uses the Librarian workspace; prior login sessions are invalidated when a new login succeeds. The original SQL references remain in Git history. The follow-up reconciliation verified the live filenames and restored matching migration sources to the Supabase directory. See `docs/main-branch-integration.md`.

@@ -111,7 +111,7 @@ export function buildBookCatalogQuery(filters: BookCatalogFilters) {
     const pattern = like(filters.query)
     where.push(`(
       t.title ILIKE ? OR t.isbn ILIKE ? OR c.category_name ILIKE ? OR
-      CAST(t.publication_year AS CHAR) = ? OR
+      CAST(t.publication_year AS TEXT) = ? OR
       EXISTS (SELECT 1 FROM authors search_author WHERE search_author.title_id = t.title_id AND search_author.author_name ILIKE ?)
     )`)
     parameters.push(pattern, pattern, pattern, filters.query, pattern)

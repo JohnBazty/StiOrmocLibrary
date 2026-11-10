@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import pg from 'pg'
-import type { Pool as MysqlPool } from '../src/config/db.js'
+import type { Pool } from '../src/config/db.js'
 import { env } from '../src/config/env.js'
 import { toPgPlaceholders } from '../src/config/sql.js'
 import { createAttendanceOperations, requireOperationalService } from '../src/modules/attendance/attendance-operations.service.ts'
@@ -21,7 +21,7 @@ const native=new pg.Pool({connectionString:env.db.connectionString,max:6,options
 const wrap=(client:Pick<pg.PoolClient,'query'>)=>({
  async execute(sql:string,values:any[]=[]){let query=toPgPlaceholders(sql);const write=/^\s*(INSERT|UPDATE|DELETE)/i.test(query);if(/^\s*INSERT/i.test(query)&&!/\bRETURNING\b/i.test(query))query+=' RETURNING *';const r=await client.query(query,values);return [write?{affectedRows:r.rowCount,insertId:Number(r.rows[0]?.log_id??r.rows[0]?.credential_id??r.rows[0]?.event_id??r.rows[0]?.notification_id??0),rows:r.rows}:r.rows,r]},
 })
-const pool={...wrap(native),async getConnection(){const c=await native.connect();return {...wrap(c),beginTransaction:()=>c.query('BEGIN'),commit:()=>c.query('COMMIT'),rollback:()=>c.query('ROLLBACK'),release:()=>c.release()}}} as unknown as MysqlPool
+const pool={...wrap(native),async getConnection(){const c=await native.connect();return {...wrap(c),beginTransaction:()=>c.query('BEGIN'),commit:()=>c.query('COMMIT'),rollback:()=>c.query('ROLLBACK'),release:()=>c.release()}}} as unknown as Pool
 let now=new Date('2026-10-12T08:00:00+08:00')
 const operations=createAttendanceOperations(pool,()=>now)
 const id=()=>randomUUID().replaceAll('-','')

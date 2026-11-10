@@ -40,7 +40,7 @@ React web admin  React Native mobile  React tablet kiosk
 - Web frontend and kiosk: React, Vite, Tailwind CSS
 - Mobile frontend: React Native
 - Backend: Node.js, Express.js, TypeScript preferred
-- Database: hosted Postgres via Supabase; schema files in `database/supabase/`
+- Database: hosted Postgres via Supabase; schema files in `database/supabase/`. Preserve the original filenames and bytes of applied migrations. Compare their SHA-256 checksums to the live ledger before changing migration history.
 - Data access: SQL repositories via `pg`
 - Authentication: server-side `express-session` with a database session store and bcrypt password hashing; JWT account auth remains for the mobile-style boundary
 - Input validation: Zod or an equivalent server-side validation library

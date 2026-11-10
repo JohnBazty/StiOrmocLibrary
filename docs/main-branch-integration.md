@@ -29,3 +29,22 @@ Historical migration sources remain references. Do not replay either branch's mi
 
 - 2026-10-11: saved recovery reference and began resolving the merge.
 - 2026-10-11: reconciled main features with current revision phases, archived competing SQL references, and completed the verification above.
+
+## PostgreSQL-only follow-up, 2026-11-11
+
+The revision merge landed in main at d0321a0. This follow-up removes the remaining retired SQL syntax from the API and asset-code backfill, and reconciles migration history before further schema work.
+
+- Read public.schema_migrations in a read-only transaction. Verified 35 of 36 applied files byte-for-byte against live SHA-256 checksums, including the 001, 011, 013, 014 and 016 entries. Restored matching originals from Git history and the local release source for 030. Git preserves their original line endings.
+- The ledger records 030_october17_maintenance.sql, 031_semester_enrollment.sql and 032_login_devices.sql under those names. The unapplied 028 enrollment draft was superseded by 031. Both previous branding filenames were absent from the ledger and had identical SQL. Keep one pending 033_rename_system_brand.sql. Reserve 034 for the next change.
+- Removed database/upstream-main/. Applied advisor, preflight and borrowing-policy sources are now in database/supabase/. The old 013 consolidation file had no entry under that filename. Its source remains in Git history.
+- The available 003_readiness_gapfill.sql source still differs from the live checksum. Its tables and the columns it adds exist in the live schema. Keep the historical file as-is and recover the exact applied source before replay. Any confirmed schema difference needs a new migration.
+
+### Job runner decision for PR review
+
+The live database contains library_job_runs from 013 and scheduled_job_state plus scheduled_job_runs from 019. The active revision runner uses 013 and includes semester closure, attendance checkout, in-library follow-up, reservation preparation, email delivery and collection review. The 019 implementation has per-job leases, run history and an overdue progress cursor. Both cover reservation expiry, overdue scanning and notification generation.
+
+Proposal for the team: use the 019 lease and history tables as the eventual shared backend and port every active revision job to it before switching. Review how the worker and scheduler entry points will share a lease. Keep the job runner and its live tables as they are until that decision is approved.
+
+### Changelog
+
+- 2026-11-11: verified the live ledger, restored matching applied files, cleaned up the PostgreSQL queries and prepared the follow-up review.
