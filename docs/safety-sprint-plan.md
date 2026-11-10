@@ -17,7 +17,7 @@ Checked and safe (no work): the copy and thesis `DELETE` routes only remove a Lo
 | **Date last updated** | 2026-11-11 |
 | **Status** | `planned` |
 | **Sources** | `docs/rea-comparison-report.md` F1, F2, F3, F5, F8; REA specs `job-runner` (#8) and `accounts-sign-in` (#1); earlier plan `docs/durable-job-runner-plan.md` on `feat/long-overdue-and-damage-case` (decisions D1 to D5 approved by Ethan 2026-10-10) |
-| **Migrations** | Next free number on `main` is `017`. PR #13 (renewals) takes `017` and `018`. This plan reserves `019` (Part A) and `020` (Part C). Re-check the tracker in `.cursor/agent-protocol.md` before writing each file |
+| **Migrations** | **The live database is ahead of `main`** (read-only check of `public.schema_migrations`, 2026-11-11). Applied live: `013` to `016` (two files each), `017_loan_renewals`, `017_circulation_cases`, `018_loan_renewal_hardening`, `018_stocktake_sessions`, `019_durable_job_runner`, `020_revision_phase1_password_recovery`, `021` to `027`, `029` (`028` is not applied). These come from unmerged branches: `codex/library-revision-updates` and `ui/library-theme` (JohnBazty and Keith; `013` to `016`, `020` to `029`) and `integration/2026-10` (`017` to `019`). `main` has files only to `016`. **Next free live number: `030`.** Part C's migration therefore takes `030` or later, not `020` |
 
 Allowed status values: `planned` → `inprogress` → `built`.
 
@@ -28,6 +28,8 @@ Three parts. Each is its own branch, plan-verifier run, review and PR, in this o
 ### Part A: Durable job runner (`feat/durable-job-runner`)
 
 Port the approved October design to the Postgres-only `main`. Do not cherry-pick the old branch: it targets the MySQL-era code and also contains the long-overdue case feature. Read it for design only.
+
+**The schema already exists live.** `019_durable_job_runner.sql` from `feat/long-overdue-and-damage-case` was applied to the live database on 2026-10-10, and `scheduled_job_state` holds the three job rows, none of which has ever succeeded (`last_success_at` is null; checked 2026-11-11). So Part A **does not write a new migration**. It brings that exact `019_durable_job_runner.sql` file into `main` unchanged (same name and content, so the migration runner's checksum matches), and builds the code against it. Check whether the live `019` depends on `017_circulation_cases`; if it does, Part A must wait for that decision (see Decision S7).
 
 **Flow** (approved D1 to D5, unchanged):
 
@@ -40,7 +42,7 @@ Supabase Cron (one schedule per job, every minute)
   -> run row recorded, lease released, Admin status updated
 ```
 
-**Schema (`019_durable_job_runner.sql`):**
+**Schema (`019_durable_job_runner.sql`, already applied live; shown for reference):**
 - `scheduled_job_state`: one row per allowed job (`reservation-expiration`, `circulation-overdue`, `notifications`) with lease token and expiry, last start, success and failure times, last outcome, a short error code and a cleaned message (at most 500 characters, no stack traces or secrets), bounded result counts, and an overdue progress cursor. The three rows are seeded.
 - `scheduled_job_runs`: append-only history (job, start, finish, outcome, counts, error code and message), indexed by job and start time. Runs older than 30 days are deleted in bounded batches.
 - Row-level security on; no grants to `anon` or `authenticated`.
@@ -80,8 +82,10 @@ Supabase Cron (one schedule per job, every minute)
 
 Scope is the JWT sign-in (`/api/v1/auth`). The old session sign-in (`/api/auth`) is still used by about 18 web calls (catalog admin, inventory, reports, CSRF, `me`, logout). Merging the two is **out of scope** here and gets its own plan. Its accounts get the same lockout, because both sign-ins read the same `accounts` table.
 
+**Check first:** JohnBazty's `codex/library-revision-updates` already has `020_revision_phase1_password_recovery.sql` (applied live) and, on 2026-11-10, "remembered browser sign-in and device switching". Read both before building C1 to C3, reuse what fits, and plan only the gaps.
+
 **C1. Per-account lockout** (REA #1 R13 to R16):
-- `020_sign_in_hardening.sql` adds `failed_sign_in_count`, `locked_until`, `last_sign_in_at` and `must_change_password` to `accounts`.
+- A new migration (`030` or later) adds `failed_sign_in_count`, `locked_until`, `last_sign_in_at` and `must_change_password` to `accounts`.
 - A wrong password for an existing active account adds 1 to `failed_sign_in_count`. At the threshold, `locked_until` is set to the database `NOW()` plus the lock period.
 - A locked account gets the same `401 INVALID_CREDENTIALS` reply as a wrong password. The existing `DUMMY_BCRYPT_HASH` check keeps the timing the same.
 - A successful sign-in resets the count and clears the lock. A lock ends on its own when `locked_until` passes. An Admin can unlock an account from user management; that is recorded in `account_management_events` with the actor and reason.
@@ -116,6 +120,7 @@ Scope is the JWT sign-in (`/api/v1/auth`). The old session sign-in (`/api/auth`)
 | S4 | Token storage | **`httpOnly` cookie**, with CSRF on every `/api/v1` write |
 | S5 | Forgotten password | **Admin-set temporary password** with a forced change at next sign-in; email reset later with notices |
 | S6 | Merging the two sign-ins | **Separate plan** after this sprint |
+| S7 | **OPEN (blocks building):** which branch is the product baseline? The live database follows `codex/library-revision-updates` and `integration/2026-10`, not `main` | Recommendation: agree with JohnBazty to merge his active branch (`codex/library-revision-updates`, 19 commits ahead, 18 behind `main`) into `main` first, so `main` matches the live schema. Then rebase this sprint on it |
 
 ## Implementation tracking
 
@@ -135,3 +140,4 @@ Scope is the JWT sign-in (`/api/v1/auth`). The old session sign-in (`/api/auth`)
 | --- | --- |
 | 2026-11-11 | Created from `docs/rea-comparison-report.md`; status `planned`. Copy delete routes checked and found safe, so they are not part of the sprint. |
 | 2026-11-11 | Ethan answered S1 to S6, all as recommended. Status stays `planned` until he approves building. |
+| 2026-11-11 | Read-only check of the live database: migrations applied up to `029` from unmerged branches; `019_durable_job_runner` already applied but never run. Part A reuses that `019` file; Part C moves to `030` or later and first reads JohnBazty's password-recovery work. Added open decision S7 (product baseline branch), which blocks building. |

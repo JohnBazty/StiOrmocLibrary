@@ -2,6 +2,8 @@
 
 **Date:** 2026-11-11. **Compared:** StiOrmocLibrary `origin/main` (`daa41d5`, migrations to `016`) against STI ILMS REA `main` (#1 to #13 built) and its 55 specs, with the answers in REA `docs/spec-decisions.md` (2026-11-10).
 
+**Important (added 2026-11-11): `main` is not what the live database runs.** The live `schema_migrations` table lists migrations up to `029`, applied from unmerged branches (`codex/library-revision-updates` and `ui/library-theme` by JohnBazty and Keith, `integration/2026-10`). Those branches add work this report did not look at, such as password recovery (`020`), roster enrollment, semester archive, desk circulation and book requests. Some "missing" items below may already exist there. Re-check each finding against the branch that becomes the baseline (`docs/safety-sprint-plan.md`, decision S7).
+
 **How this was checked:** I read every REA spec's rule titles (829 rules), the decisions file, and StiOrmocLibrary's routes, migrations, workers, plan docs and key services. I did not run either app, the test suites, or the live site. Each finding names the file or rule it rests on; check it before building.
 
 **Labels**
