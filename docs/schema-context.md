@@ -399,7 +399,7 @@ Implementation and verification evidence is tracked in `docs/october16-revisions
 
 ## Student enrollment and Semester Archive — applied (2026-11-09)
 
-Applied Postgres migration `031_semester_enrollment.sql` supersedes draft 028. Existing account and academic-term structures retain their meanings. The next unused Postgres number is 032.
+Applied Postgres migration `031_semester_enrollment.sql` supersedes draft 028. Existing account and academic-term structures retain their meanings.
 
 - `enrollment_semesters` records the single active enrollment term, both locked end times, and closure actors and timestamps. These records are separate from the reporting and clearance calendar.
 - `enrollment_roster_imports` and `enrollment_roster_students` store validated versions. The latest complete roster and later partial updates determine enrollment. An upload does not create or reactivate an account.
@@ -412,3 +412,11 @@ Applied Postgres migration `031_semester_enrollment.sql` supersedes draft 028. E
 - Public signup uses the active Student roster. Existing Faculty accounts continue to sign in with a password and school email code. New Faculty signup is paused.
 - Admin and Librarian can create Staff accounts from Users. Setup records a `StaffAccountCreated` audit event and generates a private random credential. The Staff member sets a password through the personnel login page. Existing password-recovery challenges also handle this Staff flow, limited to active Staff accounts created through the new setup.
 - New profile pictures publish on save. The storage bucket remains private, and the existing `Approved` storage status marks the published image for compatibility. Previously submitted pictures remain in history. Users can select and save an older pending picture again.
+
+## Remembered browser sign-in (2026-11-10)
+
+Postgres migration `032_login_devices.sql` was applied individually on 2026-11-10. The next unused Postgres number is 033. The API reads the new fields only when `LOGIN_DEVICES_ENABLED=true` on Postgres.
+
+- `library_login_sessions` stores the browser token hash and optional seven-day deadline alongside the existing account version, last activity and revocation time. A browser-session cookie identifies an ordinary sign-in. It can resume within the existing ten-minute inactivity limit.
+- `login_otp_challenges.remember_device` binds the Student or Faculty choice to the verified challenge.
+- `login_device_switches` stores private, hashed two-minute confirmations tied to the account version and the session they can replace. The account lock serializes switches, resumptions and revocations.

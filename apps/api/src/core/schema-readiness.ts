@@ -1,6 +1,7 @@
 import type { Pool, RowDataPacket } from 'mysql2/promise'
 import { db, dbDriver } from '../config/db.js'
 import { enrollmentEnabled } from '../modules/enrollment/enrollment-policy.ts'
+import { loginDevicesEnabled } from '../modules/auth/login-device-policy.ts'
 
 const REQUIRED_COLUMNS: Record<string, string[]> = {
   categories: ['category_id', 'category_name', 'shelf_location', 'created_at', 'updated_at'],
@@ -66,8 +67,9 @@ export async function checkSchemaReadiness(database: Pool = db as Pool): Promise
   const requiredColumns = dbDriver === 'postgres' ? {
     ...REQUIRED_COLUMNS,
     login_attempt_windows: ['identifier_hash', 'failed_count', 'window_started_at', 'locked_until'],
-    login_otp_challenges: ['challenge_id', 'account_id', 'auth_version', 'code_hash', 'failed_count', 'expires_at', 'sent_at', 'consumed_at', 'resend_count', ...(enrollmentEnabled() ? ['restoration_semester_id'] : [])],
-    library_login_sessions: ['session_id', 'account_id', 'auth_version', 'last_activity_at', 'revoked_at'],
+    login_otp_challenges: ['challenge_id', 'account_id', 'auth_version', 'code_hash', 'failed_count', 'expires_at', 'sent_at', 'consumed_at', 'resend_count', ...(enrollmentEnabled() ? ['restoration_semester_id'] : []), ...(loginDevicesEnabled() ? ['remember_device'] : [])],
+    library_login_sessions: ['session_id', 'account_id', 'auth_version', 'last_activity_at', 'revoked_at', ...(loginDevicesEnabled() ? ['device_token_hash', 'remembered_until'] : [])],
+    ...(loginDevicesEnabled() ? { login_device_switches: ['token_hash', 'account_id', 'auth_version', 'replaced_session_id', 'remember_device', 'expires_at'] } : {}),
     clearance_semester_schedules: ['academic_term_id', 'deadline_at', 'row_version', 'updated_by', 'updated_at'],
     clearance_schedule_events: ['event_id', 'academic_term_id', 'previous_deadline', 'deadline_at', 'actor_id', 'created_at'],
     collection_reference_versions:['reference_id','academic_year','reference_year','review_age','approved_by','approval_source'],

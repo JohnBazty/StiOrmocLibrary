@@ -56,7 +56,7 @@ function NotFound() {
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<PublicCatalogPage />} />
+      <Route path="/" element={<PublicCatalogPage restoreDevice />} />
       <Route path="/workspace" element={<AuthenticatedHome />} />
       <Route element={<PublicAuthLayout />}>
         <Route path="/login" element={<LoginPage popup />} />

@@ -3,17 +3,28 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { ThemeToggle } from '../theme/ThemeToggle'
 import { AuthMessage } from './AuthMessage'
-import { login, AuthenticationError, LoginCodeRequired, verifyLoginCode, resendLoginCode, type LoginChallenge } from './auth-api'
-import { getCurrentClaims, saveAccessToken } from './auth-storage'
+import { login, AuthenticationError, LoginCodeRequired, DeviceSwitchRequired, confirmDeviceSwitch, deviceLoginAvailable, rememberedDeviceExpired, resumeDeviceSession, saveLogin, verifyLoginCode, resendLoginCode, type LoginChallenge, type LoginResult } from './auth-api'
+import { getCurrentClaims, type AuthRole } from './auth-storage'
 import { catalogAuthLink, catalogLoginDestination } from '../catalog/catalog-login-continuation'
 import { useAuthPopupBusy } from './PublicAuthLayout'
+import { DeviceSwitchPrompt } from './DeviceSwitchPrompt'
 
 const SCHOOL_ID = /^[A-Z0-9][A-Z0-9._-]{2,49}$/
+type LoginLocationState = { deniedPath?: string; registrationSuccess?: boolean; registrationSchoolId?: string; sessionExpired?: boolean; rememberedExpired?: boolean }
+
+function loginDestination(search: string, role: AuthRole, state: LoginLocationState | null) {
+  const path = state?.deniedPath
+  if (path && new RegExp(`^/${role.toLowerCase()}(?:[/?#]|$)`).test(path)) return path
+  return catalogLoginDestination(search, role)
+}
 
 export function LoginPage({ popup = false }: { popup?: boolean }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [challenge, setChallenge] = useState<LoginChallenge | null>(null)
+  const [deviceAvailable, setDeviceAvailable] = useState(false)
+  const [remember, setRemember] = useState(false)
+  const [switchToken, setSwitchToken] = useState('')
   const [code, setCode] = useState('')
   const [resendAt, setResendAt] = useState(0)
   const [now, setNow] = useState(Date.now())
@@ -26,20 +37,75 @@ export function LoginPage({ popup = false }: { popup?: boolean }) {
   const [messageError, setMessageError] = useState(true)
   const [errors, setErrors] = useState<Record<string, string>>({})
   useAuthPopupBusy(busy)
+  useEffect(() => {
+    const controller = new AbortController()
+    deviceLoginAvailable(controller.signal).then(setDeviceAvailable).catch(() => {})
+    return () => controller.abort()
+  }, [])
 
   useEffect(() => {
     const claims = getCurrentClaims()
-    const state = location.state as { deniedPath?: string; registrationSuccess?: boolean; registrationSchoolId?: string; sessionExpired?: boolean } | null
-    if (claims) navigate(catalogLoginDestination(location.search,claims.role), { replace: true })
+    const state = location.state as LoginLocationState | null
+    if (claims) navigate(loginDestination(location.search, claims.role, state), { replace: true })
     else if (state?.registrationSuccess || new URLSearchParams(location.search).has('registered')) {
       if (state?.registrationSchoolId) setSchoolId(state.registrationSchoolId)
       setMessageError(false)
       setMessage('Your school email is verified. Sign in using your School ID and password.')
-    } else if (state?.sessionExpired) { setMessage('You were signed out after 10 minutes of inactivity. Sign in to continue.')
+    } else if (state?.rememberedExpired) { setMessage('Your remembered sign-in has expired. Sign in again to continue.')
+    } else if (state?.sessionExpired) { setMessage('Your sign-in has ended. Sign in to continue.')
     } else if (state?.deniedPath) {
       setMessage('Your account cannot open that page. Please sign in with an authorized account.')
     }
+    if (claims || state?.sessionExpired || state?.rememberedExpired) return
+    let active = true
+    const deadlinePassed = rememberedDeviceExpired()
+    void resumeDeviceSession().then(identity => {
+      if (!active) return
+      if (identity) navigate(loginDestination(location.search, identity.role, state), { replace: true })
+      else if (deadlinePassed) setMessage('Your remembered sign-in has expired. Sign in again to continue.')
+    }).catch(() => {
+      if (active) setMessage('Your device could not reconnect. Check your connection and try again.')
+    })
+    return () => { active = false }
   }, [location.search, location.state, navigate])
+
+  function finish(result: LoginResult) {
+    saveLogin(result)
+    navigate(loginDestination(location.search, result.user.role, location.state as LoginLocationState | null), { replace: true })
+  }
+
+  function handleSignInError(error: unknown, fallback: string) {
+    if (error instanceof DeviceSwitchRequired) {
+      setChallenge(null)
+      setCode('')
+      setPassword('')
+      setSwitchToken(error.switchToken)
+      return
+    }
+    const authError = error instanceof AuthenticationError ? error : new AuthenticationError(fallback)
+    if (authError.code === 'DEVICE_SWITCH_EXPIRED') setSwitchToken('')
+    setErrors(authError.errors)
+    setMessageError(true)
+    setMessage(authError.message)
+  }
+
+  async function verifyCode(event: FormEvent) {
+    event.preventDefault()
+    if (busy || !challenge) return
+    setBusy(true)
+    setMessage('')
+    try { finish(await verifyLoginCode(challenge.challengeId, code)) }
+    catch (error) { handleSignInError(error, 'The code could not be verified.') }
+    finally { setBusy(false) }
+  }
+
+  async function switchDevice() {
+    setBusy(true)
+    setMessage('')
+    try { finish(await confirmDeviceSwitch(switchToken)) }
+    catch (error) { handleSignInError(error, 'Unable to switch devices right now.') }
+    finally { setBusy(false) }
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -52,14 +118,10 @@ export function LoginPage({ popup = false }: { popup?: boolean }) {
 
     setBusy(true); setErrors({}); setMessage(''); setMessageError(true)
     try {
-      const result = await login(normalizedSchoolId, password, 'user')
-      saveAccessToken(result.token)
-      navigate(catalogLoginDestination(location.search,result.user.role), { replace: true })
+      finish(await login(normalizedSchoolId, password, 'user', remember))
     } catch (error) {
       if (error instanceof LoginCodeRequired) { setChallenge(error.challenge); setPassword(''); setCode(''); setResendAt(Date.now() + 60_000); return }
-      const authError = error instanceof AuthenticationError ? error : new AuthenticationError('Unable to sign in right now.')
-      setErrors(authError.errors)
-      setMessage(authError.message)
+      handleSignInError(error, 'Unable to sign in right now.')
     } finally { setBusy(false) }
   }
 
@@ -81,7 +143,7 @@ export function LoginPage({ popup = false }: { popup?: boolean }) {
           {popup && <p className="mt-2 text-sm leading-relaxed opacity-65">Sign in to borrow books and manage your library activity.</p>}
           {catalogAuthLink('/login',location.search)!=='/login'&&<p className="mt-3 text-sm text-[#003399]/75">Sign in to continue with your selected book. New here? Register an account below. Borrowing becomes available after email verification and account approval.</p>}
           {message ? <AuthMessage error={messageError}>{message}</AuthMessage> : null}
-          {challenge ? <form className="mt-7 space-y-4" onSubmit={async event => { event.preventDefault(); if (busy) return; setBusy(true); setMessage(''); try { const result = await verifyLoginCode(challenge.challengeId, code); saveAccessToken(result.token); navigate(catalogLoginDestination(location.search, result.user.role), { replace: true }) } catch (error) { setMessageError(true); setMessage(error instanceof Error ? error.message : 'The code could not be verified.') } finally { setBusy(false) } }}>
+          {switchToken ? <DeviceSwitchPrompt busy={busy} onConfirm={() => { void switchDevice() }} onCancel={() => { setSwitchToken(''); setMessage('') }} /> : challenge ? <form className="mt-7 space-y-4" onSubmit={verifyCode}>
             <p className="text-sm">Enter the six-digit code sent to <strong>{challenge.emailHint}</strong>. It expires in 10 minutes.</p>
             <label className="block text-sm font-bold">Login code<input className="mt-2 h-13 w-full rounded-xl border p-3 text-lg" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={code} onChange={event => setCode(event.target.value.replace(/\D/g, ''))} autoFocus /></label>
             <button disabled={busy || code.length !== 6} className="min-h-11 w-full rounded-xl bg-[#003399] p-3 font-bold text-white disabled:opacity-50">{busy ? 'Verifying…' : 'Verify and sign in'}</button>
@@ -90,6 +152,7 @@ export function LoginPage({ popup = false }: { popup?: boolean }) {
             <label className="block"><span className="text-sm font-bold text-[#003399]">Student Number / Faculty ID</span><span className="relative mt-2 block"><IdCard className="absolute left-4 top-1/2 -translate-y-1/2 text-[#003399]/50" size={18} /><input aria-invalid={Boolean(errors.school_id)} aria-describedby={errors.school_id ? 'login-school_id-error' : undefined} autoComplete="off" autoFocus value={schoolId} onChange={(event) => setSchoolId(event.target.value)} placeholder="Enter your Student or Faculty ID" className="h-13 w-full rounded-xl border border-[#003399]/20 bg-[#FFFFFF] pl-12 pr-4 text-sm uppercase text-[#003399] outline-none transition placeholder:normal-case placeholder:text-[#003399]/40 focus:border-[#003399] focus:ring-4 focus:ring-[#003399]/10" /></span>{errors.school_id ? <span id="login-school_id-error" className="field-error mt-2 block text-xs font-bold">{errors.school_id}</span> : null}</label>
             <label className="block"><span className="text-sm font-bold text-[#003399]">Password</span><span className="relative mt-2 block"><LockKeyhole className="absolute left-4 top-1/2 -translate-y-1/2 text-[#003399]/50" size={18} /><input type={showPassword ? 'text' : 'password'} aria-invalid={Boolean(errors.password)} aria-describedby={errors.password ? 'login-password-error' : undefined} autoComplete="off" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter your password" className="h-13 w-full rounded-xl border border-[#003399]/20 bg-[#FFFFFF] pl-12 pr-12 text-sm text-[#003399] outline-none transition placeholder:text-[#003399]/40 focus:border-[#003399] focus:ring-4 focus:ring-[#003399]/10" /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword((value) => !value)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-[#003399]/60 hover:bg-[#003399]/5">{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></span>{errors.password ? <span id="login-password-error" className="field-error mt-2 block text-xs font-bold">{errors.password}</span> : null}</label>
             {!popup && <label className="flex cursor-pointer items-center gap-3 text-sm font-semibold text-[#003399]/70"><input type="checkbox" checked={showPassword} onChange={(event) => setShowPassword(event.target.checked)} className="h-4 w-4 accent-[#003399]" />Show password</label>}
+            {deviceAvailable && <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm"><input type="checkbox" checked={remember} onChange={event => setRemember(event.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[#003399]" /><span><span className="block font-bold">Remember this device for 7 days</span><span className="block opacity-75">Use this only on your personal phone or computer.</span></span></label>}
             <button disabled={busy} className="flex h-13 w-full items-center justify-center rounded-xl bg-[#003399] px-5 text-sm font-black text-[#FFFFFF] shadow-lg shadow-[#003399]/15 transition hover:bg-[#003399]/90 disabled:cursor-wait disabled:opacity-60">{busy ? 'Verifying account…' : 'Log In'}</button>
           </form>}
           <p className="mt-5 text-right"><Link to="/forgot-password" onClick={event => { if (busy) event.preventDefault() }} className="text-sm font-bold text-[#003399] underline">Forgot Password?</Link></p>

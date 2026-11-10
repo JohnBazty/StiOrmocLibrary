@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Date created | 2026-09-25 |
-| Date last updated | 2026-09-25 |
+| Date last updated | 2026-11-10 |
 | Status | `inprogress` |
 
 ## Why
@@ -100,6 +100,10 @@ Production `dpl_HeWNpvJoHBopjLB1DtQ1empYZmUk` passed controlled write/read check
 Two additional disposable categories passed Add, Edit, Reassign, and Delete through the public production API; their test audit events were removed. A rollback-only Supabase test exercised the same Category Edit/Reassign operations with an assigned book and copy, verifying the shelf synchronization path without moving real inventory. In the live browser, a disposable Student signed in and verified that Clearance Refresh completed with a current-records message, and that Printing Pages and Copies could each be cleared, re-entered, and recalculated from ₱2.00 to ₱12.00. The test account was signed out and removed. Automated web tests cover the Admin controls and report worklist; these Admin interactions were not manually driven in a production browser.
 
 The current production log query found no HTTP 500. Four error-level entries inspected after acceptance were Node `DEP0169` deprecation warnings on successful GET requests. Phase 1 is marked `built` in the system plan. The deployment still needs a durable scheduler for the later reservation and attendance phases; that work is not part of the eight reported Phase 1 repairs.
+
+### Remembered device sign-in release (2026-11-10, Asia/Manila)
+
+Deployment `dpl_HdKxDuSyxfFWZkNSFguAEsvuA1fU` replaced `dpl_6H2Foy8G6mjmLm6GUUANGvedtWit` at the public alias. The release used the previous production snapshot and the device files. Migration 032 was applied individually, and `LOGIN_DEVICES_ENABLED` was enabled for Vercel Production. Staged and live health, the sign-in pages, public catalog and resume access checks passed. The browser showed the unchecked seven-day checkbox. Physical-device and real email delivery checks remain pending.
 
 ## Change log
 

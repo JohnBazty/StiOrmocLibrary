@@ -8,7 +8,7 @@
 
 ## Owner-installed skills
 
-Caveman is installed for this repository at `.agents/skills/caveman/SKILL.md`. Use its concise reply style by default at the owner's request, until they ask for normal mode. Preserve clear nontechnical explanations, required progress updates, verification results and material limitations. Full explanations, plans and other saved documents retain the detail their task needs. This is a reply-style skill, not a token cap or permission to skip work.
+Caveman is installed for this repository at `.agents/skills/caveman/SKILL.md`. Use normal mode for planning and concise Caveman mode for implementation unless the owner requests a different style. Preserve clear nontechnical explanations, required progress updates, verification results and material limitations. Full explanations, plans and other saved documents retain the detail their task needs. This is a reply-style skill, not a token cap or permission to skip work.
 
 The owner's Claude skill collection is adapted for Codex under `C:/Users/JOHN/.codex/skills/claude-*`. Select and read the relevant skill when it improves the task: UI/UX and baseline UI for interface work; systematic debugging and webapp testing for defects and QA; React/coding standards for implementation; database/SQL/API security for relevant backend work. Do not load all skills for every request. Follow each Codex entrypoint's compatibility notes and this repository's requirements. Missing source helper files are not installed capabilities. See [installation and limits](docs/codex-local-skills-20261016.md).
 

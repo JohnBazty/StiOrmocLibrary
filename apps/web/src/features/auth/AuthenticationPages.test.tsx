@@ -69,6 +69,31 @@ describe('authentication pages', () => {
     expect(screen.queryByLabelText('Login as')).toBeNull()
     expect(screen.getByRole('button', { name: 'Log In' })).toBeTruthy()
   })
+
+  it('asks before switching after email verification and cancel makes no switch request', async () => {
+    const request = vi.fn(async (path: string, _options?: RequestInit) => ({
+      ok: true,
+      json: async () => ({ data: path.endsWith('/device') ? { enabled: true }
+        : path.endsWith('/login') ? { otpRequired: true, challengeId: 'test-challenge', emailHint: 'te***@ormoc.sti.edu.ph' }
+        : { deviceSwitchRequired: true, switchToken: 'test-switch' } }),
+    }))
+    vi.stubGlobal('fetch', request)
+    render(<MemoryRouter><ThemeProvider><LoginPage popup /></ThemeProvider></MemoryRouter>)
+    const remember = await screen.findByRole<HTMLInputElement>('checkbox', { name: /Remember this device/ })
+    expect(remember.checked).toBe(false)
+    fireEvent.click(remember)
+    fireEvent.change(screen.getByLabelText('Student Number / Faculty ID'), { target: { value: 'TEST-001' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'test-only' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Log In' }))
+    fireEvent.change(await screen.findByLabelText('Login code'), { target: { value: '123456' } })
+    const passwordRequest = request.mock.calls.find(([path]) => path.endsWith('/auth/login'))
+    expect(JSON.parse(String(passwordRequest?.[1]?.body)).remember_device).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Verify and sign in' }))
+    expect(await screen.findByRole('heading', { name: 'This account is signed in on another device.' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.getByRole('button', { name: 'Log In' })).toBeTruthy()
+    expect(request.mock.calls.some(([path]) => path.endsWith('/device/switch'))).toBe(false)
+  })
 })
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })

@@ -2,6 +2,11 @@
 
 **MySQL → Supabase (PostgreSQL) conversion for STI Ormoc Smart Library**
 
+## November 10 browser sign-in migration
+
+Applied **032_login_devices.sql** individually on 2026-11-10 after matching the production database target. Verified the migration checksum, row-level security, and browser-role access restrictions on the three authentication tables. The next unused number is **033**. The API requires **032** before enabling `LOGIN_DEVICES_ENABLED`. See the [device sign-in plan](plans/2026-11-10-remember-this-device.md).
+
+
 ## Why
 
 The team needs a shared, hosted database so every buddy can use the same live data without depending on one person’s local MySQL install. Supabase gives us a managed PostgreSQL instance, connection strings, and a dashboard everyone can access. Converting the API and schema off local MySQL / `mysql2` is the prerequisite for that shared environment.

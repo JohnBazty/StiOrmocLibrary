@@ -3,20 +3,41 @@ import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { Search, SlidersHorizontal, X } from 'lucide-react'
 import { Button, SectionCard } from '../../components/ui'
 import { getCurrentClaims } from '../auth/auth-storage'
+import { resumeDeviceSession } from '../auth/auth-api'
 import { CatalogCover } from './CatalogCover'
 import { PublicCatalogWelcome } from './PublicCatalogWelcome'
 import { enhancedCatalog, type CatalogRecord, type Options } from './enhanced-catalog-api'
 import { CatalogDetailsPanel, catalogInput } from './CatalogDetailsPanel'
 type Props = {
  embedded?: boolean
+ restoreDevice?: boolean
  refreshKey?: number
  onViewBook?: (id: number) => void
  renderBookAction?: (book: CatalogRecord) => ReactNode
 }
-export function PublicCatalogPage({embedded=false,refreshKey=0,onViewBook,renderBookAction}:Props){
+export function PublicCatalogPage({embedded=false,restoreDevice=false,refreshKey=0,onViewBook,renderBookAction}:Props){
  const location=useLocation()
  const [params,setParams]=useSearchParams(),[options,setOptions]=useState<Options|null>(null),[items,setItems]=useState<CatalogRecord[]>([]),[total,setTotal]=useState(0),[detail,setDetail]=useState<CatalogRecord|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true)
  const lastScrolledAnchor=useRef('')
+ const [,setDeviceRevision] = useState(0)
+ useEffect(() => {
+   if (!restoreDevice) return
+   let active = true
+   const resume = () => {
+     if (document.visibilityState === 'hidden' || getCurrentClaims()) return
+     void resumeDeviceSession().then(identity => { if (active && identity) setDeviceRevision(value => value + 1) }).catch(() => {})
+   }
+   resume()
+   window.addEventListener('focus', resume)
+   window.addEventListener('online', resume)
+   document.addEventListener('visibilitychange', resume)
+   return () => {
+     active = false
+     window.removeEventListener('focus', resume)
+     window.removeEventListener('online', resume)
+     document.removeEventListener('visibilitychange', resume)
+   }
+ }, [restoreDevice])
  useEffect(()=>{if(embedded)return;if(!['#home','#catalog','#categories'].includes(location.hash)){lastScrolledAnchor.current='';return}if(!loading&&lastScrolledAnchor.current!==location.hash){document.getElementById(location.hash.slice(1))?.scrollIntoView?.({block:'start'});lastScrolledAnchor.current=location.hash}},[embedded,location.hash,loading])
  const claims=getCurrentClaims(),page=Number(params.get('page')||1)
  const heading=params.get('kind')==='Book'?'All Books':params.get('kind')==='Research/Thesis'?'All Research & Theses':'All Books & Research'

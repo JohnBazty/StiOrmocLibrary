@@ -5,6 +5,10 @@ export type AccessTokenClaims = {
   schoolId: string
   role: AuthRole
   exp: number
+  sessionId?: string
+  deviceSession?: boolean
+  rememberedUntil?: number
+  idleUntil?: number
 }
 
 export type AuthenticatedIdentity = {
@@ -24,7 +28,7 @@ function decodeBase64Url(value: string) {
   return atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '='))
 }
 
-export function decodeAccessToken(token: string): AccessTokenClaims | null {
+export function decodeAccessToken(token: string, allowExpired = false): AccessTokenClaims | null {
   try {
     const parts = token.split('.')
     if (parts.length !== 3) return null
@@ -32,7 +36,7 @@ export function decodeAccessToken(token: string): AccessTokenClaims | null {
     if (!Number.isSafeInteger(payload.userId) || Number(payload.userId) < 1) return null
     if (typeof payload.schoolId !== 'string' || !payload.schoolId) return null
     if (!ROLES.has(payload.role as AuthRole)) return null
-    if (!Number.isFinite(payload.exp) || Number(payload.exp) * 1000 <= Date.now()) return null
+    if (!Number.isFinite(payload.exp) || (!allowExpired && Number(payload.exp) * 1000 <= Date.now())) return null
     return payload as AccessTokenClaims
   } catch {
     return null
@@ -73,7 +77,7 @@ export function getCurrentClaims() {
   const token = getAccessToken()
   if (!token) return null
   const claims = decodeAccessToken(token)
-  if (!claims) clearAccessToken()
+  if (!claims && !decodeAccessToken(token, true)?.deviceSession) clearAccessToken()
   return claims
 }
 

@@ -6,7 +6,7 @@ This guide explains how to prepare a Windows development computer, run and test 
 
 ## AI agents — read this first
 
-1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) for the session protocol and migration tracker. MySQL reference **048**, next **049**. The latest applied Postgres product migration is **030**. Prepared enrollment migration **031** supersedes unapplied draft **028**. Next unused Postgres number is **032**.
+1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) for the session protocol and migration tracker. MySQL reference **048**, next **049**. The latest applied Postgres migration is device sign-in **032**. Enrollment **031** supersedes unapplied draft **028**. Next unused Postgres number is **033**.
 2. Read [AGENTS.md](AGENTS.md) and [agent.md](agent.md).
 3. Database cutover status: [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md).
 
