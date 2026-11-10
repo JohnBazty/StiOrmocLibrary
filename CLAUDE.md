@@ -12,6 +12,7 @@ STI College Ormoc's live library system (npm workspaces: `apps/api` Express + Ty
 
 ## Working rules
 - **Branches:** one branch per change from `main` (`feat/<slug>`, `fix/<slug>`, `chore/<slug>`). Never commit to `main` directly. Never push, merge, deploy (Vercel) or run a migration against a live database without Ethan's go-ahead. The repo belongs to JohnBazty.
+- **JohnBazty reviews these branches (Ethan, 2026-11-10):** this covers every branch that improves or implements printing (queue, ink and paper stock, printing service), attendance QR or the floor plan from the GitHub reference work (`reverse-feature`). After a branch's commits are ready, push it and open a **draft** PR with JohnBazty as reviewer (`gh pr create --draft --reviewer JohnBazty`; stack it on the branch it builds on). Then stop. Start the next step (spec after map, build plan after spec, build after plan, ready-for-review after build) only when that PR shows his approval (`gh pr view <n> --json reviewDecision,reviews`: `APPROVED`) or he says so in a PR comment; apply his requested changes first. Never merge for him.
 - **No destructive file commands:** never run commands that can delete untracked or ignored files: `git worktree`, `git clean`, `git stash -u`, `git reset --hard`, `git checkout -- .`, `rm -r`, `Remove-Item -Recurse`, `rmdir /s`, junctions or symlinks. The checkout holds files git cannot restore (`apps/api/.env`, `.vercel/`, runtime uploads in `apps/storage/` and `apps/api/public/assets/covers/`, `graphify-out/`). `.claude/hooks/guard-destructive.mjs` blocks these for every agent and also matches these words inside commit messages, so pass long messages with `git commit -F <file>`. To check old code use `git show <commit>:<path>` or `git stash push <tracked paths>`.
 - **Tests first:** write the failing test, see it fail, then the smallest code that passes. API: `node --test` (`*.test.ts` next to the code, supertest for routes). Web: Vitest + Testing Library.
 - **Reviews before each PR:** one combined `security-reviewer` (security, correctness, React); add `database-reviewer` when the change adds a migration (`database/supabase/`) or concurrent SQL. Fix CRITICAL, HIGH and MEDIUM findings first; fix LOW findings in the main session.
@@ -22,6 +23,9 @@ STI College Ormoc's live library system (npm workspaces: `apps/api` Express + Ty
 ## Team (`.claude/agents/` plus user-level agents)
 - `library-builder`: builds one approved plan doc, tests first, one Supabase migration per schema change, trackers updated.
 - `plan-verifier` (read-only): checks tracking items have tests, migrations and trackers match, and whether Status can become `built`.
+- `feature-cartographer` (writes only its map): maps a feature across reference GitHub repos (read through `gh`, never cloned or run) or a shipped app (REA tools), the Final Draft and this repo, into `docs/maps/`.
+- `spec-extractor` (writes only its spec): turns a map into a clean-room spec in `docs/specs/`.
+- Reverse-engineered features use the `reverse-feature` skill: map, spec, Ethan approves the spec, build plan doc, Ethan approves the plan, then the flow below. Log each in `docs/FEATURES.md`.
 - User-level: `security-reviewer` (combined review before each PR), `database-reviewer` (migrations or concurrent SQL), `tdd-guide`, `build-error-resolver`, `react-build-resolver`, `e2e-runner`.
 - Flow per feature: Ethan approves the plan, then `library-builder`, `plan-verifier`, `security-reviewer` (plus `database-reviewer` when there is a migration), fixes, then ask Ethan before push or PR.
 
