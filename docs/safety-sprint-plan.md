@@ -29,6 +29,8 @@ Three parts. Each is its own branch, plan-verifier run, review and PR, in this o
 
 Port the approved October design to the Postgres-only `main`. Do not cherry-pick the old branch: it targets the MySQL-era code and also contains the long-overdue case feature. Read it for design only.
 
+**Re-plan after John's merge (2026-11-11):** `codex/library-revision-updates` has its own job runner (`apps/api/src/modules/jobs/job-runner.ts`, migration `013_phase2_job_runner`, applied live), started from `server.ts` as `startOperationalJobWorker()`. Once that branch is in `main`, Part A finishes one runner and retires the other's tables; the October design below may no longer be the one to build.
+
 **The schema already exists live.** `019_durable_job_runner.sql` from `feat/long-overdue-and-damage-case` was applied to the live database on 2026-10-10, and `scheduled_job_state` holds the three job rows, none of which has ever succeeded (`last_success_at` is null; checked 2026-11-11). So Part A **does not write a new migration**. It brings that exact `019_durable_job_runner.sql` file into `main` unchanged (same name and content, so the migration runner's checksum matches), and builds the code against it. Check whether the live `019` depends on `017_circulation_cases`; if it does, Part A must wait for that decision (see Decision S7).
 
 **Flow** (approved D1 to D5, unchanged):
