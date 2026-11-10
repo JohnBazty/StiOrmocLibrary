@@ -16,6 +16,14 @@ STI College Ormoc's live library system (npm workspaces: `apps/api` Express + Ty
 - **Tests first:** write the failing test, see it fail, then the smallest code that passes. API: `node --test` (`*.test.ts` next to the code, supertest for routes). Web: Vitest + Testing Library.
 - **Reviews before each PR:** one combined `security-reviewer` (security, correctness, React); add `database-reviewer` when the change adds a migration (MySQL `database/migrations/` or Supabase `database/supabase/`) or concurrent SQL. Fix CRITICAL, HIGH and MEDIUM findings first; fix LOW findings in the main session.
 - **Lean sessions:** one feature per session, at most 3 review agents, no separate `code-reviewer`. Start from the wiki (`wiki/hot.md`, `wiki/entities/StiOrmocLibrary.md`); do not re-read what it already summarises.
+- **Start session:** when Ethan says `start session`, use the `start-session` skill. It runs the `.cursor/agent-protocol.md` protocol (greet as Agent Alpha, brief, wait) wiki-first.
+- **Live systems:** the hook asks before `db:migrate`, `db:supabase`, `db:schema`, `db:backfill:*`, `auth:create-user`, `tools/ai/smoke-*`, `migrate-*`, `audit-*` and `vercel` commands. Approve only a step Ethan asked for.
+
+## Team (`.claude/agents/` plus user-level agents)
+- `library-builder`: builds one approved plan doc, tests first, MySQL + Supabase migration pairs, trackers updated.
+- `plan-verifier` (read-only): checks tracking items have tests, migration pairs and trackers match, and whether Status can become `built`.
+- User-level: `security-reviewer` (combined review before each PR), `database-reviewer` (migrations or concurrent SQL), `tdd-guide`, `build-error-resolver`, `react-build-resolver`, `e2e-runner`.
+- Flow per feature: Ethan approves the plan, then `library-builder`, `plan-verifier`, `security-reviewer` (plus `database-reviewer` when there is a migration), fixes, then ask Ethan before push or PR.
 
 ## Database
 - This repo owns the `public` schema of the Supabase project "STI SMART LIBRARY". Never read, change or migrate the `sti_ilms_rea` schema or its role `sti_ilms_rea_app`; that belongs to STI ILMS REA.

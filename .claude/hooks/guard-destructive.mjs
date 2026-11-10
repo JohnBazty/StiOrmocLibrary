@@ -1,7 +1,8 @@
 // PreToolUse guard for Bash and PowerShell: refuses commands that can delete untracked or ignored files
 // (apps/api/.env, .vercel/, runtime uploads in apps/storage/ and apps/api/public/assets/covers/ are not in git
 // and cannot be restored). Copied from STI ILMS REA, where a `git worktree remove --force` followed junctions
-// into node_modules and deleted apps/api/.env on 2026-11-04. Exit 0 with a deny decision; any other input passes.
+// into node_modules and deleted apps/api/.env on 2026-11-04. Exit 0 with a deny decision; live-system commands
+// (ASK_RULES) get an ask decision; any other input passes.
 import { readFileSync } from 'node:fs'
 
 const RULES = [
@@ -18,6 +19,14 @@ const RULES = [
   [/\bNew-Item\b[^\n;|]*-ItemType\s+['"]?(Junction|SymbolicLink)\b/i, 'New-Item Junction/SymbolicLink'],
 ]
 
+// Commands that write to the live database or production: allowed only after Ethan confirms in the prompt.
+const ASK_RULES = [
+  [/\bdb:(migrate|supabase|schema|backfill)/i, 'a database migration, schema or backfill script'],
+  [/\bauth:create-user\b/i, 'creating a user account in the database'],
+  [/\btools[\\/]ai[\\/](smoke|migrate|audit)-/i, 'a tools/ai live smoke, migration or audit script'],
+  [/(^|[\s;&|(])vercel\s+\S/i, 'a Vercel CLI command (deploy or project settings)'],
+]
+
 let command = ''
 try {
   command = String(JSON.parse(readFileSync(0, 'utf8'))?.tool_input?.command ?? '')
@@ -31,6 +40,17 @@ if (hit) {
       hookEventName: 'PreToolUse',
       permissionDecision: 'deny',
       permissionDecisionReason: `Blocked by .claude/hooks/guard-destructive.mjs: ${hit[1]}. This checkout holds files that are not in git (apps/api/.env, .vercel/, uploads in apps/storage/ and apps/api/public/assets/covers/). To compare with old code use "git stash push <tracked paths>" or "git show <commit>:<path>". If the deletion is really needed, ask Ethan to run it himself.`,
+    },
+  }))
+  process.exit(0)
+}
+const live = ASK_RULES.find(([pattern]) => pattern.test(command))
+if (live) {
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'ask',
+      permissionDecisionReason: `.claude/hooks/guard-destructive.mjs: ${live[1]} can change the live Supabase database or production. Run it only if Ethan approved this exact step.`,
     },
   }))
 }

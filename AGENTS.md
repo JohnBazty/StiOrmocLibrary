@@ -55,6 +55,7 @@ These skills are committed in both `.claude/skills/` (Claude Code) and `.agents/
 | `ui-ux-pro-max` | Designing, building or reviewing screens: layout, accessibility, typography, charts, UX rules. Its search scripts need Python 3. |
 | `design-system` | Design-token structure and component specs. |
 | `ui-styling` | Tailwind styling patterns and accessible components. |
+| `start-session` | The `start session` briefing: greet as Agent Alpha, catch up wiki-first, report migration numbers and open plans, then wait. Project-specific (this repo only). |
 
 Project rules win over skill advice. Use only the STI colors in `agent.md` "Frontend Visual Rules" (blue `#003399`, yellow `#FFF200`, white and their opacity variants), never a palette a skill suggests. Add no new UI library without Ethan's approval. When a skill changes, update both copies; the `.agents/skills/` copy uses `.agents/skills/...` paths. Other skills Ethan has installed (banner-design, brand, design, slides, stageshow) stay local and are not committed.
 
@@ -87,7 +88,9 @@ Pages read as dated facts (`YYYY-MM-DD`), short summaries and links, not copies 
 - **Lean sessions (Ethan, 2026-11-06):** one feature per session; at most 3 review agents (one combined security, correctness and React review, plus a database review for migrations or concurrent SQL); fix LOW findings directly instead of re-running reviews.
 
 ### Automation Claude Code has that you replace by hand
-- **Destructive-command hook** (`.claude/hooks/guard-destructive.mjs`, wired in `.claude/settings.json`): read its `RULES` list and refuse those commands yourself. Keep command approval on.
+- **Destructive-command hook** (`.claude/hooks/guard-destructive.mjs`, wired in `.claude/settings.json`): read its `RULES` list and refuse those commands yourself. Its `ASK_RULES` list (database migration, schema, backfill and user-creation scripts, `tools/ai` smoke, migration and audit scripts, the Vercel CLI) touches the live database or production: run those only after Ethan approves that exact step. Keep command approval on.
+- **Subagents** (`.claude/agents/*.md`): run each role as a separate step or prompt. Per feature, after Ethan approves the plan doc: `library-builder.md` (build, tests first, migration pairs), then `plan-verifier.md` (read-only check of tracking items, migration pairs, trackers and status), then one combined security review of `git diff main...HEAD` (plus a database review when there is a migration), fixes, then ask Ethan before push or PR.
+- **Start session** (`.claude/skills/start-session/SKILL.md`, mirrored in `.agents/skills/start-session/`): follow it when Ethan says `start session`.
 - **Dev server** (`.claude/launch.json`): `npm run dev`, web on port 5173, API on 4000.
 - **MCP servers** (set up at Ethan's user level, not in the repo): Supabase (read-only checks; schema changes only through reviewed migration files), Serena (code navigation), graphify (`graphify-out/` knowledge graph). If your tool lacks one, say so instead of guessing what it would return.
 - **Files git does not hold** (`apps/api/.env`, `.vercel/`, runtime uploads): they exist only in Ethan's checkout. If one is missing, ask Ethan; never recreate `.env` with guessed values.
