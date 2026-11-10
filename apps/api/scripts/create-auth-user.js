@@ -73,7 +73,7 @@ if (password.length < 8 || password.length > 72) throw new Error('Password must 
 
 try {
   const [roleRows] = await db.execute('SELECT role_id FROM roles WHERE role_name = ? LIMIT 1', [args.role])
-  if (!Array.isArray(roleRows) || roleRows.length === 0) throw new Error('Role seed data is missing. Run database/mysql56-schema.sql first.')
+  if (!Array.isArray(roleRows) || roleRows.length === 0) throw new Error('Role seed data is missing. Apply the database/supabase/ schema files first.')
 
   const passwordHash = await bcrypt.hash(password, 12)
   await db.execute(
