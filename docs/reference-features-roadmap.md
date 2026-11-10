@@ -19,7 +19,7 @@ On 2026-11-10 the printing, attendance and floor-plan modules were compared with
 | # | Feature | Area | Final Draft | Reference projects | State |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Dynamic (TOTP) QR made offline on the phone | Attendance | **Required** | authelia/authelia, beemdevelopment/Aegis, jeffreydivi/QRIdentity | Spec draft, GATE 1 |
-| 2 | Printer becomes unavailable when a required ink or paper stock reaches zero | Printing | **Required** | OpenPrinting/cups (printer state reasons such as supply empty) | Not started |
+| 2 | Printer becomes unavailable when a required ink or paper stock reaches zero | Printing | **Required** | OpenPrinting/cups (printer state reasons such as supply empty) | Spec draft, GATE 1 |
 | 3 | Auto-delete uploaded print files after N days (setting) | Printing | Optional, privacy | hanxi/cups-web (record and file retention) | Not started |
 | 4 | Failed / reprint state in the print queue | Printing | Optional | OpenPrinting/cups (held, stopped, aborted jobs) | Not started |
 | 5 | Duplex (double-sided) option with its price rule | Printing | Optional | hanxi/cups-web, OpenPrinting/cups | Not started |
@@ -42,7 +42,7 @@ On 2026-11-10 the printing, attendance and floor-plan modules were compared with
 ## Implementation tracking
 
 - [ ] 1 Dynamic QR: map ✔, spec ✔ (draft), approval, plan, build
-- [ ] 2 Printer unavailable at zero stock
+- [ ] 2 Printer unavailable at zero stock: map ✔, spec ✔ (draft), approval, plan, build
 - [ ] 3 Print file retention
 - [ ] 4 Failed / reprint state
 - [ ] 5 Duplex option
@@ -54,3 +54,4 @@ On 2026-11-10 the printing, attendance and floor-plan modules were compared with
 ## Change log
 
 - 2026-11-10: Created from the GitHub comparison and Final Draft review.
+- 2026-11-10: Feature 2 map and draft spec written (`docs/maps/printer-supply-availability.md`, `docs/specs/printer-supply-availability.md`); waiting at GATE 1.

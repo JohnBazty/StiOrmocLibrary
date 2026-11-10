@@ -80,6 +80,7 @@ Codex, Cursor and other tools have no subagents: run each agent file as its own 
 | MySQL removal stack, PRs #5 → #6 → #7 → #8 | Open, not merged. Everything below is stacked on #8 and needs it merged first. |
 | `chore/reverse-feature-process` | Pipeline, agents, this handoff, roadmap. Draft PR to JohnBazty, waiting for review. |
 | `feat/dynamic-attendance-qr` | Map and draft spec done (`docs/maps/`, `docs/specs/dynamic-attendance-qr.md`). **GATE 1:** waiting for JohnBazty to approve the spec and answer its 5 open questions. |
+| `feat/printer-supply-availability` | Map and draft spec done (`docs/maps/printer-supply-availability.md`, `docs/specs/printer-supply-availability.md`). **GATE 1:** waiting for JohnBazty to approve the spec and answer its 6 open questions. |
 | Other roadmap features | Not started. |
 
 **Next step:** JohnBazty reviews the `feat/dynamic-attendance-qr` draft PR. After approval, write `docs/dynamic-attendance-qr-plan.md` from the approved spec (GATE 2).
