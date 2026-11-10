@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-10-09 (public system branding and configurable borrowing policies; MySQL `046` / next `047`; Supabase `016` / next `017`) |
+| **Date last updated** | 2026-11-10 (start session reads the wiki first; MySQL `046` / next `047`; Supabase `016` / next `017`) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---
@@ -31,6 +31,8 @@ When Ethan says **start session** (or a clear equivalent such as “start the se
 5. **Do not start building** until Ethan gives the next explicit command after the briefing.
 
 Purpose: make every new chat session fast to resume without Ethan re-explaining context.
+
+**Wiki first (token saving):** before steps 2–3, read the Obsidian wiki (`wiki/hot.md` "Active Threads" and `wiki/entities/StiOrmocLibrary.md`). Then scan only what the wiki does not already cover; skip transcripts and diffs it summarises. The step-by-step version is the `start-session` skill (`.claude/skills/start-session/SKILL.md`, mirrored in `.agents/skills/start-session/`).
 
 ---
 
@@ -164,3 +166,4 @@ Prefer simple, readable scripts under a clear folder (for example `tools/` or `s
 | 2026-09-26 | Phase 2 item 1 account management deployed: MySQL reference `042` / next `043`, Supabase applied `011` / next `012`. Student lifecycle and audit flows passed production acceptance. Item 2 awaits user approval. |
 | 2026-10-09 | Added branding migrations `045` and Supabase `015`; tracker advanced to MySQL `045` / next `046` and Supabase next `016`. |
 | 2026-10-09 | Configurable borrowing policies: MySQL `046` / Supabase `016`; tracker advanced to MySQL next `047` and Supabase next `017`. |
+| 2026-11-10 | Start session now reads the Obsidian wiki first and scans only what it does not cover; added the `start-session` skill. Migration numbers unchanged. |

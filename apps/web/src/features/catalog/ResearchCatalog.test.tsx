@@ -19,7 +19,8 @@ describe('ResearchCatalog view-only UI', () => {
     api.fetchResearchOverview.mockResolvedValue(paper)
     render(<ResearchCatalog />)
 
-    expect(await screen.findByText('SmartLib Research')).toBeTruthy()
+    // The title renders twice: desktop table row and mobile card (CSS shows one).
+    expect(await screen.findAllByText('SmartLib Research')).toHaveLength(2)
     expect(screen.getByPlaceholderText('Search research...')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /borrow/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /add to cart/i })).toBeNull()
