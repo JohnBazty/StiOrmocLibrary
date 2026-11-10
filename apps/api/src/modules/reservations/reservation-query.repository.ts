@@ -1,5 +1,5 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise'
-import { dateAddDays, isPostgres } from '../../config/sql-dialect.js'
+import type { Pool, RowDataPacket } from '../../config/db.js'
+import { dateAddDays } from '../../config/sql-dialect.js'
 import type { QueueFilters } from './reservation.validation.ts'
 
 export function buildReservationQueueQuery(filters: QueueFilters) {
@@ -33,9 +33,7 @@ export function buildReservationQueueQuery(filters: QueueFilters) {
        assigned.barcode, r.queue_position, r.reservation_status, r.reserved_at,
        r.pickup_deadline, r.created_at, r.updated_at
       ${from} ${whereSql}
-      ORDER BY ${isPostgres
-      ? `CASE r.reservation_status WHEN 'ready_for_pickup' THEN 1 WHEN 'approved' THEN 2 WHEN 'pending' THEN 3 WHEN 'claimed' THEN 4 WHEN 'expired' THEN 5 WHEN 'cancelled' THEN 6 ELSE 7 END`
-      : `FIELD(r.reservation_status, 'ready_for_pickup','approved','pending','claimed','expired','cancelled')`},
+      ORDER BY CASE r.reservation_status WHEN 'ready_for_pickup' THEN 1 WHEN 'approved' THEN 2 WHEN 'pending' THEN 3 WHEN 'claimed' THEN 4 WHEN 'expired' THEN 5 WHEN 'cancelled' THEN 6 ELSE 7 END,
         r.reserved_at ASC, r.reservation_id ASC LIMIT ${safeLimit} OFFSET ${safeOffset}`,
     countSql: `SELECT COUNT(*) AS total ${from} ${whereSql}`,
     dataParameters: parameters,

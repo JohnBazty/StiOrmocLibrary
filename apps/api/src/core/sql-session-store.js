@@ -1,5 +1,4 @@
 import session from 'express-session'
-import { env } from '../config/env.js'
 
 function getExpiry(sessionData) {
   const cookieExpiry = sessionData.cookie?.expires
@@ -7,25 +6,18 @@ function getExpiry(sessionData) {
   return Date.now() + Number(sessionData.cookie?.maxAge ?? 30 * 60 * 1000)
 }
 
-const upsertSql = env.db.driver === 'postgres'
-  ? `INSERT INTO auth_sessions (session_id, session_data, expires_at, updated_at)
+const upsertSql = `INSERT INTO auth_sessions (session_id, session_data, expires_at, updated_at)
      VALUES (?, ?, ?, NOW())
      ON CONFLICT (session_id) DO UPDATE SET
        session_data = EXCLUDED.session_data,
        expires_at = EXCLUDED.expires_at,
        updated_at = NOW()`
-  : `INSERT INTO auth_sessions (session_id, session_data, expires_at, updated_at)
-     VALUES (?, ?, ?, NOW())
-     ON DUPLICATE KEY UPDATE
-       session_data = VALUES(session_data),
-       expires_at = VALUES(expires_at),
-       updated_at = NOW()`
 
 /**
  * Server-side session store backed by auth_sessions.
- * Uses Postgres ON CONFLICT when DATABASE_URL is set; MySQL upsert otherwise.
+ * Upserts with Postgres ON CONFLICT.
  */
-export class MySqlSessionStore extends session.Store {
+export class SqlSessionStore extends session.Store {
   constructor(pool) {
     super()
     this.pool = pool

@@ -1,5 +1,5 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise'
-import { db, dbDriver } from '../config/db.js'
+import type { Pool, RowDataPacket } from '../config/db.js'
+import { db } from '../config/db.js'
 
 const REQUIRED_COLUMNS: Record<string, string[]> = {
   categories: ['category_id', 'category_name', 'shelf_location', 'created_at', 'updated_at'],
@@ -58,19 +58,12 @@ export type SchemaReadiness = { ready: boolean; missingTables: string[]; missing
 export async function checkSchemaReadiness(database: Pool = db as Pool): Promise<SchemaReadiness> {
   const tableNames = Object.keys(REQUIRED_COLUMNS)
   const placeholders = tableNames.map(() => '?').join(', ')
-  const [rows] = dbDriver === 'postgres'
-    ? await database.execute<RowDataPacket[]>(
-        `SELECT table_name AS "TABLE_NAME", column_name AS "COLUMN_NAME"
-           FROM information_schema.columns
-          WHERE table_schema = 'public' AND table_name IN (${placeholders})`,
-        tableNames,
-      )
-    : await database.execute<RowDataPacket[]>(
-        `SELECT TABLE_NAME, COLUMN_NAME
-           FROM information_schema.COLUMNS
-          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (${placeholders})`,
-        tableNames,
-      )
+  const [rows] = await database.execute<RowDataPacket[]>(
+    `SELECT table_name AS "TABLE_NAME", column_name AS "COLUMN_NAME"
+       FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name IN (${placeholders})`,
+    tableNames,
+  )
   const found = new Map<string, Set<string>>()
   for (const row of rows) {
     const table = String(row.TABLE_NAME ?? row.table_name)
@@ -91,10 +84,6 @@ export function isMissingSchemaError(error: unknown) {
   const code = (error as { code?: string } | null)?.code
   const message = String((error as { message?: string } | null)?.message ?? '')
   return [
-    'ER_NO_SUCH_TABLE',
-    'ER_BAD_FIELD_ERROR',
-    'ER_CANT_DROP_FIELD_OR_KEY',
-    'ER_KEY_COLUMN_DOES_NOT_EXITS',
     '42P01', // undefined_table
     '42703', // undefined_column
   ].includes(code ?? '') || /relation .* does not exist|column .* does not exist/i.test(message)

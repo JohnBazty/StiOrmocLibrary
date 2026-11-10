@@ -1,8 +1,7 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise'
+import type { Pool, RowDataPacket } from '../../config/db.js'
 import { SYSTEM_NAME } from '../../config/branding.ts'
 import { db } from '../../config/db.js'
 import {
-  isPostgres,
   authorsAgg,
   authorsAggDistinct,
   formatDate,
@@ -68,14 +67,10 @@ export class DashboardRepository {
 
   async admin(actor: DashboardActor) {
     const identity = await this.identity(actor.accountId)
-    const weekStart = isPostgres
-      ? `(${currentDate()}::date - (${weekday(currentDate())})::int)`
-      : `DATE_SUB(${currentDate()},INTERVAL ${weekday(currentDate())} DAY)`
+    const weekStart = `(${currentDate()}::date - (${weekday(currentDate())})::int)`
     const weekEnd = dateAddDays(weekStart, 5)
-    const last30Days = isPostgres ? `NOW() - INTERVAL '30 day'` : `DATE_SUB(NOW(),INTERVAL 30 DAY)`
-    const visitMinutes = isPostgres
-      ? `EXTRACT(EPOCH FROM (time_out - time_in))/60`
-      : `TIME_TO_SEC(TIMEDIFF(time_out,time_in))/60`
+    const last30Days = `NOW() - INTERVAL '30 day'`
+    const visitMinutes = `EXTRACT(EPOCH FROM (time_out - time_in))/60`
     const [profile, copyResult, operationsResult, attendanceResult, fineResult, weeklyResult, purposeResult, categoriesResult, circulationResult, activityResult, occupancyResult] = await Promise.all([
       this.libraryProfile(),
       this.pool.execute<RowDataPacket[]>(`SELECT COUNT(*) total_books,${sumEquals('availability_status', 'Available')} available_books FROM physical_copies WHERE lifecycle_status='Active'`),
@@ -140,7 +135,7 @@ export class DashboardRepository {
     const userId = identity.user_id
     const profile = await this.libraryProfile()
     if (!userId) return await this.emptyUser(identity, actor.role, profile)
-    const last180Days = isPostgres ? `NOW() - INTERVAL '180 day'` : `DATE_SUB(NOW(),INTERVAL 180 DAY)`
+    const last180Days = `NOW() - INTERVAL '180 day'`
     const [summaryResult, loanResult, reservationResult, printResult, noticeResult, announcementResult, historyResult, recommendationResult, occupancyResult] = await Promise.all([
       this.pool.execute<RowDataPacket[]>(`SELECT
         (SELECT COUNT(*) FROM borrow_transactions WHERE user_id=? AND transaction_status IN ('Borrowed','Overdue') AND lost_confirmed_at IS NULL) active_loans,

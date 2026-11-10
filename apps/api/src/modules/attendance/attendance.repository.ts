@@ -1,6 +1,6 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise'
+import type { Pool, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
-import { currentDate, formatDate, isPostgres } from '../../config/sql-dialect.js'
+import { currentDate, formatDate } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import type { AttendanceFilters } from './attendance.validation.ts'
 export type AttendanceRange={from:string;to:string;label:string}
@@ -9,19 +9,13 @@ function manilaToday(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ma
 function plusDays(value:string,days:number){const date=new Date(`${value}T00:00:00+08:00`);date.setUTCDate(date.getUTCDate()+days);return date.toISOString().slice(0,10)}
 
 const dateYmd = (expr: string) => formatDate(expr, '%Y-%m-%d', 'YYYY-MM-DD')
-const timeAmpm = (expr: string) => (isPostgres
-  ? `to_char(${expr}, 'HH12:MI AM')`
-  : `TIME_FORMAT(${expr},'%h:%i %p')`)
-const averageVisitSql = isPostgres
-  ? `to_char((AVG(CASE WHEN al.time_out IS NOT NULL THEN EXTRACT(EPOCH FROM (al.time_out - al.time_in)) END) * INTERVAL '1 second'), 'HH24:MI')`
-  : `DATE_FORMAT(SEC_TO_TIME(FLOOR(AVG(CASE WHEN al.time_out IS NOT NULL THEN TIME_TO_SEC(TIMEDIFF(al.time_out,al.time_in)) END))),'%H:%i')`
+const timeAmpm = (expr: string) => (`to_char(${expr}, 'HH12:MI AM')`)
+const averageVisitSql = `to_char((AVG(CASE WHEN al.time_out IS NOT NULL THEN EXTRACT(EPOCH FROM (al.time_out - al.time_in)) END) * INTERVAL '1 second'), 'HH24:MI')`
 // Preserve MAIN's COALESCE(al.checked_in_at, <attendance_date + time_in>) precedence when deriving the visit hour.
-const checkinTimestamp = isPostgres
-  ? `COALESCE(al.checked_in_at,(al.attendance_date + al.time_in))`
-  : `COALESCE(al.checked_in_at,TIMESTAMP(al.attendance_date,al.time_in))`
-const hourOfDay = isPostgres ? `EXTRACT(HOUR FROM ${checkinTimestamp})` : `HOUR(${checkinTimestamp})`
+const checkinTimestamp = `COALESCE(al.checked_in_at,(al.attendance_date + al.time_in))`
+const hourOfDay = `EXTRACT(HOUR FROM ${checkinTimestamp})`
 // MySQL WEEKDAY() is Monday=0..Sunday=6; Postgres ISODOW is Monday=1..Sunday=7.
-const weekdayOfDate = isPostgres ? `(EXTRACT(ISODOW FROM al.attendance_date) - 1)` : `WEEKDAY(al.attendance_date)`
+const weekdayOfDate = `(EXTRACT(ISODOW FROM al.attendance_date) - 1)`
 
 export class AttendanceRepository{
  private readonly pool:Pool

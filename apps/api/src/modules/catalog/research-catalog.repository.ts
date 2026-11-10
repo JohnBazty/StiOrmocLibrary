@@ -1,5 +1,5 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise'
-import { authorsAgg, isPostgres, sumEquals } from '../../config/sql-dialect.js'
+import type { Pool, RowDataPacket } from '../../config/db.js'
+import { authorsAgg, sumEquals } from '../../config/sql-dialect.js'
 import type { ResearchCatalogFilters } from './research-catalog.validation.ts'
 
 const AUTHOR_JOIN = `JOIN (
@@ -50,7 +50,7 @@ export function buildResearchCatalogQuery(filters: ResearchCatalogFilters) {
   if (filters.query) {
     const pattern = contains(filters.query)
     where.push(`(t.title LIKE ? OR credits.authors LIKE ? OR rr.adviser_name LIKE ? OR
-      rr.department_or_program LIKE ? OR rr.research_code LIKE ? OR CAST(t.publication_year AS ${isPostgres ? 'TEXT' : 'CHAR'}) = ?)`)
+      rr.department_or_program LIKE ? OR rr.research_code LIKE ? OR CAST(t.publication_year AS TEXT) = ?)`)
     parameters.push(pattern, pattern, pattern, pattern, pattern, filters.query)
   }
 

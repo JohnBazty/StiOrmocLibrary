@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Pool } from 'mysql2/promise'
+import type { Pool } from '../../config/db.js'
 import { createClearanceService } from './clearance.service.ts'
 
 test('admin clearance list exposes pending lost-book reports for review', async () => {

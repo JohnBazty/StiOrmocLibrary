@@ -1,4 +1,4 @@
-import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise'
+import type { Pool, PoolConnection, RowDataPacket } from '../../config/db.js'
 import { authorsAgg } from '../../config/sql-dialect.js'
 import type { InventoryListFilters } from './inventory.validation.ts'
 

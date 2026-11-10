@@ -1,17 +1,10 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise'
-import { authorsAgg, isPostgres, sumEquals } from '../../config/sql-dialect.js'
+import type { Pool, RowDataPacket } from '../../config/db.js'
+import { authorsAgg, sumEquals } from '../../config/sql-dialect.js'
 import type { BookCatalogFilters } from './book-catalog.validation.ts'
 
-const availableCopyCount = isPostgres
-  ? `COUNT(*) FILTER (WHERE pc.availability_status = 'Available' AND pc.material_id IS NOT NULL)`
-  : `SUM(pc.availability_status = 'Available' AND pc.material_id IS NOT NULL)`
+const availableCopyCount = `COUNT(*) FILTER (WHERE pc.availability_status = 'Available' AND pc.material_id IS NOT NULL)`
 
-const currentConditionStatus = isPostgres
-  ? `(array_agg(pc.condition_status ORDER BY (pc.availability_status = 'Available') DESC, pc.physical_copy_id ASC))[1]`
-  : `SUBSTRING_INDEX(
-        GROUP_CONCAT(pc.condition_status ORDER BY (pc.availability_status = 'Available') DESC, pc.physical_copy_id ASC SEPARATOR ','),
-        ',', 1
-      )`
+const currentConditionStatus = `(array_agg(pc.condition_status ORDER BY (pc.availability_status = 'Available') DESC, pc.physical_copy_id ASC))[1]`
 
 const STOCK_JOIN = `LEFT JOIN (
     SELECT

@@ -1,10 +1,9 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise'
+import type { Pool, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import {
   currentDate,
   dateAddDays,
   monthStart as startOfMonth,
-  isPostgres,
   sumEquals,
 } from '../../config/sql-dialect.js'
 import type { FinanceFilters, QueueFilters } from './printing.validation.ts'
@@ -69,7 +68,7 @@ export class PrintingRepository {
 
   private queueWhere(filters: QueueFilters) {
     const clauses = ['1=1']; const values: Array<string|number> = []
-    if (filters.q) { const q=`%${filters.q}%`; clauses.push(`(u.full_name LIKE ? OR u.school_id LIKE ? OR pr.file_name LIKE ? OR CAST(pr.request_id AS ${isPostgres ? 'TEXT' : 'CHAR'}) LIKE ? OR r.receipt_number LIKE ? OR r.verification_code LIKE ?)`); values.push(q,q,q,q,q,q) }
+    if (filters.q) { const q=`%${filters.q}%`; clauses.push(`(u.full_name LIKE ? OR u.school_id LIKE ? OR pr.file_name LIKE ? OR CAST(pr.request_id AS TEXT) LIKE ? OR r.receipt_number LIKE ? OR r.verification_code LIKE ?)`); values.push(q,q,q,q,q,q) }
     if (filters.status) { clauses.push('pr.job_status=?'); values.push(filters.status) }
     if (filters.payment) { clauses.push('pr.payment_status=?'); values.push(filters.payment) }
     return { sql: clauses.join(' AND '), values }
@@ -82,20 +81,14 @@ export class PrintingRepository {
         r.print_receipt_id,r.receipt_number,r.verification_code,r.receipt_status,r.received_at receipt_issued_at
       FROM print_requests pr JOIN users u ON u.user_id=pr.user_id
       LEFT JOIN print_payment_receipts r ON r.request_id=pr.request_id
-      WHERE ${where.sql} ORDER BY ${isPostgres
-      ? `CASE pr.job_status WHEN 'Pending' THEN 1 WHEN 'Printing' THEN 2 WHEN 'Ready for Pickup' THEN 3 WHEN 'Completed' THEN 4 WHEN 'Cancelled' THEN 5 ELSE 6 END`
-      : `FIELD(pr.job_status,'Pending','Printing','Ready for Pickup','Completed','Cancelled')`},pr.created_at ASC LIMIT ${filters.limit} OFFSET ${offset}`,where.values)
+      WHERE ${where.sql} ORDER BY CASE pr.job_status WHEN 'Pending' THEN 1 WHEN 'Printing' THEN 2 WHEN 'Ready for Pickup' THEN 3 WHEN 'Completed' THEN 4 WHEN 'Cancelled' THEN 5 ELSE 6 END,pr.created_at ASC LIMIT ${filters.limit} OFFSET ${offset}`,where.values)
     const total=Number(count[0]?.total??0)
     return { rows, pagination:{page:filters.page,limit:filters.limit,total,total_pages:Math.ceil(total/filters.limit)} }
   }
 
   async summary() {
-    const completedToday = isPostgres
-      ? `COUNT(*) FILTER (WHERE job_status='Completed' AND DATE(completed_at)=${currentDate()})`
-      : `SUM(job_status='Completed' AND DATE(completed_at)=CURDATE())`
-    const unpaidJobs = isPostgres
-      ? `COUNT(*) FILTER (WHERE payment_status='Unpaid' AND job_status<>'Cancelled')`
-      : `SUM(payment_status='Unpaid' AND job_status<>'Cancelled')`
+    const completedToday = `COUNT(*) FILTER (WHERE job_status='Completed' AND DATE(completed_at)=${currentDate()})`
+    const unpaidJobs = `COUNT(*) FILTER (WHERE payment_status='Unpaid' AND job_status<>'Cancelled')`
     const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT ${sumEquals('job_status', 'Pending')} pending_jobs,${sumEquals('job_status', 'Printing')} printing_jobs,${sumEquals('job_status', 'Ready for Pickup')} ready_jobs,${completedToday} completed_today,${unpaidJobs} unpaid_jobs,COALESCE(SUM(CASE WHEN payment_status='Paid' AND DATE(paid_at)=${currentDate()} THEN calculated_cost ELSE 0 END),0) revenue_today FROM print_requests`)
     const service_status=await this.serviceStatus()
     return { pending_jobs:Number(rows[0]?.pending_jobs??0),printing_jobs:Number(rows[0]?.printing_jobs??0),ready_jobs:Number(rows[0]?.ready_jobs??0),completed_today:Number(rows[0]?.completed_today??0),unpaid_jobs:Number(rows[0]?.unpaid_jobs??0),revenue_today:Number(rows[0]?.revenue_today??0),service_status }

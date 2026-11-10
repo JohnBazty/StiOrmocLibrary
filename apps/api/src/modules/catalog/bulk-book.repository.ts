@@ -1,5 +1,4 @@
-import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
-import { isPostgres } from '../../config/sql-dialect.js'
+import type { PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import type { BulkBookInput } from './bulk-book.validation.ts'
 
 export async function lockBookTitleByIsbn(connection: PoolConnection, isbn: string) {
@@ -34,7 +33,7 @@ export async function lockCategoryShelf(connection: PoolConnection, categoryId: 
             s.column_count, s.row_count
        FROM categories c
        LEFT JOIN floor_plan_shelves s ON s.label = c.shelf_location
-      WHERE c.category_id = ? LIMIT 1 FOR UPDATE${isPostgres ? ' OF c' : ''}`,
+      WHERE c.category_id = ? LIMIT 1 FOR UPDATE OF c`,
     [categoryId],
   )
   if (!rows[0]) return null
@@ -76,23 +75,17 @@ export async function updateBookPurchasePrice(connection: PoolConnection, titleI
 
 export async function reserveBarcodeSequence(connection: PoolConnection, year: number, count: number) {
   await connection.execute(
-    isPostgres
-      ? 'INSERT INTO barcode_sequences (sequence_year, last_value) VALUES (?, 0) ON CONFLICT (sequence_year) DO NOTHING'
-      : 'INSERT INTO barcode_sequences (`sequence_year`, `last_value`) VALUES (?, 0) ON DUPLICATE KEY UPDATE `last_value` = `last_value`',
+    'INSERT INTO barcode_sequences (sequence_year, last_value) VALUES (?, 0) ON CONFLICT (sequence_year) DO NOTHING',
     [year],
   )
   const [rows] = await connection.execute<RowDataPacket[]>(
-    isPostgres
-      ? 'SELECT last_value FROM barcode_sequences WHERE sequence_year = ? FOR UPDATE'
-      : 'SELECT `last_value` FROM barcode_sequences WHERE `sequence_year` = ? FOR UPDATE',
+    'SELECT last_value FROM barcode_sequences WHERE sequence_year = ? FOR UPDATE',
     [year],
   )
   const lastValue = Number(rows[0]?.last_value ?? 0)
   if (lastValue + count > 999999) throw new Error(`The ${year} barcode sequence is exhausted.`)
   await connection.execute(
-    isPostgres
-      ? 'UPDATE barcode_sequences SET last_value = ?, updated_at = NOW() WHERE sequence_year = ?'
-      : 'UPDATE barcode_sequences SET `last_value` = ?, `updated_at` = NOW() WHERE `sequence_year` = ?',
+    'UPDATE barcode_sequences SET last_value = ?, updated_at = NOW() WHERE sequence_year = ?',
     [lastValue + count, year],
   )
   return lastValue + 1

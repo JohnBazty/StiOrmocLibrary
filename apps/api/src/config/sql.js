@@ -1,5 +1,5 @@
 /**
- * Shared SQL helpers for the Postgres-first driver (mysql2-compatible call sites).
+ * Shared SQL helpers: `?` to $n placeholders and MySQL-style backtick stripping.
  */
 
 /** Convert MySQL `?` placeholders to Postgres `$1…$n`. Ignores `?` inside quoted strings. */

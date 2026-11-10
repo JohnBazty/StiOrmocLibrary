@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Pool } from 'mysql2/promise'
+import type { Pool } from '../../config/db.js'
 import { escalateOverdueTransactions, overdueCharge } from './circulation-overdue.service.ts'
 
 test('overdue fee uses PHP 2 per hour on cutoff day and PHP 10 per day afterward', () => {

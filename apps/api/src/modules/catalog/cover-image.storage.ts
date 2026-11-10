@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
@@ -32,16 +32,10 @@ export async function storeCoverImage(dataUri: string | null) {
       : buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'WEBP'
   if (!validSignature) throw new HttpError(422, 'BOOK_COVER_INVALID', 'The uploaded file content does not match its declared image type.')
   const filename = `${randomUUID()}.${TYPES[match[1]]}`
-  if (env.db.driver === 'postgres') {
-    if (!storage) throw new HttpError(503, 'BOOK_COVER_STORAGE_UNAVAILABLE', 'Book cover storage is not configured.')
-    const { error } = await storage.upload(filename, buffer, { contentType: match[1], upsert: false })
-    if (error) throw new HttpError(503, 'BOOK_COVER_STORAGE_UNAVAILABLE', 'Book cover storage is unavailable. Please try again.')
-    return storage.getPublicUrl(filename).data.publicUrl
-  }
-  if (process.env.VERCEL) throw new HttpError(503, 'BOOK_COVER_STORAGE_UNAVAILABLE', 'Book cover storage is not configured.')
-  await mkdir(directory, { recursive: true })
-  await writeFile(path.join(directory, filename), buffer, { flag: 'wx' })
-  return `/api/assets/covers/${filename}`
+  if (!storage) throw new HttpError(503, 'BOOK_COVER_STORAGE_UNAVAILABLE', 'Book cover storage is not configured.')
+  const { error } = await storage.upload(filename, buffer, { contentType: match[1], upsert: false })
+  if (error) throw new HttpError(503, 'BOOK_COVER_STORAGE_UNAVAILABLE', 'Book cover storage is unavailable. Please try again.')
+  return storage.getPublicUrl(filename).data.publicUrl
 }
 
 export async function removeStoredCover(publicPath: string | null) {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Pool } from 'mysql2/promise'
+import type { Pool } from '../../config/db.js'
 import { buildBookCatalogQuery, queryViewerActiveBookCount } from './book-catalog.repository.ts'
 import { parseBookCatalogFilters } from './book-catalog.validation.ts'
 
