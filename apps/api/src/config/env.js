@@ -27,11 +27,13 @@ if (isProduction && (!configuredAttendanceQrSecret || configuredAttendanceQrSecr
 
 const developmentJwtSecret = configuredJwtSecret || configuredSecret || randomBytes(48).toString('hex')
 
+// Tests run the Postgres dialect against a port that refuses at once, so a test that
+// forgets to fake `db` fails fast instead of reaching the database in apps/api/.env.
+// shortcut: Node sets NODE_TEST_CONTEXT per test process; --test-isolation=none would not.
+const TEST_DATABASE_URL = 'postgresql://test:test@127.0.0.1:1/never_connects'
+
 function resolveDatabaseUrl() {
-  // Unit tests assert MySQL SQL shapes; force local MySQL dialect when set.
-  if (process.env.DB_FORCE_MYSQL === '1' || process.env.DB_FORCE_MYSQL === 'true') {
-    return ''
-  }
+  if (process.env.NODE_TEST_CONTEXT) return TEST_DATABASE_URL
 
   const explicit = process.env.DATABASE_URL?.trim() || process.env.SUPABASE_DB_URL?.trim() || ''
   if (explicit.startsWith('postgres')) return explicit

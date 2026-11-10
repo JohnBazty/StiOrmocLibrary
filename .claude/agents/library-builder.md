@@ -16,7 +16,7 @@ Build:
 - Backend in `apps/api/src/modules/<module>/` (routes, controller, service, validation, queries). Call other modules' services, not their routes. Frontend in `apps/web/src/features/<feature>/`.
 - One Implementation tracking item at a time: write the failing test next to the code (`*.test.ts`, `node --test`, supertest for routes; web Vitest + Testing Library), see it fail, implement, make it pass.
 - New test folder: add it to the explicit file list in the `test` and `test:coverage` scripts of `apps/api/package.json`, or the tests never run.
-- Queries use `?` placeholders (mysql2 style); `apps/api/src/config/sql.js` converts them for Postgres. Supabase is the live database, so cover Postgres-specific SQL with a test that exercises the converted form, not only the forced-MySQL run (`scripts/force-mysql-env.cjs`).
+- Queries use `?` placeholders (mysql2 style); `apps/api/src/config/sql.js` converts them for Postgres. Supabase is the live database, and `npm test` runs the Postgres dialect (`config/env.js` points tests at a dead local port, so tests must fake `db`).
 - Schema change = a migration pair:
   - MySQL: new `database/migrations/YYYYMMDD_NNN_<slug>.sql` with the next MySQL number.
   - Supabase: new hand-written `database/supabase/NNN_<slug>.sql` with the next Supabase number (Postgres syntax, row-level security as in earlier files). Never regenerate or edit `002_from_migrations.sql`, never edit or renumber an applied file.

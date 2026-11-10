@@ -22,7 +22,7 @@ Removing MySQL leaves one dialect, tests that cover the shipped SQL, and one mig
 
 ## Status
 
-`planned` (decisions made 2026-11-10; waiting for Ethan's go-ahead to start Phase 1)
+`inprogress` (PR 1 / Phase 1 built on `fix/tests-postgres-dialect`, stacked on `fix/test-baseline`)
 
 ## Out of scope
 
@@ -101,7 +101,7 @@ process.env.DB_FORCE_MYSQL = '1'
 
 - [x] Open questions answered (2026-11-10)
 - [ ] Final MySQL dump kept offline (Ethan, before PR 1 merges)
-- [ ] PR 1 / Phase 1: tests run on the Postgres dialect; `force-mysql-env.cjs` gone
+- [x] PR 1 / Phase 1: tests run on the Postgres dialect; `force-mysql-env.cjs` gone (2026-11-10)
 - [ ] Live write checks and browser acceptance done (Ethan, before PR 2 deploys)
 - [ ] PR 2 / Phase 2: no `isPostgres` / driver branches in `apps/api/src`
 - [ ] PR 2 / Phase 3: `pg` only, `DATABASE_URL` required, `mysql2` removed, session store renamed
@@ -117,3 +117,4 @@ process.env.DB_FORCE_MYSQL = '1'
 | --- | --- | --- |
 | 2026-11-10 | Plan created. Found that `npm test` forces the MySQL dialect, so Phase 1 moves tests to the Postgres dialect first. | Agent Alpha |
 | 2026-11-10 | Ethan's decisions recorded: retire the rollback now, delete MySQL migrations, keep the backup schema about 30 days after PR 2, three PRs. Open questions replaced by Decisions and Gates. | Agent Alpha |
+| 2026-11-10 | Phase 1 built. `force-mysql-env.cjs` removed; `env.js` gives every test process (`NODE_TEST_CONTEXT`) a dead local `DATABASE_URL`, so tests never reach a database, even under a bare `node --test`; `DB_FORCE_MYSQL` removed from `env.js` early since nothing else used it. Only 6 of 269 API tests failed on the Postgres dialect, all expecting MySQL text; the Postgres SQL was correct (conflict targets match `uq_notification_user_dedupe` and the `barcode_sequences` primary key). Branch stacked on `fix/test-baseline`, which must merge first. | Agent Alpha |

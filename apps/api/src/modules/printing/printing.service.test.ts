@@ -58,7 +58,7 @@ test('starting a paid print job notifies its owner once in the status transactio
   await service.updateStatus({schoolId:'ADMIN-PORTAL-001'},4,{status:'Printing'})
   assert.equal(calls.some(call=>call.sql.includes('bond_paper_stocks')),false)
   assert.equal(calls.some(call=>call.sql.includes('paper_stock_movements')),false)
-  const notification=calls.find(call=>call.sql.includes('INSERT IGNORE INTO notifications')&&call.values.includes('print:4:printing'))
+  const notification=calls.find(call=>call.sql.includes('INSERT INTO notifications')&&call.sql.includes('ON CONFLICT (user_id,dedupe_key) DO NOTHING')&&call.values.includes('print:4:printing'))
   assert.ok(notification)
   assert.equal(notification.values[0],12)
   assert.match(String(notification.values[1]),/thesis.pdf is now printing/)

@@ -11,7 +11,7 @@ function fakePool() {
       if (sql.includes('FROM categories c')) return [[{ category_id: 2, shelf_location: 'Shelf A-1', shelf_id: 1 }]]
       if (sql.includes('FROM titles t')) return [[{ title_id: 44, title: 'Clean Code', author_name: 'Robert C. Martin', category_id: 2 }]]
       if (sql.includes('INSERT INTO barcode_sequences')) return [{ affectedRows: 1 }]
-      if (sql.includes('SELECT `last_value` FROM barcode_sequences')) return [[{ last_value: 141 }]]
+      if (sql.includes('SELECT last_value FROM barcode_sequences')) return [[{ last_value: 141 }]]
       if (sql.includes('UPDATE barcode_sequences')) return [{ affectedRows: 1 }]
       if (sql.includes('INSERT INTO materials')) { state.materialInserts += 1; return [{ insertId: 100 + state.materialInserts }] }
       if (sql.includes('INSERT INTO physical_copies')) { state.copyInserts += 1; state.copyParameters.push(parameters); return [{ insertId: 200 + state.copyInserts }] }
