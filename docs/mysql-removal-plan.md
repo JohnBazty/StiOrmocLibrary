@@ -22,7 +22,7 @@ Removing MySQL leaves one dialect, tests that cover the shipped SQL, and one mig
 
 ## Status
 
-`inprogress` (PR 1 / Phase 1 built on `fix/tests-postgres-dialect`, stacked on `fix/test-baseline`)
+`inprogress` (PR 1 / Phase 1 on `fix/tests-postgres-dialect`, stacked on `fix/test-baseline`; PR 2 / Phases 2 + 3 built on `refactor/postgres-only`, stacked on PR 1)
 
 ## Out of scope
 
@@ -118,4 +118,5 @@ process.env.DB_FORCE_MYSQL = '1'
 | 2026-11-10 | Plan created. Found that `npm test` forces the MySQL dialect, so Phase 1 moves tests to the Postgres dialect first. | Agent Alpha |
 | 2026-11-10 | Ethan's decisions recorded: retire the rollback now, delete MySQL migrations, keep the backup schema about 30 days after PR 2, three PRs. Open questions replaced by Decisions and Gates. | Agent Alpha |
 | 2026-11-10 | Phase 1 built. `force-mysql-env.cjs` removed; `env.js` gives every test process (`NODE_TEST_CONTEXT`) a dead local `DATABASE_URL`, so tests never reach a database, even under a bare `node --test`; `DB_FORCE_MYSQL` removed from `env.js` early since nothing else used it. Only 6 of 269 API tests failed on the Postgres dialect, all expecting MySQL text; the Postgres SQL was correct (conflict targets match `uq_notification_user_dedupe` and the `barcode_sequences` primary key). Branch stacked on `fix/test-baseline`, which must merge first. | Agent Alpha |
-| 2026-11-10 | Phases 2 and 3 built. `sql-dialect.js` returns Postgres SQL only (`isPostgres` and every driver branch gone); `db.js` builds only the pg pool; `env.js` throws at startup when no database URL resolves (test processes keep the dead URL); `config/db.d.ts` holds local `Pool`/`PoolConnection`/`RowDataPacket`/`ResultSetHeader` types; session store renamed `SqlSessionStore`; `mysql2` removed from `apps/api/package.json` and the lockfile. Local-disk cover upload fallback removed (Supabase Storage only). Phase 4 scripts that import `mysql2` (`run-schema.js`, `run-migration.js`, `create-auth-user.js`, `verify-floor-plan.js`) now break and wait for PR 3. | Agent Alpha |
+| 2026-11-10 | Phases 2 and 3 built. `sql-dialect.js` returns Postgres SQL only (`isPostgres` and every driver branch gone); `db.js` builds only the pg pool; `env.js` throws at startup when no database URL resolves (test processes keep the dead URL); `config/db.d.ts` holds local `Pool`/`PoolConnection`/`RowDataPacket`/`ResultSetHeader` types; session store renamed `SqlSessionStore`; `mysql2` removed from `apps/api/package.json` and the lockfile. Local-disk cover upload fallback removed (Supabase Storage only). Phase 4 scripts that import `mysql2` (`run-schema.js`, `run-migration.js`, `verify-floor-plan.js`) now break and wait for PR 3; `create-auth-user.js` uses the shared pool, so it now runs on Postgres but its SQL is unchecked (PR 3). | Agent Alpha |
+| 2026-11-10 | Review fixes: the test-database switch in `env.js` never applies when `NODE_ENV=production` (new test); the startup error in `server.ts` names Postgres instead of MySQL. | Agent Alpha |

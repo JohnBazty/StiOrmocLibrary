@@ -33,7 +33,7 @@ const developmentJwtSecret = configuredJwtSecret || configuredSecret || randomBy
 const TEST_DATABASE_URL = 'postgresql://test:test@127.0.0.1:1/never_connects'
 
 function resolveDatabaseUrl() {
-  if (process.env.NODE_TEST_CONTEXT) return TEST_DATABASE_URL
+  if (process.env.NODE_TEST_CONTEXT && !isProduction) return TEST_DATABASE_URL
 
   const explicit = process.env.DATABASE_URL?.trim() || process.env.SUPABASE_DB_URL?.trim() || ''
   if (explicit.startsWith('postgres')) return explicit
