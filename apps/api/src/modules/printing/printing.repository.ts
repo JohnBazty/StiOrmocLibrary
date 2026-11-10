@@ -68,7 +68,7 @@ export class PrintingRepository {
 
   private queueWhere(filters: QueueFilters) {
     const clauses = ['1=1']; const values: Array<string|number> = []
-    if (filters.q) { const q=`%${filters.q}%`; clauses.push(`(u.full_name LIKE ? OR u.school_id LIKE ? OR pr.file_name LIKE ? OR CAST(pr.request_id AS TEXT) LIKE ? OR r.receipt_number LIKE ? OR r.verification_code LIKE ?)`); values.push(q,q,q,q,q,q) }
+    if (filters.q) { const q=`%${filters.q}%`; clauses.push(`(u.full_name ILIKE ? OR u.school_id ILIKE ? OR pr.file_name ILIKE ? OR CAST(pr.request_id AS TEXT) ILIKE ? OR r.receipt_number ILIKE ? OR r.verification_code ILIKE ?)`); values.push(q,q,q,q,q,q) }
     if (filters.status) { clauses.push('pr.job_status=?'); values.push(filters.status) }
     if (filters.payment) { clauses.push('pr.payment_status=?'); values.push(filters.payment) }
     return { sql: clauses.join(' AND '), values }

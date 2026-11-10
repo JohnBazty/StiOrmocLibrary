@@ -27,11 +27,11 @@ function commonWhere(filters: CatalogSearchFilters, alias = 't') {
   if (filters.categoryId !== null) { where.push(`${alias}.category_id = ?`); parameters.push(filters.categoryId) }
   if (filters.publicationYear !== null) { where.push(`${alias}.publication_year = ?`); parameters.push(filters.publicationYear) }
   if (filters.author) {
-    where.push(`EXISTS (SELECT 1 FROM authors af WHERE af.title_id = ${alias}.title_id AND af.normalized_name LIKE ?)`)
+    where.push(`EXISTS (SELECT 1 FROM authors af WHERE af.title_id = ${alias}.title_id AND af.normalized_name ILIKE ?)`)
     parameters.push(`%${filters.author.toLocaleLowerCase('en-US')}%`)
   }
   if (filters.query) {
-    where.push(`(${alias}.title LIKE ? OR ${alias}.isbn LIKE ? OR EXISTS (SELECT 1 FROM authors aq WHERE aq.title_id = ${alias}.title_id AND aq.author_name LIKE ?))`)
+    where.push(`(${alias}.title ILIKE ? OR ${alias}.isbn ILIKE ? OR EXISTS (SELECT 1 FROM authors aq WHERE aq.title_id = ${alias}.title_id AND aq.author_name ILIKE ?))`)
     const like = `%${filters.query}%`
     parameters.push(like, like, like)
   }

@@ -97,23 +97,23 @@ export function buildBookCatalogQuery(filters: BookCatalogFilters) {
     parameters.push(filters.publicationYear)
   }
   if (filters.title) {
-    where.push('t.title LIKE ?')
+    where.push('t.title ILIKE ?')
     parameters.push(like(filters.title))
   }
   if (filters.author) {
-    where.push('EXISTS (SELECT 1 FROM authors author_filter WHERE author_filter.title_id = t.title_id AND author_filter.normalized_name LIKE ?)')
+    where.push('EXISTS (SELECT 1 FROM authors author_filter WHERE author_filter.title_id = t.title_id AND author_filter.normalized_name ILIKE ?)')
     parameters.push(like(filters.author.toLocaleLowerCase('en-US')))
   }
   if (filters.isbn) {
-    where.push('t.isbn LIKE ?')
+    where.push('t.isbn ILIKE ?')
     parameters.push(like(filters.isbn))
   }
   if (filters.query) {
     const pattern = like(filters.query)
     where.push(`(
-      t.title LIKE ? OR t.isbn LIKE ? OR c.category_name LIKE ? OR
+      t.title ILIKE ? OR t.isbn ILIKE ? OR c.category_name ILIKE ? OR
       CAST(t.publication_year AS CHAR) = ? OR
-      EXISTS (SELECT 1 FROM authors search_author WHERE search_author.title_id = t.title_id AND search_author.author_name LIKE ?)
+      EXISTS (SELECT 1 FROM authors search_author WHERE search_author.title_id = t.title_id AND search_author.author_name ILIKE ?)
     )`)
     parameters.push(pattern, pattern, pattern, filters.query, pattern)
   }

@@ -13,7 +13,7 @@ test('book catalog query combines prepared title, author, ISBN, category, and ye
 
   assert.match(query.dataSql, /t\.category_id = \?/)
   assert.match(query.dataSql, /t\.publication_year = \?/)
-  assert.match(query.dataSql, /author_filter\.normalized_name LIKE \?/)
+  assert.match(query.dataSql, /author_filter\.normalized_name ILIKE \?/)
   assert.match(query.dataSql, /physical_copies pc/)
   assert.match(query.dataSql, /available_copies_count/)
   assert.match(query.dataSql, /current_condition_status/)

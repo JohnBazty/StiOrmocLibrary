@@ -87,7 +87,7 @@ export function buildCatalogSearchQuery(filters: CatalogSearchFilters) {
     parameters.push(filters.publicationYear)
   }
   if (filters.author) {
-    where.push('EXISTS (SELECT 1 FROM authors af WHERE af.title_id = t.title_id AND af.normalized_name LIKE ?)')
+    where.push('EXISTS (SELECT 1 FROM authors af WHERE af.title_id = t.title_id AND af.normalized_name ILIKE ?)')
     parameters.push(`%${filters.author.toLocaleLowerCase('en-US')}%`)
   }
   if (filters.availability) {
@@ -113,9 +113,9 @@ export function buildCatalogSearchQuery(filters: CatalogSearchFilters) {
   if (filters.query) {
     const like = `%${filters.query}%`
     where.push(`(
-      t.title LIKE ? OR t.isbn LIKE ? OR t.call_number LIKE ? OR
-      rr.research_code LIKE ? OR rr.abstract_text LIKE ? OR
-      EXISTS (SELECT 1 FROM authors aq WHERE aq.title_id = t.title_id AND aq.author_name LIKE ?)
+      t.title ILIKE ? OR t.isbn ILIKE ? OR t.call_number ILIKE ? OR
+      rr.research_code ILIKE ? OR rr.abstract_text ILIKE ? OR
+      EXISTS (SELECT 1 FROM authors aq WHERE aq.title_id = t.title_id AND aq.author_name ILIKE ?)
     )`)
     parameters.push(like, like, like, like, like, like)
   }

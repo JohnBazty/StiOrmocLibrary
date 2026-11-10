@@ -57,7 +57,7 @@ function thesisWhere(filters: ThesisInventoryFilters) {
   if (filters.publicationYear) { where.push('publication_year = ?'); parameters.push(filters.publicationYear) }
   if (filters.query) {
     const like = `%${filters.query}%`
-    where.push('(title LIKE ? OR authors LIKE ? OR adviser LIKE ? OR accession_number LIKE ? OR barcode LIKE ?)')
+    where.push('(title ILIKE ? OR authors ILIKE ? OR adviser ILIKE ? OR accession_number ILIKE ? OR barcode ILIKE ?)')
     parameters.push(like, like, like, like, like)
   }
   return { sql: where.length ? `WHERE ${where.join(' AND ')}` : '', parameters }
