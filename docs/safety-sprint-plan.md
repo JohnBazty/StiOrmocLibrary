@@ -120,7 +120,7 @@ Scope is the JWT sign-in (`/api/v1/auth`). The old session sign-in (`/api/auth`)
 | S4 | Token storage | **`httpOnly` cookie**, with CSRF on every `/api/v1` write |
 | S5 | Forgotten password | **Admin-set temporary password** with a forced change at next sign-in; email reset later with notices |
 | S6 | Merging the two sign-ins | **Separate plan** after this sprint |
-| S7 | **OPEN (blocks building):** which branch is the product baseline? The live database follows `codex/library-revision-updates` and `integration/2026-10`, not `main` | Recommendation: agree with JohnBazty to merge his active branch (`codex/library-revision-updates`, 19 commits ahead, 18 behind `main`) into `main` first, so `main` matches the live schema. Then rebase this sprint on it |
+| S7 | Which branch is the product baseline? The live database follows `codex/library-revision-updates` and `integration/2026-10`, not `main` | **Merge John's branch into `main` first** (Ethan, 2026-11-11). A dry run gave 28 conflicts across 513 files, MySQL files still present on his branch, and edits to five applied migrations, so **JohnBazty merges `main` into his branch** and opens a PR (Ethan, 2026-11-11). Building waits for that PR to merge |
 
 ## Implementation tracking
 
