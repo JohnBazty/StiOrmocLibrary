@@ -29,7 +29,7 @@ The server enforces all of this; the web app only displays it.
 | `ink_repository` | `color_variation` (Cyan, Magenta, Yellow, Black), `available_bottles` (unopened bottles, integer ≥ 0). `printer_id` ignored. | Existing, unchanged |
 | `bond_paper_stocks` | `paper_size_dimension` (Short, A4, Long), `unopened_reams` (integer ≥ 0) | Existing, unchanged |
 | `printing_service_settings` | `accepting_requests`, `unavailable_reason` (existing). **New:** `block_on_zero_stock` boolean, not null, default true (only if Q2 is accepted). | Existing; one new column |
-| `notifications` | One row per Admin when a required supply reaches zero, with a dedupe key per stock movement | Existing table, new message kind |
+| `notifications` | One row per Admin when a required supply falls to its low threshold, and again when it reaches zero, with a dedupe key per stock movement | Existing table, two new message kinds |
 | Supply availability (derived, not stored) | For each configuration: `print_type`, `paper_size`, `available` boolean, `missing` list of supplies (for example `Ink: Black`, `Paper: Long`) | New, computed |
 
 `printers` and `print_requests.printer_id` are not read or written.
@@ -43,7 +43,7 @@ The server enforces all of this; the web app only displays it.
 
 **Librarian records stock going down**
 1. The Librarian records "load one ink bottle", "open one ream" or an "Issued" movement, as today.
-2. If that movement takes a required supply from one or more to zero, the same transaction adds a notification for every active Admin: which supply is at zero and which configurations are now unavailable.
+2. If that movement takes a required supply from above its low threshold to at or below it, the same transaction adds a "low stock" notification for every active Admin. If it takes the supply from one or more to zero, it adds an "out of stock" notification instead: which supply is at zero and which configurations are now unavailable.
 3. From that moment, new quotes and submits for those configurations are refused.
 
 **Librarian restocks**
@@ -61,12 +61,12 @@ The server enforces all of this; the web app only displays it.
 - **R3. Untracked supply does not block.** If no ink row exists for a color, or no paper row for a size, that supply is "not tracked" and does not make a configuration unavailable. (Keeps a fresh deployment with no stock rows working. Q3.)
 - **R4. Zero blocks.** A configuration is unavailable when any required, tracked supply has stock 0 and the zero-stock block is on.
 - **R5. Manual switch wins.** When `accepting_requests` is off, every configuration is unavailable for the manual reason; supply checks add nothing. (Existing behavior kept.)
-- **R6. Quote and submit both check.** Quote and submit refuse an unavailable configuration with `422 PRINT_SUPPLY_UNAVAILABLE` and a message that names the missing supplies. Submit re-checks even if the quote passed.
+- **R6. Quote and submit both check.** Quote and submit refuse an unavailable configuration with `422 PRINT_SUPPLY_UNAVAILABLE` and a message that names the missing supplies. Submit re-checks even if the quote passed, and does so inside the same transaction as the request insert, reading the settings row and the required stock rows with a lock that waits for any stock movement in progress. So a request is never created after its last required unit was taken.
 - **R7. Existing requests are not touched.** Requests already Pending, Printing or Ready for Pickup keep their status and price. The Librarian can still record payment and move them through the queue. (Same as CUPS keeping queued jobs when a printer stops.)
 - **R8. Automatic recovery.** When stock of every required supply is above zero again, the configuration is available on the next read. No stored flag to reset.
 - **R9. Service status shows the reasons.** `GET /service-status` (user and admin) adds a list of all six configurations with `available` and `missing`. Students see only supply names and configuration names, never stock counts or costs.
-- **R10. One notification per drop to zero.** A stock movement that takes a required, tracked supply from ≥ 1 to 0 creates one notification for each active Admin, in the same transaction as the movement. A movement that leaves stock at 0, or goes up, creates none. Re-running the same movement cannot duplicate it (dedupe key per movement).
-- **R11. Low stock unchanged.** The existing low-stock flags (`is_low`, thresholds) stay as they are; R4 is a separate, stronger level.
+- **R10. Low and out-of-stock alerts.** A stock movement that takes a required, tracked supply from above its low threshold to at or below it (but above 0) creates one "low stock" notification for each active Admin; one that takes it from ≥ 1 to 0 creates one "out of stock" notification for each active Admin instead. Both are written in the same transaction as the movement. A movement that stays on the same side of the threshold, stays at 0, or goes up creates none. The dedupe key per movement stops duplicates. For an ink color with several rows, the threshold is the lowest `low_stock_threshold_bottles` among its rows. (Final Draft: "low-ink triggers when thresholds are breached".)
+- **R11. Low-stock flags unchanged.** The existing low-stock flags (`is_low`, thresholds) on the supplies screen stay as they are; R10 only adds the alert, and R4 is a separate, stronger level.
 - **R12. Block setting** (only with Q2). When `block_on_zero_stock` is off, R4 and R6 do not refuse; R9 still reports `missing` so the Librarian sees the warning, and R10 still notifies. Changing it is Admin-only.
 
 ## Configuration
@@ -87,6 +87,8 @@ The server enforces all of this; the web app only displays it.
 - Stock drops to 0 between quote and submit: submit refuses (R6); the student re-chooses.
 - The Librarian moves a Pending job to Printing while its supply is at 0: allowed (R7); the Librarian knows the real printer.
 - A restock and a drop to 0 happen at once: both lock the same stock row today, so they run one after the other; availability reads whatever is committed.
+- The last Long ream is opened while a student submits Long: the submit's check waits for the movement (R6), so either the request was committed first or it is refused.
+- A deployment with no printer, ink or paper rows: everything is untracked, every configuration is available (R3).
 - Paper row exists for Short and A4 only: Long is untracked, not blocked (R3).
 
 ## Security & privacy
@@ -114,6 +116,7 @@ The server enforces all of this; the web app only displays it.
 - **Q3. Missing stock row.** *Recommended:* treat as untracked, not zero (R3), so deployments without stock rows keep working.
 - **Q4. Alert students with pending requests?** *Recommended:* no in v1. Their requests are not cancelled (R7), and the Librarian handles them at the counter. New requesters see the reason on the printing page (R9).
 - **Q5. Colored needs all four colors?** *Recommended:* yes (R1); the app cannot tell which colors a document uses.
+- **Q6. A "Maintenance" cause on the manual pause?** The Final Draft names maintenance and stock deficits as two reasons printing is disabled. Today the manual switch stores only a free-text reason. *Recommended:* not in v1. The reason text already tells students why, and supply-out is already separate because it is worked out from stock, so a restock never ends a manual pause (R5, R8). Add a cause column later only if reports need to count maintenance pauses.
 
 ## Acceptance criteria
 
@@ -122,15 +125,18 @@ The server enforces all of this; the web app only displays it.
 - **R1/R4** Given Long paper is 0, when a student quotes Colored Long, then it is refused naming Long paper; Colored A4 still quotes.
 - **R2** Given two Black ink rows with 0 and 2 bottles, when a student quotes Monochrome A4, then it succeeds.
 - **R3** Given no ink row for Yellow, when a student quotes Colored A4 with other supplies above 0, then it succeeds.
-- **R5** Given the manual switch is off and all stock is above 0, when a student quotes, then the server returns `PRINTING_UNAVAILABLE` with the manual reason.
+- **R3** Given no rows in `printers`, `ink_repository` or `bond_paper_stocks`, when a student reads service status and submits, then all six configurations are available and the submit succeeds.
+- **R5** Given the manual switch is off and all stock is above 0, when a student quotes, then the server returns `PRINTING_UNAVAILABLE` with the manual reason; given the switch is off and Long paper is restocked from 0, then the switch stays off.
 - **R6** Given a quote succeeded and Black then drops to 0, when the student submits Monochrome, then submit is refused and no request row is created.
+- **R6** Given the last Long ream is opened in one transaction while a student submits Long in another, then either the request was committed before the ream was opened or the submit is refused; a request is never created after Long reached 0.
 - **R7** Given a Pending Colored request and Cyan drops to 0, when the Librarian records payment and moves it to Printing, then both succeed and the request is unchanged otherwise.
 - **R8** Given Black is 0, when the Librarian restocks 1 bottle of Black, then the next quote for Monochrome succeeds.
 - **R9** Given Long paper is 0, when a student reads service status, then Colored Long and Monochrome Long show `available: false` with `missing: ["Paper: Long"]`, the other four show `available: true`, and no stock counts appear.
-- **R10** Given Black has 1 bottle and two active Admins, when the Librarian loads that bottle, then two notifications are created in the same transaction; when a later movement leaves Black at 0 (for example an adjustment of 0 net), then no new notification is created; the dedupe key per movement stops a duplicate if the insert runs twice.
+- **R10** Given Black has 2 bottles, a threshold of 1 and two active Admins, when the Librarian loads one bottle, then two "low stock" notifications are created in the same transaction; when they load the last bottle, then two "out of stock" notifications are created; when a later movement leaves Black at 0, then none is created; the dedupe key per movement stops a duplicate if the insert runs twice.
 - **R11** Given a paper size at its low threshold but above 0, when a student quotes it, then it succeeds and the supplies screen still shows it as low.
 - **R12** Given the block setting is off and Black is 0, when a student quotes Monochrome, then it succeeds and admin service status still lists Black as missing; when a Student or Faculty tries to change the setting, then the server returns 403.
 
 ## Change log
 
 - 2026-11-10: Draft written from the map for JohnBazty's review (GATE 1).
+- 2026-11-10: After an independent feature-cartographer and spec-extractor pass, added low-stock alerts to R10 (Final Draft "low-ink triggers"), the in-transaction submit check to R6, the no-rows and manual-pause criteria, and Q6 (maintenance cause).
