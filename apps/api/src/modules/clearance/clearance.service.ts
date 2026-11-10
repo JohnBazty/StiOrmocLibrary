@@ -5,10 +5,6 @@ import { HttpError } from '../../core/http-error.ts'
 import { createFinesService } from '../fines/fines.service.ts'
 import { positiveId, validateLostDecision, validateOverride, validateRevocation } from './clearance.validation.ts'
 
-function insertIgnoreNotification(sql: string) {
-  return `${sql.replace(/^\s*INSERT\s+IGNORE\s+INTO/i, 'INSERT INTO')} ON CONFLICT (user_id, dedupe_key) DO NOTHING`
-}
-
 export type ClearanceActor = { accountId?: number; role?: string }
 
 function actorAccountId(actor: ClearanceActor) {
@@ -305,8 +301,9 @@ export function createClearanceService(database: Pool = db) {
            VALUES ('lost_book_reported',?,?, 'Lost book reported',?)`, [userId, transactionId, `${loan.title} was reported lost by ${staffReport ? 'library staff' : 'its borrower'}.`],
         )
         await connection.execute(
-          insertIgnoreNotification(`INSERT IGNORE INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
-           VALUES (?, 'Lost book report received', ?, 'Lost Book','Lost Book Report',?,'/student/clearance','Urgent',?,NOW(),NOW())`),
+          `INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
+           VALUES (?, 'Lost book report received', ?, 'Lost Book','Lost Book Report',?,'/student/clearance','Urgent',?,NOW(),NOW())
+          ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
           [loan.user_id, `${loan.title} has been reported lost. Library staff will verify the report and replacement charge.`, insert.insertId, `lost-report:${insert.insertId}:pending`],
         )
         await connection.commit()
@@ -352,8 +349,9 @@ export function createClearanceService(database: Pool = db) {
              VALUES ('lost_book_confirmed',?,?, 'Lost book confirmed',?)`, [report.user_id, report.transaction_id, hasQuotation ? `${report.title} was confirmed lost. Replacement charge: PHP ${charge!.toFixed(2)}.` : `${report.title} was confirmed lost. Staff are awaiting a supplier quotation before assessing a charge.`],
           )
           await connection.execute(
-            insertIgnoreNotification(`INSERT IGNORE INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
-             VALUES (?, 'Lost book charge confirmed', ?, 'Lost Book','Lost Book Report',?,'/student/clearance','Urgent',?,NOW(),NOW())`),
+            `INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
+             VALUES (?, 'Lost book charge confirmed', ?, 'Lost Book','Lost Book Report',?,'/student/clearance','Urgent',?,NOW(),NOW())
+          ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
             [report.user_id, hasQuotation ? `${report.title} was confirmed lost. Replacement charge: PHP ${charge!.toFixed(2)}.` : `${report.title} was confirmed lost. Awaiting a supplier quotation; no charge has been assessed.`, reportId, `lost-report:${reportId}:confirmed`],
           )
         } else {
@@ -363,8 +361,9 @@ export function createClearanceService(database: Pool = db) {
           )
           await connection.execute('UPDATE borrow_transactions SET reported_lost_at=NULL,updated_at=NOW() WHERE transaction_id=?', [report.transaction_id])
           await connection.execute(
-            insertIgnoreNotification(`INSERT IGNORE INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
-             VALUES (?, 'Lost book report rejected', ?, 'Lost Book','Lost Book Report',?,'/student/borrowing','Important',?,NOW(),NOW())`),
+            `INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
+             VALUES (?, 'Lost book report rejected', ?, 'Lost Book','Lost Book Report',?,'/student/borrowing','Important',?,NOW(),NOW())
+          ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
             [report.user_id, `${report.title} remains an active loan. Please coordinate with the library if this is incorrect.`, reportId, `lost-report:${reportId}:rejected`],
           )
         }
@@ -403,8 +402,9 @@ export function createClearanceService(database: Pool = db) {
           await connection.execute("UPDATE lost_book_reports SET charge_resolution='Waived',resolution_reason=?,updated_at=NOW() WHERE lost_book_report_id=?", [reason, reportId])
         }
         const message = action === 'Charge' ? `${report.title}: replacement charge confirmed from supplier quotation.` : `${report.title}: no monetary replacement charge is due. ${reason}`
-        await connection.execute(insertIgnoreNotification(`INSERT IGNORE INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
-          VALUES (?, 'Lost book resolution', ?, 'Lost Book','Lost Book Report',?,'/student/clearance','Important',?,NOW(),NOW())`),
+        await connection.execute(`INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
+          VALUES (?, 'Lost book resolution', ?, 'Lost Book','Lost Book Report',?,'/student/clearance','Important',?,NOW(),NOW())
+          ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
         [report.user_id, message, reportId, `lost-report:${reportId}:resolution`])
         await connection.execute("INSERT INTO admin_notifications(event_type,actor_user_id,borrow_transaction_id,message_title,message_body) VALUES ('lost_book_resolved',?,?, 'Lost book resolved',?)", [actorId, report.transaction_id, message])
         await connection.commit()

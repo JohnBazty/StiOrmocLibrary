@@ -45,7 +45,7 @@ export function createAttendanceService(pool: Pool = db) {
              FROM users WHERE user_id=? LIMIT 1`, [userId],
         ),
         pool.execute<RowDataPacket[]>(
-          `SELECT log_id,${formatDate('attendance_date', '%Y-%m-%d', 'YYYY-MM-DD')} attendance_date,
+          `SELECT log_id,${formatDate('attendance_date', 'YYYY-MM-DD')} attendance_date,
                   ${formatTime('time_in')} time_in,
                   CASE WHEN time_out IS NULL THEN NULL ELSE ${formatTime('time_out')} END time_out,
                   ${'checkout_source,'}reason_for_visit purpose,CASE WHEN time_out IS NULL THEN 'Inside' ELSE 'Exited' END presence

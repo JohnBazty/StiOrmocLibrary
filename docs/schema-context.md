@@ -5,13 +5,13 @@
 The API runs on Supabase PostgreSQL only (`DATABASE_URL`, `pg`). MySQL was retired on 2026-11-10; see [mysql-removal-plan.md](mysql-removal-plan.md). History of the move: [supabase-migration-plan.md](supabase-migration-plan.md).
 
 - When `DATABASE_URL` (postgresql://…) is set, the runtime uses `pg` against drafts under [database/supabase/](../database/supabase/).
-- Device sign-in migration 032 is the latest applied Postgres file. The next unused number is 033.
+- Device sign-in migration 032 is the latest applied Postgres file. Branding 033 is pending review. The next unused number is 034.
 - Additive MAIN product tables for Postgres land in `database/supabase/005_main_product_gapfill.sql` (033–040).
 - Applied Supabase Phase 2 files `012`–`014` add `book_quotations`, lost-report charge resolution, `library_job_runs`, `invoice_setup`, and `customer_invoices`. Existing payment rows now have `document_label='Legacy Receipt'`; future rows default to `Payment Record`.
-- Branding source `017_rename_system_brand.sql` changes only the default public library name and preserves customized names. It was integrated from GitHub without applying SQL; reconcile it with the existing hosted ledger before replay.
+- Branding 033 changes the default public library name and updates the former stock name. It preserves customized names.
 - Invoice setup and ledger tables are retained but the invoice module is archived as of 2026-09-28. They remain in the schema health check because Admin account history and fine-payment reversal can refer to existing invoice records. The active app does not expose invoice pages or operations. Printing and fine payment records remain active and retain their original labels.
 - Applied Supabase Phase 6 file `015` adds `registration_requests` with hashed one-time codes and password hashes pending approval, the Library Staff role, a private `profile-avatars` Storage bucket, and `profile_avatar_submissions`. Current local registration puts every public role in `PendingApproval` after email verification; Admin review creates an Active account or marks the request Rejected. The API supplies standard decision notes and records the reviewer/time without a typed Audit reason. Completed/rejected requests clear their extra password hash. Applied Supabase file `016` backfills missing `accounts` links for existing Student/Faculty `users`, retaining their school ID, password hash, role, status, and operational user ID. The MySQL rollback reference `047` also extends account/user role enums with Staff but remains unapplied.
-- The 2026-09-25 historical data cutover copied local MySQL rows into Supabase after applying Postgres 008–009. Hosted users/accounts were preserved, and the pre-cutover hosted snapshot is in schema `mysql_cutover_backup_20260925100301`. Postgres 010 adds book archive actor and floor image version metadata. Postgres 011 adds account authentication versions and management audit events. Product files 012–016 are now applied; the private pre-migration snapshot of affected rows for 012–015 is `migration_backup_20260927154637`. Next unused Postgres file number: **028** (Phase 7 file 026 applied; Phase 6 file 025 applied; Phase 5 files 023/024 applied; Phase 4 file 022 applied; Revision Phase 3 file `021` and Revision Phase 1 file `020` applied; externally managed `017`–`019` preserved). The live ledger also contains two advisor-named files not present in this checkout; reconcile their sources before a whole-directory replay. See the cutover record in the migration plan.
+- The 2026-09-25 historical data cutover copied local MySQL rows into Supabase after applying Postgres 008–009. Hosted users/accounts were preserved, and the pre-cutover hosted snapshot is in schema `mysql_cutover_backup_20260925100301`. Postgres 010 adds book archive actor and floor image version metadata. Postgres 011 adds account authentication versions and management audit events. Product files 012–016 are now applied; the private pre-migration snapshot of affected rows for 012–015 is `migration_backup_20260927154637`. The current tracker above supersedes historical numbering. See the cutover record in the migration plan.
 
 ## Borrowing policy management archive — 2026-10-17
 
@@ -370,7 +370,7 @@ Migration `20260907_038_shelf_grid_locations.sql` adds the first detailed shelf-
 
 ## Main integration — 2026-10-11
 
-The main branch was reconciled with the current revision permission model and phase workflows. Borrowing policy management uses the Librarian workspace; prior login sessions are invalidated when a new login succeeds. Competing upstream SQL identities are retained as non-executable references under `database/upstream-main/`; no migration was applied. Existing phase statuses and applied migration identities remain unchanged. See `docs/main-branch-integration.md`.
+The main branch was reconciled with the current revision permission model and phase workflows. Borrowing policy management uses the Librarian workspace; prior login sessions are invalidated when a new login succeeds. The former reference directory is preserved in Git history. Checksum-matched applied sources now live under `database/supabase/`. See `docs/main-branch-integration.md`.
 
 
 ## October 16 revisions — applied contract (2026-10-17)
@@ -406,7 +406,7 @@ Applied Postgres migration `031_semester_enrollment.sql` supersedes draft 028. E
 
 ## Remembered browser sign-in (2026-11-10)
 
-Postgres migration `032_login_devices.sql` was applied individually on 2026-11-10. The next unused Postgres number is 033. The API reads the new fields only when `LOGIN_DEVICES_ENABLED=true` on Postgres.
+Postgres migration `032_login_devices.sql` was applied individually on 2026-11-10. Branding 033 is pending review. The API reads the new fields only when `LOGIN_DEVICES_ENABLED=true` on Postgres.
 
 - `library_login_sessions` stores the browser token hash and optional seven-day deadline alongside the existing account version, last activity and revocation time. A browser-session cookie identifies an ordinary sign-in. It can resume within the existing ten-minute inactivity limit.
 - `login_otp_challenges.remember_device` binds the Student or Faculty choice to the verified challenge.

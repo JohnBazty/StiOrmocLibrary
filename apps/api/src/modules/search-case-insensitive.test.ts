@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import test from 'node:test'
 
-// Postgres LIKE is case-sensitive (MySQL's collation was not), so SQL in the API must use ILIKE.
+// Catalog and user searches require PostgreSQL’s case-insensitive ILIKE.
 const srcDir = new URL('../', import.meta.url)
 const sourceFiles = readdirSync(srcDir, { recursive: true, encoding: 'utf8' })
   .filter(file => /\.(ts|js)$/.test(file) && !/\.test\.(ts|js)$/.test(file) && !file.endsWith('.d.ts'))
