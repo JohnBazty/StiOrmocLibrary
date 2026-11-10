@@ -6,9 +6,9 @@
 - npm, included with Node.js.
 - A modern browser.
 
-MySQL is required for authentication and the live Category, Book/Research, inventory export, and Reservation modules. Other presentation-only screens may still use mock operational data while their integrations are completed.
+A Supabase Postgres database (`DATABASE_URL`) is required for authentication and the live Category, Book/Research, inventory export, and Reservation modules. Other presentation-only screens may still use mock operational data while their integrations are completed.
 
-When you are ready to install the database, follow [MySQL Server and Workbench Setup](mysql-workbench-setup.md).
+Database setup is described in the repository `README.MD` (Configure the database).
 
 ## Install and run
 
@@ -66,8 +66,7 @@ Copy `apps/api/.env.example` to `apps/api/.env` when environment-specific values
 | --- | --- | --- |
 | `PORT` | `4000` | Express API port |
 | `WEB_ORIGIN` | `http://localhost:5173` | Allowed development browser origin |
-| `DB_HOST`, `DB_PORT` | `127.0.0.1`, `3306` | MySQL connection address |
-| `DB_USER`, `DB_PASSWORD`, `DB_NAME` | See `.env.example` | Application database credentials |
+| `DATABASE_URL` | None; required | Supabase Postgres connection string |
 | `SESSION_SECRET` | No production default | Signs opaque session identifiers; use 32+ random characters |
 
 The API loads `apps/api/.env`. Production requires strong, distinct session and JWT secrets.

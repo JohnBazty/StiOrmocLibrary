@@ -22,7 +22,7 @@ Removing MySQL leaves one dialect, tests that cover the shipped SQL, and one mig
 
 ## Status
 
-`inprogress` (PR 1 / Phase 1 on `fix/tests-postgres-dialect`, stacked on `fix/test-baseline`; PR 2 / Phases 2 + 3 built on `refactor/postgres-only`, stacked on PR 1)
+`built` pending Ethan's gates (PR 3 / Phases 4 + 5 built on `chore/retire-mysql-tooling`, stacked on PR 2; the wiki update and the gates below stay with Ethan)
 
 ## Out of scope
 
@@ -106,8 +106,8 @@ process.env.DB_FORCE_MYSQL = '1'
 - [x] PR 2 / Phase 2: no `isPostgres` / driver branches in `apps/api/src` (2026-11-10)
 - [x] PR 2 / Phase 3 (2026-11-10): `pg` only, `DATABASE_URL` required, `mysql2` removed, session store renamed
 - [ ] Vercel `DB_*` MySQL variables removed after PR 2 deploys (Ethan)
-- [ ] PR 3 / Phase 4: MySQL scripts, tools and migration tree removed; hook updated
-- [ ] PR 3 / Phase 5: trackers, agent docs, setup docs and wiki updated
+- [x] PR 3 / Phase 4 (2026-11-10): MySQL scripts, tools and migration tree removed; hook left as is (see change log)
+- [x] PR 3 / Phase 5 (2026-11-10): trackers, agent docs and setup docs updated; wiki update is Ethan's separate process
 - [ ] Status set to `built`
 - [ ] Cutover backup schema dumped offline and dropped (separate go-ahead, about 30 days after PR 2)
 
@@ -120,3 +120,4 @@ process.env.DB_FORCE_MYSQL = '1'
 | 2026-11-10 | Phase 1 built. `force-mysql-env.cjs` removed; `env.js` gives every test process (`NODE_TEST_CONTEXT`) a dead local `DATABASE_URL`, so tests never reach a database, even under a bare `node --test`; `DB_FORCE_MYSQL` removed from `env.js` early since nothing else used it. Only 6 of 269 API tests failed on the Postgres dialect, all expecting MySQL text; the Postgres SQL was correct (conflict targets match `uq_notification_user_dedupe` and the `barcode_sequences` primary key). Branch stacked on `fix/test-baseline`, which must merge first. | Agent Alpha |
 | 2026-11-10 | Phases 2 and 3 built. `sql-dialect.js` returns Postgres SQL only (`isPostgres` and every driver branch gone); `db.js` builds only the pg pool; `env.js` throws at startup when no database URL resolves (test processes keep the dead URL); `config/db.d.ts` holds local `Pool`/`PoolConnection`/`RowDataPacket`/`ResultSetHeader` types; session store renamed `SqlSessionStore`; `mysql2` removed from `apps/api/package.json` and the lockfile. Local-disk cover upload fallback removed (Supabase Storage only). Phase 4 scripts that import `mysql2` (`run-schema.js`, `run-migration.js`, `verify-floor-plan.js`) now break and wait for PR 3; `create-auth-user.js` uses the shared pool, so it now runs on Postgres but its SQL is unchecked (PR 3). | Agent Alpha |
 | 2026-11-10 | Review fixes: the test-database switch in `env.js` never applies when `NODE_ENV=production` (new test); the startup error in `server.ts` names Postgres instead of MySQL. | Agent Alpha |
+| 2026-11-10 | Phases 4 and 5 built (PR 3, `chore/retire-mysql-tooling`). Removed `run-schema.js`, `run-migration.js`, `verify-floor-plan.js` (no users), the `db:schema`/`db:migrate`/`db:migrate:auth` scripts, `tools/ai` cutover tools, `database/mysql56-schema.sql`, `database/migrations/` (46 files) and `docs/mysql-workbench-setup.md`; last commit with them is `a767d88` (noted in `database/supabase/README.md`). `create-auth-user.js` SQL was already valid Postgres; only its error text changed. The `tools/ai/smoke-*` and print-migration scripts read the removed `env.db.driver`, so those checks were dropped. Trackers, `CLAUDE.md`, `AGENTS.md`, `agent.md`, schema and setup docs, `README.MD` and the agent files now say Postgres only; `docs/supabase-migration-plan.md` set to `built`. **Deliberate deviation:** `.claude/hooks/*` and `.claude/settings*.json` not edited (Ethan's call); the stale `db:migrate`/`db:schema`/`mysql` command names there match nothing. The 8 `*.migration.test.ts` files and 2 inline tests only asserted the text of the deleted MySQL files, so they were removed (API tests 272 to 252, all passing). Wiki left to Ethan. | Agent Alpha |
