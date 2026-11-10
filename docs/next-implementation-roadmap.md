@@ -7,10 +7,10 @@ STI ILMS already implements much of the foundation described in the feature revi
 ## Plan metadata
 
 - **Date created:** 2026-10-10
-- **Date last updated:** 2026-10-10
+- **Date last updated:** 2026-11-10
 - **Status:** `planned`
-- **Active database:** Supabase PostgreSQL
-- **Next migration numbers:** Supabase `016`; MySQL rollback reference `046`
+- **Active database:** Supabase PostgreSQL (only database; MySQL retired 2026-11-10)
+- **Next migration number:** Supabase `018` (renewals took `017`; planned: long-overdue/damage `018`, job runner `019`, stocktake `020`)
 
 ## Objective
 
@@ -19,7 +19,7 @@ Deliver a reliable, policy-controlled circulation workflow first, then add compl
 ## Constraints and assumptions
 
 - Preserve the Node.js/Express modular monolith and React web application.
-- Keep Supabase PostgreSQL as the active database and MySQL as the rollback reference.
+- Supabase PostgreSQL is the only database; each schema change is one new file under `database/supabase/`.
 - Reconcile the known Supabase migration-ledger gaps before any whole-directory replay.
 - Preserve current API behavior while new policy and audit fields are introduced additively.
 - Reuse existing `borrow_transactions`, `reservations`, `fine_policy_versions`, `notifications`, `inventory_audit_events`, account lifecycle, and label-generation code.

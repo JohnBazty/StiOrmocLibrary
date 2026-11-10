@@ -1,4 +1,4 @@
-import type { Pool, PoolConnection } from 'mysql2/promise'
+import type { Pool, PoolConnection } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { createBorrowingPolicyRepository } from './borrowing-policy.repository.ts'
@@ -146,6 +146,12 @@ function assertActorCanAccessLoan(account: RenewalAccount, loan: RenewalLoan, st
   }
 }
 
+/** Postgres errors carry a five-character SQLSTATE; after one, the transaction is aborted. */
+function isDatabaseError(error: unknown): error is { code: string; constraint?: string } {
+  const code = (error as { code?: unknown } | null)?.code
+  return typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code)
+}
+
 function assertIdempotentOwner(
   decision: StoredRenewalDecision,
   transactionId: number,
@@ -201,7 +207,8 @@ export function createRenewalService(database: Pool = db, clock: () => Date = ()
           policy.dueTimeCutoff,
           closedDates,
         )
-      } catch {
+      } catch (error) {
+        if (isDatabaseError(error)) throw error
         blockers.push(blocker('RENEWAL_CALENDAR_UNAVAILABLE'))
       }
     }
@@ -245,6 +252,10 @@ export function createRenewalService(database: Pool = db, clock: () => Date = ()
           return decisionDto(existing, policy?.maxRenewals ?? null)
         }
 
+        // Lock the title's copies before the loan row: checkout locks copy then loan, and
+        // reservation creation locks the same copies, so this order avoids deadlocks.
+        const unlockedLoan = await repository.findLoan(transactionId, connection, false)
+        if (unlockedLoan?.titleId) await repository.lockTitleCopies(unlockedLoan.titleId, connection)
         const result = await evaluate(transactionId, actor, connection, true)
         const renewalNumber = result.loan.renewalCount + 1
         const approved = result.blockers.length === 0 && result.proposedDueAt !== null
@@ -318,6 +329,9 @@ export function createRenewalService(database: Pool = db, clock: () => Date = ()
         }
       } catch (error) {
         await connection.rollback()
+        if (isDatabaseError(error) && error.code === '23505' && error.constraint === 'uq_loan_renewal_request_key') {
+          throw new HttpError(409, 'RENEWAL_REQUEST_KEY_CONFLICT', 'This request key is already in use.')
+        }
         throw error
       } finally {
         connection.release()

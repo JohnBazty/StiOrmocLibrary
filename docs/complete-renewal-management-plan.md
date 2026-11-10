@@ -9,11 +9,11 @@ Renewal management will let a borrower request one additional operating day befo
 ## Plan metadata
 
 - **Date created:** 2026-10-10
-- **Date last updated:** 2026-10-11
+- **Date last updated:** 2026-11-10
 - **Status:** `built`
-- **Active database:** Supabase PostgreSQL
-- **Branch:** `feat/renewal-management`
-- **Planned migration numbers:** Supabase `017` and MySQL rollback reference `047` after borrowing-policy consumes `016` / `046`
+- **Active database:** Supabase PostgreSQL (only database since 2026-11-10)
+- **Branch:** `feat/renewal-management-v2` (revived from draft `feat/renewal-management`)
+- **Migration number:** Supabase `017` (MySQL `047` dropped with MySQL)
 - **Depends on:** versioned borrowing policies (`codex/configurable-borrowing-policies`), structured circulation preflight (`feat/circulation-preflight` or policies branch), and reliable production background jobs
 - **Build plan:** [Renewal Management Implementation Plan](renewal-management-implementation-plan.md)
 
@@ -354,3 +354,4 @@ The feature is complete only when:
 - **2026-10-10:** Ethan approved. Added branch `feat/renewal-management`, locked migrations to Supabase `017` / MySQL `047` after policies consume `016` / `046`, and linked the build-ready implementation plan.
 - **2026-10-10:** Completed the local API slice, including borrower/Admin routes, transaction-safe decisions, renewal history fields, schema readiness, initial due-date writes, and service tests. The full API suite, type check, and production build pass; web work and hosted acceptance remain.
 - **2026-10-11:** Hosted acceptance passed via disposable Supabase smoke (`smoke:renewal`): first renewal approved, second rejected with `RENEWAL_LIMIT_REACHED`. Status set to `built`.
+- **2026-11-10:** Revived on Postgres-only `main` as `feat/renewal-management-v2`; MySQL migration dropped, Supabase `017` unchanged. See the implementation plan change log.

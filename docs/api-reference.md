@@ -185,7 +185,7 @@ Admin-only physical desk checkpoint for pending claims (`flow: "claim"`). Accept
 
 ### Loan renewals
 
-Borrower preflight/submit and Admin renew-on-behalf use the same decision service. Preflight returns current/proposed due dates, policy version, renewal usage, blockers, and `canRequestRenewal`. Submit accepts a client `requestKey` (idempotent). Approved renewals extend from the current due date by the active policy's `renewalExtensionDays` on the operating calendar; rejected attempts are stored without changing `due_at`. Decision source is `System` for borrower requests and `Staff` for Admin-on-behalf. Hard blockers cannot be overridden. Due-reminder dedupe keys include `renewal_count`.
+Borrower preflight/submit and Admin renew-on-behalf use the same decision service. Preflight returns current/proposed due dates, policy version, renewal usage, blockers, and `canRequestRenewal`. Submit accepts a client `requestKey` (idempotent). Approved renewals extend from the current due date by the active policy's `renewalExtensionDays` on the operating calendar; rejected attempts are stored without changing `due_at`. Decision source is `System` for borrower requests and `Staff` for Admin-on-behalf. Hard blockers cannot be overridden. Reusing a `requestKey` that belongs to another account or loan returns `409 RENEWAL_REQUEST_KEY_CONFLICT`. Borrower submits are limited to 10 per account per 15 minutes (`429 RENEWAL_RATE_LIMITED`). Due-reminder dedupe keys keep the `loan:<id>:due-12h` form until a loan is renewed, then add the renewal count (`loan:<id>:renewal:<n>:due-12h`).
 
 ## Admin attendance and active users (JWT)
 

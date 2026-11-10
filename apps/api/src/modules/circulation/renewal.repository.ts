@@ -1,4 +1,4 @@
-import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { forUpdate, insertIgnore } from '../../config/sql-dialect.js'
 
@@ -197,7 +197,9 @@ export function createRenewalRepository(database: Pool = db) {
              ON pc.physical_copy_id = bt.physical_copy_id
              OR (bt.physical_copy_id IS NULL AND pc.material_id = bt.material_id)
            LEFT JOIN titles t ON t.title_id = pc.title_id
-          WHERE bt.transaction_id = ? LIMIT 1${lock ? ` ${forUpdate('bt')}` : ''}`,
+          WHERE bt.transaction_id = ?
+          ORDER BY pc.physical_copy_id ASC
+          LIMIT 1${lock ? ` ${forUpdate('bt')}` : ''}`,
         [transactionId],
       )
       return mapLoan(rows[0])
@@ -210,12 +212,6 @@ export function createRenewalRepository(database: Pool = db) {
     ): Promise<RenewalBlockState> {
       let hasWaitingReservation = false
       if (loan.titleId) {
-        if (lockReservations) {
-          await executor.execute<RowDataPacket[]>(
-            'SELECT physical_copy_id FROM physical_copies WHERE title_id = ? ORDER BY physical_copy_id ASC FOR UPDATE',
-            [loan.titleId],
-          )
-        }
         const [reservationRows] = await executor.execute<RowDataPacket[]>(
           `SELECT reservation_id FROM reservations
             WHERE book_title_id = ? AND user_id <> ?
@@ -249,6 +245,14 @@ export function createRenewalRepository(database: Pool = db) {
         hasUnpaidLostCharge: lostChargeRows.length > 0,
         hasOpenLostReport: lostReportRows.length > 0,
       }
+    },
+
+    /** Same lock reservation creation takes, so no new reservation lands mid-renewal. */
+    async lockTitleCopies(titleId: number, executor: PoolConnection): Promise<void> {
+      await executor.execute<RowDataPacket[]>(
+        'SELECT physical_copy_id FROM physical_copies WHERE title_id = ? ORDER BY physical_copy_id ASC FOR UPDATE',
+        [titleId],
+      )
     },
 
     async countApproved(transactionId: number, executor: RenewalExecutor = database): Promise<number> {

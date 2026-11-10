@@ -1,13 +1,8 @@
 import { randomBytes } from 'node:crypto'
 import bcrypt from 'bcrypt'
-import { env } from '../src/config/env.js'
+// db.js loads env.js, which refuses to start without DATABASE_URL.
 import { db } from '../src/config/db.js'
 import { createRenewalService } from '../src/modules/circulation/renewal.service.ts'
-
-if (env.db.driver !== 'postgres') {
-  console.error('smoke:renewal requires env.db.driver === "postgres" (set DATABASE_URL).')
-  process.exit(1)
-}
 
 const suffix = randomBytes(6).toString('hex')
 const schoolId = `RNW${suffix.toUpperCase()}`

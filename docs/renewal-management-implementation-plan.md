@@ -7,11 +7,11 @@ Borrowers need one controlled operating-day extension on an active loan. Checkou
 ## Plan metadata
 
 - **Date created:** 2026-10-10
-- **Date last updated:** 2026-10-11
+- **Date last updated:** 2026-11-10
 - **Status:** `built`
-- **Branch:** `feat/renewal-management`
-- **Active database:** Supabase PostgreSQL
-- **Migrations after dependency merge:** Supabase `017_loan_renewals.sql`; MySQL `YYYYMMDD_047_loan_renewals.sql`
+- **Branch:** `feat/renewal-management-v2` (revived from draft `feat/renewal-management`)
+- **Active database:** Supabase PostgreSQL (only database since 2026-11-10)
+- **Migration:** Supabase `017_loan_renewals.sql` (the draft's MySQL `047` was dropped with MySQL)
 - **Behavioral source:** [Complete Renewal Management Implementation Plan](complete-renewal-management-plan.md)
 - **Roadmap release:** Release 2 in [Next Implementation Roadmap](next-implementation-roadmap.md)
 
@@ -158,3 +158,4 @@ Same as the behavioral plan: shared decision service, single due-date update on 
 - **2026-10-10:** Built the borrower and Admin renewal API, transactional decision service, history/monitor renewal fields, schema readiness checks, and checkout initial-due-date writes. The full 273-test API suite, API type check, and production build pass locally; web implementation and hosted acceptance remain.
 - **2026-10-10:** Web borrower Request renewal and Admin Renew on behalf dialogs wired; reminder dedupe keys include renewal sequence; docs/API reference/schema trackers updated. Hosted migration apply and acceptance remain.
 - **2026-10-11:** Slice 5 acceptance complete. Supabase `017_loan_renewals.sql` confirmed applied; `npm run smoke:renewal` approved one disposable renewal and rejected the second with `RENEWAL_LIMIT_REACHED`; API typecheck/tests green; status set to `built`.
+- **2026-11-10:** Revived on Postgres-only `main` as `feat/renewal-management-v2`. Dropped the MySQL migration and baseline edits; reverted the edit to applied `001_from_baseline.sql` (`017` already holds those columns and the table); swapped `mysql2` types for `config/db.js`; removed the dead `env.db.driver` guard from `smoke:renewal`. `017` itself is unchanged. API 286 / web 86 tests, typecheck, and build green.

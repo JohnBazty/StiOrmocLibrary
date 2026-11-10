@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Pool } from 'mysql2/promise'
+import type { Pool } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { createRenewalService } from './renewal.service.ts'
 
@@ -44,6 +44,12 @@ interface FixtureOptions {
   closedDates?: string[]
   existingDecision?: Record<string, unknown>
   loanUpdateAffectedRows?: number
+  closedDaysError?: Error
+  decisionInsertError?: Error
+}
+
+function pgError(code: string, constraint?: string) {
+  return Object.assign(new Error(`pg ${code}`), { code, constraint })
 }
 
 function renewalPool(options: FixtureOptions = {}) {
@@ -54,6 +60,7 @@ function renewalPool(options: FixtureOptions = {}) {
     loanUpdates: 0,
     notifications: 0,
     decisionValues: [] as unknown[],
+    sqlLog: [] as string[],
   }
   const actorUserId = options.actorUserId ?? 7
   const loanUserId = options.loanUserId ?? 7
@@ -64,6 +71,7 @@ function renewalPool(options: FixtureOptions = {}) {
     async rollback() { state.rollbacks += 1 },
     release() {},
     async execute(sql: string, values: unknown[] = []) {
+      state.sqlLog.push(sql)
       if (sql.includes('FROM accounts WHERE account_id')) {
         return [[{
           account_id: 2,
@@ -117,6 +125,7 @@ function renewalPool(options: FixtureOptions = {}) {
         return [options.lostReport ? [{ lost_book_report_id: 93 }] : []]
       }
       if (sql.includes('FROM library_closed_days')) {
+        if (options.closedDaysError) throw options.closedDaysError
         return [(options.closedDates ?? []).map((closed_date) => ({ closed_date }))]
       }
       if (sql.includes('FROM library_operating_schedule')) {
@@ -128,6 +137,7 @@ function renewalPool(options: FixtureOptions = {}) {
         ]]
       }
       if (sql.includes('INSERT INTO loan_renewal_requests')) {
+        if (options.decisionInsertError) throw options.decisionInsertError
         state.decisionInserts += 1
         state.decisionValues = values
         return [{ insertId: 101, affectedRows: 1 }]
@@ -408,4 +418,49 @@ test('Admin renewal records Staff source and the required note', async () => {
   assert.equal(result.staffNote, 'Borrower requested the extension at the circulation desk.')
   assert.equal(state.decisionValues[5], 'Staff')
   assert.equal(state.decisionValues[8], 'Borrower requested the extension at the circulation desk.')
+})
+
+test('SQL error while loading the calendar propagates and rolls back instead of recording a decision', async () => {
+  // Postgres aborts the transaction on any SQL error, so it must not be turned into a Rejected decision.
+  const sqlError = pgError('57014')
+  const { state, database } = renewalPool({ closedDaysError: sqlError })
+  await assert.rejects(
+    createRenewalService(database, clock).submit(31, borrowerActor, { requestKey: 'calendar-sql-error' }),
+    (error: unknown) => error === sqlError,
+  )
+  assert.equal(state.decisionInserts, 0)
+  assert.equal(state.commits, 0)
+  assert.equal(state.rollbacks, 1)
+})
+
+test('request key taken by a concurrent insert returns 409 instead of a server error', async () => {
+  const { state, database } = renewalPool({
+    decisionInsertError: pgError('23505', 'uq_loan_renewal_request_key'),
+  })
+  await assert.rejects(
+    createRenewalService(database, clock).submit(31, borrowerActor, { requestKey: 'raced-key' }),
+    (error: unknown) => error instanceof HttpError && error.status === 409
+      && error.code === 'RENEWAL_REQUEST_KEY_CONFLICT',
+  )
+  assert.equal(state.commits, 0)
+  assert.equal(state.rollbacks, 1)
+})
+
+test('other unique violations are not reported as request key conflicts', async () => {
+  const otherError = pgError('23505', 'some_other_constraint')
+  const { database } = renewalPool({ decisionInsertError: otherError })
+  await assert.rejects(
+    createRenewalService(database, clock).submit(31, borrowerActor, { requestKey: 'other-unique' }),
+    (error: unknown) => error === otherError,
+  )
+})
+
+test('submit locks the title copies before the loan row, matching checkout lock order', async () => {
+  const { state, database } = renewalPool()
+  await createRenewalService(database, clock).submit(31, borrowerActor, { requestKey: 'lock-order' })
+  const copyLock = state.sqlLog.findIndex((sql) => sql.includes('FROM physical_copies WHERE title_id') && sql.includes('FOR UPDATE'))
+  const loanLock = state.sqlLog.findIndex((sql) => sql.includes('FROM borrow_transactions bt') && sql.includes('FOR UPDATE OF bt'))
+  assert.ok(copyLock >= 0, 'title copies are locked')
+  assert.ok(loanLock >= 0, 'loan row is locked')
+  assert.ok(copyLock < loanLock, 'copies are locked before the loan row')
 })

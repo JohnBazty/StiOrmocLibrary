@@ -34,6 +34,13 @@ import {
 } from './circulation.validation.ts'
 
 const ACTIVE_LOANS = "('Pending','Borrowed','Overdue')"
+/** Latest renewal decision per loan, read once per row (alias `lr`). */
+const LAST_RENEWAL_JOIN = `LEFT JOIN LATERAL (
+  SELECT rr.status, rr.decision_summary, rr.decided_at, rr.decision_source FROM loan_renewal_requests rr
+   WHERE rr.transaction_id = bt.transaction_id ORDER BY rr.created_at DESC, rr.renewal_request_id DESC LIMIT 1
+) lr ON true`
+const LAST_RENEWAL_COLUMNS = `lr.status AS last_renewal_status, lr.decision_summary AS last_renewal_decision_summary,
+  lr.decided_at AS last_renewal_at, lr.decision_source AS last_renewal_decision_source`
 const ACTIVE_RESERVATIONS = "('pending','approved','ready_for_pickup')"
 const WAITING_RESERVATIONS = "('pending','approved','ready_for_pickup')"
 
@@ -219,10 +226,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
               pc.accession_number, COALESCE(pc.barcode, m.barcode) AS barcode,
               lbr.report_status AS lost_report_status, m.material_type, pc.condition_status,
               pc.lifecycle_status AS copy_lifecycle_status, t.lifecycle_status AS title_lifecycle_status,
-              (SELECT rr.status FROM loan_renewal_requests rr WHERE rr.transaction_id = bt.transaction_id ORDER BY rr.created_at DESC, rr.renewal_request_id DESC LIMIT 1) AS last_renewal_status,
-              (SELECT rr.decision_summary FROM loan_renewal_requests rr WHERE rr.transaction_id = bt.transaction_id ORDER BY rr.created_at DESC, rr.renewal_request_id DESC LIMIT 1) AS last_renewal_decision_summary,
-              (SELECT rr.decided_at FROM loan_renewal_requests rr WHERE rr.transaction_id = bt.transaction_id ORDER BY rr.created_at DESC, rr.renewal_request_id DESC LIMIT 1) AS last_renewal_at,
-              (SELECT rr.decision_source FROM loan_renewal_requests rr WHERE rr.transaction_id = bt.transaction_id ORDER BY rr.created_at DESC, rr.renewal_request_id DESC LIMIT 1) AS last_renewal_decision_source,
+              ${LAST_RENEWAL_COLUMNS},
               (SELECT COUNT(*) FROM reservations r WHERE r.book_title_id = t.title_id AND r.user_id <> bt.user_id AND r.reservation_status IN ('pending','approved','ready_for_pickup')) AS waiting_renewals,
               (SELECT COUNT(*) FROM fines f WHERE f.user_id = bt.user_id AND f.payment_status IN ('Accruing','Unpaid','Partially Paid')) AS blocking_fines,
               (SELECT COUNT(*) FROM lost_book_reports loss WHERE loss.user_id = bt.user_id AND loss.report_status = 'Confirmed' AND loss.payment_status = 'Unpaid') AS blocking_lost_charges,
@@ -232,6 +236,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
              LEFT JOIN titles t ON t.title_id = pc.title_id
              LEFT JOIN lost_book_reports lbr ON lbr.transaction_id = bt.transaction_id
              LEFT JOIN (SELECT a.title_id, ${authorsAgg('a')} AS author FROM authors a GROUP BY a.title_id) credits ON credits.title_id = t.title_id
+             ${LAST_RENEWAL_JOIN}
             WHERE bt.user_id = ? ORDER BY COALESCE(bt.borrowed_at, bt.created_at) DESC, bt.transaction_id DESC
             LIMIT ${filters.limit} OFFSET ${offset}`, [userId],
         ),
@@ -551,16 +556,13 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
              bt.borrowed_at, bt.due_at, bt.initial_due_at, bt.renewal_count, bt.returned_at,
              m.material_type, pc.condition_status, pc.lifecycle_status AS copy_lifecycle_status,
              t.lifecycle_status AS title_lifecycle_status,
-             (SELECT rr.status FROM loan_renewal_requests rr WHERE rr.transaction_id = bt.transaction_id ORDER BY rr.created_at DESC, rr.renewal_request_id DESC LIMIT 1) AS last_renewal_status,
-             (SELECT rr.decision_summary FROM loan_renewal_requests rr WHERE rr.transaction_id = bt.transaction_id ORDER BY rr.created_at DESC, rr.renewal_request_id DESC LIMIT 1) AS last_renewal_decision_summary,
-             (SELECT rr.decided_at FROM loan_renewal_requests rr WHERE rr.transaction_id = bt.transaction_id ORDER BY rr.created_at DESC, rr.renewal_request_id DESC LIMIT 1) AS last_renewal_at,
-             (SELECT rr.decision_source FROM loan_renewal_requests rr WHERE rr.transaction_id = bt.transaction_id ORDER BY rr.created_at DESC, rr.renewal_request_id DESC LIMIT 1) AS last_renewal_decision_source,
+             ${LAST_RENEWAL_COLUMNS},
              (SELECT COUNT(*) FROM reservations r WHERE r.book_title_id = t.title_id AND r.user_id <> bt.user_id AND r.reservation_status IN ('pending','approved','ready_for_pickup')) AS waiting_renewals,
              (SELECT COUNT(*) FROM fines f WHERE f.user_id = bt.user_id AND f.payment_status IN ('Accruing','Unpaid','Partially Paid')) AS blocking_fines,
              (SELECT COUNT(*) FROM lost_book_reports loss WHERE loss.user_id = bt.user_id AND loss.report_status = 'Confirmed' AND loss.payment_status = 'Unpaid') AS blocking_lost_charges,
              (SELECT COUNT(*) FROM lost_book_reports report WHERE report.transaction_id = bt.transaction_id AND report.report_status IN ('Pending','Confirmed')) AS blocking_lost_reports,
              CASE WHEN bt.transaction_status = 'Borrowed' AND bt.due_at < NOW() THEN 'Overdue' ELSE bt.transaction_status END AS transaction_status
-           ${fromSql} ORDER BY CASE (CASE WHEN bt.transaction_status = 'Borrowed' AND bt.due_at < NOW() THEN 'Overdue' ELSE bt.transaction_status END) WHEN 'Overdue' THEN 1 WHEN 'Borrowed' THEN 2 WHEN 'Pending' THEN 3 WHEN 'Returned' THEN 4 ELSE 5 END, bt.due_at ASC, bt.transaction_id DESC LIMIT ${filters.limit} OFFSET ${offset}`,
+           ${fromSql} ${LAST_RENEWAL_JOIN} ORDER BY CASE (CASE WHEN bt.transaction_status = 'Borrowed' AND bt.due_at < NOW() THEN 'Overdue' ELSE bt.transaction_status END) WHEN 'Overdue' THEN 1 WHEN 'Borrowed' THEN 2 WHEN 'Pending' THEN 3 WHEN 'Returned' THEN 4 ELSE 5 END, bt.due_at ASC, bt.transaction_id DESC LIMIT ${filters.limit} OFFSET ${offset}`,
         ),
         database.execute<RowDataPacket[]>(
           `SELECT ${sumEquals('transaction_status', 'Pending')} AS pending_claims,
