@@ -1,34 +1,34 @@
 export const ROLES = Object.freeze({
-  ADMIN: 'Admin',
+  SYSTEM_ADMINISTRATOR: 'System Administrator',
+  LIBRARIAN: 'Librarian',
+  LIBRARY_STAFF: 'Library Staff',
   STUDENT: 'Student',
   FACULTY: 'Faculty',
-  /** @deprecated Compatibility alias — normalize to Admin; do not issue. */
-  SYSTEM_ADMINISTRATOR: 'System Administrator',
-  /** @deprecated Compatibility alias — normalize to Admin; do not issue. */
-  LIBRARIAN: 'Librarian',
 })
 
-export const ALL_ROLES = Object.freeze([ROLES.ADMIN, ROLES.STUDENT, ROLES.FACULTY])
-export const STAFF_ROLES = Object.freeze([ROLES.ADMIN])
+export const ALL_ROLES = Object.freeze(Object.values(ROLES))
+
+export function toEffectiveRole(role) {
+  return role === 'Admin' ? ROLES.SYSTEM_ADMINISTRATOR : role === 'Staff' ? ROLES.LIBRARY_STAFF : role
+}
+export const STAFF_ROLES = Object.freeze([ROLES.LIBRARIAN, ROLES.LIBRARY_STAFF])
 export const USER_ROLES = Object.freeze([ROLES.STUDENT, ROLES.FACULTY])
 
-/** Compatibility: map legacy staff names to Admin before authorization checks. */
-export function toEffectiveRole(role) {
-  if (role === ROLES.LIBRARIAN || role === ROLES.SYSTEM_ADMINISTRATOR || role === ROLES.ADMIN) return ROLES.ADMIN
-  return role
-}
-
 export function dashboardForRole(role) {
-  const effective = toEffectiveRole(role)
-  if (STAFF_ROLES.includes(effective)) return '/admin/dashboard'
-  if (USER_ROLES.includes(effective)) return '/user/dashboard'
+  if (role === ROLES.SYSTEM_ADMINISTRATOR) return '/admin/dashboard'
+  if (role === ROLES.LIBRARY_STAFF || role === 'Staff') return '/staff/dashboard'
+  if (STAFF_ROLES.includes(role)) return '/admin/dashboard'
+  if (USER_ROLES.includes(role)) return '/user/dashboard'
   return '/login'
 }
 
+// Canonical React portal destinations. Keep this mapping distinct from the
+// legacy server route aliases above so every role receives its own workspace.
 export function webDashboardForRole(role) {
-  const effective = toEffectiveRole(role)
-  if (effective === ROLES.ADMIN) return '/admin/dashboard'
-  if (effective === ROLES.FACULTY) return '/faculty/dashboard'
-  if (effective === ROLES.STUDENT) return '/student/dashboard'
+  if (role === ROLES.SYSTEM_ADMINISTRATOR) return '/admin/dashboard'
+  if (role === ROLES.LIBRARIAN) return '/librarian/dashboard'
+  if (role === ROLES.LIBRARY_STAFF || role === 'Staff') return '/staff/dashboard'
+  if (role === ROLES.FACULTY) return '/faculty/dashboard'
+  if (role === ROLES.STUDENT) return '/student/dashboard'
   return '/login'
 }

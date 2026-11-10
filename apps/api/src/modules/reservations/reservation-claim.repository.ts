@@ -13,7 +13,7 @@ export async function createPendingCounterClaim(
   const [insert] = await connection.execute<ResultSetHeader>(
     `INSERT INTO borrow_transactions
        (user_id, material_id, physical_copy_id, reservation_id, request_group_id, transaction_status, created_at)
-     VALUES (?, ?, ?, ?, UUID(), 'Pending', NOW())`,
+     VALUES (?, ?, ?, ?, ${'gen_random_uuid()'}, 'Pending', NOW())`,
     [reservation.user_id, copy.material_id, copy.physical_copy_id, reservation.reservation_id],
   )
   return Number(insert.insertId)

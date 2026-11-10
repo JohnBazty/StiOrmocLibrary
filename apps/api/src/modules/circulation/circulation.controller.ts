@@ -15,6 +15,8 @@ function asyncController(handler: (request: Request, response: Response) => Prom
 }
 export function createCirculationController(service: Service = circulationService) {
   return {
+    myBooks: asyncController(async (_request, response) => { response.set('Cache-Control', 'private, no-store').json({ success: true, data: await service.myBooks(authenticatedAccount(response)) }) }),
+    cartState: asyncController(async (_request,response) => { response.set('Cache-Control','private, no-store').json({success:true,data:await service.cartState(authenticatedAccount(response))}) }),
     history: asyncController(async (request, response) => { response.json({ success: true, data: await service.history(authenticatedAccount(response), request.query as Record<string, unknown>) }) }),
     submitBorrowRequest: asyncController(async (_request, response) => {
       const data = await service.submitBorrowRequest(authenticatedAccount(response), response.locals.borrowCart)

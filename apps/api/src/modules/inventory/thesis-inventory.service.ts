@@ -151,6 +151,7 @@ export async function setThesisAvailability(
 }
 
 async function assertThesisNotActivelyAllocated(connection: PoolConnection, thesis: LockedThesisInventory) {
+  {const [uses]=await connection.execute<RowDataPacket[]>('SELECT use_id FROM in_library_uses WHERE research_inventory_id=? AND ended_at IS NULL',[thesis.research_inventory_id]);if(uses.length)throw new HttpError(422,'THESIS_IN_LIBRARY_USE','Hand back this in-library copy before archiving or deleting its record.')}
   const circulation = await lockThesisCirculationMaterial(connection, thesis.barcode)
   const materialId = circulation ? Number(circulation.material_id) : null
   const loan = materialId === null ? null : await findOpenThesisLoan(connection, materialId)

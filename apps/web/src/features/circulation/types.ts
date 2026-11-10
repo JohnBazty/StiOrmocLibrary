@@ -1,4 +1,4 @@
-export type BorrowStatus = 'Pending' | 'Borrowed' | 'Active' | 'Overdue' | 'Returned' | 'Cancelled'
+export type BorrowStatus = 'Pending' | 'Borrowed' | 'Active' | 'Overdue' | 'Returned' | 'Cancelled' | 'Lost'
 
 export type BorrowingHistoryData = {
   summary: {
@@ -15,10 +15,11 @@ export type BorrowingHistoryData = {
 export type CirculationMonitorData = {
   summary: { pendingClaims: number; activeLoans: number; overdueLoans: number; returnedToday: number; dueToday: number }
   items: Array<{
-    transactionId: number; userName: string; schoolId: string; role: string; title: string
+    transactionId: number; reservationId?:number|null; userName: string; schoolId: string; role: string; title: string
     accessionNumber: string | null; barcode: string; requestedAt: string; borrowDate: string | null; dueDate: string | null
     returnDate: string | null; status: BorrowStatus
   }>
+  requests?: Array<{requestKind?:'Reservation'|'CartHandover';reservationId:number;userName:string;schoolId:string;role:string;title:string;barcode:string;accessionNumber:string|null;requestedAt:string;pickupDeadline:string|null}>
   pagination: { page: number; limit: number; total: number; totalPages: number }
 }
 

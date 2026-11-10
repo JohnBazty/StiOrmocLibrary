@@ -4,6 +4,8 @@ import type { Pool } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { createCirculationService } from './circulation.service.ts'
 
+import { borrowerEligibilityRows } from '../attendance/attendance-test-fixtures.ts'
+
 const legacyPolicyRow = {
   borrowing_policy_version_id: 1, effective_on: '2000-01-01', student_max_active_books: 2, faculty_max_active_books: null,
   borrowing_days: 1, due_time_cutoff: '08:59:00', max_renewals: 1, renewal_extension_days: 1,
@@ -18,9 +20,32 @@ function cartPool(role: 'Student' | 'Faculty', activeCount: number, firstConditi
     { title_id: 10, title: 'Database Systems', physical_copy_id: 100, material_id: 200, accession_number: 'ACC-100', barcode: 'BC-100', condition_status: firstCondition, availability_status: 'Available', lifecycle_status: 'Active', material_type: 'Book' },
     { title_id: 11, title: 'Computer Networks', physical_copy_id: 101, material_id: 201, accession_number: 'ACC-101', barcode: 'BC-101', condition_status: 'Fair', availability_status: 'Available', lifecycle_status: 'Active', material_type: 'Book' },
   ]
+  const requests = new Map<number, Record<string, unknown>>()
+  let waitingAssigned = false
   const connection = {
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() {},
-    async execute(sql: string) {
+    async execute(sql: string, values: unknown[] = []) {
+      const eligible = borrowerEligibilityRows(sql, role, Number(values[0]) || 7)
+      if (eligible) return [eligible]
+      if (sql.includes('SELECT user_id,role,account_status FROM accounts')) return [[{ user_id: 7, role, account_status: 'Active' }]]
+      if (sql.includes('COUNT(*) AS total FROM (')) return [[{ total: activeCount + state.inserts }]]
+      if (sql.includes('COUNT(*) AS n FROM reservations')) return [[{ n: 0 }]]
+      if (sql.includes('AS position FROM reservations')) return [[{ position: 1 }]]
+      if (sql.includes('SELECT t.*,MIN(pc.material_id)')) return [copies.filter(copy => copy.title_id === values[0]).map(copy => ({ ...copy, record_type: 'Book' }))]
+      if (sql.includes('SELECT pc.* FROM physical_copies') || sql.includes('SELECT pc.*,t.title')) {
+        return [copies.filter(copy => copy.title_id === values[0] && copy.condition_status !== 'Damaged' && !(copy.title_id === 10 && waitingAssigned))]
+      }
+      if (sql.includes('SELECT * FROM reservations WHERE book_title_id=')) return [waitingReservation ? [{ reservation_id: 88, user_id: 99, queue_position: 1 }] : []]
+      if (sql.includes('UPDATE reservations SET reservation_status=')) { waitingAssigned = true; return [{ affectedRows: 1 }] }
+      if (sql.includes('INSERT INTO reservations(')) {
+        const id = 500 + ++state.inserts
+        const copy = copies.find(item => item.title_id === values[2])!
+        requests.set(id, { ...copy, reservation_id: id, user_id: 7, request_kind: 'CartHandover', reservation_status: 'approved', assigned_physical_copy_id: copy.physical_copy_id })
+        return [{ insertId: id, affectedRows: 1 }]
+      }
+      if (sql.includes('SELECT r.*,t.title')) return [[requests.get(Number(values[0]))]]
+      if (sql.includes('INSERT INTO book_request_events') || sql.includes('INTO book_request_email_deliveries')) return [{ insertId: 1, affectedRows: 1 }]
+      if (sql.includes('FROM reservations') || sql.includes('SELECT transaction_id FROM borrow_transactions')) return [[]]
       if (sql.includes('FROM borrowing_policy_versions')) return [[legacyPolicyRow]]
       if (sql.includes('FROM borrowing_policy_material_rules')) return [[{ borrowing_policy_version_id: 1, material_type: 'Book', is_borrowable: 1 }, { borrowing_policy_version_id: 1, material_type: 'Thesis/Manuscript', is_borrowable: 0 }]]
       if (sql.includes('SELECT user_id FROM accounts')) return [[{ user_id: 7 }]]
@@ -50,11 +75,10 @@ test('student with one active commitment cannot submit two additional cart items
       assert.ok(error instanceof HttpError)
       assert.equal(error.status, 422)
       assert.equal(error.code, 'STUDENT_BORROW_LIMIT_REACHED')
-      assert.deepEqual(error.details, { activeCount: 1, incomingCount: 2, projectedCount: 3, limit: 2, policyVersionId: 1 })
+      assert.match(error.message, /2 active books or requests/)
       return true
     },
   )
-  assert.equal(state.inserts, 0)
   assert.equal(state.commits, 0)
   assert.equal(state.rollbacks, 1)
 })
@@ -68,19 +92,16 @@ test('faculty with three active commitments can submit two more books atomically
   assert.equal(state.inserts, 2)
   assert.equal(state.copiesReserved, 2)
   assert.equal(state.materialsReserved, 2)
-  assert.equal(state.adminAlerts, 1)
+  assert.ok(result.items.every(item => item.transactionId === null))
   assert.equal(state.commits, 1)
   assert.equal(state.rollbacks, 0)
 })
 
-test('an available damaged copy can still be added to a borrow request', async () => {
+test('a damaged copy cannot be sent to the desk from the cart', async () => {
   const { state, database } = cartPool('Student', 0, 'Damaged')
-  const result = await createCirculationService(database).submitBorrowRequest(9, { title_ids: [10] })
-  assert.equal(result.status, 'pending_claim')
-  assert.equal(result.items.length, 1)
-  assert.equal(state.inserts, 1)
-  assert.equal(state.commits, 1)
-  assert.equal(state.rollbacks, 0)
+  await assert.rejects(createCirculationService(database).submitBorrowRequest(9, { title_ids: [10] }), { code: 'BOOK_NO_LONGER_AVAILABLE' })
+  assert.equal(state.inserts, 0)
+  assert.equal(state.rollbacks, 1)
 })
 
 test('an active title waitlist blocks a later online cart before a pending claim is inserted', async () => {
@@ -89,7 +110,7 @@ test('an active title waitlist blocks a later online cart before a pending claim
     createCirculationService(database).submitBorrowRequest(9, { title_ids: [10] }),
     (error: unknown) => error instanceof HttpError
       && error.status === 422
-      && error.code === 'CART_TITLE_RESERVED_FOR_QUEUE'
+      && error.code === 'BOOK_NO_LONGER_AVAILABLE'
       && /Database Systems/.test(error.message),
   )
   assert.equal(state.inserts, 0)

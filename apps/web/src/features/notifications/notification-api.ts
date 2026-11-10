@@ -12,7 +12,7 @@ async function request<T>(url: string, options: RequestInit = {}) {
 }
 
 export const notificationApi = {
-  list: () => request<NotificationList>('/api/v1/notifications?limit=100'),
+  list: (signal?: AbortSignal, limit = 100) => request<NotificationList>(`/api/v1/notifications?limit=${limit}`, { signal }),
   schedule: () => request<LibrarySchedule>('/api/v1/notifications/schedule'),
   markRead: (id: number) => request(`/api/v1/notifications/${id}/read`, { method: 'PATCH' }),
   markAllRead: () => request('/api/v1/notifications/read-all', { method: 'PATCH' }),

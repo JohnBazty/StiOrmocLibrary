@@ -1,18 +1,18 @@
 import type { NextFunction, Request, Response } from 'express'
-import { toCanonicalRole } from '../auth/role-normalization.ts'
+
+const ADMIN_ROLES = new Set(['Librarian'])
 
 /**
- * Catalog administration is session- or JWT-backed. Legacy staff aliases
- * normalize to Admin at the authentication boundary.
+ * Catalog administration is limited to the Librarian on both session and JWT routes.
  */
 export function requireCatalogManager(request: Request, response: Response, next: NextFunction) {
   const role = (request.session as typeof request.session & { user?: { role?: string } })?.user?.role
     ?? (response.locals.authenticatedUser as { role?: string } | undefined)?.role
-  if (toCanonicalRole(role) !== 'Admin') {
+  if (!role || !ADMIN_ROLES.has(role)) {
     return response.status(403).json({
       success: false,
       code: 'CATALOG_ADMIN_FORBIDDEN',
-      message: 'Only Admin accounts may manage catalog records.',
+      message: 'Only Librarian accounts may manage catalog records.',
     })
   }
   return next()
