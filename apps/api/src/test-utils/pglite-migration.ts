@@ -1,9 +1,12 @@
 import { readFile } from 'node:fs/promises'
+import { basename } from 'node:path'
 import { PGlite } from '@electric-sql/pglite'
 
 const migrationsDir = new URL('../../../../database/supabase/', import.meta.url)
 
-// Supabase roles the migrations grant to or revoke from. `library_owner` owns the tables, like the live owner.
+// Stub Supabase roles. `library_owner` is a plain owner (stricter than live `postgres`, which has BYPASSRLS).
+// Only table default grants are modelled, so sequence and function revokes cannot be tested here.
+// PGlite's own user is a superuser, which is what lets the helper `SET ROLE` to any of these.
 const roleSetup = `
   CREATE ROLE anon NOLOGIN;
   CREATE ROLE authenticated NOLOGIN;
@@ -28,12 +31,18 @@ export interface MigrationDb {
  * Stubs and the migration run as `library_owner`, so that role owns the tables.
  */
 export async function runMigrationInPglite(fileName: string, stubs = ''): Promise<MigrationDb> {
+  if (fileName !== basename(fileName)) throw new Error(`Migration must be a file name in database/supabase/: ${fileName}`)
   const sql = await readFile(new URL(fileName, migrationsDir), 'utf8')
   const db = new PGlite()
-  await db.exec(roleSetup)
-  await db.exec(`SET ROLE library_owner; ${stubs}`)
-  await db.exec(sql)
-  await db.exec('RESET ROLE')
+  try {
+    await db.exec(roleSetup)
+    await db.exec(`SET ROLE library_owner; ${stubs}`)
+    await db.exec(sql)
+    await db.exec('RESET ROLE')
+  } catch (error) {
+    await db.close()
+    throw error
+  }
 
   return {
     async queryAs(role, query) {
