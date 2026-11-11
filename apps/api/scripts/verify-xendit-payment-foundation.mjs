@@ -25,7 +25,7 @@ function adapt(executor) {
   }
 }
 
-export async function verifyPaymentFoundation(cluster) {
+export async function verifyPaymentFoundation(cluster,{gateway=false}={}) {
   const owner = cluster.getPgClient('sti_xendit_sandbox','127.0.0.1')
   await owner.connect()
   const schema = 'payment_qa_' + randomUUID().replaceAll('-','')
@@ -231,7 +231,13 @@ export async function verifyPaymentFoundation(cluster) {
         'GCASH','Xendit',now(),'Xendit',$4,250) RETURNING total_received`
     await assert.rejects(owner.query(printReceipt,[2,'QA-WRONG-PRINT','QA-WRONG-CODE',renewed.paymentId]),error=>error.code==='23514')
     assert.equal((await owner.query(printReceipt,[1,'QA-NEW-PRINT','QA-NEW-CODE',renewed.paymentId])).rows[0].total_received,'52.50')
-    return {migration:'034',isolation:'temporary-local-schema',quoteMath:'passed',concurrency:'passed',
+    let gatewayResult
+    if (gateway) {
+      await owner.query(await readFile(new URL('../../../database/supabase/035_xendit_checkout_confirmation.sql',import.meta.url),'utf8'))
+      const {verifyPaymentGateway} = await import('./verify-xendit-payment-gateway.mjs')
+      gatewayResult = await verifyPaymentGateway(pool,owner)
+    }
+    return {migration:'034',isolation:'temporary-local-schema',quoteMath:'passed',concurrency:'passed',gateway:gatewayResult,
       ownership:'passed',cashCompatibility:'passed',receiptConstraints:'passed',eventDeduplication:'passed'}
   } catch (error) {
     // This verifier uses synthetic fixtures only. Report assertions without connection details.

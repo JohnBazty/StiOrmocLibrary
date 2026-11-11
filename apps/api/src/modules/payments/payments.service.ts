@@ -8,19 +8,20 @@ export type PaymentActor = { accountId?: number; role?: string }
 type Options = { enabled?: () => boolean; clock?: () => Date }
 const zeroOrCentavos = (value: unknown) => /^0(?:\.0{1,2})?$/.test(String(value)) ? 0n : centavos(value)
 
-function targetOf(row: PaymentRow): PaymentTarget {
+export function targetOf(row: PaymentRow): PaymentTarget {
   if (row.print_request_id) return {kind:'Printing',targetId:Number(row.print_request_id)}
   if (row.fine_id) return {kind:'Fine',targetId:Number(row.fine_id)}
   return {kind:'LostBook',targetId:Number(row.lost_book_report_id)}
 }
 
-function publicPayment(row: PaymentRow) {
+export function publicPayment(row: PaymentRow) {
   return {
     paymentId:row.payment_id,kind:targetOf(row).kind,targetId:targetOf(row).targetId,
     principalCentavos:Number(row.principal_centavos),feeCentavos:Number(row.fee_centavos),
     totalCentavos:Number(row.total_centavos),remainingCentavos:Number(BigInt(row.balance_before_centavos)-BigInt(row.principal_centavos)),
     channelCode:row.channel_code,currency:'PHP',environment:'test',isSample:true,state:row.state,
-    expiresAt:row.expires_at,createdAt:row.created_at,gatewayConnected:false,
+    expiresAt:row.expires_at,createdAt:row.created_at,gatewayConnected:Boolean(row.provider_session_id),
+    checkoutUrl:row.state==='Active' ? row.checkout_url ?? null : null,
   }
 }
 

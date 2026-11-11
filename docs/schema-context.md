@@ -5,7 +5,7 @@
 The API runs on Supabase PostgreSQL only (`DATABASE_URL`, `pg`). MySQL was retired on 2026-11-10; see [mysql-removal-plan.md](mysql-removal-plan.md). History of the move: [supabase-migration-plan.md](supabase-migration-plan.md).
 
 - When `DATABASE_URL` (postgresql://…) is set, the runtime uses `pg` against drafts under [database/supabase/](../database/supabase/).
-- Device sign-in migration 032 is the latest applied Postgres file. Branding 033 and payment foundation 034 are pending review. The next unused number is 035.
+- Device sign-in migration 032 is the latest applied Postgres file. Branding 033 and payment migrations 034–035 are pending review. The next unused number is 036.
 - Additive MAIN product tables for Postgres land in `database/supabase/005_main_product_gapfill.sql` (033–040).
 - Applied Supabase Phase 2 files `012`–`014` add `book_quotations`, lost-report charge resolution, `library_job_runs`, `invoice_setup`, and `customer_invoices`. Existing payment rows now have `document_label='Legacy Receipt'`; future rows default to `Payment Record`.
 - Branding 033 changes the default public library name and updates the former stock name. It preserves customized names.
@@ -19,7 +19,11 @@ Unapplied migration `034_online_payment_foundation.sql` adds server-only RLS tab
 
 Print and fine receipt extensions preserve existing rows as `Legacy`. New cash rows default to `Staff`, require a human receiver and retain zero gateway fees. `Xendit` rows require a matching succeeded attempt, an explicit online source and no invented human receiver. Generated `total_received` separates principal from fees; fine allocations accept only the matching confirmed principal. These structures passed disposable local PostgreSQL checks. No live migration or online financial allocation has run.
 
-The payments module is disabled unless the dedicated local test configuration passes its loopback/database/key guards. Authenticated Student/Faculty quotes and prepared attempts are owner-scoped. Staff can list attempts, while Librarians can append sandbox fee versions. Preparation returns `gatewayConnected:false`; provider sessions, callback confirmation, financial settlement and UI remain later phases. Existing cash services and reporting queries are unchanged. See the [payment plan](plans/2026-11-11-xendit-sandbox-payments.md).
+The payments module is disabled unless the dedicated local test configuration passes its loopback/database/key guards. Authenticated Student/Faculty quotes and prepared attempts are owner-scoped. Staff can list attempts, while Librarians can append sandbox fee versions. Preparation returns `gatewayConnected:false` until a verified session is attached. See the [payment plan](plans/2026-11-11-xendit-sandbox-payments.md).
+
+Unapplied `035_xendit_checkout_confirmation.sql` adds checkout URLs, merchant/request identities, creation/check timestamps, retry budgets and durable event leases. It binds an event's environment to its attempt and protects online receipt identities from later source/amount changes. The local gateway creates one automatic-capture Test session per prepared attempt. An unknown creation outcome stays reserved; it is never automatically posted again. Authenticated callbacks are normalized without customer data, committed before acknowledgment, then processed through a bounded recoverable batch. Provider GET checks verify session identity, merchant, test context, channel, total and fully captured payment before transactional receipt/allocation writes. Changed balances enter Review. Cash reversal cannot reverse an online fine receipt without a confirmed refund.
+
+Controlled-provider PostgreSQL tests cover fine/printing/lost-book settlement, duplicate/out-of-order callbacks, timeout recovery, pending capture, expired leases and rollback after an allocation outage. An actual Xendit Test session was created, read and canceled without making a payment. Public callback delivery, real completed-payment evidence, UI, gateway receipt views/PDFs, reporting and wider cash/adjustment guards remain later acceptance/integration work. The on-demand `/api/jobs/payments/run` endpoint uses the existing job bearer authorization; no new recurring scheduler or runner consolidation was introduced.
 
 ## Borrowing policy management archive — 2026-10-17
 

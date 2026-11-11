@@ -7,6 +7,7 @@ import { env } from '../../config/env.js'
 import { authenticateJwt } from '../auth/jwt-auth.middleware.ts'
 import { createPaymentsRouters } from './payments.routes.ts'
 import type { createPaymentsService } from './payments.service.ts'
+import type { createPaymentGatewayService } from './payments.gateway.ts'
 
 function token(role: string, accountId = 1) {
   return jwt.sign({accountId,schoolId:'QA-PAYMENT-001',role,authVersion:1},env.jwt.secret,
@@ -56,4 +57,18 @@ test('payment writes have a per-account limit that cannot be reset with a new re
   assert.equal(limited.body.code,'PAYMENT_RATE_LIMIT')
   assert.equal(quotes,20)
   assert.equal((await request(app).post('/quote').auth(token('Student',2),{type:'bearer'}).send({})).status,200)
+})
+
+test('checkout and check routes use the gateway behind borrower authentication', async () => {
+  let checked = 0
+  const gateway = {checkout:async()=>({state:'Active',gatewayConnected:true}),check:async(actor: {accountId:number},id: string)=>{
+    assert.equal(actor.accountId,1);assert.equal(id,'fixture-id');checked++;return {state:'Succeeded'}
+  }} as unknown as ReturnType<typeof createPaymentGatewayService>
+  const {user} = createPaymentsRouters({} as ReturnType<typeof createPaymentsService>,gateway)
+  const app = express().use(express.json()).use(authenticateJwt).use(user)
+  assert.equal((await request(app).post('/checkout').auth(token('Student'),{type:'bearer'}).send({})).body.data.gatewayConnected,true)
+  assert.equal((await request(app).post('/fixture-id/check').send({})).status,401)
+  assert.equal((await request(app).post('/fixture-id/check').auth(token('Staff'),{type:'bearer'}).send({})).status,403)
+  assert.equal((await request(app).post('/fixture-id/check').auth(token('Student'),{type:'bearer'}).send({})).status,200)
+  assert.equal(checked,1)
 })

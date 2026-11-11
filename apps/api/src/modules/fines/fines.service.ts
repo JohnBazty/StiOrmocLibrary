@@ -195,7 +195,7 @@ async function queryObligations(database: Pool, filters: FineFilters, onlyUserId
   return { range, items: filtered }
 }
 
-async function recomputeFineStatus(connection: PoolConnection, targetFineId: number) {
+export async function recomputeFineStatus(connection: PoolConnection, targetFineId: number) {
   const [rows] = await connection.execute<RowDataPacket[]>(
     `SELECT f.fine_amount,f.payment_status,
             COALESCE((SELECT SUM(a.amount_allocated) FROM fine_payment_allocations a INNER JOIN fine_payment_receipts r
@@ -213,7 +213,7 @@ async function recomputeFineStatus(connection: PoolConnection, targetFineId: num
   return { status, remaining, paid: number(row.paid), adjusted: number(row.adjusted), assessed: number(row.fine_amount) }
 }
 
-async function refreshClearance(connection: PoolConnection, userId: number) {
+export async function refreshClearance(connection: PoolConnection, userId: number) {
   const [rows] = await connection.execute<RowDataPacket[]>(
     `SELECT
        EXISTS(SELECT 1 FROM borrow_transactions WHERE user_id=? AND transaction_status IN ('Borrowed','Overdue') AND lost_confirmed_at IS NULL) AS has_loan,
@@ -422,8 +422,10 @@ export function createFinesService(database: Pool = db) {
       const connection=await database.getConnection()
       try {
         await connection.beginTransaction(); const staffUserId=await linkedUserId(connection,actorAccountId(actor))
-        const [rows]=await connection.execute<RowDataPacket[]>('SELECT user_id,receipt_status FROM fine_payment_receipts WHERE fine_payment_receipt_id=? LIMIT 1 FOR UPDATE',[targetReceiptId])
+        const [rows]=await connection.execute<RowDataPacket[]>(`SELECT user_id,receipt_status,to_jsonb(r)->>'confirmation_source' AS confirmation_source
+          FROM fine_payment_receipts r WHERE fine_payment_receipt_id=? LIMIT 1 FOR UPDATE`,[targetReceiptId])
         const receipt=rows[0]; if(!receipt) throw new HttpError(404,'FINE_RECEIPT_NOT_FOUND','The payment receipt was not found.')
+        if(receipt.confirmation_source==='Xendit') throw new HttpError(409,'ONLINE_REFUND_REQUIRED','An online payment needs a confirmed provider refund. Cash reversal cannot refund it.')
         if(receipt.receipt_status!=='Issued') throw new HttpError(422,'FINE_RECEIPT_ALREADY_REVERSED','This receipt has already been reversed.')
         await connection.execute("UPDATE fine_payment_receipts SET receipt_status='Reversed',reversed_by_user_id=?,reversed_at=NOW(),reversal_reason=? WHERE fine_payment_receipt_id=?",[staffUserId,input.reason,targetReceiptId])
         if(invoiceLedgerExists) await connection.execute("UPDATE customer_invoices SET status='Voided',voided_by_user_id=?,voided_at=NOW(),void_reason=? WHERE source_type='Fine Collection' AND source_id=? AND status='Issued'",[staffUserId,`Underlying payment reversed: ${input.reason}`.slice(0,500),targetReceiptId])

@@ -8,6 +8,9 @@ export type PaymentRow = RowDataPacket & {
   fee_rule_id: number; channel_code: string; principal_centavos: string
   fee_centavos: string; total_centavos: string; balance_before_centavos: string
   state: string; request_key: string | null; expires_at: Date; created_at: Date
+  provider_session_id?: string | null; provider_payment_id?: string | null
+  provider_business_id?: string | null; provider_request_id?: string | null; checkout_url?: string | null
+  creation_started_at?: Date | null; next_check_at?: Date; review_code?: string | null
 }
 
 const targetColumn = { Printing: 'print_request_id', Fine: 'fine_id', LostBook: 'lost_book_report_id' } as const

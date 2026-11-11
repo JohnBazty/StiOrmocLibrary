@@ -19,7 +19,7 @@
 | Printing payments | Pay the full outstanding bill |
 | Fine payments | Allow full or partial payments |
 | Transaction fees | Add the online transaction fee to the user's payment |
-| Current stage | Phases 1–2 built and verified locally. Gateway sessions, callbacks, financial settlement and UI remain Phases 3–7 |
+| Current stage | Phases 1–2 built locally. Phase 3 backend implemented and locally verified; full external callback/payment acceptance remains pending. UI and wider integration remain Phases 4–7 |
 
 The test secret key and webhook token have been saved in the ignored local sheet at `docs/local/xendit-credentials-blank.md`. The key has Money-in Read and Write permission. Read-only API authentication passed during Phase 1. Hosted channel simulations and webhook delivery are scheduled for later phases.
 
@@ -451,3 +451,81 @@ The complete application schema and real login UI were not installed into the lo
 - [ ] Add actual gateway sessions, callbacks and reconciliation in Phase 3.
 
 2026-11-11 — Completed Phase 2 locally on `feat/xendit-sandbox-setup`. Reserved 034 for the additive payment foundation, advanced trackers to next unused 035 and preserved the live ledger. Gateway sessions, production data changes, push and hosting remain outside this phase.
+
+## Phase 3 implementation record — 2026-11-11
+
+Phase status remains `inprogress` for external acceptance. The backend implementation and local acceptance are finished. Real completed-payment verification, public callback delivery and full-deployment acceptance remain open. No hosting, push or live migration is included in this run.
+
+### Implemented behavior
+
+- `POST /api/v1/user/payments/checkout` now claims a prepared attempt under account/obligation locks, rechecks balance and fee version, commits the Creating state, then calls Xendit outside the transaction. Concurrent submissions issue one provider creation request.
+- The provider client uses the fixed HTTPS API origin, test credentials, ten-second timeouts, a bounded response size and rejected redirects. It permits checkout links only on the documented test hosts. Payment evidence requests pin API version `2024-11-11`.
+- Hosted sessions use PAY, PAYMENT_LINK, PH, PHP, automatic capture, a thirty-minute expiry, one selected channel and an opaque attempt reference. The sandbox uses a synthetic Sandbox Payer and sends no school ID, email, library document or card data. Future live configuration requires a separately reviewed payer-data policy.
+- Xendit's session creation reference does not document an idempotency header or lookup-by-reference endpoint. A lost creation response therefore stays reserved as Review. The system never automatically repeats that POST. An authenticated callback can recover the missing session ID through its opaque reference and a verified provider lookup.
+- `POST /api/payments/xendit/webhook` accepts bounded JSON and authenticates the callback token using a timing-safe comparison. It saves a minimal normalized event in a transaction before returning HTTP 200. Provider customer/card details and delivery tokens are omitted from saved events.
+- The recovery task leases saved events, retries transient failures with backoff and reclaims expired leases after a restart. It checks current session/payment evidence, including merchant, internal reference, environment context, currency, method, full gross amount, matching payment-request identity and captured total. AUTHORIZED or PENDING payments do not settle a bill.
+- Verified success records one gateway receipt and principal allocation atomically, recomputes fine status/clearance or settles the printing/lost-book charge. A changed balance enters Review without a second allocation. Failure during receipt/allocation writes rolls back the success state and financial effect together.
+- Stored event IDs, provider references, active-obligation constraints and receipt links prevent duplicate effects. A delayed expiry event cannot undo a successful payment. Receipt identity/amount fields are protected after gateway attribution, and the cash reversal API rejects gateway receipts until an actual provider refund exists.
+- `POST /api/v1/user/payments/:id/check` is authenticated, owner-scoped and throttled. It verifies saved provider references rather than trusting browser return parameters. An existing successful result remains final.
+
+### Recovery and scheduler boundary
+
+`POST /api/jobs/payments/run` reuses the existing scheduled-job bearer authorization and runs a bounded recovery batch. It creates no second scheduler and changes neither `library_job_runs` nor the October `scheduled_job_state` runner. Each event has a two-minute renewable-by-reclaim lease. Transient event failures retry at increasing intervals up to eight attempts before Review. Callback-free session lookups have a twenty-four-check automatic budget. Unknown creation outcomes never create another session automatically.
+
+This endpoint was exercised through its recovery service locally. Recurring invocation is deliberately unwired while the team chooses its shared runner, as recorded in Phase 6. Until that wiring exists, a signed-in owner check or an authorized on-demand recovery call processes confirmation. Do not describe callback arrival alone as immediately settling an obligation.
+
+### Verification evidence
+
+| Item | Result | Evidence |
+| --- | --- | --- |
+| Actual Xendit Test session | PASS | Created one disposable PHP 51.50 GCASH-only session, read it, validated its test checkout URL and canceled it. No payment or real payer action was attempted |
+| Fixed provider boundary | PASS | Client tests cover unsafe/live checkout URLs, sanitized errors, versioned payment requests, response-size limits and rejected path injection |
+| Authentication and roles | PASS | Callback token checks, real middleware checks from Phase 2, owner-only gateway check and borrower-only checkout/check route tests |
+| Exact capture evidence | PASS locally | Unit tests reject authorized-only payments, wrong merchant/request/method/currency and insufficient captured principal-plus-fee |
+| Concurrent session creation | PASS locally | Actual PostgreSQL attempt locks with a controlled provider produce one POST for simultaneous checkout submissions |
+| Callback deduplication/order | PASS locally | Duplicate completed callbacks create one receipt/allocation; later expiry retains Succeeded |
+| Financial effect | PASS locally | PHP 40 principal plus PHP 1.40 sample fee leaves PHP 60 on a PHP 100 fine; printing and confirmed lost-book charges settle once |
+| Unknown creation response | PASS locally | Controlled provider creates a session then throws a timeout; retries do not create another; authenticated callback recovers and settles it |
+| Changed obligation | PASS locally | Adjustment during checkout preserves captured payment identity in Review with no allocation against the changed balance |
+| Recovery after failures | PASS locally | Provider outage, expired Processing lease, pending capture and a write failure after provisional Succeeded all recover without duplicate receipts |
+| Refund/source protection | PASS locally | Gateway receipt source mutation and ordinary cash reversal are rejected |
+| Migration | PASS locally | Applied 034 then 035 inside a unique temporary schema; finally removed the schema and stopped local PostgreSQL. Historical migration source files are unchanged |
+| Regression gates | PASS | `npm test` — 399 API and 268 web tests. Type checks, build and coverage pass. Existing web bundle-size advisory remains |
+| Focused security review | PASS within scope | Reviewed ownership, callback authentication, exact amounts, transaction boundaries, replay, locking, outbound hosts and secret handling. Private-value scan found no credential leaks in changed files |
+| External completed payment | NOT RUN | Hosted payer completion, an actual succeeded provider payment lookup and public webhook delivery require the next approved test environment |
+| Desktop/mobile payment UI | NOT RUN | No UI was added in Phase 3; payment screens and real-browser flows are later phases |
+
+The PostgreSQL verifier uses real receipt DDL and synthetic parent records. Its provider responses for completed-payment scenarios are controlled fixtures. These tests establish local database/service behavior without claiming an actual Xendit capture or externally delivered callback. Unit coverage is separate from these integration runs and is not complete path coverage.
+
+### Reproduce the checks
+
+Run from the separate `StiOrmocLibrary-main-sync` feature checkout.
+
+```powershell
+npm run payments:sandbox:prepare -w @sti-library/api -- --credentials-file "C:/Users/JOHN/Documents/SSL/StiOrmocLibrary/docs/local/xendit-credentials-blank.md" --phase3
+node apps/api/scripts/verify-xendit-session-contract.mjs --create-test-session
+npm test
+npm run typecheck
+npm run build
+npm run coverage
+```
+
+The session contract tool stores its fixture ID in ignored output and reuses that ID on rerun. It refuses to repeat creation after an unknown outcome and cancels an ACTIVE test fixture during cleanup. The canceled session/customer remain test audit records at Xendit. The local fixture cluster and ignored private settings remain available for subsequent phases; disposable acceptance schemas are removed.
+
+### Remaining acceptance and rollout gates
+
+- [x] Implement hosted-session creation and safe unknown-outcome handling.
+- [x] Implement durable authenticated callback intake and bounded recoverable processing.
+- [x] Verify server evidence before atomic receipt, principal allocation and balance updates.
+- [x] Verify local duplicates, races, stale events, retry leases and rollback behavior.
+- [x] Verify actual Test create/read/cancel with no real money or email.
+- [x] Add migration 035 and update trackers to next unused 036.
+- [x] Run automated gates and focused security/database review.
+- [ ] Set up an approved full isolated app/database and HTTPS callback host. The existing loopback-only guard intentionally rejects the normal production database.
+- [ ] Choose and wire the team's single recurring job runner, retaining the protected on-demand path.
+- [ ] Complete an actual hosted sandbox payment and observe provider capture, external delivery, recovery and one local receipt.
+- [ ] Integrate gateway-compatible receipt reads/PDFs, broader cash/waiver/cancellation controls, UI and reports in Phases 4–6 before enabling user-facing online payments.
+
+Primary protocol references checked during implementation are [Create session](https://docs.xendit.co/apidocs/create-session), [Get session](https://docs.xendit.co/apidocs/get-session), [Session webhook](https://docs.xendit.co/apidocs/webhook-notification-sent-defined-webhook-url-updates-payment-session), [Get payment](https://docs.xendit.co/apidocs/get-payment), [Webhook handling](https://docs.xendit.co/v1/docs/handling-webhooks) and [Cancel session](https://docs.xendit.co/apidocs/cancel-session).
+
+2026-11-11 — Implemented the Phase 3 backend locally on `feat/xendit-sandbox-setup`, including safe test-session creation, durable callback events, evidence verification, bounded recovery and transactional settlement. Reserved 035, leaving recorded live migration 032 and pending 033–035. External acceptance and recurring scheduler integration remain explicit gates.
