@@ -2,7 +2,7 @@ import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
 import type { Pool, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
-import { env } from '../../config/env.js'
+import { env, DUMMY_BCRYPT_HASH } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
 import { validateLoginInput } from './auth.validation.js'
 import { validateRoleLogin } from './account-auth.validation.ts'
@@ -13,7 +13,6 @@ export type JwtRole = 'Admin' | 'Librarian' | 'Student' | 'Faculty' | 'Staff'
 const JWT_ROLES = new Set<JwtRole>(['Admin', 'Librarian', 'Student', 'Faculty', 'Staff'])
 const USER_PORTAL_ROLES = new Set<JwtRole>(['Student', 'Faculty'])
 const STAFF_PORTAL_ROLES = new Set<JwtRole>(['Admin', 'Librarian', 'Staff'])
-const DUMMY_BCRYPT_HASH = '$2b$12$k1Pc4Uvw2o.7wwBZ1hQwHu5vTfEfRPRgRhhcaawYWpPJez0o7gaCq'
 const INVALID_CREDENTIALS_MESSAGE = 'Wrong credentials.'
 
 export function dashboardForJwtRole(role: JwtRole) {

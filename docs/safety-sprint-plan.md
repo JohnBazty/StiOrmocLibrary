@@ -109,10 +109,10 @@ Supabase Cron, every minute
 
 Scope is the JWT sign-in (`/api/v1/auth`). The old session sign-in (`/api/auth`) is still used by about 18 web calls (catalog admin, inventory, reports, CSRF, `me`, logout). Merging the two is **out of scope** here and gets its own plan. Its accounts get the same lockout, because both sign-ins read the same `accounts` table.
 
-**Check first:** JohnBazty's `codex/library-revision-updates` already has `020_revision_phase1_password_recovery.sql` (applied live) and, on 2026-11-10, "remembered browser sign-in and device switching". Read both before building C1 to C3, reuse what fits, and plan only the gaps. `main` already has `apps/api/src/modules/auth/login-security.service.ts`; check it for overlap with C1 first. A paused, untested draft is parked as one WIP commit on local branch `feat/sign-in-hardening` (not pushed); its migration must be renumbered to `035`, since Part A now uses `034`.
+**Check first:** JohnBazty's `codex/library-revision-updates` already has `020_revision_phase1_password_recovery.sql` (applied live) and, on 2026-11-10, "remembered browser sign-in and device switching". Read both before building C1 to C3, reuse what fits, and plan only the gaps. `main` already has `apps/api/src/modules/auth/login-security.service.ts`; check it for overlap with C1 first. A paused, untested draft is parked as one WIP commit on local branch `feat/sign-in-hardening` (not pushed); its migration must be renumbered to `036`, since Part A uses `034` and the audit RLS fix uses `035`.
 
 **C1. Per-account lockout** (REA #1 R13 to R16):
-- A new migration (`035` or later) adds `failed_sign_in_count`, `locked_until`, `last_sign_in_at` and `must_change_password` to `accounts`.
+- A new migration (`036` or later) adds `failed_sign_in_count`, `locked_until`, `last_sign_in_at` and `must_change_password` to `accounts`.
 - A wrong password for an existing active account adds 1 to `failed_sign_in_count`. At the threshold, `locked_until` is set to the database `NOW()` plus the lock period.
 - A locked account gets the same `401 INVALID_CREDENTIALS` reply as a wrong password. The existing `DUMMY_BCRYPT_HASH` check keeps the timing the same.
 - A successful sign-in resets the count and clears the lock. A lock ends on its own when `locked_until` passes. An Admin can unlock an account from user management; that is recorded in `account_management_events` with the actor and reason.
@@ -158,7 +158,7 @@ Scope is the JWT sign-in (`/api/v1/auth`). The old session sign-in (`/api/auth`)
 - [x] Part A: plan-verifier, security review and database review run; every CRITICAL, HIGH and MEDIUM finding fixed with tests (none CRITICAL or HIGH).
 - [ ] Part A activation by Ethan (migration, secret, Cron).
 - [ ] Part B: routes and mock file removed, import test, RLS check, PR.
-- [ ] Part C: `035` migration, lockout, cookie token with CSRF, forced password change, Admin unlock and temporary password, tests.
+- [ ] Part C: `036` migration, lockout, cookie token with CSRF, forced password change, Admin unlock and temporary password, tests.
 - [ ] Part C: plan-verifier READY, security review, database review (`accounts` altered), PR.
 - [ ] Trackers updated with each migration (`.cursor/agent-protocol.md`, `README.MD`, `database/supabase/README.md`, `docs/schema-context.md`).
 

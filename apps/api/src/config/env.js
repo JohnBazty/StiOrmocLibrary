@@ -13,6 +13,9 @@ const configuredJwtSecret = process.env.JWT_SECRET?.trim()
 const configuredReportIntegritySecret = process.env.REPORT_INTEGRITY_SECRET?.trim()
 const configuredAttendanceQrSecret = process.env.ATTENDANCE_QR_SECRET?.trim()
 
+// Shared constants for authentication service layer
+export const DUMMY_BCRYPT_HASH = '$2b$12$k1Pc4Uvw2o.7wwBZ1hQwHu5vTfEfRPRgRhhcaawYWpPJez0o7gaCq'
+
 if (isProduction && (!configuredSecret || configuredSecret.length < 32)) {
   throw new Error('SESSION_SECRET must contain at least 32 characters in production.')
 }
