@@ -36,6 +36,7 @@ The PDFs define the target product. The schema context describes the current dat
 The rules in `agent.md` say what the code must look like. This section says how to work.
 - **Read before you change.** Open the files you will touch and their tests, and find the existing pattern for the same job (a module, a route, a screen). Copy that shape. Do not invent a second way to do something the code already does.
 - **Tests first.** Write the failing test, run it and see it fail, then write the smallest code that passes, then tidy. API: `node --test` (`*.test.ts` next to the code, supertest for routes). Web: Vitest + Testing Library.
+- **Security-rule migrations get a real-SQL test.** A migration that turns on row-level security or revokes access gets a `node --test` test that runs it in PGlite (in-memory Postgres) through `apps/api/src/test-utils/pglite-migration.ts`, then checks that `anon` and `authenticated` are refused and the owner still reads. Pass only the stub tables that one migration needs; replaying every migration does not work outside Supabase. Example: `apps/api/src/modules/auth/login-devices-rls.migration.test.ts`. `npm run db:check-rls` still checks the live database.
 - **Stay in scope.** Change only what the task needs. No drive-by refactors, renames, new dependencies or reformatting of untouched code. If you notice something else worth fixing, mention it to Ethan instead of doing it.
 - **Small, readable code.** Clear names. Early returns instead of deep nesting. Named constants instead of magic numbers. Return new objects rather than mutating inputs. Comments only where the reason isn't obvious from the code.
 - **Handle errors on purpose.** Validate input at the edge. Return a clear error code and a message safe for users. Never swallow an error silently. No `console.log` or debug code left behind.
@@ -94,6 +95,7 @@ Pages read as dated facts (`YYYY-MM-DD`), short summaries and links, not copies 
 ### Standing decisions (from Claude's private memory, which other tools cannot read)
 - **No destructive commands (incident in STI ILMS REA, 2026-11-04):** a `git worktree remove --force` followed junctions and deleted `apps/api/.env`. See "Safety rules".
 - **MySQL retired (Ethan, 2026-11-10):** Supabase Postgres is the only database; the MySQL migration tree and rollback path are deleted (last commit with them: `a767d88`). See `docs/mysql-removal-plan.md`.
+- **PGlite for security-rule tests (Ethan, 2026-11-11):** `@electric-sql/pglite` is a pinned API devDependency, used only in tests to run one migration at a time against real Postgres. See "How to write code".
 - **Lean sessions (Ethan, 2026-11-06):** one feature per session; at most 3 review agents (one combined security, correctness and React review, plus a database review for migrations or concurrent SQL); fix LOW findings directly instead of re-running reviews.
 
 ### Automation Claude Code has that you replace by hand
