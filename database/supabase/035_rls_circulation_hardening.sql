@@ -3,7 +3,8 @@
 -- Live may already be locked by 011 (revokes and auto-RLS); this records it in the repository
 -- so a rebuild cannot leave these tables open.
 -- RLS without FORCE: only the table owner or a BYPASSRLS role (the API's DATABASE_URL connection)
--- may read or write. Before applying, confirm the API's role owns these tables or bypasses RLS.
+-- may read or write. Before applying, confirm the API's role owns these tables, or bypasses RLS
+-- and holds explicit grants (this revokes PUBLIC). Apply as the owner or a superuser.
 
 DO $$
 DECLARE
@@ -11,14 +12,14 @@ DECLARE
   seq text;
 BEGIN
   FOREACH tbl IN ARRAY ARRAY['borrow_transactions', 'reservations', 'physical_copies'] LOOP
-    -- Same ownership check as 018: refuse rather than lock the API out.
+    -- Like 018, but ENABLE RLS needs the owner or a superuser, so a bypass-only role is refused here too.
     IF NOT EXISTS (
       SELECT 1 FROM pg_class c JOIN pg_roles owner ON owner.oid = c.relowner
        WHERE c.oid = format('public.%I', tbl)::regclass
          AND (owner.rolname = current_user
-              OR EXISTS (SELECT 1 FROM pg_roles r WHERE r.rolname = current_user AND (r.rolbypassrls OR r.rolsuper)))
+              OR EXISTS (SELECT 1 FROM pg_roles r WHERE r.rolname = current_user AND r.rolsuper))
     ) THEN
-      RAISE EXCEPTION 'Role % neither owns % nor bypasses RLS; apply 035 as the backend owner role.', current_user, tbl;
+      RAISE EXCEPTION 'Role % does not own % and is not a superuser; apply 035 as the backend owner role.', current_user, tbl;
     END IF;
 
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', tbl);

@@ -1,11 +1,22 @@
 import { Component, type ReactNode } from 'react'
 
+type Props = { children: ReactNode; resetKey?: string }
+
 /** Catches a page that fails to load (for example an old chunk after a deploy) so the screen is never blank. */
-export class RouteErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+export class RouteErrorBoundary extends Component<Props, { failed: boolean }> {
   state = { failed: false }
 
   static getDerivedStateFromError() {
     return { failed: true }
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('[Route] Page failed to load:', error.name)
+  }
+
+  componentDidUpdate(previous: Props) {
+    // Navigating away clears the error, so one failed page does not block the whole session.
+    if (this.state.failed && previous.resetKey !== this.props.resetKey) this.setState({ failed: false })
   }
 
   render() {

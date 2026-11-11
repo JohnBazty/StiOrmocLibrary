@@ -25,6 +25,15 @@ test('a message line mentioning api_key is still logged, redacted', () => {
   assert.match(sanitizeStackTrace(error), /missing api_key=\[redacted\]/)
 })
 
+test('paths with spaces and a cut-off quoted value do not leak', () => {
+  const error = new Error('value too long "Juan Dela Cr')
+  error.stack = 'Error: x\n    at f (C:\\Users\\Juan Dela Cruz\\proj\\x.ts:1:2)\n    at C:\\Users\\Juan Dela Cruz\\proj\\y.ts:3:4'
+  const out = sanitizeStackTrace(error)
+  assert.match(out, /at f \(x\.ts:1:2\)/)
+  assert.match(out, /at y\.ts:3:4/)
+  assert.doesNotMatch(out, /Juan/)
+})
+
 test('non-errors are not logged verbatim', () => {
   assert.equal(sanitizeStackTrace({ password: 'x' }), '[Non-Error object]')
 })

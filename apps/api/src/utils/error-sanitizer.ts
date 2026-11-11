@@ -12,9 +12,11 @@ export function sanitizeStackTrace(error: unknown): string {
   const safeMessage = message
     .replace(/\b(\w*(?:password|passwd|pwd|secret|token|key))=\S+/gi, '$1=[redacted]')
     .replace(/"[^"]*"|'[^']*'/g, '"[redacted]"')
+    .replace(/"[^"]*$/, '"[redacted]')  // a value cut off at the length cap
   const frames = (error.stack ?? '').split(/\r?\n/)
     .filter(line => /^\s+at /.test(line))
     .slice(0, MAX_FRAMES)
-    .map(line => line.replace(/(?:file:\/\/)?[^\s()]*[\\/]([^\\/\s()]+:\d+:\d+)/g, '$1'))
+    // Keep only file:line:col; the full path may contain a username (with spaces).
+    .map(line => line.replace(/\([^()]*[\\/]([^\\/()]+:\d+:\d+)\)/, '($1)').replace(/^(\s+at )[^()]*[\\/]([^\\/()]+:\d+:\d+)$/, '$1$2'))
   return [`${error.name} ${code}: ${safeMessage}`, ...frames].join('\n')
 }

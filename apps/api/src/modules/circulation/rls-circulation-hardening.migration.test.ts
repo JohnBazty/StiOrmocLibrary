@@ -35,17 +35,19 @@ test('035 locks the circulation tables to the server, keeps the owner working, a
   const policies = await pg.query<{ count: number }>("SELECT count(*)::int AS count FROM pg_policies WHERE policyname = 'service_role_all'")
   assert.equal(policies.rows[0].count, 3)
 
-  // The owner (the API's server connection) still reads; a granted non-owner sees no rows.
-  await pg.exec("INSERT INTO physical_copies (barcode) VALUES ('BC-1'); CREATE ROLE reader; GRANT SELECT ON physical_copies TO reader")
-  assert.equal((await pg.query<{ count: number }>('SELECT count(*)::int AS count FROM physical_copies')).rows[0].count, 1)
-  await pg.exec('SET ROLE reader')
-  assert.equal((await pg.query<{ count: number }>('SELECT count(*)::int AS count FROM physical_copies')).rows[0].count, 0)
+  // service_role reads through its policy; a granted role with no policy sees no rows.
+  const count = async () => (await pg.query<{ count: number }>('SELECT count(*)::int AS count FROM physical_copies')).rows[0].count
+  await pg.exec("INSERT INTO physical_copies (barcode) VALUES ('BC-1'); CREATE ROLE reader; GRANT SELECT ON physical_copies TO reader, service_role")
+  await pg.exec('SET ROLE service_role')
+  assert.equal(await count(), 1)
+  await pg.exec('RESET ROLE; SET ROLE reader')
+  assert.equal(await count(), 0)
   await pg.close()
 })
 
-test('035 refuses a role that neither owns the tables nor bypasses RLS', async () => {
+test('035 refuses a role that neither owns the tables nor is a superuser, even with BYPASSRLS', async () => {
   const pg = new PGlite()
-  await pg.exec(`${schema}; CREATE ROLE migrator; GRANT ALL ON SCHEMA public TO migrator; SET ROLE migrator`)
-  await assert.rejects(pg.exec(migration), /neither owns borrow_transactions nor bypasses RLS/)
+  await pg.exec(`${schema}; CREATE ROLE migrator BYPASSRLS; GRANT ALL ON SCHEMA public TO migrator; SET ROLE migrator`)
+  await assert.rejects(pg.exec(migration), /does not own borrow_transactions and is not a superuser/)
   await pg.close()
 })

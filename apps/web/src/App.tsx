@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { PortalLayout } from './layouts/PortalLayout'
 import { RouteErrorBoundary } from './components/RouteErrorBoundary'
 
@@ -61,7 +61,8 @@ function NotFound() {
 }
 
 function AppLayout({ children }: { children: React.ReactNode }) {
-  return <RouteErrorBoundary><Suspense fallback={loadingFallback}>{children}</Suspense></RouteErrorBoundary>
+  const { pathname } = useLocation()
+  return <RouteErrorBoundary resetKey={pathname}><Suspense fallback={loadingFallback}>{children}</Suspense></RouteErrorBoundary>
 }
 
 export default function App() {
