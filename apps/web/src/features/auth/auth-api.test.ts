@@ -50,6 +50,25 @@ describe('normalized authentication API client', () => {
     expect(options?.headers).toEqual({ Accept: 'application/json', 'x-csrf-token': csrf('d') })
   })
 
+  it('reports a failed cookie sign-out so the user can retry instead of being signed back in', async () => {
+    saveAuthSession(signedIn({ userId: 7, schoolId: 'FAC-7', role: 'Faculty', exp: Math.floor(Date.now() / 1000) + 900 }, 'e'))
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 503 })))
+    await expect(logout()).rejects.toThrow('Sign out was not confirmed.')
+  })
+
+  it('restores the CSRF token in a new tab so sign-out can clear the cookie', async () => {
+    const session = { userId: 7, schoolId: 'FAC-7', role: 'Faculty', exp: Math.floor(Date.now() / 1000) + 900 }
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _options?: RequestInit) => String(input) === '/api/v1/auth/me'
+      ? new Response(JSON.stringify({ success: true, data: { session, csrfToken: csrf('f') } }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      : new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await logout()
+    const [url, options] = fetchMock.mock.calls[1]
+    expect(url).toBe('/api/auth/logout')
+    expect(options?.headers).toEqual({ Accept: 'application/json', 'x-csrf-token': csrf('f') })
+    expect(getCsrfToken()).toBeNull()
+  })
+
   it('rejects a sign-in reply without a valid CSRF token and stores nothing', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ success: true, data: {
       session: { userId: 2, schoolId: 'ADMIN-001', role: 'Admin', exp: Math.floor(Date.now() / 1000) + 900 }, csrfToken: 'short', user: { id: 2, role: 'Admin' },

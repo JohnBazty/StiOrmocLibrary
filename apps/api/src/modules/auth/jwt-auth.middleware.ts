@@ -48,7 +48,7 @@ export function requireJwtCsrf(request: Request, response: Response, next: NextF
   const received = Buffer.from(request.get('x-csrf-token') ?? '')
   const expected = Buffer.from(sessionId ? csrfTokenFor(sessionId) : '')
   if (expected.length && received.length === expected.length && timingSafeEqual(received, expected)) return next()
-  return response.status(403).json({ success: false, code: 'INVALID_CSRF_TOKEN', message: 'Security token is invalid or expired. Refresh the page and try again.' })
+  return response.status(403).json({ success: false, code: 'INVALID_CSRF_TOKEN', message: 'Your sign-in changed. Reload the page and try again.' })
 }
 
 // While a temporary password is set, only these routes work (S5).

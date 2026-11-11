@@ -8,9 +8,40 @@ Part C of the safety sprint (`docs/safety-sprint-plan.md` on `feat/durable-job-r
 | --- | --- |
 | **Date created** | 2026-11-11 |
 | **Date last updated** | 2026-11-11 |
-| **Status** | `built` |
+| **Status** | `built` (gate 1 approved 2026-11-11; migration `036` not applied) |
 | **Sources** | `docs/safety-sprint-plan.md` Part C; REA spec `accounts-sign-in` (#1) R11 to R16, R20, R21, R24; S3 to S6 |
-| **Migration** | `035_sign_in_hardening.sql` (Part A owns `034`) |
+| **Migration** | `036_sign_in_hardening.sql` (`034` = Part A job runner, PR #17; `035` = audit RLS fix) |
+
+## Gate 1 for Ethan (2026-11-11, resumed session)
+
+**Where it stands.** The branch is one commit (`e18dc9d`) on top of current `main` (`bead6ce`); no rebase was needed. The checks now pass on this branch: typecheck clean, API tests 399 of 399, web tests 281 of 281. These tests use fake databases; nothing has run against a real database or in a browser yet.
+
+**Already built (in the WIP):**
+- Wrong password 5 times in 15 minutes: sign-in pauses for 15 minutes, then unlocks by itself. Library staff can unlock early from user management, with a reason that is recorded.
+- One lock only. It reuses John's existing lock table (`login_attempt_windows`, migration `029`) inside `login-security.service.ts`; no second lock was added. The old session sign-in (`/api/auth/login`) already refuses to sign anyone in (`409`), so every password check goes through this one lock.
+- The sign-in key now lives in a cookie that page scripts cannot read (httpOnly, Secure, SameSite). Every change request must also carry an anti-forgery code. The old header is still accepted for one release so signed-in people are not thrown out on deploy day.
+- Admin can set a temporary password (shown once). The person must choose a new password before doing anything else.
+
+**Changed this session:** migration renamed `035_sign_in_hardening.sql` → `036_sign_in_hardening.sql` (`034` = Part A job runner, PR #17; `035` = audit RLS fix) and the trackers updated. The file itself is unchanged: one new column, `accounts.must_change_password`, default off.
+
+**Gate 1 approved by Ethan (2026-11-11). Done after approval:**
+1. `036` run on a throwaway local Postgres 17 through the real runner (`run-supabase-schema.js`): applied, a second run says "Already applied", existing rows get `false`. The full chain cannot be rebuilt from empty (it needs Supabase's `storage` and `anon`), so `/api/health` was not checked there.
+2. Vercel serves the web app and `/api/*` from one address (`vercel.json` rewrites), so the cookie is sent.
+3. Browser check skipped by Ethan's choice: test sign-in on a Vercel preview after `036` is applied.
+4. Reviews (plan check, security): nothing HIGH. Fixed: a failed sign-out now says "Sign out could not be confirmed" instead of silently leaving the cookie (which signed the user back in on reload); sign-out in a new tab first fetches the anti-forgery code; the change-password form survives a reload in a new tab; "password changed" now shows on the sign-in page; plainer anti-forgery message. Tracker "next free number" lines now say `037`.
+5. `package-lock.json` keeps only npm `"peer"` marker churn and is not committed.
+
+**Open for Ethan (not built):**
+- Someone who knows an Admin's school ID can keep that Admin locked out by typing 5 wrong passwords every 15 minutes. Only another Admin can unlock an Admin. Options: let a Librarian unlock an Admin, or slow Admin sign-in down instead of locking it.
+- Temporary passwords never expire (suggest 48 hours, needs a new column).
+- No rate limit on the staff unlock and temporary-password actions.
+- An Admin who resets a Librarian's password can sign in as that Librarian until it is changed (recorded in the audit log).
+- The `Secure`/`__Host-` cookie depends on `NODE_ENV=production`; a staging deploy without it gets a weaker cookie.
+
+**Risks:**
+- Deploy order: `036` must be applied before the new API goes live, or sign-in reports "migration required". Ethan applies it, with a separate go-ahead.
+- After one release, the old header must be removed in a follow-up, or the protection is only half done.
+- The temporary password is shown to the Admin on screen; they must pass it on in person until Gmail SMTP is set up.
 
 ## Gap check (against `main` at `bead6ce`)
 
@@ -24,7 +55,7 @@ The parked WIP (`db7e90c`) was not reused: it used MySQL syntax, replaced John's
 
 ## How
 
-**Migration `035_sign_in_hardening.sql`:** `accounts.must_change_password BOOLEAN NOT NULL DEFAULT FALSE`. No lock columns: the lock stays in `login_attempt_windows`.
+**Migration `036_sign_in_hardening.sql`:** `accounts.must_change_password BOOLEAN NOT NULL DEFAULT FALSE`. No lock columns: the lock stays in `login_attempt_windows`.
 
 **C1. Lockout (S3, gap answers 1 and 2):**
 - `ACCOUNT_LOCK_THRESHOLD = 5` and `ACCOUNT_LOCK_MS = 15 min` replace the 8 and 10 minutes in `login-security.service.ts`; the counting window is also 15 minutes.
@@ -46,7 +77,7 @@ The parked WIP (`db7e90c`) was not reused: it used MySQL syntax, replaced John's
 
 ## Implementation tracking
 
-- [x] `035` migration and trackers (`.cursor/agent-protocol.md`, `README.MD`, `database/supabase/README.md`, `docs/schema-context.md`, `schema-readiness.ts`).
+- [x] `036` migration and trackers (`.cursor/agent-protocol.md`, `README.MD`, `database/supabase/README.md`, `docs/schema-context.md`, `schema-readiness.ts`).
 - [x] C1 lockout at 5 and 15 minutes, reply unchanged (`login-security.service.test.ts`).
 - [x] C1 Admin unlock with reason, protected targets, audit (`users.repository.test.ts`, `sign-in-hardening.routes.test.ts`).
 - [x] C2 cookie set, token absent from body, cookie read, Bearer still read (`sign-in-hardening.routes.test.ts`).
@@ -59,5 +90,7 @@ The parked WIP (`db7e90c`) was not reused: it used MySQL syntax, replaced John's
 
 | Date | Change |
 | --- | --- |
-| 2026-11-11 | Built on `feat/sign-in-hardening`: migration `035` (pending, not applied), C1 lockout 5/15 and Admin unlock, C2 httpOnly cookie with HMAC CSRF (Bearer still read for one release), C3 temporary password, forced-change gate and change-password form. Reviews: plan-verifier ready; security-reviewer 2 HIGH, 4 MEDIUM, 3 LOW and database-reviewer 1 HIGH, 2 MEDIUM, 3 LOW, all fixed (Librarian cannot reset a Librarian, Admin can unlock an Admin, login CSRF origin check always on, lock order attempt row then account, change-password attempt limit with bcrypt outside the lock, new-tab CSRF restore via `/auth/me`, legacy `/api/auth/me` 401, stale cookie no longer blocks session sign-out). |
+| 2026-11-11 | Gate 1 approved. `036` checked on a throwaway Postgres; reviews found nothing HIGH; sign-out, new-tab change-password and message fixes with tests; open items listed for Ethan. |
+| 2026-11-11 | Resumed: branch already on current `main`; migration renamed to `036` (`035` = audit RLS fix); typecheck, API 399/399 and web 281/281 pass on fakes; status back to `planned` for gate 1. |
+| 2026-11-11 | Built on `feat/sign-in-hardening`: migration `035` (now `036`) (pending, not applied), C1 lockout 5/15 and Admin unlock, C2 httpOnly cookie with HMAC CSRF (Bearer still read for one release), C3 temporary password, forced-change gate and change-password form. Reviews: plan-verifier ready; security-reviewer 2 HIGH, 4 MEDIUM, 3 LOW and database-reviewer 1 HIGH, 2 MEDIUM, 3 LOW, all fixed (Librarian cannot reset a Librarian, Admin can unlock an Admin, login CSRF origin check always on, lock order attempt row then account, change-password attempt limit with bcrypt outside the lock, new-tab CSRF restore via `/auth/me`, legacy `/api/auth/me` 401, stale cookie no longer blocks session sign-out). |
 | 2026-11-11 | Created from sprint Part C after the gap check. Ethan answered: reuse `login_attempt_windows` (5 wrong, 15 minutes, Admin unlock); keep John's "paused" reply; keep the Admin temporary password. Built on `feat/sign-in-hardening` from `origin/main`. |

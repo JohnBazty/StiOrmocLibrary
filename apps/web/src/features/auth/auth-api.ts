@@ -192,7 +192,8 @@ export async function resolveSessionIdentity(): Promise<AuthenticatedIdentity | 
 }
 
 export async function logout() {
-  const token = getCsrfToken()
+  // A new tab has the httpOnly cookie but no CSRF token yet; without it the cookie cannot be cleared.
+  const token = getCsrfToken() ?? (await restoreCookieSession() ? getCsrfToken() : null)
   const claims = token ? getStoredClaims(true) : null
   const generation = loginGeneration
   const deviceSessionId = claims?.deviceSession ? claims.sessionId : !token ? deviceHint() : undefined
@@ -215,6 +216,18 @@ export async function logout() {
   clearAuthSession()
   setSessionIdentity(null)
   if (deviceSessionId) return
+  if (token) {
+    // Only the server can clear the httpOnly cookie; an unconfirmed sign-out would sign the user back in on reload.
+    const response = await fetch('/api/auth/logout', {
+      method: 'POST', credentials: 'include', redirect: 'manual',
+      signal: AbortSignal.timeout(10_000),
+      headers: { Accept: 'application/json', 'x-csrf-token': token },
+    }).catch(() => null)
+    const done = response && (response.ok || response.type === 'opaqueredirect' || response.status === 401)
+    // A newer sign-in replaced the cookie meanwhile, so this old sign-out no longer matters.
+    if (!done && loginGeneration === generation && !getCsrfToken()) throw new Error('Sign out was not confirmed.')
+    return
+  }
   try {
     // A cookie sign-in sends its own CSRF token; an old express session fetches one first.
     let csrfToken = token

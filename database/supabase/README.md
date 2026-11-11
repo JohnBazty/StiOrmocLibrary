@@ -31,8 +31,8 @@
 --   023_revision_phase5_desk_circulation.sql   — in-library use and deduplicated desk confirmations (applied)
 --   024_revision_phase5_reading_materials.sql  — native physical thesis links for in-library use (applied)
 -- Latest applied migration: 032_login_devices.sql.
--- 033_rename_system_brand.sql and 035_sign_in_hardening.sql (accounts.must_change_password) are pending review.
--- 034 is reserved by safety sprint Part A (PR #17). Next unused number: 036.
+-- 033_rename_system_brand.sql and 036_sign_in_hardening.sql (accounts.must_change_password) are pending review.
+-- 034 is reserved by safety sprint Part A (PR #17) and 035 by the audit RLS fix. Next unused number: 037.
 -- 031_semester_enrollment.sql supersedes the removed, unapplied 028 draft.
 -- Preserve the original bytes of applied files. The 003 source still needs checksum reconciliation.
 -- See docs/main-branch-integration.md for the live ledger audit.

@@ -95,6 +95,19 @@ describe('change-password form', () => {
     expect(getCsrfToken()).toBeNull()
   })
 
+  it('restores the sign-in from the cookie when the form is opened in a new tab', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ success: true, data: { session: { userId: 31, schoolId: 'FAC-0031', role: 'Faculty', exp: exp() }, csrfToken, mustChangePassword: true } })))
+    page()
+    expect(await screen.findByLabelText('Temporary password')).toBeTruthy()
+    expect(getCsrfToken()).toBe(csrfToken)
+  })
+
+  it('sends a new tab without a sign-in back to login', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ success: false, code: 'AUTHENTICATION_REQUIRED' }, 401)))
+    page()
+    expect(await screen.findByRole('heading', { name: 'Login page' })).toBeTruthy()
+  })
+
   it('shows the server reason and keeps the sign-in when the change fails', async () => {
     signIn(true)
     vi.stubGlobal('fetch', vi.fn(async () => json({ success: false, code: 'CURRENT_PASSWORD_INCORRECT', message: 'Your current password is incorrect.' }, 422)))
@@ -114,10 +127,6 @@ describe('change-password form', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('sends a signed-out visitor to login', () => {
-    page()
-    expect(screen.getByRole('heading', { name: 'Login page' })).toBeTruthy()
-  })
 })
 
 describe('Admin sign-in access actions', () => {

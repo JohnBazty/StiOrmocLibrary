@@ -1,7 +1,7 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { AuthMessage } from './AuthMessage'
-import { changePassword } from './auth-api'
+import { changePassword, restoreCookieSession } from './auth-api'
 import { getCsrfToken, getStoredClaims, passwordChangeRequired } from './auth-storage'
 
 const field = 'mt-2 h-12 w-full rounded-xl border border-[#003399]/20 bg-white px-4 text-[#003399] focus:outline-none focus:ring-4 focus:ring-[#003399]/15'
@@ -14,9 +14,15 @@ export function ChangePasswordPage() {
   const [confirmation, setConfirmation] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const [claims] = useState(() => getStoredClaims(true))
-  const [required] = useState(passwordChangeRequired)
-  if (!getCsrfToken() && !busy) return <Navigate to="/login" replace />
+  // null = still asking the API; a new tab has the cookie but not yet the CSRF token.
+  const [signedIn, setSignedIn] = useState<boolean | null>(() => getCsrfToken() ? true : null)
+  useEffect(() => {
+    if (signedIn === null) void restoreCookieSession().then(identity => setSignedIn(Boolean(identity)))
+  }, [signedIn])
+  if (signedIn === null) return <main className="flex min-h-screen items-center justify-center bg-[#003399] text-white" aria-busy="true">Please wait…</main>
+  if (!signedIn || (!getCsrfToken() && !busy)) return <Navigate to="/login" replace />
+  const claims = getStoredClaims(true)
+  const required = passwordChangeRequired()
   const staff = claims ? ['Admin', 'Librarian', 'Staff'].includes(claims.role) : false
 
   async function submit(event: FormEvent) {
