@@ -44,3 +44,33 @@ test('re-issues when the stored hash no longer matches the current secret',async
   assert.equal(writes.some(sql=>sql.includes('UPDATE attendance_qr_credentials')),true)
   assert.notEqual(parseAttendanceQr(pass.payload).publicId,'stalepublicid123456')
 })
+
+const staleRow=(secret_hash:unknown)=>({credential_id:4,user_id:19,public_id:'stalepublicid123456',credential_version:1,issued_at:'2026-10-01',credential_status:'Active',secret_hash})
+
+for (const [label,hash] of [['missing',null],['wrong-length',Buffer.alloc(16)]] as const) {
+  test(`rotates when the stored hash is ${label}, writing a hash and version that match the returned pass`,async()=>{
+    let params:unknown[]=[]
+    const database={execute:async(sql:string,values:unknown[])=>{if(sql.startsWith('SELECT'))return[[staleRow(hash)]];params=values;return[{affectedRows:1}]}} as never
+    const pass=await issueAttendanceCredential(database,19)
+    const {publicId,secret}=parseAttendanceQr(pass.payload)
+    assert.equal(params[0],publicId)
+    assert.deepEqual(params[1],createHash('sha256').update(secret,'utf8').digest())
+    assert.equal(params[2],2)
+    assert.deepEqual(params[1],hashFor(publicId,19,2))
+  })
+}
+
+test('a rotation that loses a race returns the winning pass instead of a dead one',async()=>{
+  let selects=0
+  const winner={...staleRow(hashFor('winnerpublicid123456',19,2)),public_id:'winnerpublicid123456',credential_version:2}
+  const database={execute:async(sql:string)=>{if(sql.startsWith('SELECT'))return[[selects++===0?staleRow(Buffer.alloc(32)):winner]];return[{affectedRows:0}]}} as never
+  const pass=await issueAttendanceCredential(database,19)
+  assert.equal(pass.publicId,'winnerpublicid123456')
+})
+
+test('retries a public id collision reported with the Postgres unique-violation code',async()=>{
+  let inserts=0
+  const database={execute:async(sql:string)=>{if(sql.startsWith('SELECT'))return[[]];if(inserts++===0)throw Object.assign(new Error('dup'),{code:'23505'});return[{insertId:7}]}} as never
+  const pass=await issueAttendanceCredential(database,19)
+  assert.equal(pass.credentialId,7)
+})

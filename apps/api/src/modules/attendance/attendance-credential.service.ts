@@ -47,10 +47,20 @@ export function parseAttendanceQr(value: unknown, now = new Date()) {
 }
 
 export async function issueAttendanceCredential(executor: Executor, userId: number): Promise<AttendanceCredential> {
-  const [existing] = await executor.execute<RowDataPacket[]>(
-    `SELECT credential_id,user_id,public_id,credential_version,issued_at,credential_status,secret_hash
-       FROM attendance_qr_credentials WHERE user_id=? LIMIT 1`, [userId],
-  )
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const [existing] = await executor.execute<RowDataPacket[]>(
+      `SELECT credential_id,user_id,public_id,credential_version,issued_at,credential_status,secret_hash
+         FROM attendance_qr_credentials WHERE user_id=? LIMIT 1`, [userId],
+    )
+    const issued = await reuseOrRotate(executor, userId, existing[0])
+    if (issued) return issued
+  }
+  throw new HttpError(500, 'ATTENDANCE_QR_ISSUE_FAILED', 'Unable to issue an attendance pass.')
+}
+
+// Returns null when another request rotated the row first or a public id collided, so the caller re-reads.
+async function reuseOrRotate(executor: Executor, userId: number, row: RowDataPacket | undefined): Promise<AttendanceCredential | null> {
+  const existing = row ? [row] : []
   if (existing[0]?.credential_status === 'Active') {
     const version = Number(existing[0].credential_version)
     const publicId = String(existing[0].public_id)
@@ -66,30 +76,32 @@ export async function issueAttendanceCredential(executor: Executor, userId: numb
     }
   }
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const publicId = randomToken(12)
-    const version = Number(existing[0]?.credential_version ?? 0) + 1
-    const secret = credentialSecret(publicId, userId, version)
-    try {
-      if (existing[0]) {
-        await executor.execute(
-          `UPDATE attendance_qr_credentials
-              SET public_id=?,secret_hash=?,credential_status='Active',credential_version=credential_version+1,
-                  issued_at=NOW(),last_used_at=NULL,revoked_at=NULL,updated_at=NOW()
-            WHERE user_id=?`, [publicId, digest(secret), userId],
-        )
-        return { credentialId: Number(existing[0].credential_id), userId, publicId, payload: payload(publicId, secret), issuedAt: new Date() }
-      }
+  const publicId = randomToken(12)
+  const previousVersion = Number(existing[0]?.credential_version ?? 0)
+  const version = previousVersion + 1
+  const secret = credentialSecret(publicId, userId, version)
+  try {
+    if (existing[0]) {
+      // Compare-and-set on the version so a concurrent rotation cannot leave a returned pass dead.
       const [result] = await executor.execute(
-        `INSERT INTO attendance_qr_credentials(user_id,public_id,secret_hash,credential_version,credential_status,issued_at)
-         VALUES (?,?,?,?, 'Active',NOW())`, [userId, publicId, digest(secret), version],
-      ) as [{ insertId: number }, unknown]
-      return { credentialId: Number(result.insertId), userId, publicId, payload: payload(publicId, secret), issuedAt: new Date() }
-    } catch (error) {
-      if ((error as { code?: string }).code !== 'ER_DUP_ENTRY' || attempt === 2) throw error
+        `UPDATE attendance_qr_credentials
+            SET public_id=?,secret_hash=?,credential_status='Active',credential_version=?,
+                issued_at=NOW(),last_used_at=NULL,revoked_at=NULL,updated_at=NOW()
+          WHERE user_id=? AND credential_version=?`, [publicId, digest(secret), version, userId, previousVersion],
+      ) as [{ affectedRows: number }, unknown]
+      if (result.affectedRows === 0) return null
+      return { credentialId: Number(existing[0].credential_id), userId, publicId, payload: payload(publicId, secret), issuedAt: new Date() }
     }
+    const [result] = await executor.execute(
+      `INSERT INTO attendance_qr_credentials(user_id,public_id,secret_hash,credential_version,credential_status,issued_at)
+       VALUES (?,?,?,?, 'Active',NOW())`, [userId, publicId, digest(secret), version],
+    ) as [{ insertId: number }, unknown]
+    return { credentialId: Number(result.insertId), userId, publicId, payload: payload(publicId, secret), issuedAt: new Date() }
+  } catch (error) {
+    // 23505 = Postgres unique violation (public_id collision, or a concurrent first insert for this user).
+    if ((error as { code?: string }).code === '23505') return null
+    throw error
   }
-  throw new HttpError(500, 'ATTENDANCE_QR_ISSUE_FAILED', 'Unable to issue an attendance pass.')
 }
 
 export async function validateAttendanceCredential(executor: Executor, value: unknown, lock = false, now = new Date()) {
