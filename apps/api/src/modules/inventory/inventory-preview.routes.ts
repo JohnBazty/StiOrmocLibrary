@@ -9,17 +9,8 @@ function isLoopback(request: Request) {
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1'
 }
 
-// FIX: Harden inventory preview endpoint - double-check production environment
-// Security: Even if accidentally enabled, must never be accessible in production
-const isProductionBuild = process.env.NODE_ENV === 'production' ||
-                           env.isProduction ||
-                           process.env.npm_config_environment === 'production'
-
 inventoryPreviewRouter.post('/session', (request, response, next) => {
-  // CRITICAL FIX: Multiple checks to prevent accidental production exposure
-  if (!env.inventoryPreviewEnabled || isProductionBuild) {
-    return response.status(404).json({ success: false, message: 'Route not found.' })
-  }
+  if (!env.inventoryPreviewEnabled || env.isProduction) return response.status(404).json({ success: false, message: 'Route not found.' })
   const origin = request.get('origin')
   if (!isLoopback(request) || (origin && origin !== env.webOrigin)) {
     return response.status(403).json({ success: false, code: 'INVENTORY_PREVIEW_FORBIDDEN', message: 'Inventory preview is available only from the configured local web application.' })

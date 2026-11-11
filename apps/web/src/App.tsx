@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { PortalLayout } from './layouts/PortalLayout'
+import { RouteErrorBoundary } from './components/RouteErrorBoundary'
 
 // Lazy-loaded pages - route-level code splitting
 const UserAttendancePage = lazy(() => import('./features/attendance/UserAttendancePage').then(m => ({ default: m.UserAttendancePage })))
@@ -60,7 +61,7 @@ function NotFound() {
 }
 
 function AppLayout({ children }: { children: React.ReactNode }) {
-  return <Suspense fallback={loadingFallback}>{children}</Suspense>
+  return <RouteErrorBoundary><Suspense fallback={loadingFallback}>{children}</Suspense></RouteErrorBoundary>
 }
 
 export default function App() {

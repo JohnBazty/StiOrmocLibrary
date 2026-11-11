@@ -44,7 +44,7 @@ export default function PdfFilePreview({ file }: { file: File }) {
     }).then(document => { if (active && document) setLoaded({ file, document }) }).catch(() => {
       if (active) setError('This PDF cannot be previewed. It may need a password or be damaged. Open the original to check it.')
     })
-    return () => { active = false; const destroy = task?.destroy; if (destroy) { const result = destroy.call(task); if (result && typeof (result as unknown as Promise<unknown>).catch === 'function') void (result as Promise<unknown>).catch(() => undefined) } }
+    return () => { active = false; void Promise.resolve(task?.destroy()).catch(() => undefined) }
   }, [file])
   const document = loaded?.file === file ? loaded.document : null
   if (error) return <p role="status" className="text-sm">{error}</p>

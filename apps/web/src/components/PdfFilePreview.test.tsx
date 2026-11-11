@@ -52,6 +52,7 @@ describe('PdfFilePreview', () => {
   it('keeps a password-protected or damaged PDF failure inside the preview', async () => {
     mock.getDocument.mockReturnValue({
       promise: Promise.reject(new Error('Password required')),
+      destroy: vi.fn().mockResolvedValue(undefined),
     })
     render(<PdfFilePreview file={new File(['%PDF'], 'protected.pdf')} />)
     expect(await screen.findByText(/This PDF cannot be previewed/)).toBeTruthy()
