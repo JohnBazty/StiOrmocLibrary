@@ -2,9 +2,10 @@ import type { NextFunction, Request, Response } from 'express'
 import { paymentsService, type createPaymentsService, type PaymentActor } from './payments.service.ts'
 import type { createPaymentGatewayService } from './payments.gateway.ts'
 import { paymentError } from './payments.validation.ts'
+import {paymentOperations,type createPaymentOperations} from './payments.operations.ts'
 
 export function createPaymentsController(service: ReturnType<typeof createPaymentsService> = paymentsService,
-  gateway?: ReturnType<typeof createPaymentGatewayService>) {
+  gateway?: ReturnType<typeof createPaymentGatewayService>,operations:ReturnType<typeof createPaymentOperations>=paymentOperations) {
   function actor(response: Response): PaymentActor {
     const user = response.locals.authenticatedUser
     return {accountId:user?.accountId ?? user?.id,role:user?.role}
@@ -17,6 +18,10 @@ export function createPaymentsController(service: ReturnType<typeof createPaymen
     }
   }
   return {
+    operations:handle((_request,identity)=>operations.status(identity)),
+    readSettlement:handle((request,identity)=>operations.readSettlement(identity,request.params.id)),
+    recover:handle(async(_request,identity)=>{await operations.status(identity);return operations.recover()}),
+    settlement:handle((request,identity)=>operations.settlement(identity,request.params.id,request.body)),
     options:handle((request,identity)=>service.options(identity,request.query)),
     quote:handle((request,identity)=>service.quote(identity,request.body)),
     prepare:handle((request,identity)=>gateway ? gateway.checkout(identity,request.body) : service.prepare(identity,request.body),202),

@@ -5,10 +5,12 @@ import { requireJwtRoles, requireLibraryPermission } from '../auth/jwt-auth.midd
 import { createPaymentsController } from './payments.controller.ts'
 import { paymentsService, type createPaymentsService } from './payments.service.ts'
 import { paymentGatewayService, type createPaymentGatewayService } from './payments.gateway.ts'
+import {paymentOperations,type createPaymentOperations} from './payments.operations.ts'
 
 export function createPaymentsRouters(service: ReturnType<typeof createPaymentsService> = paymentsService,
-  gateway: ReturnType<typeof createPaymentGatewayService> | undefined = service===paymentsService ? paymentGatewayService : undefined) {
-  const controller = createPaymentsController(service,gateway)
+  gateway: ReturnType<typeof createPaymentGatewayService> | undefined = service===paymentsService ? paymentGatewayService : undefined,
+  operations:ReturnType<typeof createPaymentOperations>=paymentOperations) {
+  const controller = createPaymentsController(service,gateway,operations)
   const user = Router(), admin = Router()
   const writes = rateLimit({
     windowMs:60_000,limit:20,standardHeaders:'draft-7',legacyHeaders:false,
@@ -24,6 +26,10 @@ export function createPaymentsRouters(service: ReturnType<typeof createPaymentsS
   user.post('/:id/cancel',writes,controller.cancel)
   user.get('/:id',controller.read)
   admin.use(requireCsrfForStateChanges)
+  admin.get('/operations',requireLibraryPermission('library.manage'),controller.operations)
+  admin.post('/recover',requireLibraryPermission('library.manage'),writes,controller.recover)
+  admin.post('/:id/settlement',requireLibraryPermission('library.manage'),writes,controller.settlement)
+  admin.get('/:id/settlement',requireLibraryPermission('library.manage'),controller.readSettlement)
   admin.get('/',requireLibraryPermission('desk.operate'),controller.list)
   admin.put('/fee-rules',requireLibraryPermission('library.manage'),writes,controller.setFee)
   admin.post('/:id/check',requireLibraryPermission('desk.operate'),writes,controller.adminCheck)

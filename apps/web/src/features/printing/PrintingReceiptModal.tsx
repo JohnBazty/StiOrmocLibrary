@@ -17,7 +17,7 @@ export function PrintingReceiptModal({receipt,onClose,onDownload,downloading=fal
   const legacy = receipt.document_label !== 'Payment Record' && receipt.confirmation_source!=='Xendit'
   const online = receipt.confirmation_source === 'Xendit'
 
-  const details=[[legacy ? 'Receipt number' : 'Payment record',receipt.receipt_number],['Verification code',receipt.verification_code],['Print request',`#${receipt.request_id}`],['Payment method',receipt.payment_method],['User',receipt.student_name],['School ID',receipt.school_id],['Received by',receipt.received_by],['Received',new Date(receipt.received_at).toLocaleString()]]
+  const details=[[legacy ? 'Receipt number' : 'Payment record',receipt.receipt_number],['Verification code',receipt.verification_code],['Print request',`#${receipt.request_id}`],['Payment method',receipt.payment_method],['User',receipt.student_name],['School ID',receipt.school_id],['Received by',receipt.received_by],['Received',new Date(receipt.received_at).toLocaleString('en-PH',{timeZone:'Asia/Manila'})]]
 
   return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#003399]/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Printing payment record"><div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
 

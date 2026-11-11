@@ -72,3 +72,19 @@ test('checkout and check routes use the gateway behind borrower authentication',
   assert.equal((await request(app).post('/fixture-id/check').auth(token('Student'),{type:'bearer'}).send({})).status,200)
   assert.equal(checked,1)
 })
+
+test('settlement and recovery controls require Librarian permission and cookie CSRF protection',async()=>{
+  let writes=0
+  const operations={status:async()=>({}),recover:async()=>{writes++;return {}},settlement:async()=>{writes++;return {}},readSettlement:async()=>null} as never
+  const {admin}=createPaymentsRouters({} as ReturnType<typeof createPaymentsService>,undefined,operations)
+  const app=express().use(express.json()).use(authenticateJwt).use(admin)
+  for(const role of ['Student','Faculty','Staff']){
+    assert.equal((await request(app).get('/operations').auth(token(role),{type:'bearer'})).status,403)
+    assert.equal((await request(app).post('/fixture/settlement').auth(token(role),{type:'bearer'}).send({})).status,403)
+    assert.equal((await request(app).post('/recover').auth(token(role),{type:'bearer'}).send({})).status,403)
+  }
+  assert.equal((await request(app).post('/recover').auth(token('Librarian'),{type:'bearer'}).send({})).status,200)
+  const cookie=express().use(express.json()).use((_request,response,next)=>{response.locals.authenticatedUser={role:'Librarian',accountId:3};response.locals.authenticationType='session';next()}).use(admin)
+  assert.equal((await request(cookie).post('/recover').send({})).status,403)
+  assert.equal(writes,1)
+})

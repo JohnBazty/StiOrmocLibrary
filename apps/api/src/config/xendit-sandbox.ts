@@ -2,6 +2,7 @@ type Settings = Record<string, string | undefined>
 
 export type XenditSandboxConfig = { readonly enabled: false } | {
   readonly enabled: true
+  readonly checkoutEnabled?: boolean
   readonly mode: 'test'
   readonly apiOrigin: 'https://api.xendit.co'
   readonly secretKey: string
@@ -17,6 +18,8 @@ export function readXenditSandboxConfig(settings: Settings): XenditSandboxConfig
   const enabled = settings.XENDIT_ENABLED?.trim() || 'false'
   if (!['true', 'false'].includes(enabled)) throw invalid('XENDIT_ENABLED')
   if (enabled === 'false') return Object.freeze({ enabled: false })
+  const checkoutEnabled=settings.XENDIT_CHECKOUT_ENABLED?.trim()||'true'
+  if(!['true','false'].includes(checkoutEnabled))throw invalid('XENDIT_CHECKOUT_ENABLED')
   if (settings.XENDIT_MODE?.trim() !== 'test') throw invalid('XENDIT_MODE')
 
   const secretKey = settings.XENDIT_SECRET_KEY?.trim() || ''
@@ -50,7 +53,7 @@ export function readXenditSandboxConfig(settings: Settings): XenditSandboxConfig
   }
 
   return Object.freeze({
-    enabled: true, mode: 'test', apiOrigin, secretKey, webhookToken, databaseUrl,
+    enabled: true, checkoutEnabled:checkoutEnabled==='true', mode: 'test', apiOrigin, secretKey, webhookToken, databaseUrl,
     webhookUrl: origin ? origin.origin + '/api/payments/xendit/webhook' : null,
     returnUrl: origin ? origin.origin + '/payments/result' : null,
   })

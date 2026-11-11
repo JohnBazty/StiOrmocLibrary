@@ -6,6 +6,9 @@ export type Payment={paymentId:string;kind:PaymentKind;targetId:number;principal
   receiptId:number|null;description?:string|null;payerName?:string|null;schoolId?:string|null;createdAt:string;expiresAt:string;reviewCode?:string|null}
 export type PaymentMethod={channelCode:string;displayName:string;minTotalCentavos:number;maxTotalCentavos:number}
 export type PaymentOptions={enabled:boolean;isSample:boolean;paymentAllowed:boolean;balanceCentavos:number;methods:PaymentMethod[];active:Payment|null}
+export type PaymentOperations={checkoutEnabled:boolean;needs_review:number;due_checks:number;review_events:number;pending_events:number;
+  runnerStatus:{last_success_at:string;last_error:string|null}|null;events:Array<{event_id:string;payment_id:string|null;event_type:string;state:string;attempts:number;last_error_code:string|null;received_at:string;next_attempt_at:string}>}
+export type PaymentSettlement={provider_reference:string;processing_cost_centavos:string;net_centavos:string;settled_at:string;recorded_at:string}
 export const paymentMoney=(centavos:number)=>new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP'}).format(centavos/100)
 export function paymentStatus(payment:Payment) {
   if(payment.cancellationPending)return 'Waiting for cancellation'
@@ -40,6 +43,10 @@ export const paymentsApi={
   list:(filters:{state:string;channel:string;kind:string;page:number})=>request<{items:Payment[];pagination:{page:number;limit:number;total:number};methods?:Array<Pick<PaymentMethod,'channelCode'|'displayName'>>}>('admin/payments?'+new URLSearchParams({...filters,page:String(filters.page)})),
   adminCheck:(id:string)=>request<Payment>('admin/payments/'+encodeURIComponent(id)+'/check',{}),
   adminCancel:(id:string)=>request<Payment>('admin/payments/'+encodeURIComponent(id)+'/cancel',{}),
+  operations:()=>request<PaymentOperations>('admin/payments/operations'),
+  recover:()=>request<unknown>('admin/payments/recover',{}),
+  readSettlement:(id:string)=>request<PaymentSettlement|null>('admin/payments/'+encodeURIComponent(id)+'/settlement'),
+  recordSettlement:(id:string,body:{reference:string;processingCost:string;settledAt:string})=>request<{recorded:boolean}>('admin/payments/'+encodeURIComponent(id)+'/settlement',body),
 }
 
 export async function downloadPaymentRecord(payment:Payment,admin=false) {

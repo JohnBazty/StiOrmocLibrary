@@ -28,7 +28,7 @@ function adapt(executor) {
   }
 }
 
-export async function verifyPaymentFoundation(cluster,{gateway=false,counter=false}={}) {
+export async function verifyPaymentFoundation(cluster,{gateway=false,counter=false,operations=false,hosted=false}={}) {
   const owner = cluster.getPgClient('sti_xendit_sandbox','127.0.0.1')
   await owner.connect()
   const schema = 'payment_qa_' + randomUUID().replaceAll('-','')
@@ -238,8 +238,14 @@ export async function verifyPaymentFoundation(cluster,{gateway=false,counter=fal
     if (gateway) {
       await owner.query(await readFile(new URL('../../../database/supabase/035_xendit_checkout_confirmation.sql',import.meta.url),'utf8'))
       if(counter)await owner.query(await readFile(new URL('../../../database/supabase/036_payment_counter_and_cancellation.sql',import.meta.url),'utf8'))
+      if(operations)await owner.query(await readFile(new URL('../../../database/supabase/037_payment_reconciliation.sql',import.meta.url),'utf8'))
       const {verifyPaymentGateway} = await import('./verify-xendit-payment-gateway.mjs')
-      gatewayResult = await verifyPaymentGateway(pool,owner,{counter})
+      gatewayResult = await verifyPaymentGateway(pool,owner,{counter,operations})
+      if(hosted){
+        assert.ok(operations,'Hosted verification requires --phase6')
+        const {verifyHostedPayment}=await import('./verify-xendit-hosted-payment.mjs')
+        gatewayResult.hosted=await verifyHostedPayment(pool,owner)
+      }
     }
     return {migration:'034',isolation:'temporary-local-schema',quoteMath:'passed',concurrency:'passed',gateway:gatewayResult,
       ownership:'passed',cashCompatibility:'passed',receiptConstraints:'passed',eventDeduplication:'passed'}
@@ -248,6 +254,7 @@ export async function verifyPaymentFoundation(cluster,{gateway=false,counter=fal
     console.error('Payment foundation verification failed', error.code || error.name,
       error.stack?.split('\n').find(line => line.includes('verify-xendit-payment-foundation.mjs'))?.trim())
     if (['ERR_ASSERTION','42703','42P01'].includes(error.code)) console.error(error.message)
+    if(error.code==='ERR_ASSERTION')console.error(error.stack?.split('\n').filter(line=>line.includes('verify-xendit-')).join('\n'))
     throw error
   } finally {
     if (native) await native.end()

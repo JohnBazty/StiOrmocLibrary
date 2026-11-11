@@ -94,6 +94,7 @@ export async function checkSchemaReadiness(database: Pool = db as Pool,features:
       online_payment_attempts: ['payment_id','account_id','principal_centavos','fee_centavos','state','request_key','checkout_url','provider_business_id','next_check_at','creation_started_at','cancel_requested_at'],
       online_payment_events: ['event_id','provider_event_id','verified_fields','state','lease_token','lease_until','next_attempt_at'],
       online_payment_fee_rules: ['fee_rule_id','environment','channel_code','fixed_centavos','percentage_basis_points'],
+      online_payment_settlements:['payment_id','processing_cost_centavos','settled_at','recorded_by_account_id'],
       print_payment_receipts: [...REQUIRED_COLUMNS.print_payment_receipts,'online_payment_attempt_id','confirmation_source','transaction_fee_centavos','total_received'],
       fine_payment_receipts: [...REQUIRED_COLUMNS.fine_payment_receipts,'online_payment_attempt_id','confirmation_source','transaction_fee_centavos','total_received'],
     } : {}),

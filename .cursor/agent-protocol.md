@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-11-11 (Supabase `032` applied, `033–036` pending, next unused `037`) |
+| **Date last updated** | 2026-11-11 (Supabase `032` applied, `033–037` pending, next unused `038`) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---
@@ -101,8 +101,8 @@ Always know and document:
 | --- | --- |
 | Migrations directory | `database/supabase/` (Postgres only; MySQL was retired 2026-11-10) |
 | Latest applied migration | `032_login_devices.sql` |
-| Files pending review | `033_rename_system_brand.sql`, `034_online_payment_foundation.sql`, `035_xendit_checkout_confirmation.sql`, `036_payment_counter_and_cancellation.sql` |
-| **Next available number** | **`037`** |
+| Files pending review | `033_rename_system_brand.sql`, `034_online_payment_foundation.sql`, `035_xendit_checkout_confirmation.sql`, `036_payment_counter_and_cancellation.sql`, `037_payment_reconciliation.sql` |
+| **Next available number** | **`038`** |
 
 Applied enrollment 031 supersedes the removed 028 draft. Keep applied filenames and source bytes, including line endings. The 003 source still needs checksum reconciliation. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set.
 
@@ -110,7 +110,7 @@ Payment foundation 034 was tested only in a disposable local PostgreSQL schema. 
 
 Gateway extension 035 adds saved checkout/recovery state and receipt-source protection. It also passed disposable local PostgreSQL checks only. Real Xendit Test session creation, lookup and cancellation passed. Public callback delivery and a full isolated app deployment remain pending; do not enable this on the normal database.
 
-Counter extension 036 records cancellation intent, indexes method/status searches and blocks ordinary reversal of gateway receipts. Phases 4–5 add shared counter guards, usable online receipt reads/PDFs and borrower/staff payment screens. These remain local sandbox work. The live tracker is unchanged at 032.
+Counter extension 036 records cancellation intent, indexes method/status searches and blocks ordinary reversal of gateway receipts. Phases 4–5 add shared counter guards, usable online receipt reads/PDFs and borrower/staff payment screens. These remain local sandbox work. The live tracker is unchanged at 032. Phase 6 draft 037 adds append-only settlement evidence. The owner chose the existing operational-minute runner for payment recovery; no new scheduler is created.
 
 Naming pattern: `NNN_short_snake_description.sql`, hand-written Postgres with row-level security as in earlier files. Never regenerate or edit `002_from_migrations.sql`.
 

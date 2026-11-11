@@ -16,6 +16,13 @@ test('disabled payments need no keys or database configuration', () => {
   assert.deepEqual(readXenditSandboxConfig({}), { enabled: false })
 })
 
+test('new checkouts can pause without disabling confirmation and recovery',()=>{
+  const config=readXenditSandboxConfig({...settings(),XENDIT_CHECKOUT_ENABLED:'false'})
+  assert.equal(config.enabled,true)
+  assert.equal(config.enabled&&config.checkoutEnabled,false)
+  assert.throws(()=>readXenditSandboxConfig({...settings(),XENDIT_CHECKOUT_ENABLED:'maybe'}))
+})
+
 test('sandbox configuration derives URLs from one approved test origin', () => {
   const config = readXenditSandboxConfig({
     ...settings(), XENDIT_SANDBOX_PUBLIC_ORIGIN: 'https://library-sandbox.example',

@@ -5,7 +5,7 @@ import { createPaymentsRepository, type PaymentRow, type PaymentTarget } from '.
 import { centavos, feeTotal, parseCheckout, parseFeeRule, parsePaymentFilters, parseQuote, parseTarget, paymentError, paymentId, positiveId } from './payments.validation.ts'
 
 export type PaymentActor = { accountId?: number; role?: string }
-type Options = { enabled?: () => boolean; clock?: () => Date }
+type Options = { enabled?: () => boolean; checkoutEnabled?: () => boolean; clock?: () => Date }
 const zeroOrCentavos = (value: unknown) => /^0(?:\.0{1,2})?$/.test(String(value)) ? 0n : centavos(value)
 
 export function targetOf(row: PaymentRow): PaymentTarget {
@@ -31,6 +31,7 @@ export function publicPayment(row: PaymentRow) {
 
 export function createPaymentsService(database: Pool = db, options: Options = {}) {
   const enabled = options.enabled ?? (() => env.xendit.enabled)
+  const checkoutEnabled=options.checkoutEnabled??(()=>options.enabled?true:env.xendit.enabled&&env.xendit.checkoutEnabled!==false)
   const clock = options.clock ?? (() => new Date())
 
   function available() {
@@ -76,7 +77,7 @@ export function createPaymentsService(database: Pool = db, options: Options = {}
         const remaining=zeroOrCentavos(charge.assessed)-zeroOrCentavos(charge.paid)-zeroOrCentavos(charge.adjusted)
         const {rules,active}=await repository.options(accountId,target)
         return {enabled:true,isSample:true,balanceCentavos:Number(remaining>0n?remaining:0n),
-          paymentAllowed:remaining>0n && !charge.accruing && charge.job_status!=='Cancelled' && !['Paid','Waived','Voided'].includes(charge.status),
+          paymentAllowed:checkoutEnabled() && remaining>0n && !charge.accruing && charge.job_status!=='Cancelled' && !['Paid','Waived','Voided'].includes(charge.status),
           active:active?publicPayment(active):null,methods:rules.filter(rule=>rule.is_sample).map(rule=>({
             channelCode:String(rule.channel_code),displayName:String(rule.display_name),
             minTotalCentavos:Number(rule.min_total_centavos),maxTotalCentavos:Number(rule.max_total_centavos),
@@ -85,6 +86,7 @@ export function createPaymentsService(database: Pool = db, options: Options = {}
     },
     async quote(actor: PaymentActor, body: unknown) {
       const accountId = borrower(actor), input = parseQuote(body)
+      if(!checkoutEnabled())throw paymentError('New online payments are paused. Existing payments can still be checked.','ONLINE_CHECKOUT_PAUSED',503)
       return transaction(async repository => {
         const userId = await owner(repository,accountId)
         const remaining = await balance(repository,input,userId)

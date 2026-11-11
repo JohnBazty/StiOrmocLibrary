@@ -5,6 +5,14 @@ import {OperationalReports} from './OperationalReports'
 const data={title:'Take-home borrowing',label:'All recorded dates',timezone:'Asia/Manila',generatedAt:'2026-10-12T00:00:00Z',columns:['title','status'],rows:[{title:'Test book',status:'Borrowed'}],total:1,metrics:{},terms:[{id:1,academic_year:'2026–2027',term_name:'First semester'}],note:'Borrow date'}
 afterEach(()=>{cleanup();vi.unstubAllGlobals()})
 describe('operational reports',()=>{
+  it('separates principal, user fees and settlement totals on payment reports',async()=>{
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async()=>({success:true,data:{...data,metrics:{principal:40,transaction_fees:1.4,gross:41.4,processing_cost:1.4,net_settled:40,settlements_recorded:1,captured_needing_review:51.5}}})}))
+    render(<MemoryRouter initialEntries={['/?kind=onlinePayments']}><OperationalReports/></MemoryRouter>)
+    expect(await screen.findByText('User fees (PHP)')).toBeTruthy()
+    expect(screen.getByText('Recorded net settlement (PHP)')).toBeTruthy()
+    expect(screen.getByText('Principal (PHP)')).toBeTruthy()
+    expect(screen.getByText(/Captured payments needing review \(PHP\): 51.5/)).toBeTruthy()
+  })
   it('applies a date range and search to the preview request',async()=>{
     const fetch=vi.fn().mockResolvedValue({ok:true,json:async()=>({success:true,data})});vi.stubGlobal('fetch',fetch)
     render(<MemoryRouter><OperationalReports/></MemoryRouter>);expect(await screen.findByText('Test book')).toBeTruthy()

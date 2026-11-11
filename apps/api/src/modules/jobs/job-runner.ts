@@ -10,6 +10,7 @@ import { createBookRequestService } from '../reservations/book-request.service.t
 import { deliverBookRequestEmails } from '../reservations/book-request-email.worker.ts'
 import { createCollectionReviewService } from '../catalog/collection-review.service.ts'
 import { createEnrollmentService } from '../enrollment/enrollment.service.ts'
+import {createPaymentOperations} from '../payments/payments.operations.ts'
 
 const name = 'operational-minute'
 const jobNow="(NOW() AT TIME ZONE 'UTC')"
@@ -39,11 +40,18 @@ export async function claimOperationalMinute(now:Date,database:Pool=db){
   return {claimed:Boolean(claim.affectedRows),token}
 }
 
+export async function runPaymentRecovery(database:Pool=db,recover=()=>createPaymentOperations(database).recover()){
+  try{return await recover()}
+  catch{return {failed:true,code:'PAYMENT_RECOVERY_FAILED',message:'Payment recovery needs attention. Check Online payments.'}}
+}
+
 export async function runOperationalJobs(now = new Date(), database: Pool = db) {
   const started = Date.now()
   const {claimed,token}=await claimOperationalMinute(now,database)
   if (!claimed) return { skipped: true, reason: 'already running or completed this minute' }
   try {
+    // Payment recovery has its own durable leases; an outage must not stop circulation jobs.
+    const payments=await runPaymentRecovery(database)
     await createEnrollmentService(database).closeDue()
     const attendance = await createAttendanceOperations(database,()=>now).autoCheckout()
     const inLibrary = await flagUnreturnedInLibrary(database,now)
@@ -53,8 +61,11 @@ export async function runOperationalJobs(now = new Date(), database: Pool = db) 
     const notifications = await generateNotifications(database, now)
     const requestEmails = await deliverBookRequestEmails(database,now)
     const collection = await createCollectionReviewService(database).refresh()
-    await database.execute(`UPDATE library_job_runs SET lease_until=NULL,run_token=NULL,last_success_at=${jobNow},last_error=NULL,run_count=run_count+1,last_duration_ms=? WHERE job_name=? AND run_token=?`, [Date.now() - started, name, token])
-    return { skipped: false, attendance, inLibrary, expiration, preparation, overdue, notifications, requestEmails, collection }
+    const paymentFailure='failed' in payments&&payments.failed
+    await database.execute(`UPDATE library_job_runs SET lease_until=NULL,run_token=NULL,last_success_at=${jobNow},last_error=?,
+      last_error_at=CASE WHEN ? THEN ${jobNow} ELSE last_error_at END,failure_count=failure_count+?,run_count=run_count+1,last_duration_ms=? WHERE job_name=? AND run_token=?`,
+      [paymentFailure?'Payment recovery needs attention. Check Online payments.':null,Boolean(paymentFailure),paymentFailure?1:0,Date.now()-started,name,token])
+    return { skipped: false, payments, attendance, inLibrary, expiration, preparation, overdue, notifications, requestEmails, collection }
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 1000) : 'Unknown scheduled job failure'
     await database.execute(`UPDATE library_job_runs SET lease_until=NULL,run_token=NULL,last_error_at=${jobNow},last_error=?,failure_count=failure_count+1,last_duration_ms=? WHERE job_name=? AND run_token=?`, [message, Date.now() - started, name, token])

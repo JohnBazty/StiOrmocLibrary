@@ -9,7 +9,7 @@ import { createPaymentWebhookRouter } from '../src/modules/payments/payments.rou
 import { HttpError } from '../src/core/http-error.ts'
 import { createFinesService } from '../src/modules/fines/fines.service.ts'
 
-export async function verifyPaymentGateway(pool, owner,{counter=false}={}) {
+export async function verifyPaymentGateway(pool, owner,{counter=false,operations=false}={}) {
   await owner.query(`ALTER TABLE users ADD COLUMN full_name text DEFAULT 'Disposable fixture',ADD COLUMN school_id text DEFAULT 'QA-ONLY';
     ALTER TABLE print_requests ADD COLUMN file_name text DEFAULT 'fixture.pdf',ADD COLUMN page_count integer DEFAULT 1,
       ADD COLUMN number_of_copies integer DEFAULT 1,ADD COLUMN total_sheets integer DEFAULT 1,
@@ -202,7 +202,9 @@ export async function verifyPaymentGateway(pool, owner,{counter=false}={}) {
       controls:{hangCancel:value=>{cancelHangs=value},raceCancel:()=>{cancelRace=true},
         advance:minutes=>{now=new Date(now.getTime()+minutes*60_000)}}})
   }
-  return {provider:'controlled-fixture',sessionConcurrency:'passed',duplicateCallbacks:'passed',fineAllocation:'passed',counter:counterResult,
+  let operationsResult
+  if(operations){const {verifyPaymentOperations}=await import('./verify-xendit-payment-operations.mjs');operationsResult=await verifyPaymentOperations({pool,owner,service,gateway,actor,config,provider,clock:()=>now,sessionFor,finish,event})}
+  return {provider:'controlled-fixture',sessionConcurrency:'passed',duplicateCallbacks:'passed',fineAllocation:'passed',counter:counterResult,operations:operationsResult,
     printingReceipt:'passed',unknownCreationRecovery:'passed',changedBalance:'passed',providerOutageRecovery:'passed',outOfOrder:'passed',
     settlementRollback:'passed',pendingCaptureRecovery:'passed',expiredLeaseRecovery:'passed',lostBookSettlement:'passed'}
 }

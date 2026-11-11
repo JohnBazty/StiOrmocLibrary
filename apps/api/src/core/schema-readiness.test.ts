@@ -23,4 +23,5 @@ test('enabled payments require cancellation migration before the API is ready',a
     const result=await checkSchemaReadiness({execute:async()=>[[{TABLE_NAME:'online_payment_attempts',COLUMN_NAME:'payment_id'}]]} as never,{paymentsEnabled:true})
     assert.equal(result.ready,false)
     assert.ok(result.missingColumns.includes('online_payment_attempts.cancel_requested_at'))
+    assert.ok(result.missingTables.includes('online_payment_settlements'))
 })

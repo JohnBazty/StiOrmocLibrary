@@ -21,7 +21,7 @@ const wait = (minutes: number, now: Date) => new Date(now.getTime()+minutes*60_0
 export function createPaymentGatewayService(database: Pool = db, options: Options = {}) {
   const config = options.config ?? (()=>env.xendit), clock = options.clock ?? (()=>new Date())
   const provider = options.provider ?? createXenditClient(config)
-  const payments = createPaymentsService(database,{enabled:()=>config().enabled,clock})
+  const payments = createPaymentsService(database,{enabled:()=>config().enabled,checkoutEnabled:()=>{const c=config();return c.enabled&&c.checkoutEnabled!==false},clock})
   function available() {
     const settings = config()
     if (!settings.enabled) throw paymentError('Online payments are currently unavailable.','ONLINE_PAYMENTS_UNAVAILABLE',503)
@@ -114,8 +114,8 @@ export function createPaymentGatewayService(database: Pool = db, options: Option
       if (session.status==='COMPLETED') {
         const remaining = await currentBalance(connection,attempt)
         if (remaining===null || remaining!==BigInt(attempt.balance_before_centavos)) {
-          await connection.execute('UPDATE online_payment_attempts SET provider_payment_id=? WHERE payment_id=?',[session.payment_id,id])
-          await review(connection,id,'PAYMENT_BALANCE_CHANGED')
+          await connection.execute(`UPDATE online_payment_attempts SET provider_payment_id=?,state='Review',
+            review_code='PAYMENT_BALANCE_CHANGED',updated_at=?,next_check_at=? WHERE payment_id=?`,[session.payment_id,clock(),wait(60,clock()),id])
           return
         }
         await connection.execute(`UPDATE online_payment_attempts SET state='Succeeded',provider_payment_id=?,
@@ -141,6 +141,7 @@ export function createPaymentGatewayService(database: Pool = db, options: Option
         const attempt = await row(connection,prepared.paymentId,true)
         if (!attempt || Number(attempt.account_id)!==Number(actor.accountId)) throw paymentError('This payment is unavailable.','PAYMENT_NOT_FOUND',404)
         if (attempt.state!=='Prepared') return {attempt,claimed:false}
+        if(settings.checkoutEnabled===false)throw paymentError('New online payments are paused. Check or cancel this payment instead.','ONLINE_CHECKOUT_PAUSED',503)
         if (new Date(attempt.expires_at)<=clock()) throw paymentError('Review this payment again.','PAYMENT_QUOTE_EXPIRED',409)
         if (await currentBalance(connection,attempt)!==BigInt(attempt.balance_before_centavos)) {
           throw paymentError('The balance changed. Review it again.','PAYMENT_QUOTE_CHANGED',409)
@@ -250,7 +251,9 @@ export function createPaymentGatewayService(database: Pool = db, options: Option
       available()
       if (!Number.isInteger(limit) || limit<1 || limit>25) throw paymentError('Invalid recovery batch.')
       let processed = 0, pending = 0, reviewed = 0
+      const deadline=Date.now()+45_000
       for (let index=0;index<limit;index++) {
+        if(Date.now()>=deadline)break
         const event = await transaction(async connection=>{
           const [rows] = await connection.execute<EventRow[]>(`SELECT * FROM online_payment_events WHERE environment='test'
             AND (state='Pending' OR (state='Processing' AND lease_until<=?)) AND next_attempt_at<=?
@@ -282,8 +285,9 @@ export function createPaymentGatewayService(database: Pool = db, options: Option
         WHERE environment='test' AND state IN ('Creating','Active') AND check_count>=24`)
       const [due] = await database.execute<PaymentRow[]>(`SELECT * FROM online_payment_attempts WHERE environment='test'
         AND state IN ('Creating','Active','Review') AND check_count<24 AND next_check_at<=?
-        AND (review_code IS NULL OR review_code='PAYMENT_CREATION_UNCERTAIN') ORDER BY next_check_at LIMIT ?`,[clock(),limit])
+        AND (review_code IS NULL OR review_code='PAYMENT_CREATION_UNCERTAIN') ORDER BY next_check_at LIMIT ?`,[clock(),Math.max(0,limit-processed-pending-reviewed)])
       for (const attempt of due) {
+        if(Date.now()>=deadline)break
         const [claim] = await database.execute<ResultSetHeader>(`UPDATE online_payment_attempts SET next_check_at=?,check_count=check_count+1
           WHERE payment_id=? AND next_check_at<=?`,[wait(1,clock()),attempt.payment_id,clock()])
         if (!claim.affectedRows) continue

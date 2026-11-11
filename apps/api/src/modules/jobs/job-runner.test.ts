@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { Pool } from '../../config/db.js'
-import { authorizedJobToken, runOperationalJobs } from './job-runner.ts'
+import { authorizedJobToken, runOperationalJobs,runPaymentRecovery } from './job-runner.ts'
 
 test('scheduled runner requires a configured 32-character bearer secret', () => {
   const secret = '0123456789abcdef0123456789abcdef'
@@ -9,6 +9,13 @@ test('scheduled runner requires a configured 32-character bearer secret', () => 
   assert.equal(authorizedJobToken(`Bearer ${secret}x`, secret), false)
   assert.equal(authorizedJobToken(`Bearer ${secret}`, 'short'), false)
   assert.equal(authorizedJobToken(undefined, secret), false)
+})
+
+test('payment recovery uses one bounded existing runner and isolates sanitized failures',async()=>{
+  assert.deepEqual(await runPaymentRecovery({} as never,async()=>({processed:2,pending:1,reviewed:0})),{processed:2,pending:1,reviewed:0})
+  const result=await runPaymentRecovery({} as never,async()=>{throw new Error('Private provider response')})
+  assert.equal('failed' in result&&result.failed,true)
+  assert.doesNotMatch(JSON.stringify(result),/Private provider/)
 })
 
 test('an already claimed minute skips all operational scans', async () => {
