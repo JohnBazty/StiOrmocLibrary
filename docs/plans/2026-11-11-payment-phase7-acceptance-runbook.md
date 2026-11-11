@@ -12,10 +12,12 @@
 
 **Latest local continuation (November 12):** use the
 [local integration record](2026-11-11-local-payment-integration.md). The active
-localhost preview now uses a dedicated sample database with Xendit Test checkout
-enabled, the restored deployed theme and cookie authentication. Start it with
-`npm run dev:payments` from `StiOrmocLibrary-main-sync`. The older ordinary-preview
-entry below is historical and must not replace that command. Payment migrations
+localhost app now uses the school database with the payment features integrated,
+the restored deployed theme and cookie authentication. Start it with
+`npm run dev` from `StiOrmocLibrary-main-sync`. The sample payment preview was
+stopped at the owner's request. Payment-provider activation against school
+records is still pending; test credentials cannot clear real bills. Isolated
+automated checks use `npm run qa:payments`, not the normal dev command. Payment migrations
 are now unapplied drafts 038–041; live sign-in 036 remains unchanged. Browser,
 external callback and actual completed hosted capture remain separate gates.
 

@@ -12,14 +12,15 @@ This guide explains how to prepare a Windows development computer, run and test 
 
 ## Contents
 
-**Latest local payment test:** from
+**Latest local app:** from
 `C:\Users\JOHN\Documents\SSL\StiOrmocLibrary-main-sync`, run
-`npm run dev:payments` and open `http://localhost:5173`. This uses separate sample
-records and Xendit Test mode; it never charges real money or updates school
-balances. Sample sign-in steps are generated in ignored
-`output/xendit-sandbox/local-payment-sign-in.md`. See the
-[integration record](docs/plans/2026-11-11-local-payment-integration.md) for exact
-scope, verification and safe shutdown. No hosted release is included.
+`npm run dev` and open `http://localhost:5173`. The same application contains the
+latest payment features and reads the existing school database configuration.
+`dev:stable` and `dev:payments` start this same app too; they do not switch to
+sample records. Online checkout remains disabled until its real-data activation
+is separately reviewed. Automated isolated payment QA is available as
+`npm run qa:payments` and does not replace the normal application. See the
+[integration record](docs/plans/2026-11-11-local-payment-integration.md).
 
 1. [System overview](#system-overview)
 2. [Prerequisites](#prerequisites)

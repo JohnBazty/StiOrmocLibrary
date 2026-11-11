@@ -9,6 +9,25 @@
 
 ## Approved scope
 
+**Owner correction, November 12:** keep one ordinary local system connected to
+the existing school database. The earlier sample preview is stopped and is no
+longer the normal startup. `npm run dev`, `npm run dev:stable` and
+`npm run dev:payments` now start the same latest application through
+`tools/dev-local.mjs`. It reads the owner's existing private configuration
+without copying it; API port 4000, website port 5173. The integrated payment
+screens remain present. Xendit Test credentials cannot clear real school bills;
+online checkout remains disabled pending separately reviewed activation. The
+isolated acceptance commands and sample preview records below are historical QA
+evidence, not a replacement for the user's database.
+
+Verification of this correction: ordinary health, enrollment availability,
+remembered-device availability, catalog options and catalog list all return HTTP
+200. Enrollment is enabled/required/open, and the catalog returns 21 matching
+public entries. Eight affected authentication/payment tests pass. No migration,
+live configuration, real account or financial record was changed. The screenshot's
+registration error was caused by enrollment being disabled in the sample app;
+the school database itself was reachable.
+
 John requested a working local payment integration and an explanation/repair of
 the local/live interface difference. This authorizes local source integration,
 isolated database preparation and sandbox testing. It does not authorize a push,
@@ -73,14 +92,14 @@ original checkout's unrelated edits and private configuration remain preserved.
   scheduled-job status and lazy loading remain. Theme source parity is checked;
   no new browser screenshot or visual sign-off is claimed.
 
-## Run the local payment test
+## Earlier isolated payment-test evidence
 
 ```powershell
 cd C:\Users\JOHN\Documents\SSL\StiOrmocLibrary-main-sync
-npm run dev:payments
+npm run qa:payments
 ```
 
-This builds and starts the complete application at `http://localhost:5173`, with
+The earlier interactive QA run built and started the complete application at `http://localhost:5173`, with
 the API on loopback port 4000 and the dedicated local database on 55438. It does
 not connect the payment app to school records. Startup refuses occupied ports,
 a different database identity, or a previously populated application schema.
@@ -146,6 +165,13 @@ Evidence is kept under ignored `output/`: `local-integration-regression.log`,
 verification outcomes; the sample credential file remains separately private.
 
 ## Change log
+
+2026-11-12 — At the owner's correction, stopped the sample preview and restored
+the latest app's connection to the real school database. Added one normal local
+launcher, preserving the private configuration and payment features. Standard
+dev commands no longer silently use sample records. HTTP reads and registration
+availability passed, with 21 public catalog entries. Payment provider activation
+and hosted migrations remain outside this connection repair.
 
 2026-11-12 — Completed local-only integration, preserved deployed styling,
 renumbered unapplied payment drafts and verified the complete isolated cookie
