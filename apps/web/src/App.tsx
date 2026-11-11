@@ -1,61 +1,12 @@
 import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { PortalLayout } from './layouts/PortalLayout'
-<<<<<<< HEAD
-import { UserAttendancePage } from './features/attendance/UserAttendancePage'
-import { AdminDashboardPage } from './features/dashboard/AdminDashboardPage'
-import { AdminAccountDashboardPage } from './features/dashboard/AdminAccountDashboardPage'
-import { StaffDashboardPage } from './features/dashboard/StaffDashboardPage'
-import { ProfileAvatarPage } from './features/users/ProfileAvatarPage'
-import { UserDashboardPage } from './features/dashboard/UserDashboardPage'
-import { FloorPlanImagePage } from './features/floor-plan/FloorPlanImagePage'
-import { BookArchivePage } from './features/catalog/BookArchivePage'
-import { AdminAttendancePage } from './features/attendance/AdminAttendancePage'
-import { StaffAttendancePage } from './features/attendance/StaffAttendancePage'
-import { AdminUsersPage } from './features/users/AdminUsersPage'
-import { EnrollmentPage } from './features/users/EnrollmentPage'
-import { CatalogManagementPage } from './features/catalog/CatalogManagementPage'
-import { CategoryManagementPage } from './features/categories/CategoryManagementPage'
-import { AdminReservationQueuePage } from './features/reservations/AdminReservationQueuePage'
-import { AuthenticatedHome, ProtectedRoute } from './features/auth/ProtectedRoute'
-import { LoginPage } from './features/auth/LoginPage'
-import { RegistrationPage } from './features/auth/RegistrationPage'
-import { PublicAuthLayout } from './features/auth/PublicAuthLayout'
-import { AdminLoginPage } from './features/auth/AdminLoginPage'
-import { PasswordRecoveryPage } from './features/auth/PasswordRecoveryPage'
-import { ChangePasswordPage } from './features/auth/ChangePasswordPage'
-import { LibrarianNotificationsPage } from './features/notifications/LibrarianNotificationsPage'
-import { InventoryDashboard } from './features/inventory/InventoryDashboard'
-import { BookCatalog } from './features/catalog/BookCatalog'
-import { LegacyCatalogRedirect } from './features/catalog/LegacyCatalogRedirect'
-import { ResearchCatalog } from './features/catalog/ResearchCatalog'
-import { BorrowingHistory } from './features/circulation/BorrowingHistory'
-import { AdminCirculationMonitor } from './features/circulation/AdminCirculationMonitor'
-import { StudentReservations } from './features/reservations/StudentReservations'
-import { MyBooksPage } from './features/catalog/MyBooksPage'
-import { BookCart } from './features/catalog/BookCart'
-import { StudentPrintingPage } from './features/printing/StudentPrintingPage'
-import { AdminPrintingQueuePage } from './features/printing/AdminPrintingQueuePage'
-import { StaffPrintingQueuePage } from './features/printing/StaffPrintingQueuePage'
-import { AdminPrintSuppliesPage } from './features/printing/AdminPrintSuppliesPage'
-import { NotificationCenterPage } from './features/notifications/NotificationCenterPage'
-import { AdminNotificationsPage } from './features/notifications/AdminNotificationsPage'
-import { AdminAnnouncementsPage } from './features/notifications/AdminAnnouncementsPage'
-import { StaffAnnouncementsPage } from './features/notifications/StaffAnnouncementsPage'
-import { StudentClearancePage } from './features/clearance/StudentClearancePage'
-import { AdminClearancePage } from './features/clearance/AdminClearancePage'
-import { AdminFinesPage } from './features/fines/AdminFinesPage'
-import { StudentFinesPage } from './features/fines/StudentFinesPage'
-import { PaymentResultPage } from './features/payments/PaymentResultPage'
-import { AdminPaymentsPage } from './features/payments/AdminPaymentsPage'
-import { UserPaymentsPage } from './features/payments/UserPaymentsPage'
-import { PublicCatalogPage } from './features/catalog/PublicCatalogPage'
-import { BorrowingPoliciesArchivedPage } from './features/borrowing-policies/BorrowingPoliciesArchivedPage'
-import { CatalogMaintenancePage } from './features/catalog/CatalogMaintenancePage'
-import { CatalogReportsPage } from './features/catalog/CatalogReportsPage'
-import { CollectionReviewPage } from './features/catalog/CollectionReviewPage'
-=======
 import { RouteErrorBoundary } from './components/RouteErrorBoundary'
+
+const ChangePasswordPage = lazy(() => import('./features/auth/ChangePasswordPage').then(m => ({ default: m.ChangePasswordPage })))
+const PaymentResultPage = lazy(() => import('./features/payments/PaymentResultPage').then(m => ({ default: m.PaymentResultPage })))
+const AdminPaymentsPage = lazy(() => import('./features/payments/AdminPaymentsPage').then(m => ({ default: m.AdminPaymentsPage })))
+const UserPaymentsPage = lazy(() => import('./features/payments/UserPaymentsPage').then(m => ({ default: m.UserPaymentsPage })))
 
 // Lazy-loaded pages - route-level code splitting
 const UserAttendancePage = lazy(() => import('./features/attendance/UserAttendancePage').then(m => ({ default: m.UserAttendancePage })))
@@ -109,7 +60,6 @@ const CatalogReportsPage = lazy(() => import('./features/catalog/CatalogReportsP
 const CollectionReviewPage = lazy(() => import('./features/catalog/CollectionReviewPage').then(m => ({ default: m.CollectionReviewPage })))
 
 const loadingFallback = <div className="flex min-h-screen items-center justify-center bg-[#003399]/5"><div className="text-center"><div className="mb-4 h-8 w-8 animate-spin rounded-full border-4 border-[#003399] border-t-transparent"></div><p className="text-sm text-[#003399]/65">Loading...</p></div></div>
->>>>>>> origin/fix/full-audit-findings
 
 function NotFound() {
   return <div className="flex min-h-screen items-center justify-center bg-[#003399]/5 p-6 text-center"><div><p className="text-sm font-bold text-[#003399]">404</p><h1 className="mt-2 font-display text-3xl font-bold text-[#003399]">This shelf is empty.</h1><p className="mt-2 text-sm text-[#003399]/65">The page you requested is not part of the library system.</p><a href="/" className="mt-5 inline-flex rounded-xl bg-[#003399] px-4 py-2.5 text-sm font-bold text-[#FFFFFF]">Return to library</a></div></div>
@@ -130,39 +80,17 @@ export default function App() {
         <Route path="/register" element={<AppLayout><RegistrationPage popup /></AppLayout>} />
       </Route>
       <Route path="/admin/login" element={<Navigate to="/staff" replace />} />
-<<<<<<< HEAD
-      <Route path="/staff" element={<AdminLoginPage />} />
-      <Route path="/forgot-password" element={<PasswordRecoveryPage />} />
-      <Route element={<ProtectedRoute roles={['Student','Faculty']} />}>
-        <Route path="/payments/result" element={<PaymentResultPage/>}/>
-      </Route>
-      <Route path="/change-password" element={<ChangePasswordPage />} />
-
-      <Route element={<ProtectedRoute roles={['Student']} />}>
-        <Route element={<PortalLayout role="student" />}>
-          <Route path="/student/dashboard" element={<UserDashboardPage />} />
-          <Route path="/student/catalog" element={<LegacyCatalogRedirect />} />
-          <Route path="/student/library" element={<BookCatalog />} />
-          <Route path="/student/floor-plan" element={<FloorPlanImagePage />} />
-          <Route path="/student/cart" element={<BookCart />} />
-          <Route path="/student/research" element={<ResearchCatalog />} />
-          <Route path="/student/borrowing" element={<BorrowingHistory />} />
-          <Route path="/student/my-books" element={<MyBooksPage />} />
-          <Route path="/student/reservations" element={<StudentReservations />} />
-          <Route path="/student/printing" element={<StudentPrintingPage />} />
-          <Route path="/student/attendance" element={<UserAttendancePage />} />
-          <Route path="/student/notifications" element={<NotificationCenterPage />} />
-          <Route path="/student/fines" element={<StudentFinesPage />} />
-          <Route path="/student/payments" element={<UserPaymentsPage />} />
-          <Route path="/student/clearance" element={<StudentClearancePage />} />
-          <Route path="/student/profile" element={<ProfileAvatarPage />} />
-=======
       <Route path="/staff" element={<AppLayout><AdminLoginPage /></AppLayout>} />
       <Route path="/forgot-password" element={<AppLayout><PasswordRecoveryPage /></AppLayout>} />
+      <Route path="/change-password" element={<AppLayout><ChangePasswordPage /></AppLayout>} />
+      <Route element={<AppLayout><ProtectedRoute roles={['Student', 'Faculty']} /></AppLayout>}>
+        <Route path="/payments/result" element={<AppLayout><PaymentResultPage /></AppLayout>} />
+      </Route>
 
       <Route element={<AppLayout><ProtectedRoute roles={['Student']} /></AppLayout>}>
         <Route element={<AppLayout><PortalLayout role="student" /></AppLayout>}>
           <Route path="/student/dashboard" element={<AppLayout><UserDashboardPage /></AppLayout>} />
+          <Route path="/student/payments" element={<AppLayout><UserPaymentsPage /></AppLayout>} />
           <Route path="/student/catalog" element={<AppLayout><LegacyCatalogRedirect /></AppLayout>} />
           <Route path="/student/library" element={<AppLayout><BookCatalog /></AppLayout>} />
           <Route path="/student/floor-plan" element={<AppLayout><FloorPlanImagePage /></AppLayout>} />
@@ -177,7 +105,6 @@ export default function App() {
           <Route path="/student/fines" element={<AppLayout><StudentFinesPage /></AppLayout>} />
           <Route path="/student/clearance" element={<AppLayout><StudentClearancePage /></AppLayout>} />
           <Route path="/student/profile" element={<AppLayout><ProfileAvatarPage /></AppLayout>} />
->>>>>>> origin/fix/full-audit-findings
         </Route>
       </Route>
 
@@ -196,6 +123,7 @@ export default function App() {
       <Route element={<AppLayout><ProtectedRoute roles={['Librarian']} /></AppLayout>}>
         <Route element={<AppLayout><PortalLayout role="librarian" /></AppLayout>}>
           <Route path="/librarian/dashboard" element={<AppLayout><AdminDashboardPage /></AppLayout>} />
+          <Route path="/librarian/payments" element={<AppLayout><AdminPaymentsPage /></AppLayout>} />
           <Route path="/librarian/accounts" element={<AppLayout><AdminAccountDashboardPage /></AppLayout>} />
           <Route path="/librarian/users" element={<AppLayout><AdminUsersPage /></AppLayout>} />
           <Route path="/librarian/users/enrollment" element={<AppLayout><EnrollmentPage /></AppLayout>} />
@@ -203,59 +131,6 @@ export default function App() {
           <Route path="/librarian/approvals" element={<Navigate to="/librarian/users" replace />} />
           <Route path="/librarian/notifications" element={<AppLayout><LibrarianNotificationsPage /></AppLayout>} />
           <Route path="/librarian/catalog" element={<Navigate to="/librarian/maintenance" replace />} />
-<<<<<<< HEAD
-          <Route path="/librarian/borrowing-policies" element={<BorrowingPoliciesArchivedPage />} />
-          <Route path="/librarian/maintenance" element={<CatalogMaintenancePage />} />
-          <Route path="/librarian/reports" element={<CatalogReportsPage />} />
-          <Route path="/librarian/collection-review" element={<CollectionReviewPage />} />
-          <Route path="/librarian/book-archive" element={<BookArchivePage />} />
-          <Route path="/librarian/categories" element={<CategoryManagementPage />} />
-          <Route path="/librarian/circulation" element={<AdminCirculationMonitor />} />
-          <Route path="/librarian/reservations" element={<AdminReservationQueuePage />} />
-          <Route path="/librarian/fines" element={<AdminFinesPage />} />
-          <Route path="/librarian/payments" element={<AdminPaymentsPage/>}/>
-          <Route path="/librarian/inventory" element={<InventoryDashboard />} />
-          <Route path="/librarian/floor-plan" element={<FloorPlanImagePage />} />
-          <Route path="/librarian/printing" element={<AdminPrintingQueuePage />} />
-          <Route path="/librarian/supplies" element={<AdminPrintSuppliesPage />} />
-          <Route path="/librarian/attendance" element={<AdminAttendancePage />} />
-          <Route path="/librarian/clearance" element={<AdminClearancePage />} />
-          <Route path="/librarian/announcements" element={<AdminAnnouncementsPage />} />
-          <Route path="/librarian/profile" element={<ProfileAvatarPage />} />
-        </Route>
-      </Route>
-      <Route element={<ProtectedRoute roles={['Staff']} />}>
-        <Route element={<PortalLayout role="staff" />}>
-          <Route path="/staff/dashboard" element={<StaffDashboardPage />} />
-          <Route path="/staff/circulation" element={<AdminCirculationMonitor />} />
-          <Route path="/staff/reservations" element={<AdminReservationQueuePage />} />
-          <Route path="/staff/printing" element={<StaffPrintingQueuePage />} />
-          <Route path="/staff/payments" element={<AdminPaymentsPage/>}/>
-          <Route path="/staff/attendance" element={<StaffAttendancePage />} />
-          <Route path="/staff/announcements" element={<StaffAnnouncementsPage />} />
-          <Route path="/staff/notifications" element={<NotificationCenterPage />} />
-          <Route path="/staff/profile" element={<ProfileAvatarPage />} />
-        </Route>
-      </Route>
-      <Route element={<ProtectedRoute roles={['Faculty']} />}>
-        <Route element={<PortalLayout role="faculty" />}>
-          <Route path="/faculty/dashboard" element={<UserDashboardPage />} />
-          <Route path="/faculty/catalog" element={<LegacyCatalogRedirect />} />
-          <Route path="/faculty/library" element={<BookCatalog />} />
-          <Route path="/faculty/floor-plan" element={<FloorPlanImagePage />} />
-          <Route path="/faculty/cart" element={<BookCart />} />
-          <Route path="/faculty/research" element={<ResearchCatalog />} />
-          <Route path="/faculty/borrowing" element={<BorrowingHistory />} />
-          <Route path="/faculty/my-books" element={<MyBooksPage />} />
-          <Route path="/faculty/reservations" element={<StudentReservations />} />
-          <Route path="/faculty/attendance" element={<UserAttendancePage />} />
-          <Route path="/faculty/notifications" element={<NotificationCenterPage />} />
-          <Route path="/faculty/fines" element={<StudentFinesPage />} />
-          <Route path="/faculty/payments" element={<UserPaymentsPage />} />
-          <Route path="/faculty/printing" element={<StudentPrintingPage/>}/>
-          <Route path="/faculty/clearance" element={<StudentClearancePage />} />
-          <Route path="/faculty/profile" element={<ProfileAvatarPage />} />
-=======
           <Route path="/librarian/borrowing-policies" element={<AppLayout><BorrowingPoliciesArchivedPage /></AppLayout>} />
           <Route path="/librarian/maintenance" element={<AppLayout><CatalogMaintenancePage /></AppLayout>} />
           <Route path="/librarian/reports" element={<AppLayout><CatalogReportsPage /></AppLayout>} />
@@ -278,6 +153,7 @@ export default function App() {
       <Route element={<AppLayout><ProtectedRoute roles={['Staff']} /></AppLayout>}>
         <Route element={<AppLayout><PortalLayout role="staff" /></AppLayout>}>
           <Route path="/staff/dashboard" element={<AppLayout><StaffDashboardPage /></AppLayout>} />
+          <Route path="/staff/payments" element={<AppLayout><AdminPaymentsPage /></AppLayout>} />
           <Route path="/staff/circulation" element={<AppLayout><AdminCirculationMonitor /></AppLayout>} />
           <Route path="/staff/reservations" element={<AppLayout><AdminReservationQueuePage /></AppLayout>} />
           <Route path="/staff/printing" element={<AppLayout><StaffPrintingQueuePage /></AppLayout>} />
@@ -290,6 +166,7 @@ export default function App() {
       <Route element={<AppLayout><ProtectedRoute roles={['Faculty']} /></AppLayout>}>
         <Route element={<AppLayout><PortalLayout role="faculty" /></AppLayout>}>
           <Route path="/faculty/dashboard" element={<AppLayout><UserDashboardPage /></AppLayout>} />
+          <Route path="/faculty/payments" element={<AppLayout><UserPaymentsPage /></AppLayout>} />
           <Route path="/faculty/catalog" element={<AppLayout><LegacyCatalogRedirect /></AppLayout>} />
           <Route path="/faculty/library" element={<AppLayout><BookCatalog /></AppLayout>} />
           <Route path="/faculty/floor-plan" element={<AppLayout><FloorPlanImagePage /></AppLayout>} />
@@ -303,7 +180,6 @@ export default function App() {
           <Route path="/faculty/fines" element={<AppLayout><StudentFinesPage /></AppLayout>} />
           <Route path="/faculty/clearance" element={<AppLayout><StudentClearancePage /></AppLayout>} />
           <Route path="/faculty/profile" element={<AppLayout><ProfileAvatarPage /></AppLayout>} />
->>>>>>> origin/fix/full-audit-findings
         </Route>
       </Route>
       <Route path="*" element={<NotFound />} />
