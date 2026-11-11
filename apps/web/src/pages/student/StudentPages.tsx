@@ -25,7 +25,7 @@ import { BookCover, Button, CardLink, PageHeader, SectionCard, StatCard, StatusB
 
 export function StudentDashboard() {
   const quickActions = [
-    { label: 'Browse catalog', detail: 'Find books and check live availability', icon: Search, to: '/student/catalog', tone: 'bg-[#003399]/5 text-[#003399]' },
+    { label: 'Browse catalog', detail: 'Find books and check live availability', icon: Search, to: '/student/library', tone: 'bg-[#003399]/5 text-[#003399]' },
     { label: 'Request a print', detail: 'Upload a document for library pickup', icon: Printer, to: '/student/printing', tone: 'bg-[#003399]/5 text-[#003399]' },
     { label: 'Scan attendance', detail: 'Record your library visit with QR', icon: QrCode, to: '/student/attendance', tone: 'bg-[#003399]/5 text-[#003399]' },
   ]
@@ -43,7 +43,7 @@ export function StudentDashboard() {
             <h2 className="font-display max-w-2xl text-2xl font-bold tracking-tight sm:text-3xl">One place for books, research, printing, and every library visit.</h2>
             <p className="mt-3 max-w-xl text-sm leading-6 text-white/80">Search the collection before you arrive, track your transactions, and keep your clearance on schedule.</p>
             <div className="mt-5 flex flex-wrap gap-3">
-              <Link to="/student/catalog"><Button className="bg-[#FFF200] text-[#003399] hover:bg-[#FFF200]">Explore catalog <ArrowRight size={16} /></Button></Link>
+              <Link to="/student/library"><Button className="bg-[#FFF200] text-[#003399] hover:bg-[#FFF200]">Explore catalog <ArrowRight size={16} /></Button></Link>
               <Link to="/student/research"><Button variant="ghost" className="bg-white/10 text-white hover:bg-white/15 hover:text-white">Browse research</Button></Link>
             </div>
           </div>
@@ -78,7 +78,7 @@ export function StudentDashboard() {
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[.85fr_1.15fr]">
         <SectionCard className="p-5"><div className="mb-4"><p className="text-xs font-bold uppercase tracking-wider text-[#003399]/45">Quick actions</p><h2 className="mt-1 font-display text-lg font-bold text-[#003399]">What would you like to do?</h2></div><div className="space-y-2">{quickActions.map(({ label, detail, icon: Icon, to, tone }) => <Link key={label} to={to} className="group flex items-center gap-3 rounded-2xl p-3 transition hover:bg-[#003399]/5"><span className={`rounded-xl p-2.5 ${tone}`}><Icon size={18} /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-[#003399]">{label}</span><span className="block truncate text-xs text-[#003399]/65">{detail}</span></span><ArrowRight size={16} className="text-[#003399]/45 transition group-hover:translate-x-0.5 group-hover:text-[#003399]" /></Link>)}</div></SectionCard>
-        <SectionCard className="p-5"><div className="mb-4 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-wider text-[#003399]/45">Recommended for BSIT</p><h2 className="mt-1 font-display text-lg font-bold text-[#003399]">Continue discovering</h2></div><Link to="/student/catalog"><CardLink>View all</CardLink></Link></div><div className="grid grid-cols-3 gap-3">{books.slice(1, 4).map((book) => <div key={book.id} className="min-w-0"><BookCover code={book.cover} accent={book.accent} className="w-full" /><p className="mt-2 line-clamp-2 text-xs font-bold text-[#003399]">{book.title}</p><p className="mt-0.5 truncate text-[11px] text-[#003399]/45">{book.author}</p></div>)}</div></SectionCard>
+        <SectionCard className="p-5"><div className="mb-4 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-wider text-[#003399]/45">Recommended for BSIT</p><h2 className="mt-1 font-display text-lg font-bold text-[#003399]">Continue discovering</h2></div><Link to="/student/library"><CardLink>View all</CardLink></Link></div><div className="grid grid-cols-3 gap-3">{books.slice(1, 4).map((book) => <div key={book.id} className="min-w-0"><BookCover code={book.cover} accent={book.accent} className="w-full" /><p className="mt-2 line-clamp-2 text-xs font-bold text-[#003399]">{book.title}</p><p className="mt-0.5 truncate text-[11px] text-[#003399]/45">{book.author}</p></div>)}</div></SectionCard>
       </div>
     </>
   )
@@ -128,7 +128,7 @@ export function BorrowingPage() {
 export function StudentReservationsPage() {
   return (
     <>
-      <PageHeader eyebrow="My library" title="Book reservations" description="Follow your place in the waiting list and collect available resources before the reservation expires." action={<Link to="/student/catalog"><Button><Search size={16} /> Find a book</Button></Link>} />
+      <PageHeader eyebrow="My library" title="Book reservations" description="Follow your place in the waiting list and collect available resources before the reservation expires." action={<Link to="/student/library"><Button><Search size={16} /> Find a book</Button></Link>} />
       <div className="grid gap-4 lg:grid-cols-2">{reservations.slice(0, 2).map((reservation) => <SectionCard key={reservation.id} className="p-5"><div className="flex items-start justify-between gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#003399]/5 text-[#003399]"><BookMarked size={20} /></div><StatusBadge status={reservation.status} /></div><h2 className="mt-4 font-display text-lg font-bold text-[#003399]">{reservation.book}</h2><p className="mt-1 text-xs text-[#003399]/65">Request {reservation.id} · {reservation.requested}</p><div className="mt-5 flex items-center justify-between rounded-xl bg-[#003399]/5 p-3"><div><p className="text-[11px] font-semibold uppercase text-[#003399]/45">Queue position</p><p className="mt-0.5 text-lg font-bold text-[#003399]">#{reservation.queue}</p></div><Button variant="secondary">Cancel request</Button></div></SectionCard>)}</div>
     </>
   )

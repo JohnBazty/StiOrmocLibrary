@@ -1,14 +1,15 @@
 import type { NextFunction, Request, Response } from 'express'
-import { toCanonicalRole } from '../../auth/role-normalization.ts'
+
+const CATEGORY_MANAGER_ROLES = new Set(['Librarian'])
 
 export function requireCategoryManager(request: Request, response: Response, next: NextFunction) {
   const role = (request.session as typeof request.session & { user?: { role?: string } })?.user?.role
     ?? (response.locals.authenticatedUser as { role?: string } | undefined)?.role
-  if (toCanonicalRole(role) !== 'Admin') {
+  if (!role || !CATEGORY_MANAGER_ROLES.has(role)) {
     return response.status(403).json({
       success: false,
       code: 'CATEGORY_ADMIN_FORBIDDEN',
-      message: 'Only Admin accounts may manage categories.',
+      message: 'Only Admin or Librarian accounts may manage categories.',
     })
   }
   return next()

@@ -1,6 +1,6 @@
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
-import { forUpdate, insertIgnore } from '../../config/sql-dialect.js'
+import { forUpdate } from '../../config/sql-dialect.js'
 
 export type RenewalExecutor = Pool | PoolConnection
 
@@ -337,13 +337,12 @@ export function createRenewalRepository(database: Pool = db) {
       executor: PoolConnection,
     ): Promise<void> {
       await executor.execute(
-        insertIgnore(
-          `INSERT IGNORE INTO notifications
-             (user_id, message_title, message_body, trigger_type, source_type, source_id,
-              action_path, priority, dedupe_key, scheduled_for, delivered_at)
-           VALUES (?, 'Loan renewal approved', ?, 'Due Date', 'Borrow Transaction', ?,
-                   '/student/borrowing', 'Important', ?, NOW(), NOW())`,
-        ),
+        `INSERT INTO notifications
+           (user_id, message_title, message_body, trigger_type, source_type, source_id,
+            action_path, priority, dedupe_key, scheduled_for, delivered_at)
+         VALUES (?, 'Loan renewal approved', ?, 'Due Date', 'Borrow Transaction', ?,
+                 '/student/borrowing', 'Important', ?, NOW(), NOW())
+         ON CONFLICT DO NOTHING`,
         [
           loan.userId,
           `${loan.title} was renewed. Its new due date is ${newDueAt.toLocaleString('en-PH')}.`,

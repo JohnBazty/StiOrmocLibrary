@@ -14,7 +14,7 @@ The public product name must match the capstone's approved identity while existi
 
 Public web, document, database-profile, Android, and active documentation labels use **STI College Ormoc Integrated Library Management System**. Compact surfaces use **STI College Ormoc ILMS**. Internal `SmartLib` identifiers, package names, API routes, storage keys, download filenames, database names, and the Android application ID remain unchanged.
 
-Existing database profile rows are renamed only when the stored name is exactly the previous default. MySQL migration `20261009_045_rename_system_brand.sql` and Supabase migration `015_rename_system_brand.sql` make that update and set the new default without changing the schema shape.
+Existing database profile rows are renamed only when the stored name is exactly the previous default. MySQL migration `20261009_048_rename_system_brand.sql` and Supabase migration `017_rename_system_brand.sql` make that update and set the new default without changing the schema shape.
 
 ## Implementation tracking
 

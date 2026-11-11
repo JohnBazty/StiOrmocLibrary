@@ -4,6 +4,8 @@ import type { Pool } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { createCirculationService } from './circulation.service.ts'
 
+import { borrowerEligibilityRows } from '../attendance/attendance-test-fixtures.ts'
+
 const legacyPolicyRow = {
   borrowing_policy_version_id: 1, effective_on: '2000-01-01', student_max_active_books: 2, faculty_max_active_books: null,
   borrowing_days: 1, due_time_cutoff: '08:59:00', max_renewals: 1, renewal_extension_days: 1,
@@ -12,18 +14,39 @@ const legacyPolicyRow = {
   long_overdue_after_days: null, change_reason: 'Legacy baseline', created_by_user_id: null, created_at: '2000-01-01',
 }
 
+test('cart reconciliation reads only the owner active loans and queue titles without writing',async()=>{
+  let calls=0
+  const database={execute:async(sql:string,args:unknown[])=>{
+    calls++;assert.deepEqual(args,[7]);assert.match(sql,/WHERE a.account_id=\?/)
+    assert.match(sql,/transaction_status IN \('Pending','Borrowed','Overdue'\)/)
+    assert.match(sql,/reservation_status IN \('pending','approved','ready_for_pickup'\)/)
+    assert.doesNotMatch(sql,/\b(INSERT|UPDATE|DELETE)\b/)
+    return [[{title_id:'12'},{title_id:20}]]
+  }} as unknown as Pool
+  assert.deepEqual(await createCirculationService(database).cartState(7),{activeTitleIds:[12,20]})
+  await assert.rejects(createCirculationService(database).cartState(0))
+  assert.equal(calls,1)
+})
+
 function checkoutPool(role: 'Student' | 'Faculty', activeCount = 0, readyClaim: boolean | 'cart' = false, condition = 'Good') {
   const state = { commits: 0, rollbacks: 0, borrowInserts: 0, queueCompactions: 0, notifications: 0, overrideInserts: 0 }
   const connection = {
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() {},
     async execute(sql: string) {
+      const eligible = borrowerEligibilityRows(sql, role, 7)
+      if (eligible) return [eligible]
+      if (sql.includes('AS commitments')) return [[{ commitments: activeCount }]]
+      if (sql.includes('FROM in_library_uses') || sql.includes('SELECT assigned_physical_copy_id FROM reservations')) return [[]]
+      if (sql.includes('SELECT assigned_physical_copy_id,pickup_deadline,request_kind')) return [[{ assigned_physical_copy_id: 20, pickup_deadline: '2026-08-26 14:00:00', request_kind: 'Reservation' }]]
+      if (sql.includes('SELECT r.user_id,r.request_kind,r.assigned_physical_copy_id')) return [[]]
+      if (sql.includes('INSERT INTO book_request_events') || sql.includes('INTO book_request_email_deliveries')) return [{ insertId: 1, affectedRows: 1 }]
       if (sql.includes('FROM borrowing_policy_versions')) return [[legacyPolicyRow]]
       if (sql.includes('FROM borrowing_policy_material_rules')) return [[{ borrowing_policy_version_id: 1, material_type: 'Book', is_borrowable: 1 }, { borrowing_policy_version_id: 1, material_type: 'Thesis/Manuscript', is_borrowable: 0 }]]
       if (sql.includes('SELECT user_id FROM accounts')) return [[{ user_id: 2 }]]
       if (sql.includes('FROM users u INNER JOIN roles')) return [[{ user_id: 7, full_name: 'Test Borrower', institutional_id: 'STI-7', school_id: 'STI-7', role_name: role, account_status: 'Active' }]]
-      if (sql.includes('FROM physical_copies pc INNER JOIN titles')) return [[{ physical_copy_id: 20, title_id: 10, material_id: 30, accession_number: 'ACC-20', barcode: 'BOOK-20', condition_status: condition, availability_status: 'Available', lifecycle_status: 'Active', title: 'Clean Code', material_type: 'Book' }]]
+      if (sql.includes('FROM physical_copies pc INNER JOIN titles')) return [[{ physical_copy_id: 20, title_id: 10, material_id: 30, accession_number: 'ACC-20', barcode: 'BOOK-20', condition_status: condition, availability_status: 'Available', lifecycle_status: 'Active', title_status: 'Active', record_type: 'Book', title: 'Clean Code', material_type: 'Book' }]]
       if (sql.includes('SELECT transaction_id, user_id, transaction_status')) return [readyClaim ? [{ transaction_id: 54, user_id: 7, transaction_status: 'Pending', request_group_id: 'group-1', reservation_id: readyClaim === true ? 99 : null }] : []]
-      if (sql.includes('FROM reservations') && sql.includes('ORDER BY queue_position')) return [readyClaim === true ? [{ reservation_id: 99, user_id: 7, queue_position: 1, reservation_status: 'ready_for_pickup' }] : []]
+      if (sql.includes('FROM reservations') && sql.includes('queue_position ASC')) return [readyClaim === true ? [{ reservation_id: 99, user_id: 7, queue_position: 1, reservation_status: 'ready_for_pickup' }] : []]
       if (sql.includes('SELECT queue_position FROM reservations')) return [[{ queue_position: 1 }]]
       if (sql.includes('COUNT(DISTINCT activity.title_id)')) return [[{ active_count: activeCount, target_already_active: 0 }]]
       if (sql.includes("transaction_status IN ('Borrowed','Overdue')")) return [[{ active_count: 0 }]]
@@ -33,7 +56,7 @@ function checkoutPool(role: 'Student' | 'Faculty', activeCount = 0, readyClaim: 
       if (sql.includes('UPDATE borrow_transactions')) return [{ affectedRows: 1 }]
       if (sql.includes("UPDATE reservations SET reservation_status = 'claimed'")) return [{ affectedRows: 1 }]
       if (sql.includes('UPDATE reservations SET queue_position')) { state.queueCompactions += 1; return [{ affectedRows: 1 }] }
-      if (sql.includes('INSERT INTO notifications') || sql.includes('INSERT INTO admin_notifications')) { state.notifications += 1; return [{ insertId: 1, affectedRows: 1 }] }
+      if (sql.includes('INTO notifications') || sql.includes('INSERT INTO admin_notifications')) { state.notifications += 1; return [{ insertId: 1, affectedRows: 1 }] }
       if (sql.includes('UPDATE physical_copies') || sql.includes('UPDATE materials')) return [{ affectedRows: 1 }]
       throw new Error(`Unexpected SQL: ${sql}`)
     },
@@ -52,32 +75,15 @@ test('student checkout at the combined two-item cap rolls back before inserting'
 test('faculty checkout bypasses the cap and commits synchronized availability and alerts', async () => {
   const { state, database } = checkoutPool('Faculty', 12)
   const result = await createCirculationService(database, () => new Date(2026, 7, 24, 14, 0)).confirmCheckout(1, { barcode: 'book-20', school_id: 'sti-7' })
-  assert.equal(result.transactionId, 55); assert.equal(new Date(result.dueAt).getHours(), 8); assert.equal(new Date(result.dueAt).getMinutes(), 59)
+  assert.equal(result.transactionId, 55); assert.equal(new Date(result.dueAt).getTime() - new Date(2026, 7, 24, 14, 0).getTime(), 86_400_000)
   assert.equal(state.borrowInserts, 1); assert.equal(state.notifications, 2); assert.equal(state.commits, 1); assert.equal(state.rollbacks, 0)
 })
 
-test('damaged Available checkout requires confirmation and writes an override audit row', async () => {
+test('damaged copies require assessment before checkout', async () => {
   const { state, database } = checkoutPool('Student', 0, false, 'Damaged')
-  const service = createCirculationService(database)
-  await assert.rejects(service.confirmCheckout(1, { barcode: 'book-20', school_id: 'sti-7' }), (error: unknown) => {
-    assert.ok(error instanceof HttpError)
-    assert.equal(error.code, 'CIRCULATION_CONFIRMATION_REQUIRED')
-    return true
-  })
+  await assert.rejects(createCirculationService(database).confirmCheckout(1, { barcode: 'book-20', school_id: 'sti-7' }), { code: 'CIRCULATION_COPY_UNAVAILABLE' })
   assert.equal(state.rollbacks, 1)
-  const preflight = await service.preflightCheckout(1, { barcode: 'book-20', school_id: 'sti-7', flow: 'walk_in' })
-  assert.equal(preflight.decision, 'confirmation_required')
-  assert.ok(preflight.preflightToken)
-  const result = await service.confirmCheckout(1, {
-    barcode: 'book-20',
-    school_id: 'sti-7',
-    preflightToken: preflight.preflightToken,
-    overrideReason: 'Cover is worn but pages and binding are usable.',
-  })
-  assert.equal(result.transactionId, 55)
-  assert.equal(state.borrowInserts, 1)
-  assert.equal(state.overrideInserts, 1)
-  assert.equal(state.commits, 1)
+  assert.equal(state.borrowInserts, 0)
 })
 
 test('preflight performs no database writes', async () => {
@@ -92,7 +98,7 @@ test('preflight performs no database writes', async () => {
 test('physical desk fulfillment activates only the matching ready reservation claim', async () => {
   const { state, database } = checkoutPool('Student', 1, true)
   const result = await createCirculationService(database, () => new Date(2026, 7, 24, 14, 0))
-    .fulfillClaim({ accountId: 1, role: 'Admin' }, { barcode: 'book-20', school_id: 'sti-7' })
+    .fulfillClaim({ accountId: 1, role: 'Librarian' }, { barcode: 'book-20', school_id: 'sti-7' })
   assert.equal(result.transactionId, 54)
   assert.equal(result.status, 'Borrowed')
   assert.equal(state.borrowInserts, 0)
@@ -102,7 +108,7 @@ test('physical desk fulfillment activates only the matching ready reservation cl
 test('physical desk fulfillment accepts an online-cart pending claim without a reservation link', async () => {
   const { state, database } = checkoutPool('Student', 1, 'cart')
   const result = await createCirculationService(database, () => new Date(2026, 7, 24, 14, 0))
-    .fulfillClaim({ accountId: 1, role: 'Admin' }, { barcode: 'book-20', school_id: 'sti-7' })
+    .fulfillClaim({ accountId: 1, role: 'Librarian' }, { barcode: 'book-20', school_id: 'sti-7' })
   assert.equal(result.transactionId, 54)
   assert.equal(result.status, 'Borrowed')
   assert.equal(state.commits, 1)
@@ -114,17 +120,31 @@ test('return assigns the copy to the first waiting reservation atomically', asyn
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() {},
     async execute(sql: string) {
       if (sql.includes('SELECT user_id FROM accounts')) return [[{ user_id: 2 }]]
-      if (sql.includes('FROM borrow_transactions bt')) return [[{ transaction_id: 8, user_id: 7, material_id: 30, physical_copy_id: 20, due_at: new Date(), transaction_status: 'Borrowed', title_id: 10, accession_number: 'ACC-20', title: 'Clean Code' }]]
+      const eligible = borrowerEligibilityRows(sql, 'Faculty', 11)
+      if (eligible) return [eligible]
+      if (sql.includes('SELECT pc.*,t.title')) return [[{ physical_copy_id: 20, material_id: 30, title: 'Clean Code', barcode: 'BOOK-20' }]]
+      if (sql.includes('SELECT * FROM reservations WHERE book_title_id=')) return [[{ reservation_id: 99, user_id: 11, queue_position: 1 }]]
+      if (sql.includes('SELECT is_borrowable')) return [[{ is_borrowable: true }]]
+      if (sql.includes('FROM borrowing_policy_versions')) return [[legacyPolicyRow]]
+      if (sql.includes('SELECT availability_status FROM physical_copies')) return [[{ availability_status: 'Reserved' }]]
+      if (sql.includes('SELECT reservation_id FROM reservations WHERE assigned_physical_copy_id=')) return [[{ reservation_id: 99 }]]
+      if (sql.includes('SELECT r.user_id,r.request_kind,r.assigned_physical_copy_id')) return [[]]
+      if (sql.includes('INSERT INTO book_request_events')) return [{ insertId: 1, affectedRows: 1 }]
+      if (sql.startsWith('UPDATE physical_copies') || sql.startsWith('UPDATE materials')) {
+        if (sql.includes("availability_status='Reserved'")) state.reservedUpdates += 1
+        return [{ affectedRows: 1 }]
+      }
+      if (sql.includes('FROM borrow_transactions bt')) return [[{ transaction_id: 8, user_id: 7, material_id: 30, physical_copy_id: 20, due_at: null, transaction_status: 'Borrowed', title_id: 10, accession_number: 'ACC-20', title: 'Clean Code' }]]
       if (sql.startsWith("UPDATE borrow_transactions")) return [{ affectedRows: 1 }]
       if (sql.includes('SELECT reservation_id, user_id, queue_position')) return [[{ reservation_id: 99, user_id: 11, queue_position: 1 }]]
-      if (sql.includes("reservation_status = 'ready_for_pickup'")) { state.readyUpdates += 1; return [{ affectedRows: 1 }] }
+      if (sql.includes("reservation_status='approved'")) { state.readyUpdates += 1; return [{ affectedRows: 1 }] }
       if (sql.includes('INSERT INTO borrow_transactions')) return [{ insertId: 91, affectedRows: 1 }]
       if (sql.includes("availability_status = 'Reserved'")) { state.reservedUpdates += 1; return [{ affectedRows: 1 }] }
       if (sql.includes('INSERT INTO notifications') || sql.includes('INSERT INTO admin_notifications')) return [{ insertId: 1, affectedRows: 1 }]
       throw new Error(`Unexpected SQL: ${sql}`)
     },
   }
-  const result = await createCirculationService({ getConnection: async () => connection } as unknown as Pool).returnBook(1, 8)
+  const result = await createCirculationService({ getConnection: async () => connection, execute: connection.execute.bind(connection) } as unknown as Pool).returnBook(1, 8)
   assert.equal(result.nextReservationId, 99); assert.equal(result.copyAvailability, 'Reserved')
   assert.equal(state.readyUpdates, 1); assert.equal(state.reservedUpdates, 2); assert.equal(state.commits, 1); assert.equal(state.rollbacks, 0)
 })
@@ -134,6 +154,7 @@ test('librarian cancellation releases a pending physical copy and commits the au
   const connection = {
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() {},
     async execute(sql: string, values: unknown[] = []) {
+      if (sql.includes('SELECT reservation_id FROM borrow_transactions WHERE transaction_id=')) return [[]]
       if (sql.includes('SELECT user_id FROM accounts')) return [[{ user_id: 99 }]]
       if (sql.includes('FROM borrow_transactions bt') && sql.includes('COALESCE(t.title')) return [[{
         transaction_id: 41, user_id: 7, material_id: 30, physical_copy_id: 20,
@@ -147,8 +168,8 @@ test('librarian cancellation releases a pending physical copy and commits the au
       throw new Error(`Unexpected SQL: ${sql}`)
     },
   }
-  const result = await createCirculationService({ getConnection: async () => connection } as unknown as Pool, () => new Date('2026-08-24T10:00:00+08:00'))
-    .cancelRequest({ accountId: 3, role: 'Admin' }, 41, { reason: 'Student cancelled verbally.' })
+  const result = await createCirculationService({ getConnection: async () => connection, execute: connection.execute.bind(connection) } as unknown as Pool, () => new Date('2026-08-24T10:00:00+08:00'))
+    .cancelRequest({ accountId: 3, role: 'Librarian' }, 41, { reason: 'Student cancelled verbally.' })
   assert.equal(result.status, 'Cancelled')
   assert.equal(result.copyAvailability, 'Available')
   assert.equal(state.copyStatus, 'Available'); assert.equal(state.materialStatus, 'Available')
@@ -161,6 +182,7 @@ test('student owner can cancel their pending request while another student is fo
     const connection = {
       async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() {},
       async execute(sql: string) {
+        if (sql.includes('SELECT reservation_id FROM borrow_transactions WHERE transaction_id=')) return [[]]
         if (sql.includes('SELECT user_id FROM accounts')) return [[{ user_id: actorUserId }]]
         if (sql.includes('FROM borrow_transactions bt') && sql.includes('COALESCE(t.title')) return [[{
           transaction_id: 42, user_id: 7, material_id: 31, physical_copy_id: 21,
@@ -171,7 +193,7 @@ test('student owner can cancel their pending request while another student is fo
         throw new Error(`Unexpected SQL: ${sql}`)
       },
     }
-    return { state, database: { getConnection: async () => connection } as unknown as Pool }
+    return { state, database: { getConnection: async () => connection, execute: connection.execute.bind(connection) } as unknown as Pool }
   }
 
   const owner = databaseFor(7)
@@ -199,6 +221,7 @@ test('borrowing history exposes the normalized title cover path', async () => {
         cover_image_path: '/api/assets/covers/clean-code.png', accession_number: 'ACC-9', barcode: 'BOOK-9',
         borrowed_at: null, due_at: null, returned_at: null, transaction_status: 'Pending',
       }]]
+      if (sql.includes('COUNT(*) AS total FROM reservations')) return [[{ total: 0 }]]
       if (sql.includes('COUNT(*) AS total FROM borrow_transactions')) return [[{ total: 1 }]]
       if (sql.includes('AS active_loans')) return [[{ active_loans: 1, active_reservations: 0, next_due_at: null }]]
       throw new Error(`Unexpected SQL: ${sql}`)
@@ -208,5 +231,5 @@ test('borrowing history exposes the normalized title cover path', async () => {
   const result = await createCirculationService(database).history(1, { page: 1, limit: 25 })
   assert.equal(result.items[0].coverImagePath, '/api/assets/covers/clean-code.png')
   assert.equal(result.summary.loanLimit, 2)
-  assert.equal(result.summary.dueCutoffLabel, '8:59 AM')
+  assert.equal(result.summary.dueCutoffLabel, 'See the exact due date and time for each loan')
 })

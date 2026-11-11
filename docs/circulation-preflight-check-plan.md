@@ -1,3 +1,5 @@
+> Integration note (2026-10-11): retained as the upstream main implementation record. The current revision keeps separate Admin, Librarian, Staff, Student, and Faculty authorization values. Library policy and catalog management belong to Librarian; desk operations belong to Librarian and Staff. Current revision plans and `docs/main-branch-integration.md` govern integration decisions.
+
 # Circulation Preflight Check Plan
 
 ## Why

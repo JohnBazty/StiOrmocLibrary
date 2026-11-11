@@ -48,11 +48,11 @@ describe('AdminFinesPage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Adjust' }))
     fireEvent.change(screen.getByLabelText('Cash amount paid'), { target: { value: '14' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Record payment and generate receipt' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Record payment' }))
 
     await waitFor(() => expect(api.pay).toHaveBeenCalledWith(expect.objectContaining({ allocations: [{ fineId: 2, amount: 14 }] })))
     expect(api.adjust).not.toHaveBeenCalled()
-    expect(await screen.findByText('Digital receipt OR-20260903-000012')).toBeTruthy()
+    expect(await screen.findByText('Payment record OR-20260903-000012')).toBeTruthy()
     expect(screen.getByText(/Remaining.*₱14\.00/)).toBeTruthy()
   })
 
@@ -100,9 +100,9 @@ describe('AdminFinesPage', () => {
     render(<AdminFinesPage />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Cash payment' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm cash and generate receipt' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Record cash payment' }))
     expect(await screen.findByText('Payment response was interrupted.')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm cash and generate receipt' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Record cash payment' }))
     await waitFor(() => expect(api.pay).toHaveBeenCalledTimes(2))
     expect(api.pay.mock.calls[0][0].requestKey).toBe(api.pay.mock.calls[1][0].requestKey)
   })
@@ -127,7 +127,7 @@ describe('AdminFinesPage', () => {
     await waitFor(() => expect(api.adminList).toHaveBeenLastCalledWith(expect.objectContaining({ search: reference.verificationCode })))
     fireEvent.click(screen.getByRole('button', { name: new RegExp(reference.receiptNumber) }))
     await waitFor(() => expect(api.receipt).toHaveBeenCalledWith(8,true))
-    expect(await screen.findByText(`Digital receipt ${reference.receiptNumber}`)).toBeTruthy()
+    expect(await screen.findByText(`Payment record ${reference.receiptNumber}`)).toBeTruthy()
   })
 })
 

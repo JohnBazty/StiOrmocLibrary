@@ -14,14 +14,15 @@ export type AdminDashboardData = {
   popularCategories: Array<{label:string;value:number}>
   recentCirculation: Array<{id:number;userName:string;schoolId:string;title:string;barcode:string;status:string;eventAt:string}>
   recentActivity: Array<{id:number;type:string;title:string;message:string;createdAt:string}>
-  occupancy: {current:number;capacity:number;peakHour:string|null;averageMinutes:number}
+  occupancy: {current:number;capacity:number;peakOccupancy?:number;serviceVisits?:number;state?:string;peakHour:string|null;averageMinutes:number}
 }
 
 export type UserDashboardData = {
+  clearanceSchedule?: import('../clearance/types').ClearanceSchedule | null
   generatedAt: string
   user: {name:string;schoolId:string;program:string|null;role:string}
   profile: LibraryProfile
-  summary: {activeLoans:number;activeBookCount:number;borrowingLimit:number|null;activeReservations:number;unreadNotifications:number;outstandingFines:number;clearanceStatus:string}
+  summary: {activeLoans:number;activeBookCount:number;borrowingLimit:number|null;activeReservations:number;unreadNotifications:number;outstandingFines:number;clearanceStatus:string;clearanceComputedStatus?:string}
   occupancy: {current:number;capacity:number}
   currentLoan: null|{id:number;title:string;author:string;barcode:string;shelfLocation:string;status:string;dueAt:string;coverPath:string|null}
   reservation: null|{id:number;title:string;coverPath:string|null;queuePosition:number;status:string;pickupDeadline:string|null}

@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express'
 import { clearanceService } from './clearance.service.ts'
+import { clearanceScheduleService } from './clearance-schedule.service.ts'
 
 function actor(response: Response) {
   const user = response.locals.authenticatedUser as { accountId?: number; id?: number; role?: string } | undefined
@@ -11,13 +12,17 @@ function handle(handler: (request: Request, response: Response) => Promise<void>
 function csv(value: unknown) { return `"${String(value ?? '').replace(/"/g, '""')}"` }
 
 export const clearanceController = {
-  mine: handle(async (_request, response) => { response.json({ success: true, data: await clearanceService.mine(actor(response)) }) }),
+  mine: handle(async (_request, response) => { const [record,schedule]=await Promise.all([clearanceService.mine(actor(response)),actor(response).role==='Student'?clearanceScheduleService.current():Promise.resolve(null)]); response.json({ success: true, data: {...record,schedule} }) }),
+  schedule: handle(async (request,response) => { response.json({success:true,data:await clearanceScheduleService.current(Number(request.query.termId)||undefined)}) }),
+  scheduleTerms: handle(async (_request,response) => { response.json({success:true,data:await clearanceScheduleService.terms()}) }),
+  saveSchedule: handle(async (request,response) => { response.json({success:true,data:await clearanceScheduleService.save(actor(response),request.body)}) }),
   list: handle(async (request, response) => { response.json({ success: true, data: await clearanceService.list(actor(response), request.query as Record<string, unknown>) }) }),
   detail: handle(async (request, response) => { response.json({ success: true, data: await clearanceService.detail(actor(response), request.params.userId) }) }),
   applyOverride: handle(async (request, response) => { response.status(201).json({ success: true, data: await clearanceService.applyOverride(actor(response), request.params.userId, request.body) }) }),
   revokeOverride: handle(async (request, response) => { response.json({ success: true, data: await clearanceService.revokeOverride(actor(response), request.params.userId, request.params.overrideId, request.body) }) }),
   reportLost: handle(async (request, response) => { response.status(201).json({ success: true, data: await clearanceService.reportLost(actor(response), request.params.transactionId) }) }),
   decideLost: handle(async (request, response) => { response.json({ success: true, data: await clearanceService.decideLost(actor(response), request.params.reportId, request.body) }) }),
+  resolveLost: handle(async (request, response) => { response.json({ success: true, data: await clearanceService.resolveLost(actor(response), request.params.reportId, request.body) }) }),
   settleLost: handle(async (request, response) => { response.json({ success: true, data: await clearanceService.settleLostCharge(actor(response), request.params.reportId) }) }),
   exportCsv: handle(async (_request, response) => {
     const items = await clearanceService.exportRows(actor(response))

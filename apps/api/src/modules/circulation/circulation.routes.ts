@@ -22,6 +22,7 @@ function renewalSubmitLimiter() {
 
 export function createUserCirculationRouter(controller: Controller = circulationController) {
   const router = Router()
+  router.get('/my-books', controller.myBooks)
   router.get('/history', controller.history)
   router.get('/:transactionId/renewals/preflight', controller.preflightRenewal)
   router.post('/:transactionId/renewals', renewalSubmitLimiter(), controller.submitRenewal)
@@ -30,6 +31,7 @@ export function createUserCirculationRouter(controller: Controller = circulation
 
 export function createBorrowCartRouter(controller: Controller = circulationController) {
   const router = Router()
+  router.get('/cart-state',controller.cartState)
   router.post('/submit-request', validateBorrowCartBody, controller.submitBorrowRequest)
   return router
 }

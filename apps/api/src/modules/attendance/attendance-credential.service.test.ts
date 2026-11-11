@@ -16,3 +16,14 @@ test('issues an opaque permanent QR without embedding personal data',async()=>{
 test('rejects arbitrary and malformed QR payloads',()=>{
   assert.throws(()=>parseAttendanceQr('02000871654'),(error:unknown)=>error instanceof HttpError&&error.code==='ATTENDANCE_QR_INVALID')
 })
+
+test('repeated requests and sign-in sessions reuse the same permanent credential without writes',async()=>{
+  let updates=0
+  const database={execute:async(sql:string)=>{if(!sql.startsWith('SELECT'))updates++;return [[{credential_id:4,user_id:19,public_id:'permanentpublicid1234',credential_version:1,issued_at:'2026-10-01',credential_status:'Active'}]]}} as never
+  const first=await issueAttendanceCredential(database,19)
+  const nextSession=await issueAttendanceCredential(database,19)
+  assert.equal(first.payload,nextSession.payload)
+  assert.equal(first.credentialId,nextSession.credentialId)
+  assert.equal(parseAttendanceQr(first.payload).purpose,null)
+  assert.equal(updates,0)
+})

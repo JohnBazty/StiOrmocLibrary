@@ -1,5 +1,6 @@
+import { ResponsiveTable } from '../../components/ResponsiveTable'
 import {
-  AlertTriangle, Barcode, BookCopy, CheckCircle2, Download, PackageSearch,
+  AlertTriangle, Barcode, BookCopy, CheckCircle2, ChevronDown, Download, PackageSearch,
   FileText, GraduationCap, RefreshCw, ScanBarcode, Search, ShieldAlert, X, XCircle,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
@@ -22,6 +23,40 @@ type AuditableItem = {
   availability_status: string
   condition_status?: string
   condition_state?: string
+}
+
+type InventoryAction = {
+  label: string
+  onSelect: () => void
+  disabled?: boolean
+  description?: string
+  destructive?: boolean
+}
+
+function InventoryActions({ accession, actions }: { accession: string; actions: InventoryAction[] }) {
+  const dropdown = useRef<HTMLDetailsElement>(null)
+  const trigger = useRef<HTMLElement>(null)
+  function close() {
+    if (dropdown.current) dropdown.current.open = false
+    trigger.current?.focus()
+  }
+
+  return <details ref={dropdown} name="inventory-row-actions" className="group w-44 max-w-full" onKeyDown={event => {
+    if (event.key === 'Escape' && dropdown.current?.open) { event.stopPropagation(); close() }
+  }}>
+    <summary ref={trigger} aria-label={`Actions for ${accession}`} className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg border border-[#003399]/20 px-3 py-2 text-sm font-semibold text-[#003399] hover:bg-[#003399]/5 dark:border-white/20 dark:text-white dark:hover:bg-white/10 [&::-webkit-details-marker]:hidden">
+      Actions <ChevronDown size={16} aria-hidden="true" className="shrink-0 group-open:rotate-180" />
+    </summary>
+    <div className="mt-1 space-y-1 rounded-lg border border-[#003399]/15 bg-white p-1 shadow-sm dark:border-white/15 dark:bg-[#001a4d]">
+      {actions.map(action => <button key={action.label} type="button" disabled={action.disabled} title={action.description}
+        aria-label={action.destructive ? `Delete ${accession}` : undefined}
+        onClick={() => { close(); action.onSelect() }}
+        className="block min-h-11 w-full rounded-md px-2 py-2 text-left text-sm text-[#003399] hover:bg-[#003399]/5 disabled:cursor-not-allowed disabled:opacity-45 dark:text-white dark:hover:bg-white/10">
+        {action.label}
+        {action.disabled && action.destructive && action.description && <span className="mt-1 block text-xs">{action.description}</span>}
+      </button>)}
+    </div>
+  </details>
 }
 
 function ConditionBadge({ condition }: { condition: string }) {
@@ -50,8 +85,8 @@ function displayThesisAvailability(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
-function ConditionModal({ copy, onClose, onSaved, saveCondition }: { copy: AuditableItem; onClose: () => void; onSaved: () => Promise<void>; saveCondition: (barcode: string, condition: ConditionInput) => Promise<unknown> }) {
-  const [condition, setCondition] = useState<ConditionInput>('good')
+function ConditionModal({ copy, onClose, onSaved, saveCondition, initialCondition = 'good' }: { copy: AuditableItem; onClose: () => void; onSaved: () => Promise<void>; saveCondition: (barcode: string, condition: ConditionInput) => Promise<unknown>; initialCondition?: ConditionInput }) {
+  const [condition, setCondition] = useState<ConditionInput>(initialCondition)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const submit = async (event: FormEvent) => {
@@ -136,6 +171,7 @@ export function InventoryDashboard() {
   const [scanning, setScanning] = useState(false)
   const [exportingPdf, setExportingPdf] = useState(false)
   const [selected, setSelected] = useState<InventoryCopy | null>(null)
+  const [lostTarget, setLostTarget] = useState<InventoryCopy | null>(null)
   const [availabilityTarget, setAvailabilityTarget] = useState<InventoryCopy | null>(null)
   const [selectedThesis, setSelectedThesis] = useState<ThesisInventoryRow | null>(null)
   const [thesisAvailabilityTarget, setThesisAvailabilityTarget] = useState<ThesisInventoryRow | null>(null)
@@ -184,7 +220,7 @@ export function InventoryDashboard() {
     catch (reason) { setError(reason instanceof Error ? reason.message : 'The scanned barcode could not be verified.') }
     finally { setScanning(false) }
   }, [filters, load, scanning, thesisRows])
-  useDesktopScanner(scan, !selected && !availabilityTarget && !selectedThesis && !thesisAvailabilityTarget)
+  useDesktopScanner(scan, !selected && !lostTarget && !availabilityTarget && !selectedThesis && !thesisAvailabilityTarget)
 
   const downloadPdf = async () => {
     setExportingPdf(true); setError(null)
@@ -277,25 +313,43 @@ export function InventoryDashboard() {
           <button type="submit" disabled={thesisLoading} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#003399] px-4 text-sm font-bold text-[#FFFFFF] disabled:opacity-50"><Search size={15} />{thesisLoading ? 'Searching…' : 'Search'}</button>
           <button type="button" onClick={() => { setThesisDraftFilters(DEFAULT_THESIS_FILTERS); setThesisFilters(DEFAULT_THESIS_FILTERS) }} className="h-10 rounded-xl border border-[#003399]/20 bg-[#FFFFFF] px-4 text-sm font-bold text-[#003399]">Clear</button>
         </form>
-        <div className="overflow-x-auto"><table className="w-full min-w-[1120px] text-left text-sm"><thead className="bg-[#003399] text-[11px] uppercase tracking-wider text-[#FFFFFF]"><tr><th className="px-4 py-3">Title and authors</th><th className="px-4 py-3">Adviser / year</th><th className="px-4 py-3">Accession / barcode</th><th className="px-4 py-3">Shelf</th><th className="px-4 py-3">Condition</th><th className="px-4 py-3">Availability</th><th className="px-4 py-3">Actions</th></tr></thead><tbody className="divide-y divide-[#003399]/10">
+        <ResponsiveTable><table className="w-full min-w-[1120px] text-left text-sm"><thead className="bg-[#003399] text-[11px] uppercase tracking-wider text-[#FFFFFF]"><tr><th className="px-4 py-3">Title and authors</th><th className="px-4 py-3">Adviser / year</th><th className="px-4 py-3">Accession / barcode</th><th className="px-4 py-3">Shelf</th><th className="px-4 py-3">Condition</th><th className="px-4 py-3">Availability</th><th className="px-4 py-3">Actions</th></tr></thead><tbody className="divide-y divide-[#003399]/10">
           {thesisLoading && thesisRows.length === 0 ? <tr><td colSpan={7} className="px-5 py-12 text-center text-[#003399]/65"><RefreshCw className="mx-auto mb-3 animate-spin" size={22} />Loading research inventory…</td></tr> : null}
           {!thesisLoading && thesisRows.length === 0 ? <tr><td colSpan={7} className="px-5 py-12 text-center"><GraduationCap className="mx-auto text-[#003399]/45" size={28} /><p className="mt-3 font-bold text-[#003399]">No bound research papers found</p></td></tr> : null}
-          {thesisRows.map((thesis) => { const activeCirculation = thesis.availability_status === 'borrowed' || thesis.availability_status === 'reserved'; const availabilityLocked = activeCirculation || thesis.condition_state === 'lost'; const removalLocked = activeCirculation || thesis.condition_state !== 'lost'; const removalTitle = activeCirculation ? 'Resolve the active allocation before removing this research copy.' : thesis.condition_state !== 'lost' ? 'Mark this research copy as Lost before removing it.' : 'Remove this Lost research copy from active inventory.'; return <tr key={thesis.research_inventory_id} className="hover:bg-[#003399]/5"><td className="px-4 py-4"><p className="font-bold text-[#003399]">{thesis.title}</p><p className="mt-1 text-xs text-[#003399]/60">{thesis.authors}</p></td><td className="px-4 py-4 text-[#003399]"><p>{thesis.adviser}</p><p className="mt-1 text-xs text-[#003399]/60">{thesis.publication_year}</p></td><td className="px-4 py-4 font-mono text-xs text-[#003399]"><p className="font-bold">{thesis.accession_number}</p><p className="mt-1 text-[#003399]/60">{thesis.barcode}</p></td><td className="px-4 py-4 text-[#003399]">{thesis.shelf_location}</td><td className="px-4 py-4"><ConditionBadge condition={displayThesisCondition(thesis.condition_state)} /></td><td className="px-4 py-4"><AvailabilityBadge status={displayThesisAvailability(thesis.availability_status)} /></td><td className="px-4 py-4"><div className="flex flex-wrap gap-2"><button onClick={() => setSelectedThesis(thesis)} className="rounded-lg border border-[#003399]/20 px-3 py-2 text-xs font-bold text-[#003399]">Audit condition</button><button disabled={availabilityLocked} onClick={() => requestThesisAvailabilityChange(thesis)} title={availabilityLocked ? 'Borrowed, reserved, or lost papers cannot be manually toggled.' : 'Toggle thesis availability'} className="rounded-lg bg-[#003399] px-3 py-2 text-xs font-bold text-[#FFFFFF] disabled:cursor-not-allowed disabled:opacity-40">{thesis.availability_status === 'available' ? 'Make unavailable' : 'Make available'}</button><button aria-label={`Delete ${thesis.accession_number}`} disabled={removalLocked} title={removalTitle} onClick={() => setRemovalTarget({ kind: 'thesis', id: thesis.research_inventory_id, item_title: thesis.item_title, accession_number: thesis.accession_number, barcode: thesis.barcode })} className="rounded-lg bg-[#FFF200] px-3 py-2 text-xs font-bold text-[#003399] disabled:cursor-not-allowed disabled:opacity-40">Delete</button></div></td></tr>})}
-        </tbody></table></div>
+          {thesisRows.map((thesis) => { const activeCirculation = thesis.availability_status === 'borrowed' || thesis.availability_status === 'reserved'; const availabilityLocked = activeCirculation || thesis.condition_state === 'lost'; const removalLocked = activeCirculation || thesis.condition_state !== 'lost'; const removalTitle = activeCirculation ? 'Resolve the active allocation before removing this research copy.' : thesis.condition_state !== 'lost' ? 'Mark this research copy as Lost before removing it.' : 'Remove this Lost research copy from active inventory.'; return <tr key={thesis.research_inventory_id} className="hover:bg-[#003399]/5"><td className="px-4 py-4"><p className="font-bold text-[#003399]">{thesis.title}</p><p className="mt-1 text-xs text-[#003399]/60">{thesis.authors}</p></td><td className="px-4 py-4 text-[#003399]"><p>{thesis.adviser}</p><p className="mt-1 text-xs text-[#003399]/60">{thesis.publication_year}</p></td><td className="px-4 py-4 font-mono text-xs text-[#003399]"><p className="font-bold">{thesis.accession_number}</p><p className="mt-1 text-[#003399]/60">{thesis.barcode}</p></td><td className="px-4 py-4 text-[#003399]">{thesis.shelf_location}</td><td className="px-4 py-4"><ConditionBadge condition={displayThesisCondition(thesis.condition_state)} /></td><td className="px-4 py-4"><AvailabilityBadge status={displayThesisAvailability(thesis.availability_status)} /></td><td className="px-4 py-4"><InventoryActions accession={thesis.accession_number} actions={[
+            { label: 'Audit condition', onSelect: () => setSelectedThesis(thesis) },
+            { label: thesis.availability_status === 'available' ? 'Make unavailable' : 'Make available', disabled: availabilityLocked,
+              description: availabilityLocked ? 'Borrowed, reserved, or lost papers cannot be manually toggled.' : 'Toggle thesis availability',
+              onSelect: () => requestThesisAvailabilityChange(thesis) },
+            { label: 'Delete', destructive: true, disabled: removalLocked, description: removalTitle,
+              onSelect: () => setRemovalTarget({ kind: 'thesis', id: thesis.research_inventory_id, item_title: thesis.item_title, accession_number: thesis.accession_number, barcode: thesis.barcode }) },
+          ]} /></td></tr>})}
+        </tbody></table></ResponsiveTable>
         <div className="flex flex-col gap-3 border-t border-[#003399]/15 p-4 text-xs text-[#003399]/70 sm:flex-row sm:items-center sm:justify-between"><span>{thesisPagination.total} research {thesisPagination.total === 1 ? 'record' : 'records'}</span><div className="flex items-center gap-2"><button disabled={thesisPagination.page <= 1 || thesisLoading} onClick={() => setThesisFilters((current) => ({ ...current, page: current.page - 1 }))} className="rounded-lg border border-[#003399]/20 px-3 py-2 font-bold disabled:opacity-35">Previous</button><span className="font-bold text-[#003399]">Page {thesisPagination.page} of {Math.max(thesisPagination.total_pages, 1)}</span><button disabled={thesisPagination.page >= thesisPagination.total_pages || thesisLoading} onClick={() => setThesisFilters((current) => ({ ...current, page: current.page + 1 }))} className="rounded-lg border border-[#003399]/20 px-3 py-2 font-bold disabled:opacity-35">Next</button></div></div>
       </SectionCard>
     </section>
     <SectionCard className="order-[2] mb-5 flex flex-col gap-4 p-4 sm:flex-row sm:items-center"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#FFF200] text-[#003399]"><ScanBarcode size={22} /></span><div className="flex-1"><h2 className="font-bold text-[#003399]">Desktop scanner listener</h2><p className="mt-1 text-xs text-[#003399]/65">Scan a barcode at normal scanner speed and press Enter. Verification is recorded without refreshing the page.</p></div><span className="inline-flex items-center gap-2 rounded-xl bg-[#003399] px-4 py-2 text-xs font-bold text-[#FFFFFF]"><span className={cn('h-2 w-2 rounded-full bg-[#FFF200]', scanning && 'animate-pulse')} />{scanning ? 'Verifying scan' : 'Scanner listening'}</span></SectionCard>
     <SectionCard className="order-[3] overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-[#003399]/15 p-4 lg:flex-row lg:items-center"><h2 className="flex-1 font-bold text-[#003399]">Physical copy register</h2><label className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#003399]/45" size={15} /><input value={filters.query} onChange={(event) => setFilters((current) => ({ ...current, page: 1, query: event.target.value }))} placeholder="Title, author, barcode, accession…" className="h-10 w-full rounded-xl border border-[#003399]/20 bg-[#003399]/5 pl-9 pr-3 text-sm text-[#003399] outline-none focus:bg-[#FFFFFF] lg:w-72" /></label><select aria-label="Filter by condition" value={filters.conditionState} onChange={(event) => setFilters((current) => ({ ...current, page: 1, conditionState: event.target.value }))} className="h-10 rounded-xl border border-[#003399]/20 bg-[#FFFFFF] px-3 text-sm text-[#003399]"><option value="">All conditions</option>{['Good', 'Fair', 'For Repair', 'Damaged', 'Lost'].map((item) => <option key={item}>{item}</option>)}</select><button onClick={() => void load(filters)} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#003399]/20 px-4 text-sm font-bold text-[#003399]"><RefreshCw className={cn(loading && 'animate-spin')} size={15} />Refresh</button></div>
-      <div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-sm"><thead className="bg-[#003399] text-[11px] uppercase tracking-wider text-[#FFFFFF]"><tr><th className="px-5 py-3">Item title</th><th className="px-5 py-3">Accession</th><th className="px-5 py-3">Barcode</th><th className="px-5 py-3">Shelf</th><th className="px-5 py-3">Condition</th><th className="px-5 py-3">Availability</th><th className="px-5 py-3">Last verified</th><th className="px-5 py-3">Action</th></tr></thead><tbody className="divide-y divide-[#003399]/10">
+      <ResponsiveTable><table className="w-full min-w-[1050px] text-left text-sm"><thead className="bg-[#003399] text-[11px] uppercase tracking-wider text-[#FFFFFF]"><tr><th className="px-5 py-3">Item title</th><th className="px-5 py-3">Accession</th><th className="px-5 py-3">Barcode</th><th className="px-5 py-3">Shelf</th><th className="px-5 py-3">Condition</th><th className="px-5 py-3">Availability</th><th className="px-5 py-3">Last verified</th><th className="px-5 py-3">Action</th></tr></thead><tbody className="divide-y divide-[#003399]/10">
         {loading && copies.length === 0 ? <tr><td colSpan={8} className="px-5 py-14 text-center text-[#003399]/65"><RefreshCw className="mx-auto mb-3 animate-spin" size={22} />Loading physical inventory…</td></tr> : null}
         {!loading && copies.length === 0 ? <tr><td colSpan={8} className="px-5 py-14 text-center"><Barcode className="mx-auto text-[#003399]/45" size={28} /><p className="mt-3 font-bold text-[#003399]">No physical copies found</p></td></tr> : null}
-        {copies.map((copy) => { const activeCirculation = copy.availability_status === 'Borrowed' || copy.availability_status === 'Reserved'; const availabilityLocked = activeCirculation || copy.condition_status === 'Lost'; const removalLocked = activeCirculation || copy.condition_status !== 'Lost'; const removalTitle = activeCirculation ? 'Process the return or cancel the reservation before removing this copy.' : copy.condition_status !== 'Lost' ? 'Mark this copy as Lost before removing it.' : 'Remove this Lost copy from active inventory.'; return <tr key={copy.physical_copy_id} className="hover:bg-[#003399]/5"><td className="px-5 py-4"><p className="font-bold text-[#003399]">{copy.item_title}</p><p className="mt-1 text-xs text-[#003399]/60">{copy.authors.join(', ') || copy.category_name || 'No author metadata'}</p></td><td className="px-5 py-4 font-mono text-xs font-bold text-[#003399]">{copy.accession_number}</td><td className="px-5 py-4 font-mono text-xs text-[#003399]/70">{copy.barcode}</td><td className="px-5 py-4 text-[#003399]"><p className="font-bold">{copy.shelf_location} · C{copy.shelf_column} · R{copy.shelf_row}</p><p className="mt-1 font-mono text-[10px] text-[#003399]/60">{copy.call_number||'Call number pending'}</p></td><td className="px-5 py-4"><ConditionBadge condition={copy.condition_status} /></td><td className="px-5 py-4"><AvailabilityBadge status={copy.availability_status} /></td><td className="px-5 py-4 text-xs text-[#003399]/70">{formatDate(copy.last_verified_at)}</td><td className="px-5 py-4"><div className="flex flex-wrap gap-2"><button onClick={() => setSelected(copy)} title="Change physical condition" className="rounded-lg border border-[#003399]/20 px-3 py-2 text-xs font-bold text-[#003399]">Condition</button><button onClick={() => requestAvailabilityChange(copy)} disabled={availabilityLocked} title={availabilityLocked ? 'Active circulation and Lost copies cannot be manually toggled.' : 'Toggle availability manually'} className="rounded-lg bg-[#003399] px-3 py-2 text-xs font-bold text-[#FFFFFF] disabled:cursor-not-allowed disabled:opacity-40">{copy.availability_status === 'Available' ? 'Make unavailable' : 'Make available'}</button><button aria-label={`Delete ${copy.accession_number}`} disabled={removalLocked} title={removalTitle} onClick={() => setRemovalTarget({ kind: 'book', id: copy.physical_copy_id, item_title: copy.item_title, accession_number: copy.accession_number, barcode: copy.barcode })} className="rounded-lg bg-[#FFF200] px-3 py-2 text-xs font-bold text-[#003399] disabled:cursor-not-allowed disabled:opacity-40">Delete</button></div></td></tr>})}
-      </tbody></table></div>
-      <div className="flex items-center justify-between border-t border-[#003399]/15 p-4 text-xs text-[#003399]/70"><span>{pagination.total} physical {pagination.total === 1 ? 'copy' : 'copies'}</span><div className="flex items-center gap-2"><button disabled={pagination.page <= 1} onClick={() => setFilters((current) => ({ ...current, page: current.page - 1 }))} className="rounded-lg border border-[#003399]/20 px-3 py-2 font-bold disabled:opacity-35">Previous</button><span className="font-bold text-[#003399]">Page {pagination.page} of {Math.max(pagination.total_pages, 1)}</span><button disabled={pagination.page >= pagination.total_pages} onClick={() => setFilters((current) => ({ ...current, page: current.page + 1 }))} className="rounded-lg border border-[#003399]/20 px-3 py-2 font-bold disabled:opacity-35">Next</button></div></div>
+          {copies.map((copy) => { const activeCirculation = copy.availability_status === 'Borrowed' || copy.availability_status === 'Reserved'; const availabilityLocked = activeCirculation || copy.condition_status === 'Lost'; const removalLocked = activeCirculation || copy.condition_status !== 'Lost'; const removalTitle = activeCirculation ? 'Process the return or cancel the reservation before removing this copy.' : copy.condition_status !== 'Lost' ? 'Mark this copy as Lost before removing it.' : 'Remove this Lost copy from active inventory.'; return <tr key={copy.physical_copy_id} className="hover:bg-[#003399]/5"><td className="px-5 py-4"><p className="font-bold text-[#003399]">{copy.item_title}</p><p className="mt-1 text-xs text-[#003399]/60">{copy.authors.join(', ') || copy.category_name || 'No author metadata'}</p></td><td className="px-5 py-4 font-mono text-xs font-bold text-[#003399]">{copy.accession_number}</td><td className="px-5 py-4 font-mono text-xs text-[#003399]/70">{copy.barcode}</td><td className="px-5 py-4 text-[#003399]"><p className="font-bold">{copy.shelf_location} · C{copy.shelf_column} · R{copy.shelf_row}</p><p className="mt-1 font-mono text-[10px] text-[#003399]/60">{copy.call_number||'Call number pending'}</p></td><td className="px-5 py-4"><ConditionBadge condition={copy.condition_status} /></td><td className="px-5 py-4"><AvailabilityBadge status={copy.availability_status} /></td><td className="px-5 py-4 text-xs text-[#003399]/70">{formatDate(copy.last_verified_at)}</td><td className="px-5 py-4"><InventoryActions accession={copy.accession_number} actions={[
+            { label: 'Condition', description: 'Change physical condition', onSelect: () => setSelected(copy) },
+            ...(copy.condition_status !== 'Lost' ? [{ label: 'Report lost', disabled: copy.availability_status === 'Borrowed',
+              description: copy.availability_status === 'Borrowed' ? 'Report a borrowed copy from Circulation.' : 'Record this copy as lost.',
+              onSelect: () => setLostTarget(copy) }] : []),
+            { label: copy.availability_status === 'Available' ? 'Make unavailable' : 'Make available', disabled: availabilityLocked,
+              description: availabilityLocked ? 'Active circulation and Lost copies cannot be manually toggled.' : 'Toggle availability manually',
+              onSelect: () => requestAvailabilityChange(copy) },
+            { label: 'Delete', destructive: true, disabled: removalLocked, description: removalTitle,
+              onSelect: () => setRemovalTarget({ kind: 'book', id: copy.physical_copy_id, item_title: copy.item_title, accession_number: copy.accession_number, barcode: copy.barcode }) },
+          ]} /></td></tr>})}
+      </tbody></table></ResponsiveTable>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-[#003399]/15 p-4 text-xs text-[#003399]/70"><span>{pagination.total} physical {pagination.total === 1 ? 'copy' : 'copies'}</span><div className="flex items-center gap-2"><button disabled={pagination.page <= 1} onClick={() => setFilters((current) => ({ ...current, page: current.page - 1 }))} className="rounded-lg border border-[#003399]/20 px-3 py-2 font-bold disabled:opacity-35">Previous</button><span className="font-bold text-[#003399]">Page {pagination.page} of {Math.max(pagination.total_pages, 1)}</span><button disabled={pagination.page >= pagination.total_pages} onClick={() => setFilters((current) => ({ ...current, page: current.page + 1 }))} className="rounded-lg border border-[#003399]/20 px-3 py-2 font-bold disabled:opacity-35">Next</button></div></div>
     </SectionCard>
     {selected ? <ConditionModal copy={selected} onClose={() => setSelected(null)} onSaved={() => load(filters)} saveCondition={inventoryApi.changeCondition} /> : null}
+    {lostTarget ? <ConditionModal copy={lostTarget} initialCondition="lost" onClose={() => setLostTarget(null)} onSaved={() => load(filters)} saveCondition={inventoryApi.changeCondition} /> : null}
     {selectedThesis ? <ConditionModal copy={selectedThesis} onClose={() => setSelectedThesis(null)} onSaved={() => loadThesis(thesisFilters)} saveCondition={inventoryApi.auditThesis} /> : null}
     {availabilityTarget ? <AvailabilityConfirmationDialog copy={availabilityTarget} saving={availabilitySaving} error={availabilityError} onCancel={() => { if (!availabilitySaving) setAvailabilityTarget(null) }} onConfirm={() => void confirmAvailabilityChange()} /> : null}
     {thesisAvailabilityTarget ? <AvailabilityConfirmationDialog copy={thesisAvailabilityTarget} saving={availabilitySaving} error={availabilityError} onCancel={() => { if (!availabilitySaving) setThesisAvailabilityTarget(null) }} onConfirm={() => void confirmThesisAvailabilityChange()} /> : null}
