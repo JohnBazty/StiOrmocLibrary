@@ -1,6 +1,7 @@
 import dotenv from 'dotenv'
 import { randomBytes } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
+import { readXenditSandboxConfig } from './xendit-sandbox.ts'
 
 // Resolve from this module so npm workspace and repository-root commands load
 // the same API environment file consistently.
@@ -58,6 +59,7 @@ function resolveDatabaseUrl() {
 const databaseUrl = resolveDatabaseUrl()
 
 export const env = Object.freeze({
+  xendit: readXenditSandboxConfig(process.env),
   isProduction,
   inventoryPreviewEnabled: !isProduction && process.env.INVENTORY_PREVIEW_ENABLED === 'true',
   port: Number(process.env.PORT ?? 4000),
