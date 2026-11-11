@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-11-11 (Supabase `032` applied, `033` pending, next unused `034`) |
+| **Date last updated** | 2026-11-11 (Supabase `032` applied, `033–034` pending, next unused `035`) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---
@@ -101,10 +101,12 @@ Always know and document:
 | --- | --- |
 | Migrations directory | `database/supabase/` (Postgres only; MySQL was retired 2026-11-10) |
 | Latest applied migration | `032_login_devices.sql` |
-| Latest file pending review | `033_rename_system_brand.sql` |
-| **Next available number** | **`034`** |
+| Files pending review | `033_rename_system_brand.sql`, `034_online_payment_foundation.sql` |
+| **Next available number** | **`035`** |
 
 Applied enrollment 031 supersedes the removed 028 draft. Keep applied filenames and source bytes, including line endings. The 003 source still needs checksum reconciliation. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set.
+
+Payment foundation 034 was tested only in a disposable local PostgreSQL schema. It is unapplied on Supabase. Online payments remain disabled by default. See the [payment plan](../docs/plans/2026-11-11-xendit-sandbox-payments.md).
 
 Naming pattern: `NNN_short_snake_description.sql`, hand-written Postgres with row-level security as in earlier files. Never regenerate or edit `002_from_migrations.sql`.
 

@@ -2,6 +2,7 @@ import type { Pool, RowDataPacket } from '../config/db.js'
 import { db } from '../config/db.js'
 import { enrollmentEnabled } from '../modules/enrollment/enrollment-policy.ts'
 import { loginDevicesEnabled } from '../modules/auth/login-device-policy.ts'
+import { env } from '../config/env.js'
 
 const REQUIRED_COLUMNS: Record<string, string[]> = {
   categories: ['category_id', 'category_name', 'shelf_location', 'created_at', 'updated_at'],
@@ -89,6 +90,13 @@ export async function checkSchemaReadiness(database: Pool = db as Pool): Promise
     attendance_scan_receipts:['request_id','user_id','actor_account_id','log_id','action'],
     attendance_logs:[...REQUIRED_COLUMNS.attendance_logs,'seat_visit','checkout_source','checked_in_at','checked_out_at'],
     account_recovery_challenges: ['account_id', 'public_id', 'account_version', 'code_hash', 'code_expires_at', 'code_sent_at', 'code_attempts', 'locked_until', 'reset_token_hash', 'reset_expires_at'],
+    ...(env.xendit.enabled ? {
+      online_payment_attempts: ['payment_id','account_id','principal_centavos','fee_centavos','state','request_key'],
+      online_payment_events: ['event_id','provider_event_id','verified_fields','state'],
+      online_payment_fee_rules: ['fee_rule_id','environment','channel_code','fixed_centavos','percentage_basis_points'],
+      print_payment_receipts: [...REQUIRED_COLUMNS.print_payment_receipts,'online_payment_attempt_id','confirmation_source','transaction_fee_centavos','total_received'],
+      fine_payment_receipts: [...REQUIRED_COLUMNS.fine_payment_receipts,'online_payment_attempt_id','confirmation_source','transaction_fee_centavos','total_received'],
+    } : {}),
     ...(enrollmentEnabled() ? {
       enrollment_lifecycle: ['id', 'started'],
       enrollment_semesters: ['semester_id', 'academic_year', 'term_name', 'end_date', 'manual_end_at', 'scheduled_end_at', 'started_at', 'ended_at'],

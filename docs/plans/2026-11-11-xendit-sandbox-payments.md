@@ -19,7 +19,7 @@
 | Printing payments | Pay the full outstanding bill |
 | Fine payments | Allow full or partial payments |
 | Transaction fees | Add the online transaction fee to the user's payment |
-| Current stage | Phase 1 local setup implemented, with callback hosting pending the payment routes |
+| Current stage | Phases 1–2 built and verified locally. Gateway sessions, callbacks, financial settlement and UI remain Phases 3–7 |
 
 The test secret key and webhook token have been saved in the ignored local sheet at `docs/local/xendit-credentials-blank.md`. The key has Money-in Read and Write permission. Read-only API authentication passed during Phase 1. Hosted channel simulations and webhook delivery are scheduled for later phases.
 
@@ -138,6 +138,8 @@ The test environment, fee schedule, channel choices and public URL requirements 
 | `PUT /api/v1/admin/payments/fee-rules` | Record a new approved fee schedule version | Librarian |
 
 Final route names must follow the application's current routing conventions.
+
+Phase 2 implements quotes, preparation, owner reads, the authorized staff list and Librarian fee versions. Checkout returns HTTP 202 with `state=Prepared` and `gatewayConnected=false`. The reconciliation and webhook routes in this table belong to Phase 3. No provider session or financial settlement is claimed by preparation.
 
 **Ready when**
 
@@ -385,3 +387,67 @@ The generated environment and local-state files contain private credentials. Kee
 - [ ] Verify hosted sessions, payment-method simulations and callbacks during Phases 3 and 7.
 
 2026-11-11 — Began Phase 1 on the PostgreSQL-only main base. Added isolated configuration, repeatable local setup, sample fees, published channel limits and read-only provider checks.
+
+## Phase 2 implementation record — 2026-11-11
+
+Phase status is `built` for the local payment foundation. The overall seven-phase plan remains `inprogress`.
+
+### Implemented behavior
+
+- Owner-scoped quotes calculate a printing bill, finalized fine or confirmed lost-book charge from current database records. Printing and replacement charges require full payment; ordinary fines accept partial principal. Accruing overdue fines remain blocked.
+- Each quote freezes integer-centavo principal, fee, total, balance and an immutable fee-rule version. Quotes expire after five minutes. A changed balance or fee requires a new review.
+- Checkout preparation uses a transaction, account/obligation locks, owner-bound retry keys and unique active-target indexes. Repeated submissions resume the same saved attempt. A prepared attempt has a ten-minute deadline. A later preparation expires an old prepared attempt only when it has no provider references; uncertain provider activity remains reserved for later reconciliation.
+- Borrowers can read only their own attempts. The real application account/session guard blocks revoked sessions and deactivated accounts. Staff/Librarians can list attempts; only Librarians can append sample fee-rule versions. Writes have a per-account limit of twenty per minute.
+- Receipt structures preserve historical cash values and distinguish `Legacy`, human-confirmed `Staff` and verified `Xendit` provenance. Principal, fees and total received remain separate. Online references, event IDs and receipt links are unique.
+- Online configuration remains disabled by default. The enabled schema readiness check requires the new tables and receipt columns. Existing cash service paths and financial reports have not been changed in this phase.
+
+### Acceptance evidence
+
+| Tracking item | Result | Evidence |
+| --- | --- | --- |
+| Shared module and routes | PASS | `apps/api/src/modules/payments/` with validation, repository, service, controller and JWT-protected routes |
+| Exact amounts and fee snapshots | PASS | Validation tests plus actual PostgreSQL quotes. PHP 100 fine, PHP 40 principal and PHP 1.40 sample fee produce PHP 41.40 total and PHP 60 remaining |
+| Partial/full payment rules | PASS | Real database verifier rejects partial printing/replacement payments, unavailable obligations and accruing fines |
+| Ownership/session boundaries | PASS | Real JWT/account/session middleware rejects missing login, another owner's payment, deactivation and revoked sessions |
+| Retry/concurrency controls | PASS | Concurrent different quotes yield one prepared checkout; repeated same-key submissions return the same attempt; changed fees/balances fail |
+| Cash compatibility | PASS | Existing fine and printing receipt columns compare unchanged across migration; old receipts retain Legacy provenance; new cash receipts require staff |
+| Gateway source/allocations | PASS | Synthetic succeeded attempts verify matching owner, bill, principal, fee, receipt uniqueness and principal-only allocation. Provider references are fixture strings |
+| Server-only tables | PASS | RLS enabled and direct anon access rejected after granting schema visibility. PUBLIC, anon and authenticated table/sequence grants are revoked |
+| Event deduplication | PASS | Repeated environment/provider-event ID rejected by PostgreSQL |
+| Fee-history safety | PASS | Updates/deletes rejected. Append operations enforce Librarian permission, bounds and idempotence |
+| General regression | PASS | `npm test` — 392 API tests and 268 web tests; `npm run typecheck`; `npm run build`; `npm run coverage` |
+| Abuse protection | PASS | Route test confirms the twenty-write limit, unchanged by request-body changes, while a separate account remains usable |
+| Live migration/deployment | NOT RUN | Migration 034 applied only inside a disposable local schema, which was dropped after verification; local cluster stopped |
+
+Coverage runs pass without claiming complete path coverage. Real PostgreSQL acceptance runs separately from the unit coverage command. The web build still reports its existing large-chunk advisory.
+
+### Reproduce isolated database acceptance
+
+From the separate feature checkout, run the following command. It loads the ignored test credential sheet privately, performs the Phase 1 read-only provider check, creates a uniquely named local test schema, applies migration 034, exercises actual SQL and removes that schema in a finally block.
+
+```powershell
+npm run payments:sandbox:prepare -w @sti-library/api -- --credentials-file "C:/Users/JOHN/Documents/SSL/StiOrmocLibrary/docs/local/xendit-credentials-blank.md" --phase2
+```
+
+The retained Phase 1 fixture schema contains synthetic data only. No actual school records, normal account passwords, live financial balances or applied migration sources were changed. Secrets and local database files remain ignored and untracked.
+
+### Limits and next phase
+
+Migration `034_online_payment_foundation.sql` remains unapplied on Supabase. Branding 033 also remains pending. Latest applied migration is 032 and the next unused number is 035. The previously documented 003 checksum discrepancy is unchanged.
+
+No gateway checkout, callback route, reconciliation endpoint, receipt issuance or financial settlement runs from these APIs yet. Preparation explicitly returns `gatewayConnected:false`. Phase 3 adds provider sessions and authenticated confirmation. Cash/online settlement guards, gateway-compatible receipt queries, reporting and UI follow in Phases 4–6. Device/browser payment tests and callback simulations remain later acceptance work.
+
+The complete application schema and real login UI were not installed into the local fixture database. The acceptance schema uses the existing receipt DDL and minimal synthetic account/obligation parents to test this phase's actual SQL and middleware. A complete isolated application deployment and approved HTTPS callback host are still needed for end-to-end checkout testing.
+
+### Phase 2 tracking
+
+- [x] Implement payment records, fee-rule versions and authenticated shared APIs.
+- [x] Add additive migration 034 without changing applied sources.
+- [x] Preserve cash history and require explicit gateway provenance.
+- [x] Verify ownership, integer amounts, fee quotes, retry keys and duplicate prevention.
+- [x] Verify migration and constraints on disposable local PostgreSQL, then clean up.
+- [x] Run regression tests, type checks, build and coverage; review access controls and secret handling.
+- [ ] Apply the reviewed migration to an approved full test deployment in a later authorized step.
+- [ ] Add actual gateway sessions, callbacks and reconciliation in Phase 3.
+
+2026-11-11 — Completed Phase 2 locally on `feat/xendit-sandbox-setup`. Reserved 034 for the additive payment foundation, advanced trackers to next unused 035 and preserved the live ledger. Gateway sessions, production data changes, push and hosting remain outside this phase.

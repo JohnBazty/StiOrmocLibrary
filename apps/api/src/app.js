@@ -45,6 +45,7 @@ import { adminNotificationsRouter } from './modules/users/admin-notifications.ro
 import { archivedBorrowingPolicyRouter } from './modules/circulation/borrowing-policy-archive.routes.ts'
 import { publicCatalogRouter, catalogMaintenanceRouter } from './modules/catalog/catalog-enhancements.routes.ts'
 import { collectionReviewRouter } from './modules/catalog/collection-review.routes.ts'
+import { paymentRouters } from './modules/payments/payments.routes.ts'
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
 const publicDirectory = path.resolve(currentDirectory, '../public')
@@ -102,6 +103,8 @@ export function createApp() {
   app.use('/api/v1/auth', jwtAuthRouter)
   app.use('/api/public/catalog', publicCatalogRouter)
   app.use('/api/v1', authenticateJwt, ensureActiveJwtAccount)
+  app.use('/api/v1/user/payments', paymentRouters.user)
+  app.use('/api/v1/admin/payments', paymentRouters.admin)
   app.use('/api/v1/admin/enrollment', enrollmentRouter)
   app.use('/api/v1/admin/borrowing-policies', requireLibraryPermission('library.manage'), archivedBorrowingPolicyRouter)
   app.use('/api/v1/admin/maintenance', requireLibraryPermission('library.manage'), catalogMaintenanceRouter)
