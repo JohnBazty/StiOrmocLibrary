@@ -128,6 +128,14 @@ test('a case with a book-price charge cannot be dismissed, and re-closing after 
   assert.equal((await pg.query("SELECT 1 FROM notifications WHERE user_id=7 AND message_title='Damage review closed'")).rows.length, 2)
 })
 
+test('event times use the same Manila clock as the case, not the database UTC clock', async () => {
+  const { pg, service, caseId } = await seededCase()
+  await service.addNote(STAFF_ACCOUNT, caseId, { notes: 'Checked again.' })
+  const rows = (await pg.query<{ same: boolean }>(
+    'SELECT e.created_at = cc.opened_at AS same FROM circulation_case_events e JOIN circulation_cases cc ON cc.case_id = e.case_id ORDER BY e.event_id')).rows
+  assert.deepEqual(rows.map((row) => row.same), [true, true])
+})
+
 test('a huge page number is clamped instead of failing the query', async () => {
   const { service } = await seededCase()
   const list = await service.listCases({ page: '1e300' })

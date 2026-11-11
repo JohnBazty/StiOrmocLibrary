@@ -39,10 +39,11 @@ function publicInstruction(status: CaseStatus) {
 }
 
 async function appendEvent(connection: PoolConnection, caseId: number, eventType: CaseEventType, actorUserId: number | null,
-  fromStatus: string | null, toStatus: string | null, reason: string | null, notes: string | null) {
+  fromStatus: string | null, toStatus: string | null, reason: string | null, notes: string | null, at: Date) {
+  // Explicit Manila time: the column default NOW() is UTC wall time on Supabase, 8 hours behind opened_at.
   const [insert] = await connection.execute<ResultSetHeader>(
-    `INSERT INTO circulation_case_events (case_id, event_type, actor_user_id, from_status, to_status, reason, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`, [caseId, eventType, actorUserId, fromStatus, toStatus, reason, notes],
+    `INSERT INTO circulation_case_events (case_id, event_type, actor_user_id, from_status, to_status, reason, notes, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ${MANILA_TIMESTAMP})`, [caseId, eventType, actorUserId, fromStatus, toStatus, reason, notes, at.toISOString()],
   )
   return Number(insert.insertId)
 }
@@ -95,11 +96,11 @@ export async function openDamageCaseAtReturn(connection: PoolConnection, input: 
       "SELECT case_id, status FROM circulation_cases WHERE transaction_id = ? AND case_type = 'Damage' LIMIT 1 FOR UPDATE", [input.transactionId],
     )
     const caseId = Number(rows[0].case_id)
-    await appendEvent(connection, caseId, 'Note Added', input.actorUserId, rows[0].status, rows[0].status, null, input.description)
+    await appendEvent(connection, caseId, 'Note Added', input.actorUserId, rows[0].status, rows[0].status, null, input.description, input.openedAt)
     return { caseId, created: false }
   }
   const caseId = Number(insert.insertId)
-  await appendEvent(connection, caseId, 'Opened', input.actorUserId, null, 'Open', null, input.description)
+  await appendEvent(connection, caseId, 'Opened', input.actorUserId, null, 'Open', null, input.description, input.openedAt)
   await connection.execute(
     `INSERT INTO admin_notifications (event_type, actor_user_id, borrow_transaction_id, message_title, message_body)
      VALUES ('damage_case_opened', ?, ?, 'Damage case opened', ?)`, [input.actorUserId, input.transactionId, input.description],
@@ -125,7 +126,7 @@ async function setCopy(connection: PoolConnection, copy: LockedInventoryCopy, co
 
 /** Write the copy off and charge the borrower the book price (no extra fee) as a confirmed lost-book report. */
 async function chargeBookPrice(connection: PoolConnection, row: CaseRow, copy: LockedInventoryCopy, actorUserId: number | null,
-  reason: string, staffCharge: number | null) {
+  reason: string, staffCharge: number | null, now: Date) {
   const [existing] = await connection.execute<RowDataPacket[]>(
     'SELECT lost_book_report_id FROM lost_book_reports WHERE transaction_id = ? LIMIT 1 FOR UPDATE', [row.transaction_id],
   )
@@ -147,7 +148,7 @@ async function chargeBookPrice(connection: PoolConnection, row: CaseRow, copy: L
   const reportId = Number(insert.insertId)
   await setCopy(connection, copy, 'Lost', 'Unavailable', { userId: actorUserId, label: 'Librarian' }, ['Lost Override'])
   await connection.execute('UPDATE circulation_cases SET lost_book_report_id = ?, updated_at = NOW() WHERE case_id = ?', [reportId, row.case_id])
-  await appendEvent(connection, Number(row.case_id), 'Linked Lost Report', actorUserId, row.status, row.status, reason, `Lost-book report ${reportId}`)
+  await appendEvent(connection, Number(row.case_id), 'Linked Lost Report', actorUserId, row.status, row.status, reason, `Lost-book report ${reportId}`, now)
   const title = String(priceRows[0]?.title ?? 'A returned book')
   const message = `${title} was damaged beyond use and written off. Replacement charge: PHP ${charge.toFixed(2)}.`
   await connection.execute(
@@ -162,7 +163,7 @@ async function chargeBookPrice(connection: PoolConnection, row: CaseRow, copy: L
 }
 
 async function applyDisposition(connection: PoolConnection, row: CaseRow, disposition: DamageDisposition, reason: string,
-  replacementCharge: number | null, actorUserId: number | null) {
+  replacementCharge: number | null, actorUserId: number | null, now: Date) {
   const [loanRows] = await connection.execute<RowDataPacket[]>(
     'SELECT bt.transaction_status, pc.barcode FROM borrow_transactions bt JOIN physical_copies pc ON pc.physical_copy_id = bt.physical_copy_id WHERE bt.transaction_id = ? LIMIT 1',
     [row.transaction_id],
@@ -179,7 +180,7 @@ async function applyDisposition(connection: PoolConnection, row: CaseRow, dispos
   const actor = { userId: actorUserId, label: 'Librarian' }
   if (disposition === 'repaired_available') return setCopy(connection, copy, 'Good', 'Available', actor, [])
   if (disposition === 'damaged_held') return setCopy(connection, copy, 'Damaged', 'Unavailable', actor, [])
-  return chargeBookPrice(connection, row, copy, actorUserId, reason, replacementCharge)
+  return chargeBookPrice(connection, row, copy, actorUserId, reason, replacementCharge, now)
 }
 
 export function createCirculationCaseService(database: Pool = db, clock: () => Date = () => new Date()) {
@@ -273,7 +274,7 @@ export function createCirculationCaseService(database: Pool = db, clock: () => D
         requireOpen(row)
         const next: CaseStatus = row.status === 'Open' ? 'Under Investigation' : row.status
         if (next !== row.status) await connection.execute('UPDATE circulation_cases SET status = ?, updated_at = NOW() WHERE case_id = ?', [next, caseId])
-        await appendEvent(connection, caseId, 'Note Added', actorUserId, row.status, next, null, input.notes)
+        await appendEvent(connection, caseId, 'Note Added', actorUserId, row.status, next, null, input.notes, clock())
       })
       return service.getCaseDetail(caseId)
     },
@@ -286,8 +287,8 @@ export function createCirculationCaseService(database: Pool = db, clock: () => D
         const row = await lockCase(connection, caseId)
         requireOpen(row)
         if (row.lost_book_report_id) throw new HttpError(409, 'CASE_LOST_ALREADY_CHARGED', 'This copy was already written off and charged. Review it in Clearance.')
-        await applyDisposition(connection, row, input.disposition, input.reason, input.replacementCharge, actorUserId)
-        await appendEvent(connection, caseId, 'Disposition Recorded', actorUserId, row.status, row.status, input.reason, input.disposition)
+        await applyDisposition(connection, row, input.disposition, input.reason, input.replacementCharge, actorUserId, clock())
+        await appendEvent(connection, caseId, 'Disposition Recorded', actorUserId, row.status, row.status, input.reason, input.disposition, clock())
       })
       return service.getCaseDetail(caseId)
     },
@@ -306,7 +307,7 @@ export function createCirculationCaseService(database: Pool = db, clock: () => D
           `UPDATE circulation_cases SET status = ?, resolved_at = ${MANILA_TIMESTAMP}, resolved_by_user_id = ?, updated_at = NOW() WHERE case_id = ?`,
           [status, clock().toISOString(), actorUserId, caseId],
         )
-        const eventId = await appendEvent(connection, caseId, status, actorUserId, row.status, status, input.reason, null)
+        const eventId = await appendEvent(connection, caseId, status, actorUserId, row.status, status, input.reason, null, clock())
         // Keyed by event so a re-close after reopen notifies again.
         await notifyBorrower(connection, Number(row.borrower_user_id), status === 'Resolved' ? 'Damage review closed' : 'Damage review dismissed',
           publicInstruction(status), caseId, `case:${caseId}:${status.toLowerCase()}:${eventId}`)
@@ -324,7 +325,7 @@ export function createCirculationCaseService(database: Pool = db, clock: () => D
         await connection.execute(
           "UPDATE circulation_cases SET status = 'Reopened', resolved_at = NULL, resolved_by_user_id = NULL, updated_at = NOW() WHERE case_id = ?", [caseId],
         )
-        await appendEvent(connection, caseId, 'Reopened', actorUserId, row.status, 'Reopened', input.reason, null)
+        await appendEvent(connection, caseId, 'Reopened', actorUserId, row.status, 'Reopened', input.reason, null, clock())
       })
       return service.getCaseDetail(caseId)
     },

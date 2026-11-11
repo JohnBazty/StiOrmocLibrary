@@ -76,5 +76,6 @@ The existing lost-book report flow (`clearanceService.decideLost`, borrower or s
 
 | Date | Change |
 | --- | --- |
+| 2026-11-12 | Local check on the live data (read only): panel, review and forms work for a Librarian. Fixed case event times, which used the database UTC clock and showed 8 hours behind the case time; events now use the same Manila clock. Events written before this fix stay in UTC. |
 | 2026-11-12 | Review fixes H1, M1-M4 (see tracking). Decisions now need the copy still held as damaged (`CASE_COPY_NOT_HELD`); a charged case cannot be dismissed (`CASE_CHARGED_CANNOT_DISMISS`). |
 | 2026-11-12 | Created. Ported Damage cases from `6dd0c64` to Postgres-only `main`; charge for a written-off copy = book price (Ethan, 2026-11-11). Case opening moved into the existing desk return instead of the old separate report-damage endpoint. Long-overdue cases left for later. |
