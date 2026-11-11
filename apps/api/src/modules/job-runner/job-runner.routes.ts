@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { rateLimit } from 'express-rate-limit'
 import { isJobName } from './job-runner.jobs.ts'
 import { cleanJobError, validJobSecret } from './job-runner.rules.ts'
 import type { JobRunner } from './job-runner.service.ts'
@@ -9,6 +10,8 @@ import type { JobRunner } from './job-runner.service.ts'
  */
 export function createInternalJobRouter(runner: JobRunner, configuredSecret: () => string | undefined, log: (line: string) => void = console.warn) {
   const router = Router()
+  // Cron calls once a minute; this only blunts guessing and floods.
+  router.use(rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false }))
   router.post('/:jobName', async (request, response) => {
     if (!validJobSecret(request.get('x-job-runner-secret'), configuredSecret())) {
       log('[Job runner] Refused an internal job call without a valid job secret.')

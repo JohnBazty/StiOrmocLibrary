@@ -69,10 +69,10 @@ export function createApp() {
     },
   }))
   app.use(cors({ origin: env.webOrigin, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }))
+  // D1: Supabase Cron only; before body parsing, the session, JWT and CSRF middleware, authorized by X-Job-Runner-Secret alone.
+  app.use('/api/internal/jobs', createInternalJobRouter(jobRunner, () => env.jobRunner.secret))
   app.use(express.json({ limit: '3mb' }))
   app.use(express.urlencoded({ extended: false, limit: '32kb' }))
-  // D1: Supabase Cron only; before the session, JWT and CSRF middleware, authorized by X-Job-Runner-Secret alone.
-  app.use('/api/internal/jobs', createInternalJobRouter(jobRunner, () => env.jobRunner.secret))
   app.use(session({
     name: env.session.name,
     secret: env.session.secret,

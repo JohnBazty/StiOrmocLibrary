@@ -38,6 +38,7 @@ test('job errors keep a safe code and a short first-line message without secrets
   assert.deepEqual(cleanJobError('boom'), { code: 'SERVICE_ERROR', message: 'Scheduled job failed.' })
   assert.equal(cleanJobError(Object.assign(new Error('bad'), { code: 'lower case; DROP' })).code, 'SERVICE_ERROR')
   assert.equal(cleanJobError(new Error('password=abc123 token=xyz')).message, 'password=[redacted] token=[redacted]')
+  assert.equal(cleanJobError(new Error('send to ana.cruz@ormoc.sti.edu.ph failed: Authorization Bearer abc.def')).message, 'send to [redacted] failed: Authorization Bearer [redacted]')
 })
 
 test('overdue cursor is parsed strictly and anything else restarts the pass', () => {

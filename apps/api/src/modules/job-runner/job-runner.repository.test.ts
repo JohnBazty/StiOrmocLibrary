@@ -111,3 +111,52 @@ test('status lists every allowlisted job with health inputs and its last 20 runs
   assert.equal(runs[0].result?.inserted, 21)
   await pg.close()
 })
+
+test('a lease taken over between the history insert and the state update writes nothing', async () => {
+  const { pg, pool } = await createJobTestDatabase()
+  const connection = await pool.getConnection()
+  const racing = {
+    ...pool,
+    getConnection: async () => ({
+      ...connection,
+      async execute(sql: string, values: unknown[]) {
+        const result = await connection.execute(sql, values)
+        // Simulates another runner reclaiming the lease right after the run row is inserted.
+        if (sql.includes('INSERT INTO scheduled_job_runs')) await pg.query("UPDATE scheduled_job_state SET lease_token = $1 WHERE job_name = 'notifications'", [tokenB])
+        return result
+      },
+    }),
+  } as typeof pool
+  const repository = createJobRunnerRepository(racing)
+  await repository.claim('notifications', tokenA)
+  assert.equal(await repository.finish('notifications', tokenA, { outcome: 'failed', errorCode: 'SERVICE_ERROR', errorMessage: 'x', alert: true }), false)
+  assert.equal((await pg.query('SELECT 1 FROM scheduled_job_runs')).rows.length, 0)
+  assert.equal((await pg.query('SELECT 1 FROM admin_notifications')).rows.length, 0)
+})
+
+test('the run history locks the job row it reads, so a concurrent claim waits', async () => {
+  const statements: string[] = []
+  const connection = { beginTransaction: async () => {}, commit: async () => {}, rollback: async () => {}, release() {}, async execute(sql: string) { statements.push(sql); return [{ affectedRows: 1 }] } }
+  const repository = createJobRunnerRepository({ getConnection: async () => connection } as never)
+  await repository.finish('notifications', tokenA, { outcome: 'succeeded', result: {} })
+  assert.match(statements[0], /FROM scheduled_job_state WHERE job_name = \? AND lease_token = \?\s+FOR UPDATE/)
+})
+
+test('the status window keeps 20 real runs even after many skipped ones', async () => {
+  const { pg, pool } = await createJobTestDatabase()
+  const repository = createJobRunnerRepository(pool)
+  await repository.claim('notifications', tokenA)
+  await repository.finish('notifications', tokenA, { outcome: 'succeeded', result: { inserted: 1 } })
+  for (let i = 0; i < 25; i += 1) await repository.recordSkipped('notifications')
+  const { runs } = await repository.status(['notifications'])
+  assert.deepEqual(runs.map((run) => run.outcome), ['succeeded'])
+  await pg.close()
+})
+
+test('a real timestamp column round-trips through the overdue cursor', async () => {
+  const { pg } = await createJobTestDatabase()
+  const { rows } = await pg.query<{ key: string }>("SELECT '2026-11-10 08:59:00.123456'::timestamp::text AS key")
+  const { parseOverdueCursor } = await import('./job-runner.rules.ts')
+  assert.deepEqual(parseOverdueCursor(JSON.stringify({ dueAt: rows[0].key, transactionId: 4 })), { dueAt: '2026-11-10 08:59:00.123456', transactionId: 4 })
+  await pg.close()
+})

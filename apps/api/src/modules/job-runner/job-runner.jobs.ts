@@ -45,7 +45,9 @@ export function createJobHandlers(database: Pool = db, clock = () => new Date())
     'reservation-expiration': async () => ({ result: counts(await expireReadyReservations(database, clock())) }),
     'book-request-advance': async () => ({ result: counts(await createBookRequestService(database, clock).advanceWaiting(clock())) }),
     'circulation-overdue': async ({ cursor }) => {
-      const { nextCursor, ...result } = await escalateOverdueTransactions(database, clock(), undefined, parseOverdueCursor(cursor))
+      const after = parseOverdueCursor(cursor)
+      if (cursor && !after) console.warn('[Job runner] circulation-overdue cursor could not be read; the scan restarts from the oldest loan.')
+      const { nextCursor, ...result } = await escalateOverdueTransactions(database, clock(), undefined, after)
       return { result: counts(result), cursor: nextCursor ? JSON.stringify(nextCursor) : null }
     },
     notifications: async () => ({ result: counts(await generateNotifications(database, clock())) }),

@@ -22,3 +22,16 @@ test('every job name has a handler that calls its service on the given database'
   }
 })
 
+
+test('an unreadable overdue cursor restarts the pass and is reported', async () => {
+  const warnings: string[] = []
+  const original = console.warn
+  console.warn = (line: string) => { warnings.push(line) }
+  try {
+    const marker = new Error('reached the database')
+    const database = { execute: async () => { throw marker }, getConnection: async () => { throw marker } } as unknown as Pool
+    await createJobHandlers(database)['circulation-overdue']({ cursor: '{"dueAt":"2026-11-10 08:59:00+00","transactionId":1}' }).catch(() => {})
+    await createJobHandlers(database)['circulation-overdue']({ cursor: null }).catch(() => {})
+  } finally { console.warn = original }
+  assert.deepEqual(warnings, ['[Job runner] circulation-overdue cursor could not be read; the scan restarts from the oldest loan.'])
+})

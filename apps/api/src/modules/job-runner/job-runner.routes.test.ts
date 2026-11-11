@@ -99,3 +99,10 @@ test('an Admin status failure goes to the error handler', async () => {
   app.use((_error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => { response.status(503).json({ success: false }) })
   assert.equal((await request(app).get('/api/v1/admin/jobs')).status, 503)
 })
+
+test('the internal route is rate limited per caller', async () => {
+  const app = internalApp([])
+  let limited = 0
+  for (let i = 0; i < 31; i += 1) if ((await request(app).post('/api/internal/jobs/notifications')).status === 429) limited += 1
+  assert.equal(limited, 1)
+})

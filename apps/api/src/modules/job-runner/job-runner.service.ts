@@ -6,13 +6,16 @@ import { cleanJobError, jobHealth } from './job-runner.rules.ts'
 export type { JobHandlers } from './job-runner.jobs.ts'
 export type JobRunReport =
   | { job: JobName; outcome: 'skipped' }
+  | { job: JobName; outcome: 'deferred' }
   | { job: JobName; outcome: 'succeeded'; result: Record<string, unknown>; recorded?: false }
   | { job: JobName; outcome: 'failed'; error: { code: string; message: string }; recorded?: false }
 
 const iso = (value: Date | null) => (value ? value.toISOString() : null)
 const lost = (recorded: boolean) => (recorded ? {} : { recorded: false as const })
+// Vercel stops the function at 60 s; jobs not started by 40 s wait for the next minute instead of being cut off mid-run.
+const ALL_DEADLINE_MS = 40_000
 
-export function createJobRunner({ repository, jobs, newToken = randomUUID }: { repository: JobRunnerRepository; jobs: JobHandlers; newToken?: () => string }) {
+export function createJobRunner({ repository, jobs, newToken = randomUUID, now = Date.now }: { repository: JobRunnerRepository; jobs: JobHandlers; newToken?: () => string; now?: () => number }) {
   async function run(job: JobName): Promise<JobRunReport> {
     const token = newToken()
     const claim = await repository.claim(job, token)
@@ -36,10 +39,15 @@ export function createJobRunner({ repository, jobs, newToken = randomUUID }: { r
     return { job, outcome: 'succeeded', result: output.result, ...lost(recorded) }
   }
 
-  /** A1: one call runs every job in order; one job failing, even in the runner itself, never stops the next. */
+  /**
+   * A1: one call runs every job in order; one job failing, even in the runner itself, never stops the next.
+   * A single job cannot outlive its 90 s lease on Vercel, whose 60 s limit ends the function first (D2).
+   */
   async function runAll(): Promise<JobRunReport[]> {
     const reports: JobRunReport[] = []
+    const started = now()
     for (const job of JOB_NAMES) {
+      if (now() - started >= ALL_DEADLINE_MS) { reports.push({ job, outcome: 'deferred' }); continue }
       try {
         reports.push(await run(job))
       } catch (error) {

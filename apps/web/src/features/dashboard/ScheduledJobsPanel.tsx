@@ -18,7 +18,7 @@ const JOB_LABELS: Record<string, string> = {
 
 // Status is always written out; the icon and the yellow highlight only repeat it.
 const HEALTH = {
-  healthy: { label: 'Healthy', Icon: CheckCircle2, className: 'bg-[#003399]/5 text-[#003399] dark:bg-white/10 dark:text-[#f7f9ff]' },
+  healthy: { label: 'Healthy', Icon: CheckCircle2, className: 'bg-[#003399]/5 text-[#003399] dark:bg-white/10 dark:text-white' },
   stale: { label: 'Stale', Icon: Clock, className: 'bg-[#FFF200] text-[#003399]' },
   failed: { label: 'Failed', Icon: AlertTriangle, className: 'bg-[#003399] text-white dark:bg-white dark:text-[#003399]' },
 } satisfies Record<ScheduledJobHealth, { label: string; Icon: typeof Clock; className: string }>
@@ -39,22 +39,22 @@ export function ScheduledJobsPanel() {
 
   const attention = data?.jobs.filter((job) => job.health !== 'healthy').length ?? 0
   return <SectionCard className="mt-5 p-5">
-    <p className="text-xs font-bold uppercase tracking-wider text-[#003399]/45">System health</p>
+    <p className="text-xs font-bold uppercase tracking-wider text-[#003399]/75">System health</p>
     <h2 className="mt-1 font-display text-lg font-bold text-[#003399]">Scheduled jobs</h2>
     {error ? <p role="alert" className="mt-3 text-sm font-semibold text-[#003399]">{error}</p> : null}
-    {!data && !error ? <p className="mt-3 text-sm text-[#003399]/65">Loading job status…</p> : null}
+    {!data && !error ? <p role="status" className="mt-3 text-sm text-[#003399]/75">Loading job status…</p> : null}
     {data ? <>
-      <p className="mt-1 text-xs text-[#003399]/65">{attention ? `${attention} of ${data.jobs.length} jobs need attention.` : 'All jobs are running.'}</p>
+      <p className="mt-1 text-xs text-[#003399]/75">{attention ? `${attention} of ${data.jobs.length} jobs need attention.` : 'All jobs are running.'}</p>
       <ul className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {data.jobs.map((job) => {
           const name = JOB_LABELS[job.jobName] ?? job.jobName
           const { label, Icon, className } = HEALTH[job.health]
-          return <li key={job.jobName} aria-label={`${name}: ${label}`} className="rounded-xl border border-[#003399]/10 p-3">
+          return <li key={job.jobName} className="rounded-xl border border-[#003399]/10 p-3">
             <div className="flex items-start justify-between gap-2">
               <p className="text-sm font-semibold text-[#003399]">{name}</p>
               <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${className}`}><Icon size={12} aria-hidden="true" />{label}</span>
             </div>
-            <p className="mt-2 text-xs text-[#003399]/65">{job.lastSuccessAt ? `Last success ${manila(job.lastSuccessAt)}` : 'Never succeeded'}</p>
+            <p className="mt-2 text-xs text-[#003399]/75">{job.lastSuccessAt ? `Last success ${manila(job.lastSuccessAt)}` : 'Never succeeded'}</p>
             {job.health === 'failed' && job.lastErrorMessage ? <p className="mt-1 line-clamp-2 text-xs text-[#003399]">{job.lastErrorMessage}</p> : null}
           </li>
         })}

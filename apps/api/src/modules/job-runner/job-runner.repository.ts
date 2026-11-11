@@ -53,12 +53,15 @@ export function createJobRunnerRepository(database: Pool) {
         const [run] = await connection.execute<ResultSetHeader>(
           `INSERT INTO scheduled_job_runs (job_name, started_at, finished_at, outcome, result_json, error_code, error_message, lease_token)
            SELECT job_name, COALESCE(last_started_at, ${DB_NOW}), ${DB_NOW}, ?, ?, ?, ?, lease_token
-             FROM scheduled_job_state WHERE job_name = ? AND lease_token = ?`,
+             FROM scheduled_job_state WHERE job_name = ? AND lease_token = ?
+             FOR UPDATE
+           RETURNING run_id`,
           [detail.outcome, resultJson, succeeded ? null : detail.errorCode, succeeded ? null : detail.errorMessage, jobName, token],
         )
         if (!run.affectedRows) { await connection.rollback(); return false }
+        let released: ResultSetHeader
         if (succeeded) {
-          await connection.execute(
+          ;[released] = await connection.execute<ResultSetHeader>(
             `UPDATE scheduled_job_state SET lease_token = NULL, lease_expires_at = NULL, last_outcome = 'succeeded', last_success_at = ${DB_NOW},
                last_error_code = NULL, last_error_message = NULL, last_result_json = ?,
                progress_cursor = CASE WHEN ?::boolean THEN ?::text ELSE progress_cursor END, updated_at = ${DB_NOW}
@@ -66,23 +69,25 @@ export function createJobRunnerRepository(database: Pool) {
             [resultJson, Boolean(detail.cursor?.set), detail.cursor?.value ?? null, jobName, token],
           )
         } else {
-          await connection.execute(
+          ;[released] = await connection.execute<ResultSetHeader>(
             `UPDATE scheduled_job_state SET lease_token = NULL, lease_expires_at = NULL, last_outcome = 'failed', last_failure_at = ${DB_NOW},
                last_error_code = ?, last_error_message = ?, updated_at = ${DB_NOW}
              WHERE job_name = ? AND lease_token = ?`,
             [detail.errorCode, detail.errorMessage, jobName, token],
           )
-          if (detail.alert) {
-            await connection.execute(
-              "INSERT INTO admin_notifications (event_type, message_title, message_body) VALUES ('scheduled_job_failed', 'Scheduled library job failed', ?)",
-              [`${jobName} failed (${detail.errorCode}): ${detail.errorMessage}`.slice(0, 500)],
-            )
-          }
+        }
+        // The row lock above makes this unreachable in Postgres; checked anyway so a lost lease can never commit.
+        if (!released.affectedRows) { await connection.rollback(); return false }
+        if (!succeeded && detail.alert) {
+          await connection.execute(
+            "INSERT INTO admin_notifications (event_type, message_title, message_body) VALUES ('scheduled_job_failed', 'Scheduled library job failed', ?)",
+            [`${jobName} failed (${detail.errorCode}): ${detail.errorMessage}`.slice(0, 500)],
+          )
         }
         await connection.commit()
         return true
       } catch (error) {
-        await connection.rollback()
+        await connection.rollback().catch(() => {})
         throw error
       } finally {
         connection.release()
@@ -101,7 +106,7 @@ export function createJobRunnerRepository(database: Pool) {
       const [header] = await database.execute<ResultSetHeader>(
         `DELETE FROM scheduled_job_runs WHERE run_id IN (
            SELECT run_id FROM scheduled_job_runs WHERE job_name = ? AND started_at < ${DB_NOW} - INTERVAL '${RETENTION_DAYS} days'
-           ORDER BY run_id LIMIT ${PRUNE_BATCH})`,
+           ORDER BY run_id LIMIT ${PRUNE_BATCH} FOR UPDATE SKIP LOCKED)`,
         [jobName],
       )
       return header.affectedRows
@@ -116,10 +121,14 @@ export function createJobRunnerRepository(database: Pool) {
              ${['last_started_at', 'last_success_at', 'last_failure_at', 'lease_expires_at'].map(utc).join(', ')}
              FROM scheduled_job_state WHERE job_name = ANY(?::text[])`, [names]),
         database.execute<RowDataPacket[]>(
-          `SELECT job_name, outcome, result_json, error_code, error_message, ${utc('started_at')}, ${utc('finished_at')} FROM (
-             SELECT *, ROW_NUMBER() OVER (PARTITION BY job_name ORDER BY started_at DESC, run_id DESC) AS position
-               FROM scheduled_job_runs WHERE job_name = ANY(?::text[])) recent
-            WHERE position <= ${RUNS_PER_JOB} ORDER BY started_at DESC, run_id DESC`, [names]),
+          // One index range per job (job_name, started_at DESC); skipped runs would crowd real ones out of the window.
+          `SELECT recent.job_name, outcome, result_json, error_code, error_message, ${utc('started_at')}, ${utc('finished_at')}
+             FROM unnest(?::text[]) AS wanted(job_name)
+             CROSS JOIN LATERAL (
+               SELECT run_id, job_name, outcome, result_json, error_code, error_message, started_at, finished_at FROM scheduled_job_runs
+                WHERE job_name = wanted.job_name AND outcome <> 'skipped'
+                ORDER BY started_at DESC, run_id DESC LIMIT ${RUNS_PER_JOB}) recent
+            ORDER BY started_at DESC, run_id DESC`, [names]),
       ])
       const byName = new Map(states.map((row) => [row.job_name as string, row]))
       const jobs: JobStateRow[] = names.map((jobName) => {

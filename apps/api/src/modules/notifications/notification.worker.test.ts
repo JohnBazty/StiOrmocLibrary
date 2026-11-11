@@ -13,6 +13,7 @@ test('D5: print notices only scan print requests changed in the last 24 hours', 
   await generateNotifications(database, new Date('2026-11-11T02:00:00Z'))
   const print = statements.find((sql) => sql.includes('FROM print_requests pr'))
   assert.ok(print)
-  assert.match(print, /WHERE pr\.updated_at >= \(NOW\(\) AT TIME ZONE 'UTC'\) - INTERVAL '24 hours'/)
+  // Same zone as the writers (`updated_at = NOW()`), and rows never updated still count.
+  assert.match(print, /WHERE COALESCE\(pr\.updated_at, pr\.created_at\) >= NOW\(\) - INTERVAL '24 hours'/)
   assert.equal(statements.some((sql) => sql.includes('FROM reservations r')), false, 'the historic reservation scan stays removed')
 })

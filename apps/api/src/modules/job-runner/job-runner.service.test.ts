@@ -90,3 +90,13 @@ test('all records a job as failed and moves on when the runner itself cannot rea
   assert.deepEqual(reports[0], { job: 'enrollment-close', outcome: 'failed', error: { code: 'ECONNREFUSED', message: 'db down' }, recorded: false })
   assert.equal(reports.filter((report) => report.outcome === 'succeeded').length, JOB_NAMES.length - 1)
 })
+
+test('all stops starting jobs after its deadline and reports the rest as deferred, without touching them', async () => {
+  const { pg, pool } = await createJobTestDatabase()
+  let clock = 0
+  const jobs = handlers(Object.fromEntries(JOB_NAMES.map((name) => [name, async () => { clock += 25_000; return { result: { done: 1 } } }])) as Partial<JobHandlers>)
+  const runner = createJobRunner({ repository: createJobRunnerRepository(pool), jobs, now: () => clock })
+  const reports = await runner.runAll()
+  assert.deepEqual(reports.map((report) => report.outcome), ['succeeded', 'succeeded', ...Array(JOB_NAMES.length - 2).fill('deferred')])
+  assert.equal((await pg.query("SELECT 1 FROM scheduled_job_runs")).rows.length, 2)
+})

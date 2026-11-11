@@ -32,6 +32,8 @@ export function cleanJobError(error: unknown) {
   const message = (error.message.split(/\r?\n/)[0] ?? '')
     .replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, '[redacted]')
     .replace(/\b(password|passwd|pwd|secret|token|key)=\S+/gi, '$1=[redacted]')
+    .replace(/[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}/gi, '[redacted]')
+    .replace(/\bBearer\s+\S+/gi, 'Bearer [redacted]')
     .trim()
     .slice(0, MAX_ERROR_MESSAGE)
   return { code, message: message || 'Scheduled job failed.' }
