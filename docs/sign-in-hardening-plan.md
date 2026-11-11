@@ -8,7 +8,7 @@ Part C of the safety sprint (`docs/safety-sprint-plan.md` on `feat/durable-job-r
 | --- | --- |
 | **Date created** | 2026-11-11 |
 | **Date last updated** | 2026-11-11 |
-| **Status** | `built` (gate 1 approved 2026-11-11; migration `036` not applied) |
+| **Status** | `built` (gate 1 approved 2026-11-11; migration `036` applied on live Supabase 2026-11-11) |
 | **Sources** | `docs/safety-sprint-plan.md` Part C; REA spec `accounts-sign-in` (#1) R11 to R16, R20, R21, R24; S3 to S6 |
 | **Migration** | `036_sign_in_hardening.sql` (`034` = Part A job runner, PR #17; `035` = audit RLS fix) |
 
@@ -39,7 +39,7 @@ Part C of the safety sprint (`docs/safety-sprint-plan.md` on `feat/durable-job-r
 - The `Secure`/`__Host-` cookie depends on `NODE_ENV=production`; a staging deploy without it gets a weaker cookie.
 
 **Risks:**
-- Deploy order: `036` must be applied before the new API goes live, or sign-in reports "migration required". Ethan applies it, with a separate go-ahead.
+- Deploy order: `036` must be applied before the new API goes live, or sign-in reports "migration required". Done 2026-11-11 with Ethan's go-ahead.
 - After one release, the old header must be removed in a follow-up, or the protection is only half done.
 - The temporary password is shown to the Admin on screen; they must pass it on in person until Gmail SMTP is set up.
 
@@ -90,6 +90,7 @@ The parked WIP (`db7e90c`) was not reused: it used MySQL syntax, replaced John's
 
 | Date | Change |
 | --- | --- |
+| 2026-11-11 | `036` applied to live Supabase (column `NOT NULL DEFAULT false`, all 9 rows `false`, `schema_migrations` checksum `3641915f…`). Browser check not run: no Vercel preview exists for this branch (repo deploys by CLI, not Git). |
 | 2026-11-11 | Gate 1 approved. `036` checked on a throwaway Postgres; reviews found nothing HIGH; sign-out, new-tab change-password and message fixes with tests; open items listed for Ethan. |
 | 2026-11-11 | Resumed: branch already on current `main`; migration renamed to `036` (`035` = audit RLS fix); typecheck, API 399/399 and web 281/281 pass on fakes; status back to `planned` for gate 1. |
 | 2026-11-11 | Built on `feat/sign-in-hardening`: migration `035` (now `036`) (pending, not applied), C1 lockout 5/15 and Admin unlock, C2 httpOnly cookie with HMAC CSRF (Bearer still read for one release), C3 temporary password, forced-change gate and change-password form. Reviews: plan-verifier ready; security-reviewer 2 HIGH, 4 MEDIUM, 3 LOW and database-reviewer 1 HIGH, 2 MEDIUM, 3 LOW, all fixed (Librarian cannot reset a Librarian, Admin can unlock an Admin, login CSRF origin check always on, lock order attempt row then account, change-password attempt limit with bcrypt outside the lock, new-tab CSRF restore via `/auth/me`, legacy `/api/auth/me` 401, stale cookie no longer blocks session sign-out). |
