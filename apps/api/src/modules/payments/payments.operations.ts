@@ -39,9 +39,9 @@ export function createPaymentOperations(database:Pool=db,options:{config?:()=>Xe
       const [totals]=await q.execute<RowDataPacket[]>(`SELECT count(*) FILTER(WHERE state='Review')::int review_events,
         count(*) FILTER(WHERE state IN ('Pending','Processing'))::int pending_events FROM online_payment_events WHERE environment='test'`)
       const c=config()
-      const [runner]=await q.execute<RowDataPacket[]>("SELECT last_success_at AT TIME ZONE 'UTC' last_success_at,last_error FROM library_job_runs WHERE job_name='operational-minute'")
+      const [runner]=await q.execute<RowDataPacket[]>("SELECT last_success_at AT TIME ZONE 'UTC' last_success_at,last_error_message AS last_error FROM scheduled_job_state WHERE job_name='payment-recovery'")
       return {...counts[0],...totals[0],checkoutEnabled:c.enabled&&c.checkoutEnabled!==false,events,
-        runner:'operational-minute',runnerStatus:runner[0]??null,batchLimit:5}
+        runner:'payment-recovery',runnerStatus:runner[0]??null,batchLimit:5}
     })},
     async readSettlement(actor:PaymentActor,id:unknown){const target=paymentId(id);return transaction(actor,async q=>{
       const [rows]=await q.execute<RowDataPacket[]>('SELECT provider_reference,processing_cost_centavos,net_centavos,settled_at,recorded_at FROM online_payment_settlements WHERE payment_id=?',[target])

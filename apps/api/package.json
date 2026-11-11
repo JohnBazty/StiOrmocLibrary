@@ -42,6 +42,7 @@
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.3.14",
     "@types/bcrypt": "^6.0.0",
     "@types/cors": "latest",
     "@types/express": "latest",

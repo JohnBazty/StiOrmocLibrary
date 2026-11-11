@@ -30,25 +30,7 @@
 
 ## Scheduled runner activation
 
-Vercel Hobby Cron cannot run every minute. Use Supabase Cron (`pg_cron`) and `pg_net` to POST to the API once per minute. The API requires `Authorization: Bearer <JOB_RUNNER_SECRET>` and records its own lock and outcome. Keep the URL and secret in Supabase Vault. Do not put them in this repository. After deployment and migration, use the Supabase dashboard to create secrets named `smartlib_job_url` (the deployed `/api/jobs/run` endpoint) and `smartlib_job_secret`, then review and run this SQL in Supabase SQL Editor:
-
-```sql
-select cron.schedule(
-  'smartlib-operational-minute', '* * * * *',
-  $$
-  select net.http_post(
-    url := (select decrypted_secret from vault.decrypted_secrets where name = 'smartlib_job_url'),
-    headers := jsonb_build_object(
-      'Content-Type', 'application/json',
-      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'smartlib_job_secret')
-    ),
-    body := '{}'::jsonb
-  );
-  $$
-);
-```
-
-The job is not active while this release remains local. Verify the first execution in `library_job_runs`, Supabase Cron history, and Admin `/api/v1/admin/jobs/status`. A recent `last_success_at` and no newer `last_error_at` are the acceptance criteria. If activation must be rolled back, use `cron.unschedule('smartlib-operational-minute')`.
+Superseded on 2026-11-11 by the durable job runner (`docs/safety-sprint-plan.md` Part A). `POST /api/jobs/run`, `GET /api/v1/admin/jobs/status` and the `library_job_runs` ledger are no longer used. Activation steps: `docs/runbooks/durable-job-runner.md`.
 
 ## Database changes
 
