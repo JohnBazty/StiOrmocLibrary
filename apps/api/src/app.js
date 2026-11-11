@@ -46,6 +46,7 @@ import { adminNotificationsRouter } from './modules/users/admin-notifications.ro
 import { archivedBorrowingPolicyRouter } from './modules/circulation/borrowing-policy-archive.routes.ts'
 import { publicCatalogRouter, catalogMaintenanceRouter } from './modules/catalog/catalog-enhancements.routes.ts'
 import { collectionReviewRouter } from './modules/catalog/collection-review.routes.ts'
+import { sanitizeStackTrace } from './utils/error-sanitizer.ts'
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
 const publicDirectory = path.resolve(currentDirectory, '../public')
@@ -200,7 +201,9 @@ export function createApp() {
       })
     }
     if (isDatabaseUnavailable(error)) {
-      console.error('[Database] Connection unavailable; request failed.')
+      // FIX: Use sanitized error message
+      const sanitized = sanitizeStackTrace(error)
+      console.error(`[Database] Connection unavailable; request failed.\n${sanitized}`)
       return response.status(503).json({
         success: false,
         code: 'DATABASE_UNAVAILABLE',
@@ -214,7 +217,9 @@ export function createApp() {
         message: 'This module is unavailable until the required database migrations are applied.',
       })
     }
-    console.error(error)
+    // FIX: Sanitize error before logging to prevent sensitive data leakage
+    const sanitized = sanitizeStackTrace(error)
+    console.error(`[Server] Uncaught error:\n${sanitized}`)
     return response.status(500).json({ success: false, message: 'An unexpected server error occurred.' })
   })
 

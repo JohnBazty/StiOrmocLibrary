@@ -1,12 +1,11 @@
 import bcrypt from 'bcrypt'
 import { db } from '../../config/db.js'
-import { env } from '../../config/env.js'
+import { env, DUMMY_BCRYPT_HASH } from '../../config/env.js'
 import { ALL_ROLES, dashboardForRole, toEffectiveRole, webDashboardForRole } from './auth.constants.js'
 import { createCsrfToken, sessionCookie } from './auth.middleware.js'
 import { createAuthSessionRepository } from './auth-session.repository.ts'
 import { validateLoginInput } from './auth.validation.js'
 
-const DUMMY_BCRYPT_HASH = '$2b$12$k1Pc4Uvw2o.7wwBZ1hQwHu5vTfEfRPRgRhhcaawYWpPJez0o7gaCq'
 const DEACTIVATED_MESSAGE = 'Your account is currently deactivated. Please coordinate with the campus librarian.'
 
 function regenerateSession(request) {

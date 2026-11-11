@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react'
 
-export const LIVE_REFRESH_MS = 1_000
+export const LIVE_REFRESH_MS = 30_000
 type Snapshot<T> = { data: T | undefined; error: Error | null; loading: boolean }
 type Entry<T> = {
   key: string
