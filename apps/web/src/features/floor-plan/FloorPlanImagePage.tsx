@@ -3,15 +3,15 @@ import { SelectedFilePreview } from '../../components/SelectedFilePreview'
 import { useSearchParams } from 'react-router-dom'
 import { ImageUp, MapPin, RefreshCw } from 'lucide-react'
 import { Button, PageHeader, SectionCard } from '../../components/ui'
-import { getAccessToken, getCurrentIdentity } from '../auth/auth-storage'
+import { getCsrfToken, getCurrentIdentity } from '../auth/auth-storage'
 
 type FloorImage = { imageUrl: string | null; originalName: string; uploadedAt: string; uploadedBy: string } | null
 type Location = { title: string; shelfLabel: string; accession: string; callNumber: string | null } | null
 
 async function api<T>(url: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers)
-  const token = getAccessToken()
-  if (token) headers.set('Authorization', `Bearer ${token}`)
+  const token = getCsrfToken()
+  if (token) headers.set('X-CSRF-Token', token)
   const response = await fetch(url, { ...options, headers, credentials: 'include' })
   const payload = await response.json().catch(() => null) as { success?: boolean; data?: T; message?: string } | null
   if (!response.ok || !payload?.success) throw new Error(payload?.message ?? 'The library service is unavailable. Please try again.')

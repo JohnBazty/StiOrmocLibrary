@@ -31,6 +31,13 @@ usersRouter.get('/:accountId', handle(async (request, response) => {
 usersRouter.post('/:accountId/status', requireLibraryPermission('accounts.manage'), handle(async (request, response) => {
   response.json({ success: true, data: await usersRepository.changeStatus(request.params.accountId, actor(response), request.body ?? {}) })
 }))
+usersRouter.post('/:accountId/unlock', requireLibraryPermission('accounts.manage'), handle(async (request, response) => {
+  response.json({ success: true, data: await usersRepository.unlockSignIn(request.params.accountId, actor(response), request.body ?? {}) })
+}))
+usersRouter.post('/:accountId/temporary-password', requireLibraryPermission('accounts.manage'), handle(async (request, response) => {
+  // Shown once: never cached.
+  response.set('Cache-Control', 'no-store').json({ success: true, data: await usersRepository.setTemporaryPassword(request.params.accountId, actor(response), request.body ?? {}) })
+}))
 export const adminUsersV1Router = usersRouter
 
 export const selfProfileRouter = Router()

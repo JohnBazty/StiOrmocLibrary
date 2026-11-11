@@ -3,7 +3,7 @@ import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { AlertTriangle, BadgeCheck, Clock3, Download, Eye, RefreshCw, ShieldCheck, X } from 'lucide-react'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Button, PageHeader, SectionCard, StatCard, StatusBadge } from '../../components/ui'
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import { clearanceApi } from './clearance-api'
 import type { ClearanceList, ClearanceRecord } from './types'
@@ -78,7 +78,7 @@ export function AdminClearancePage() {
     finally { setBusy(false) }
   }
   async function exportCsv() {
-    const headers = new Headers({ Accept: 'text/csv' }); const token = getAccessToken(); if (token) headers.set('Authorization', `Bearer ${token}`)
+    const headers = new Headers({ Accept: 'text/csv' }); const token = getCsrfToken(); if (token) headers.set('X-CSRF-Token', token)
     const response = await fetch('/api/v1/admin/clearance/export.csv', { headers }); if (!response.ok) { setError('Clearance export failed.'); return }
     const blob = await response.blob(); const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'smartlib-clearance.csv'; anchor.click(); URL.revokeObjectURL(url)
   }

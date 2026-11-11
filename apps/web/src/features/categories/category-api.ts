@@ -1,5 +1,5 @@
 import type { Category, CategoryPayload, CategorySaveResult, CategoryShelfSync } from './types'
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 
 export class CategoryApiError extends Error {
   constructor(message: string, public code: string, public errors: Record<string, string> = {}) { super(message) }
@@ -24,8 +24,8 @@ async function request<T>(url: string, options: RequestInit = {}) {
   const method = options.method?.toUpperCase() ?? 'GET'
   const headers = new Headers(options.headers)
   headers.set('Accept', 'application/json')
-  const accessToken = getAccessToken()
-  if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
+  const accessToken = getCsrfToken()
+  if (accessToken) headers.set('X-CSRF-Token', accessToken)
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
     if (!accessToken && !csrfToken) {
       const tokenResponse = await fetch('/api/auth/csrf', { credentials: 'include', headers: { Accept: 'application/json' } })

@@ -1,4 +1,4 @@
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 import type { BookCatalogItem, BookCatalogViewer, BookCategory, CatalogCopyAsset, Pagination } from './book-catalog-types'
 
 const BASE_URL = '/api/v1/catalog/books'
@@ -11,8 +11,8 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 function authorizationHeaders(): Record<string, string> {
-  const token = getAccessToken()
-  return token ? { Authorization: `Bearer ${token}` } : {}
+  const token = getCsrfToken()
+  return token ? { 'X-CSRF-Token': token } : {}
 }
 
 export type BookCatalogRequest = {

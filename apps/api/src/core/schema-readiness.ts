@@ -37,7 +37,7 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   fine_payment_allocations: ['fine_payment_allocation_id', 'fine_payment_receipt_id', 'fine_id', 'lost_book_report_id', 'amount_allocated', 'balance_before', 'balance_after'],
   fine_adjustments: ['fine_adjustment_id', 'fine_id', 'adjustment_type', 'amount_adjusted', 'reason', 'adjusted_by_user_id'],
   users: ['user_id', 'school_id', 'user_role', 'password_hash'],
-  accounts: ['account_id', 'school_id', 'contact_number', 'password_hash', 'role', 'account_status'],
+  accounts: ['account_id', 'school_id', 'contact_number', 'password_hash', 'role', 'account_status', 'must_change_password'],
   registration_requests: ['request_id', 'school_id', 'email', 'requested_role', 'password_hash', 'status', 'code_hash', 'code_expires_at', 'email_verified_at', 'reviewed_by_account_id'],
   profile_avatar_submissions: ['submission_id', 'account_id', 'storage_path', 'status', 'reviewed_by_account_id', 'review_reason'],
   student_profiles: ['student_profile_id', 'account_id', 'first_name', 'last_name', 'program_strand', 'year_grade_level'],

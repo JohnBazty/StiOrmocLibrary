@@ -1,9 +1,9 @@
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 import type { Announcement, LibrarySchedule, NotificationList } from './types'
 
 async function request<T>(url: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers); headers.set('Accept', 'application/json')
-  const token = getAccessToken(); if (token) headers.set('Authorization', `Bearer ${token}`)
+  const token = getCsrfToken(); if (token) headers.set('X-CSRF-Token', token)
   if (options.body) headers.set('Content-Type', 'application/json')
   const response = await fetch(url, { ...options, headers, credentials: 'include' })
   const payload = await response.json().catch(() => null) as { success?: boolean; data?: T; message?: string } | null

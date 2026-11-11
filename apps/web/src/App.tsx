@@ -21,6 +21,7 @@ import { RegistrationPage } from './features/auth/RegistrationPage'
 import { PublicAuthLayout } from './features/auth/PublicAuthLayout'
 import { AdminLoginPage } from './features/auth/AdminLoginPage'
 import { PasswordRecoveryPage } from './features/auth/PasswordRecoveryPage'
+import { ChangePasswordPage } from './features/auth/ChangePasswordPage'
 import { LibrarianNotificationsPage } from './features/notifications/LibrarianNotificationsPage'
 import { InventoryDashboard } from './features/inventory/InventoryDashboard'
 import { BookCatalog } from './features/catalog/BookCatalog'
@@ -65,6 +66,7 @@ export default function App() {
       <Route path="/admin/login" element={<Navigate to="/staff" replace />} />
       <Route path="/staff" element={<AdminLoginPage />} />
       <Route path="/forgot-password" element={<PasswordRecoveryPage />} />
+      <Route path="/change-password" element={<ChangePasswordPage />} />
 
       <Route element={<ProtectedRoute roles={['Student']} />}>
         <Route element={<PortalLayout role="student" />}>

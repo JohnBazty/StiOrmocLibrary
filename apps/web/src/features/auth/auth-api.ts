@@ -1,6 +1,6 @@
 import {
-  clearAccessToken, decodeAccessToken, getAccessToken, getCurrentIdentity, saveAccessToken, setSessionIdentity,
-  type AuthenticatedIdentity, type AuthRole,
+  clearAuthSession, getCsrfToken, getCurrentIdentity, getStoredClaims, parseAuthSession, saveAuthSession, setSessionIdentity,
+  type AuthSession, type AuthenticatedIdentity, type AuthRole,
 } from './auth-storage'
 
 export class AuthenticationError extends Error {
@@ -9,9 +9,7 @@ export class AuthenticationError extends Error {
   }
 }
 
-export type LoginResult = {
-  token: string
-  tokenType: 'Bearer'
+export type LoginResult = AuthSession & {
   expiresIn: number
   redirect: string
   user: { id: number; accountId: number; schoolId: string; fullName: string | null; email?: string; role: AuthRole }
@@ -51,19 +49,19 @@ async function loginResponse(response: Response, message: string): Promise<Login
   if (!response.ok || !payload.data) throw new AuthenticationError(payload.message ?? message, payload.code, payload.details?.errors)
   if (payload.data.otpRequired) throw new LoginCodeRequired(payload.data)
   if (payload.data.deviceSwitchRequired && typeof payload.data.switchToken === 'string') throw new DeviceSwitchRequired(payload.data.switchToken)
-  const claims = decodeAccessToken(payload.data.token)
-  if (!claims || claims.role !== payload.data.user?.role || claims.userId !== payload.data.user?.id) {
-    throw new AuthenticationError('The server returned an invalid access token.', 'INVALID_TOKEN_RESPONSE')
+  const signedIn = parseAuthSession(payload.data)
+  if (!signedIn || signedIn.session.role !== payload.data.user?.role || signedIn.session.userId !== payload.data.user?.id) {
+    throw new AuthenticationError('The server returned an invalid sign-in.', 'INVALID_TOKEN_RESPONSE')
   }
-  return payload.data
+  return { ...payload.data, ...signedIn }
 }
 
 export function saveLogin(result: LoginResult) {
   loginGeneration++
-  const claims = decodeAccessToken(result.token)
-  setDeviceHint(claims?.deviceSession && claims.sessionId ? { sessionId: claims.sessionId, rememberedUntil: claims.rememberedUntil } : undefined)
+  const claims = result.session
+  setDeviceHint(claims.deviceSession && claims.sessionId ? { sessionId: claims.sessionId, rememberedUntil: claims.rememberedUntil } : undefined)
   setSessionIdentity(null)
-  saveAccessToken(result.token)
+  saveAuthSession({ session: result.session, csrfToken: result.csrfToken, mustChangePassword: result.mustChangePassword })
 }
 
 export async function login(schoolId: string, password: string, portal: LoginPortal = 'user', remember = false): Promise<LoginResult> {
@@ -93,10 +91,10 @@ export async function deviceLoginAvailable(signal: AbortSignal) {
   return response.ok && (await response.json()).data?.enabled === true
 }
 
-function deviceRequest(action: 'resume' | 'switch' | 'logout', body: object = {}, bearer?: string | null) {
+function deviceRequest(action: 'resume' | 'switch' | 'logout', body: object = {}, csrfToken?: string | null) {
   return fetch(`/api/v1/auth/device/${action}`, {
     method: 'POST', credentials: 'same-origin', signal: AbortSignal.timeout(10_000),
-    headers: { 'Content-Type': 'application/json', 'X-Library-Device': '1', ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) },
+    headers: { 'Content-Type': 'application/json', 'X-Library-Device': '1', ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) },
     body: JSON.stringify(body),
   })
 }
@@ -119,7 +117,7 @@ export async function resumeDeviceSession(expectedSessionId?: string) {
     }
     const result = await loginResponse(response, 'Your device could not reconnect. Try again.')
     if (deviceHint() !== hint || signOutPending) return null
-    saveAccessToken(result.token)
+    saveAuthSession({ session: result.session, csrfToken: result.csrfToken, mustChangePassword: result.mustChangePassword })
     return getCurrentIdentity()
   })()
   resumePending = { sessionId: hint, request }
@@ -161,6 +159,20 @@ function normalizeSessionRole(role: string): AuthRole | null {
   return null
 }
 
+/** A new tab has the httpOnly cookie but not the CSRF token: ask the API for both. */
+export async function restoreCookieSession(): Promise<AuthenticatedIdentity | null> {
+  try {
+    const response = await fetch('/api/v1/auth/me', { credentials: 'include', headers: { Accept: 'application/json' } })
+    if (!response.ok) return null
+    const restored = parseAuthSession(((await response.json()) as { data?: unknown }).data)
+    if (!restored) return null
+    saveAuthSession(restored)
+    return getCurrentIdentity()
+  } catch {
+    return null
+  }
+}
+
 export async function resolveSessionIdentity(): Promise<AuthenticatedIdentity | null> {
   try {
     const response = await fetch('/api/auth/me', { credentials: 'include', headers: { Accept: 'application/json' } })
@@ -180,8 +192,8 @@ export async function resolveSessionIdentity(): Promise<AuthenticatedIdentity | 
 }
 
 export async function logout() {
-  const token = getAccessToken()
-  const claims = token ? decodeAccessToken(token, true) : null
+  const token = getCsrfToken()
+  const claims = token ? getStoredClaims(true) : null
   const generation = loginGeneration
   const deviceSessionId = claims?.deviceSession ? claims.sessionId : !token ? deviceHint() : undefined
   if (deviceSessionId) {
@@ -200,23 +212,36 @@ export async function logout() {
     channel.close()
   }
   // Device sessions clear locally after server confirmation. Legacy sessions clear before the request.
-  clearAccessToken()
+  clearAuthSession()
   setSessionIdentity(null)
   if (deviceSessionId) return
   try {
-    const csrfResponse = await fetch('/api/auth/csrf', { credentials: 'include', headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) })
-    if (csrfResponse.ok) {
-      const csrfPayload = await csrfResponse.json() as { csrfToken?: string }
-      if (csrfPayload.csrfToken) {
-        await fetch('/api/auth/logout', {
-          method: 'POST', credentials: 'include', redirect: 'manual',
-          signal: AbortSignal.timeout(10_000),
-          headers: {
-            Accept: 'application/json', 'x-csrf-token': csrfPayload.csrfToken,
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-        })
-      }
+    // A cookie sign-in sends its own CSRF token; an old express session fetches one first.
+    let csrfToken = token
+    if (!csrfToken) {
+      const csrfResponse = await fetch('/api/auth/csrf', { credentials: 'include', headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) })
+      if (csrfResponse.ok) csrfToken = ((await csrfResponse.json()) as { csrfToken?: string }).csrfToken ?? null
+    }
+    if (csrfToken) {
+      await fetch('/api/auth/logout', {
+        method: 'POST', credentials: 'include', redirect: 'manual',
+        signal: AbortSignal.timeout(10_000),
+        headers: { Accept: 'application/json', 'x-csrf-token': csrfToken },
+      })
     }
   } catch { /* Local logout remains complete while the old server session expires. */ }
+}
+
+/** Signed-in change; on success every sign-in ends and the user signs in again. */
+export async function changePassword(currentPassword: string, newPassword: string, confirmation: string) {
+  const response = await fetch('/api/v1/auth/change-password', {
+    method: 'POST', credentials: 'include',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() ?? '' },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword, confirm_password: confirmation }),
+  })
+  const payload = await response.json().catch(() => null) as { data?: { message: string }; message?: string; code?: string } | null
+  if (!response.ok || !payload?.data) throw new AuthenticationError(payload?.message ?? 'Your password could not be changed. Try again.', payload?.code)
+  clearAuthSession()
+  setSessionIdentity(null)
+  return payload.data
 }
