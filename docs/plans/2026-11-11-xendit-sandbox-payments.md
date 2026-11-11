@@ -19,7 +19,7 @@
 | Printing payments | Pay the full outstanding bill |
 | Fine payments | Allow full or partial payments |
 | Transaction fees | Add the online transaction fee to the user's payment |
-| Current stage | Phases 1–2 built locally. Phase 3 backend implemented and locally verified; full external callback/payment acceptance remains pending. UI and wider integration remain Phases 4–7 |
+| Current stage | Phases 1–5 backend/UI work built locally. External payment acceptance, recurring scheduling, reconciliation reports and final release checks remain open |
 
 The test secret key and webhook token have been saved in the ignored local sheet at `docs/local/xendit-credentials-blank.md`. The key has Money-in Read and Write permission. Read-only API authentication passed during Phase 1. Hosted channel simulations and webhook delivery are scheduled for later phases.
 
@@ -529,3 +529,74 @@ The session contract tool stores its fixture ID in ignored output and reuses tha
 Primary protocol references checked during implementation are [Create session](https://docs.xendit.co/apidocs/create-session), [Get session](https://docs.xendit.co/apidocs/get-session), [Session webhook](https://docs.xendit.co/apidocs/webhook-notification-sent-defined-webhook-url-updates-payment-session), [Get payment](https://docs.xendit.co/apidocs/get-payment), [Webhook handling](https://docs.xendit.co/v1/docs/handling-webhooks) and [Cancel session](https://docs.xendit.co/apidocs/cancel-session).
 
 2026-11-11 — Implemented the Phase 3 backend locally on `feat/xendit-sandbox-setup`, including safe test-session creation, durable callback events, evidence verification, bounded recovery and transactional settlement. Reserved 035, leaving recorded live migration 032 and pending 033–035. External acceptance and recurring scheduler integration remain explicit gates.
+
+## Phases 4-5 implementation record — 2026-11-11
+
+Phase 4 and Phase 5 implementation status: `built` locally. The overall payment plan remains `inprogress`: Phase 3 external acceptance, Phase 6 operational/reporting work and Phase 7 release/usability checks are not complete. These changes are in the separate `feat/xendit-sandbox-setup` checkout. Nothing was pushed, hosted or migrated on Supabase.
+
+### What changed
+
+- Borrowers can choose **Pay online** or **Pay cash at library** from their printing requests and eligible fine cards. Cash instructions do not mark a bill paid or add a gateway fee. Changing overdue fines require return or confirmed loss first.
+- Online review shows principal, transaction fee, gross total, method limits and remaining fine balance before continuing. Ordinary fines allow a partial amount; printing and confirmed lost-book charges require their full balance. Fees remain clearly labelled sandbox samples.
+- The shared dialog requests authoritative server quotes. Changing amount or method immediately prevents submitting an older quote. Repeated checkout clicks reuse one request key. Existing active payments can be resumed, checked or canceled, including after a page reload.
+- A server result, not the browser return address, determines Paid, Partially paid, Needs review or Waiting for confirmation. Confirmed records offer the existing protected receipt downloads. Faculty can use the printing screen already permitted by the API.
+- Librarian and Staff have an **Online payments** screen with status, method, service and page filters. Both can check status; Librarian alone can cancel another person's checkout or download restricted counter records. A slow earlier filter response cannot overwrite newer results.
+- Cash fine/replacement collection, fine adjustments, cash-receipt reversal and printing cancellation check shared online reservations after locking the obligation. This protection remains active if new online checkout is switched off. Old installations without payment tables retain their existing cash workflow.
+- Unsent cancellation is local. Once session creation starts, cancellation intent stays reserved until provider verification confirms cancellation/expiry or captures a concurrent success. An unknown outcome never permits a second collection. Captured conflicts remain in Needs review and cannot be disguised as a cash reversal.
+- Charge reads now acquire their row lock in a separate statement before reading allocation totals. A checkout waiting behind a cash collector sees the committed balance, preventing a stale quote from being accepted.
+- Fine and printing receipt screens/PDFs show actual method and confirmation source, principal, transaction fee and gross total. An online receipt does not claim an employee collected cash. Printing payments cannot be casually canceled after collection.
+- Draft migration `036_payment_counter_and_cancellation.sql` adds cancellation intent, a method/status/date index and receipt-status protection. Enabled-payment readiness requires its column. The live tracker remains **032 applied, 033–036 pending, next unused 037**; applied migration sources were not changed.
+
+### Verification and limits
+
+| Check | Result and evidence |
+| --- | --- |
+| Real local PostgreSQL | Passed foundation, gateway and counter acceptance against uniquely named disposable schemas. The counter verifier calls existing collection/adjustment/cancellation services, not a replacement implementation |
+| Competing collection | Active online checkout blocks cash and waiver. Verified cancellation permits cash with no online fee. Lost cancellation responses retain the reservation. Cancellation racing a captured payment settles once |
+| Fresh balance under concurrency | Holding the obligation lock, committing a cash allocation and then releasing a waiting checkout causes the changed quote to be rejected |
+| Fine and clearance accounting | Partial PHP 40 plus the remaining PHP 60 pays a PHP 100 fine without counting fees toward principal. An unreturned loan still prevents clearance; after the synthetic loan is returned and clearance refreshed, the account clears |
+| Ownership and permissions | Owner-only options/read/resume/cancel, role-checked counter actions, receipt ownership and restricted staff actions verified. A caller cannot choose another payer or change amount/currency through the return URL |
+| Receipt protection | Actual fine/printing receipt readback and PDF generation passed; changing gateway attribution/status through ordinary reversal is rejected |
+| Desktop/mobile UI | Actual React components checked in a controlled loopback fixture at desktop, 390 × 844 and 320 × 740, including dark mode. No horizontal overflow or browser console errors were observed; payment totals and touch controls remain readable |
+| Keyboard behavior | Native dialog traps focus, Escape closes it and focus returns to Pay online. The title/close control remains reachable while scrolling |
+| Filters and async behavior | Status/method filtering, Staff restrictions, return-URL distrust and late-response protection have automated coverage |
+| PDF layout | Two synthetic one-page receipts rendered and inspected. PHP 41.40 fine and PHP 51.50 printing gross totals, methods, fee and provider labels are readable without overlap |
+| Automated gates | Root tests pass: 402 API and 275 web tests, 677 total. Type checks and production build pass. The existing large web-bundle advisory remains |
+| Coverage | Coverage command passed with 402 API and 274 web tests before the final late-response regression test. Web coverage: 56.46% statements, 63.02% lines. An earlier simultaneous run encountered a pg module-resolution failure; the standalone retry passed without a dependency change. Coverage is not proof of every payment path |
+| External hosted payment | Not run in these phases. No actual completed Xendit payment, public webhook delivery or full isolated application deployment was tested |
+| Device/human acceptance | Browser viewport emulation only; no physical phone or Librarian usability sign-off claimed |
+
+The UI verification uses actual application components with synthetic API responses. The database verifier uses real SQL/services and controlled provider responses with minimal synthetic parent records. Neither is presented as a real externally captured payment. The earlier Phase 3 actual Test create/read/cancel evidence remains separate.
+
+### Reproduce and clean up
+
+From `StiOrmocLibrary-main-sync`:
+
+```powershell
+node apps/api/scripts/prepare-xendit-sandbox.mjs --credentials-file "C:/Users/JOHN/Documents/SSL/StiOrmocLibrary/docs/local/xendit-credentials-blank.md" --phase4
+npm test
+npm run typecheck
+npm run build
+npm run coverage
+```
+
+The `--phase4` run installs 034–036 only inside its disposable local schema and runs Phase 2–4 acceptance, then drops that schema and stops the loopback PostgreSQL cluster. Windows shutdown now uses the bundled `pg_ctl` for a graceful stop, preventing orphan workers/shared-memory locks. A failed early fixture run was cleaned up before rerunning successfully. The pre-existing sandbox data and ignored private settings are retained for later phases; no actual school holdings, users or financial history were changed.
+
+For controlled visual verification, run `node apps/api/scripts/verify-payment-ui.mjs`. It creates uniquely named QA entry files with exclusive creation, binds the API/Vite fixture to loopback ports 47145/5174 and imports the real payment components. Finish using `POST http://127.0.0.1:47145/qa/stop` so its `finally` removes those exact entry files. This run's temporary entries and browser tab were removed; QA servers and local PostgreSQL were stopped.
+
+Ignored evidence is under `output/xendit-sandbox/`: `phase45-acceptance-final.log`, `phase45-tests-final.log`, `phase45-typecheck-final.log`, `phase45-build-final.log`, `phase45-coverage-final.log`, `phase45-filter-test.log`, `payment-review-mobile.png` and the two `phase45-*-receipt.pdf/png` samples. These receipts are synthetic QA output, not real library records.
+
+### Tracking and remaining boundaries
+
+- [x] Implement partial ordinary fines, full printing/replacement payment and cash coexistence.
+- [x] Protect cash, adjustment, cancellation, clearance and receipt paths against competing online money.
+- [x] Implement review, hosted-checkout continuation, saved result and restricted staff payment screens.
+- [x] Verify real local SQL, races, receipt accounting/PDFs and desktop/mobile/keyboard behavior.
+- [x] Run regression gates and review permissions, redirect hosts, integer amounts, replay and credential handling.
+- [ ] Complete the Phase 3 external hosted-payment/callback acceptance in an approved isolated deployment.
+- [ ] Choose and connect the team's single recurring runner; on-demand recovery remains protected and available.
+- [ ] Complete Phase 6 reconciliation/reporting and Phase 7 release/human usability checks.
+- [ ] Design an explicitly evidenced provider-refund workflow before exposing refunds. Current captured conflicts remain reserved for review; ordinary cash reversal is intentionally forbidden.
+- [ ] Separately approve migrations/hosting and any live fee policy. Sandbox defaults remain unchanged.
+
+2026-11-11 — Built Phases 4–5 locally: collection guards, verified cancellation, fresh locked balances, accurate online receipts, borrower payment review and restricted staff support. Added unapplied 036, preserved the live migration tracker and documented controlled-browser versus external acceptance limits.

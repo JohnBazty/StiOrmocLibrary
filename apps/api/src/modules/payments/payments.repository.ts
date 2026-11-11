@@ -11,10 +11,17 @@ export type PaymentRow = RowDataPacket & {
   provider_session_id?: string | null; provider_payment_id?: string | null
   provider_business_id?: string | null; provider_request_id?: string | null; checkout_url?: string | null
   creation_started_at?: Date | null; next_check_at?: Date; review_code?: string | null
+  cancel_requested_at?: Date | null; receipt_id?: number | null; payer_name?: string; school_id?: string; description?: string
 }
 
 const targetColumn = { Printing: 'print_request_id', Fine: 'fine_id', LostBook: 'lost_book_report_id' } as const
 type Query = Pick<PoolConnection, 'execute'>
+const paymentSelect = `SELECT p.*,COALESCE(to_jsonb(u)->>'full_name','Library user') AS payer_name,a.school_id,
+  CASE WHEN p.print_request_id IS NOT NULL THEN COALESCE((SELECT to_jsonb(pr)->>'file_name' FROM print_requests pr WHERE pr.request_id=p.print_request_id),'Printing bill')
+    WHEN p.fine_id IS NOT NULL THEN 'Library fine' ELSE 'Lost-book replacement charge' END AS description,
+  COALESCE((SELECT print_receipt_id FROM print_payment_receipts WHERE online_payment_attempt_id=p.payment_id),
+    (SELECT fine_payment_receipt_id FROM fine_payment_receipts WHERE online_payment_attempt_id=p.payment_id)) AS receipt_id
+  FROM online_payment_attempts p JOIN users u ON u.user_id=p.user_id JOIN accounts a ON a.account_id=p.account_id`
 
 export function createPaymentsRepository(query: Query) {
   async function first<T extends RowDataPacket = RowDataPacket>(sql: string, values: unknown[]) {
@@ -25,13 +32,22 @@ export function createPaymentsRepository(query: Query) {
     const [result] = await query.execute<ResultSetHeader>(sql, values)
     return result.rows[0]
   }
+  async function methods(){
+    const [rules]=await query.execute<RowDataPacket[]>(`SELECT DISTINCT ON(channel_code) * FROM online_payment_fee_rules
+      WHERE environment='test' ORDER BY channel_code,fee_rule_id DESC`)
+    return rules
+  }
 
   return {
+    methods,
     owner: (accountId: number) => first(`SELECT a.user_id,a.role FROM accounts a
       JOIN users u ON u.user_id=a.user_id WHERE a.account_id=? AND a.account_status='Active'
       AND u.account_status='Active' FOR UPDATE OF a`, [accountId]),
 
     async charge(target: PaymentTarget, userId: number) {
+      const identity={Printing:['print_requests','request_id'],Fine:['fines','fine_id'],LostBook:['lost_book_reports','lost_book_report_id']}[target.kind]
+      // A separate statement after the row lock sees allocations committed while this caller was waiting.
+      if (!await first(`SELECT ${identity[1]} FROM ${identity[0]} WHERE ${identity[1]}=? AND user_id=? FOR UPDATE`,[target.targetId,userId])) return null
       if (target.kind === 'Printing') return first(`SELECT pr.calculated_cost::text AS assessed,
         CASE WHEN pr.payment_status='Paid' THEN pr.calculated_cost ELSE 0 END::text AS paid,
         '0' AS adjusted,pr.payment_status AS status,pr.job_status,false AS accruing
@@ -68,7 +84,7 @@ export function createPaymentsRepository(query: Query) {
     },
 
     payment: (id: string, accountId: number) => first<PaymentRow>(
-      "SELECT * FROM online_payment_attempts WHERE payment_id=? AND account_id=? AND environment='test' FOR UPDATE", [id,accountId]),
+      paymentSelect+" WHERE p.payment_id=? AND p.account_id=? AND p.environment='test' FOR UPDATE OF p", [id,accountId]),
     retry: (key: string, accountId: number) => first<PaymentRow>(
       "SELECT * FROM online_payment_attempts WHERE account_id=? AND environment='test' AND request_key=?", [accountId,key]),
 
@@ -97,13 +113,21 @@ export function createPaymentsRepository(query: Query) {
     },
     async list(filters: ReturnType<typeof parsePaymentFilters>) {
       const values: unknown[] = ['test']
-      const where = filters.state ? 'environment=? AND state=?' : 'environment=?'
+      let where = filters.state ? 'p.environment=? AND p.state=?' : 'p.environment=?'
       if (filters.state) values.push(filters.state)
-      const [rows] = await query.execute<PaymentRow[]>(`SELECT * FROM online_payment_attempts
-        WHERE ${where} ORDER BY created_at DESC,payment_id LIMIT ? OFFSET ?`,
+      if (filters.channel) {where+=' AND p.channel_code=?';values.push(filters.channel)}
+      if (filters.kind) where+=' AND p.'+targetColumn[filters.kind]+' IS NOT NULL'
+      const [rows] = await query.execute<PaymentRow[]>(`${paymentSelect}
+        WHERE ${where} ORDER BY p.created_at DESC,p.payment_id LIMIT ? OFFSET ?`,
         [...values,filters.limit,(filters.page-1)*filters.limit])
-      const count = await first(`SELECT COUNT(*)::int AS count FROM online_payment_attempts WHERE ${where}`,values)
+      const count = await first(`SELECT COUNT(*)::int AS count FROM online_payment_attempts p WHERE ${where}`,values)
       return { rows, total: Number(count?.count ?? 0) }
+    },
+    async options(accountId: number,target: PaymentTarget) {
+      const rules=await methods()
+      const active=await first<PaymentRow>(paymentSelect+` WHERE p.account_id=? AND p.environment='test'
+        AND p.${targetColumn[target.kind]}=? AND p.state IN ('Prepared','Creating','Active','Review') ORDER BY p.created_at DESC LIMIT 1`,[accountId,target.targetId])
+      return {rules,active}
     },
   }
 }

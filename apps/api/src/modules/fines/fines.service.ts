@@ -3,6 +3,8 @@ import { db } from '../../config/db.js'
 import { excluded, forUpdate } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { receiptVerificationCode } from './fine-receipt-verification.ts'
+import { guardCounterPayment } from '../payments/payments.guard.ts'
+import { createPaymentsRepository } from '../payments/payments.repository.ts'
 import { fineId, parseFineFilters, receiptId, validateAdjustment, validateCashPayment, validateInfraction, validateReversal, type FineFilters } from './fines.validation.ts'
 
 export type FineActor = { accountId?: number; role?: string }
@@ -196,6 +198,7 @@ async function queryObligations(database: Pool, filters: FineFilters, onlyUserId
 }
 
 export async function recomputeFineStatus(connection: PoolConnection, targetFineId: number) {
+  await connection.execute('SELECT fine_id FROM fines WHERE fine_id=? FOR UPDATE',[targetFineId])
   const [rows] = await connection.execute<RowDataPacket[]>(
     `SELECT f.fine_amount,f.payment_status,
             COALESCE((SELECT SUM(a.amount_allocated) FROM fine_payment_allocations a INNER JOIN fine_payment_receipts r
@@ -232,9 +235,9 @@ export async function refreshClearance(connection: PoolConnection, userId: numbe
 export function createFinesService(database: Pool = db) {
   async function receiptDetail(targetReceiptId: number, actor?: FineActor) {
     const [rows] = await database.execute<RowDataPacket[]>(
-      `SELECT r.*,u.school_id,u.full_name,staff.full_name AS received_by,reverser.full_name AS reversed_by
+      `SELECT r.*,u.school_id,u.full_name,CASE WHEN to_jsonb(r)->>'confirmation_source'='Xendit' THEN 'Xendit' ELSE COALESCE(staff.full_name,'Library staff') END AS received_by,reverser.full_name AS reversed_by
          FROM fine_payment_receipts r INNER JOIN users u ON u.user_id=r.user_id
-         INNER JOIN users staff ON staff.user_id=r.received_by_user_id
+         LEFT JOIN users staff ON staff.user_id=r.received_by_user_id
          LEFT JOIN users reverser ON reverser.user_id=r.reversed_by_user_id
         WHERE r.fine_payment_receipt_id=? LIMIT 1`, [targetReceiptId],
     )
@@ -269,7 +272,9 @@ export function createFinesService(database: Pool = db) {
       documentLabel: String(receipt.document_label ?? 'Legacy Receipt'),
       verificationCode,
       student: { userId: Number(receipt.user_id), schoolId: String(receipt.school_id), name: String(receipt.full_name) },
-      amountReceived: number(receipt.amount_received), paymentMethod: 'Cash' as const, receivedBy: String(receipt.received_by), receivedAt: receipt.received_at,
+      amountReceived: number(receipt.amount_received), paymentMethod: String(receipt.payment_method), receivedBy: String(receipt.received_by), receivedAt: receipt.received_at,
+      transactionFeeCentavos:number(receipt.transaction_fee_centavos??0),totalReceived:number(receipt.total_received??receipt.amount_received),
+      confirmationSource:String(receipt.confirmation_source??'Legacy'),
       status: String(receipt.receipt_status), reversedBy: receipt.reversed_by ? String(receipt.reversed_by) : null, reversedAt: receipt.reversed_at, reversalReason: receipt.reversal_reason,
       notes: receipt.notes,
       allocations: allocations.map((item) => ({ fineId: item.fine_id ? Number(item.fine_id) : null, lostBookReportId: item.lost_book_report_id ? Number(item.lost_book_report_id) : null, type: String(item.obligation_type), title: String(item.source_title), assessed: number(item.assessed_amount), paid: number(item.amount_allocated), balanceBefore: number(item.balance_before), balanceAfter: number(item.balance_after) })),
@@ -344,6 +349,9 @@ export function createFinesService(database: Pool = db) {
                  FROM fines f LEFT JOIN borrow_transactions bt ON bt.transaction_id=f.transaction_id WHERE f.fine_id=? LIMIT 1 ${forUpdate('f')}`, [allocation.fineId],
             )
             const fine = rows[0]; if (!fine) throw new HttpError(404, 'FINE_NOT_FOUND', 'A selected fine was not found.')
+            await guardCounterPayment(connection,{kind:'Fine',targetId:allocation.fineId})
+            const current=await createPaymentsRepository(connection).charge({kind:'Fine',targetId:allocation.fineId},Number(fine.user_id))
+            if(current){fine.fine_amount=current.assessed;fine.paid=current.paid;fine.adjusted=current.adjusted;fine.payment_status=current.status}
             if (fine.fine_type === 'Overdue' && ['Borrowed','Overdue'].includes(String(fine.transaction_status)) && !fine.lost_confirmed_at) throw new HttpError(422, 'FINE_STILL_ACCRUING', 'Return the overdue book before accepting payment for its changing fine.')
             if (['Waived','Voided','Paid'].includes(String(fine.payment_status))) throw new HttpError(422, 'FINE_ALREADY_SETTLED', 'A selected fine is already settled.')
             const remaining = Math.max(0,number(fine.fine_amount)-number(fine.paid)-number(fine.adjusted))
@@ -357,6 +365,9 @@ export function createFinesService(database: Pool = db) {
                  FROM lost_book_reports l WHERE l.lost_book_report_id=? AND l.report_status='Confirmed' AND l.replacement_charge>0 LIMIT 1 FOR UPDATE`, [allocation.lostBookReportId],
             )
             const loss = rows[0]; if (!loss) throw new HttpError(404, 'LOST_BOOK_CHARGE_NOT_FOUND', 'A selected lost-book charge was not found.')
+            await guardCounterPayment(connection,{kind:'LostBook',targetId:allocation.lostBookReportId!})
+            const current=await createPaymentsRepository(connection).charge({kind:'LostBook',targetId:allocation.lostBookReportId!},Number(loss.user_id))
+            if(current){loss.replacement_charge=current.assessed;loss.paid=current.paid;loss.payment_status=current.status}
             const remaining = Math.max(0,number(loss.replacement_charge)-number(loss.paid))
             if (Math.abs(allocation.amount-remaining) > 0.001) throw new HttpError(422, 'LOST_BOOK_FULL_PAYMENT_REQUIRED', 'A lost-book replacement charge must be paid in full.')
             prepared.push({ ...allocation, balanceBefore: remaining, balanceAfter: 0 })
@@ -400,6 +411,9 @@ export function createFinesService(database: Pool = db) {
              FROM fines f LEFT JOIN borrow_transactions bt ON bt.transaction_id=f.transaction_id WHERE f.fine_id=? LIMIT 1 ${forUpdate('f')}`, [targetFineId],
         )
         const fine=rows[0]; if(!fine) throw new HttpError(404,'FINE_NOT_FOUND','The fine was not found.')
+        await guardCounterPayment(connection,{kind:'Fine',targetId:targetFineId})
+        const current=await createPaymentsRepository(connection).charge({kind:'Fine',targetId:targetFineId},Number(fine.user_id))
+        if(current){fine.fine_amount=current.assessed;fine.paid=current.paid;fine.adjusted=current.adjusted;fine.payment_status=current.status}
         if(fine.fine_type==='Overdue'&&['Borrowed','Overdue'].includes(String(fine.transaction_status))&&!fine.lost_confirmed_at) throw new HttpError(422,'FINE_STILL_ACCRUING','An accruing fine cannot be adjusted until the loan is returned or confirmed lost.')
         if(['Waived','Voided','Paid'].includes(String(fine.payment_status))) throw new HttpError(422,'FINE_ALREADY_SETTLED','This fine is already settled.')
         const remaining=Math.max(0,number(fine.fine_amount)-number(fine.paid)-number(fine.adjusted)); const amount=input.type==='Reduction'?(input.amount??0):(input.amount??remaining)
@@ -427,9 +441,14 @@ export function createFinesService(database: Pool = db) {
         const receipt=rows[0]; if(!receipt) throw new HttpError(404,'FINE_RECEIPT_NOT_FOUND','The payment receipt was not found.')
         if(receipt.confirmation_source==='Xendit') throw new HttpError(409,'ONLINE_REFUND_REQUIRED','An online payment needs a confirmed provider refund. Cash reversal cannot refund it.')
         if(receipt.receipt_status!=='Issued') throw new HttpError(422,'FINE_RECEIPT_ALREADY_REVERSED','This receipt has already been reversed.')
+        const [allocations]=await connection.execute<RowDataPacket[]>('SELECT fine_id,lost_book_report_id FROM fine_payment_allocations WHERE fine_payment_receipt_id=?',[targetReceiptId])
+        for(const allocation of allocations){
+          const kind=allocation.fine_id?'Fine':'LostBook',targetId=Number(allocation.fine_id??allocation.lost_book_report_id)
+          await connection.execute(`SELECT ${kind==='Fine'?'fine_id':'lost_book_report_id'} FROM ${kind==='Fine'?'fines':'lost_book_reports'} WHERE ${kind==='Fine'?'fine_id':'lost_book_report_id'}=? FOR UPDATE`,[targetId])
+          await guardCounterPayment(connection,{kind,targetId})
+        }
         await connection.execute("UPDATE fine_payment_receipts SET receipt_status='Reversed',reversed_by_user_id=?,reversed_at=NOW(),reversal_reason=? WHERE fine_payment_receipt_id=?",[staffUserId,input.reason,targetReceiptId])
         if(invoiceLedgerExists) await connection.execute("UPDATE customer_invoices SET status='Voided',voided_by_user_id=?,voided_at=NOW(),void_reason=? WHERE source_type='Fine Collection' AND source_id=? AND status='Issued'",[staffUserId,`Underlying payment reversed: ${input.reason}`.slice(0,500),targetReceiptId])
-        const [allocations]=await connection.execute<RowDataPacket[]>('SELECT fine_id,lost_book_report_id FROM fine_payment_allocations WHERE fine_payment_receipt_id=?',[targetReceiptId])
         for(const allocation of allocations){if(allocation.fine_id) await recomputeFineStatus(connection,Number(allocation.fine_id));else await connection.execute("UPDATE lost_book_reports SET payment_status='Unpaid',paid_at=NULL,payment_recorded_by_user_id=NULL,updated_at=NOW() WHERE lost_book_report_id=?",[allocation.lost_book_report_id])}
         await connection.execute(
           `INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
@@ -443,10 +462,11 @@ export function createFinesService(database: Pool = db) {
     receipt: receiptDetail,
     async receiptsForUser(actor: FineActor) {
       const userId=await linkedUserId(database,actorAccountId(actor)); const [rows]=await database.execute<RowDataPacket[]>(
-        `SELECT fine_payment_receipt_id,receipt_number,amount_received,payment_method,received_at,receipt_status
-           FROM fine_payment_receipts WHERE user_id=? ORDER BY received_at DESC,fine_payment_receipt_id DESC`,[userId],
+        `SELECT r.*,COALESCE((to_jsonb(r)->>'transaction_fee_centavos')::bigint,0) AS transaction_fee_centavos,
+          COALESCE((to_jsonb(r)->>'total_received')::numeric,r.amount_received) AS total_received
+           FROM fine_payment_receipts r WHERE user_id=? ORDER BY received_at DESC,fine_payment_receipt_id DESC`,[userId],
       )
-      return rows.map((row)=>({receiptId:Number(row.fine_payment_receipt_id),receiptNumber:String(row.receipt_number),amountReceived:number(row.amount_received),paymentMethod:String(row.payment_method),receivedAt:row.received_at,status:String(row.receipt_status)}))
+      return rows.map((row)=>({receiptId:Number(row.fine_payment_receipt_id),receiptNumber:String(row.receipt_number),amountReceived:number(row.amount_received),paymentMethod:String(row.payment_method),receivedAt:row.received_at,status:String(row.receipt_status),transactionFeeCentavos:number(row.transaction_fee_centavos??0),totalReceived:number(row.total_received??row.amount_received),confirmationSource:String(row.confirmation_source??'Legacy')}))
     },
   }
 }

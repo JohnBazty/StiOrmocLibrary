@@ -12,6 +12,9 @@ const dayAfter = (placeholder = '?') => dateAddDays(placeholder, 1)
 const monthStart = startOfMonth()
 // Postgres can read this optional Phase 2 field from the row without referencing a missing column.
 const receiptDocumentLabel = "to_jsonb(r)->>'document_label' AS document_label"
+const receiptPaymentDetails = `COALESCE((to_jsonb(r)->>'transaction_fee_centavos')::bigint,0) AS transaction_fee_centavos,
+  COALESCE((to_jsonb(r)->>'total_received')::numeric,r.amount_received) AS total_received,
+  COALESCE(to_jsonb(r)->>'confirmation_source','Legacy') AS confirmation_source`
 
 export class PrintingRepository {
   readonly pool: Pool
@@ -46,7 +49,7 @@ export class PrintingRepository {
         r.student_name_snapshot student_name,r.school_id_snapshot school_id,r.file_name_snapshot file_name,
         r.page_count_snapshot page_count,r.copies_snapshot number_of_copies,r.total_sheets_snapshot total_sheets,
         r.print_type_snapshot print_type,r.paper_size_snapshot paper_size,r.amount_received,r.payment_method,
-        r.received_by_name_snapshot received_by,r.received_at
+        r.received_by_name_snapshot received_by,r.received_at,${receiptPaymentDetails}
       FROM print_payment_receipts r
       INNER JOIN users u ON u.user_id=r.user_id
       WHERE u.school_id=?
@@ -62,7 +65,7 @@ export class PrintingRepository {
         r.student_name_snapshot student_name,r.school_id_snapshot school_id,r.file_name_snapshot file_name,
         r.page_count_snapshot page_count,r.copies_snapshot number_of_copies,r.total_sheets_snapshot total_sheets,
         r.print_type_snapshot print_type,r.paper_size_snapshot paper_size,r.amount_received,r.payment_method,
-        r.received_by_name_snapshot received_by,r.received_at
+        r.received_by_name_snapshot received_by,r.received_at,${receiptPaymentDetails}
       FROM print_payment_receipts r INNER JOIN users u ON u.user_id=r.user_id
       WHERE r.print_receipt_id=?${ownership} LIMIT 1`,values)
     return rows[0]??null

@@ -98,10 +98,10 @@ async function prepare() {
       + Object.entries(settings).map(([name, value]) => name + '=' + value).join('\n') + '\n'
     await writeFile(environmentFile, body, { mode: 0o600 })
     console.log(JSON.stringify(await checkXenditSandbox(), null, 2))
-    if (args.includes('--phase2') || args.includes('--phase3')) {
+    if (args.includes('--phase2') || args.includes('--phase3') || args.includes('--phase4')) {
       process.env.DATABASE_URL = databaseUrl
       const { verifyPaymentFoundation } = await import('./verify-xendit-payment-foundation.mjs')
-      console.log(JSON.stringify(await verifyPaymentFoundation(cluster,{gateway:args.includes('--phase3')}), null, 2))
+      console.log(JSON.stringify(await verifyPaymentFoundation(cluster,{gateway:args.includes('--phase3')||args.includes('--phase4'),counter:args.includes('--phase4')}), null, 2))
     }
     if (keepRunning) {
       console.log('Local sandbox database ready on 127.0.0.1:55438. Press Ctrl+C to stop.')
@@ -110,11 +110,20 @@ async function prepare() {
         process.once('SIGTERM', resolveStop)
       })
     }
-  } finally { await cluster.stop() }
+  } finally {
+    if(process.platform==='win32' && cluster.process){
+      // The package force-terminates Windows servers. Graceful shutdown avoids orphan workers and stale shared memory.
+      const control=fileURLToPath(new URL('tools/node_modules/@embedded-postgres/windows-x64/native/bin/pg_ctl.exe',output))
+      const stopped=spawnSync(control,['-D',fileURLToPath(new URL('data/',output)),'-m','fast','-w','stop'],{stdio:'ignore',timeout:15000})
+      if(stopped.status!==0)throw new Error('The disposable local database could not stop gracefully.')
+      cluster.process=undefined
+    }
+    await cluster.stop()
+  }
 }
 
 try { await prepare() }
 catch (error) {
-  console.error('Sandbox preparation failed (' + (error.code || error.name) + '). Check the credential path, local tool installation and port 55438.')
+  console.error('Sandbox preparation failed (' + (error?.code || error?.name || 'UNKNOWN') + '). Check the credential path, local tool installation and port 55438.')
   process.exitCode = 1
 }

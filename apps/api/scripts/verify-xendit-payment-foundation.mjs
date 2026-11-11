@@ -16,16 +16,19 @@ import { createPaymentsRouters } from '../src/modules/payments/payments.routes.t
 function adapt(executor) {
   return {
     async execute(sql, values = []) {
-      const result = await executor.query(toPgPlaceholders(sql),values)
+      let prepared=toPgPlaceholders(sql)
+      if(/^\s*INSERT/i.test(sql)&&! /\bRETURNING\b/i.test(sql))prepared=prepared.replace(/;?\s*$/,'')+' RETURNING *'
+      const result = await executor.query(prepared,values)
       if (/^\s*(INSERT|UPDATE|DELETE)/i.test(sql)) {
-        return [{insertId:0,affectedRows:result.rowCount,rows:result.rows},result]
+        const first=result.rows[0],identity=first&&Object.keys(first).find(key=>/(_id|Id)$/i.test(key))
+        return [{insertId:identity?Number(first[identity]):0,affectedRows:result.rowCount,rows:result.rows},result]
       }
       return [result.rows,result]
     },
   }
 }
 
-export async function verifyPaymentFoundation(cluster,{gateway=false}={}) {
+export async function verifyPaymentFoundation(cluster,{gateway=false,counter=false}={}) {
   const owner = cluster.getPgClient('sti_xendit_sandbox','127.0.0.1')
   await owner.connect()
   const schema = 'payment_qa_' + randomUUID().replaceAll('-','')
@@ -234,8 +237,9 @@ export async function verifyPaymentFoundation(cluster,{gateway=false}={}) {
     let gatewayResult
     if (gateway) {
       await owner.query(await readFile(new URL('../../../database/supabase/035_xendit_checkout_confirmation.sql',import.meta.url),'utf8'))
+      if(counter)await owner.query(await readFile(new URL('../../../database/supabase/036_payment_counter_and_cancellation.sql',import.meta.url),'utf8'))
       const {verifyPaymentGateway} = await import('./verify-xendit-payment-gateway.mjs')
-      gatewayResult = await verifyPaymentGateway(pool,owner)
+      gatewayResult = await verifyPaymentGateway(pool,owner,{counter})
     }
     return {migration:'034',isolation:'temporary-local-schema',quoteMath:'passed',concurrency:'passed',gateway:gatewayResult,
       ownership:'passed',cashCompatibility:'passed',receiptConstraints:'passed',eventDeduplication:'passed'}
@@ -243,7 +247,7 @@ export async function verifyPaymentFoundation(cluster,{gateway=false}={}) {
     // This verifier uses synthetic fixtures only. Report assertions without connection details.
     console.error('Payment foundation verification failed', error.code || error.name,
       error.stack?.split('\n').find(line => line.includes('verify-xendit-payment-foundation.mjs'))?.trim())
-    if (error.code === 'ERR_ASSERTION') console.error(error.message)
+    if (['ERR_ASSERTION','42703','42P01'].includes(error.code)) console.error(error.message)
     throw error
   } finally {
     if (native) await native.end()

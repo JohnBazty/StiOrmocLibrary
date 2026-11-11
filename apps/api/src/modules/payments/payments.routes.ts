@@ -16,13 +16,18 @@ export function createPaymentsRouters(service: ReturnType<typeof createPaymentsS
     message:{success:false,code:'PAYMENT_RATE_LIMIT',message:'Wait a moment before reviewing another payment.'},
   })
   user.use(requireJwtRoles('Student','Faculty'),requireCsrfForStateChanges)
+  user.get('/options',controller.options)
   user.post('/quote',writes,controller.quote)
   user.post('/checkout',writes,controller.prepare)
   user.post('/:id/check',writes,controller.check)
+  user.post('/:id/resume',writes,controller.resume)
+  user.post('/:id/cancel',writes,controller.cancel)
   user.get('/:id',controller.read)
   admin.use(requireCsrfForStateChanges)
   admin.get('/',requireLibraryPermission('desk.operate'),controller.list)
   admin.put('/fee-rules',requireLibraryPermission('library.manage'),writes,controller.setFee)
+  admin.post('/:id/check',requireLibraryPermission('desk.operate'),writes,controller.adminCheck)
+  admin.post('/:id/cancel',requireLibraryPermission('library.manage'),writes,controller.adminCancel)
   return {user,admin}
 }
 

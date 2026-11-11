@@ -32,8 +32,8 @@
 --   024_revision_phase5_reading_materials.sql  — native physical thesis links for in-library use (applied)
 -- Latest applied migration: 032_login_devices.sql.
 -- 033_rename_system_brand.sql, 034_online_payment_foundation.sql and
--- 035_xendit_checkout_confirmation.sql are pending review.
--- 034–035 passed disposable local PostgreSQL verification only. Next unused number: 036.
+-- 035_xendit_checkout_confirmation.sql and 036_payment_counter_and_cancellation.sql are pending review.
+-- 034–036 passed disposable local PostgreSQL verification only. Next unused number: 037.
 -- 031_semester_enrollment.sql supersedes the removed, unapplied 028 draft.
 -- Preserve the original bytes of applied files. The 003 source still needs checksum reconciliation.
 -- See docs/main-branch-integration.md for the live ledger audit.

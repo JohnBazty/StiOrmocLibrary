@@ -18,3 +18,9 @@ test('recognizes database errors caused by an unapplied schema migration', () =>
   assert.equal(isMissingSchemaError({ code: '42703' }), true)
   assert.equal(isMissingSchemaError({ code: '23505' }), false)
 })
+
+test('enabled payments require cancellation migration before the API is ready',async()=>{
+    const result=await checkSchemaReadiness({execute:async()=>[[{TABLE_NAME:'online_payment_attempts',COLUMN_NAME:'payment_id'}]]} as never,{paymentsEnabled:true})
+    assert.equal(result.ready,false)
+    assert.ok(result.missingColumns.includes('online_payment_attempts.cancel_requested_at'))
+})

@@ -2,7 +2,7 @@ import { db, type Pool } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { requireLibraryActor } from '../../core/library-permissions.ts'
 import { createPaymentsRepository, type PaymentRow, type PaymentTarget } from './payments.repository.ts'
-import { centavos, feeTotal, parseCheckout, parseFeeRule, parsePaymentFilters, parseQuote, paymentError, paymentId, positiveId } from './payments.validation.ts'
+import { centavos, feeTotal, parseCheckout, parseFeeRule, parsePaymentFilters, parseQuote, parseTarget, paymentError, paymentId, positiveId } from './payments.validation.ts'
 
 export type PaymentActor = { accountId?: number; role?: string }
 type Options = { enabled?: () => boolean; clock?: () => Date }
@@ -21,7 +21,11 @@ export function publicPayment(row: PaymentRow) {
     totalCentavos:Number(row.total_centavos),remainingCentavos:Number(BigInt(row.balance_before_centavos)-BigInt(row.principal_centavos)),
     channelCode:row.channel_code,currency:'PHP',environment:'test',isSample:true,state:row.state,
     expiresAt:row.expires_at,createdAt:row.created_at,gatewayConnected:Boolean(row.provider_session_id),
-    checkoutUrl:row.state==='Active' ? row.checkout_url ?? null : null,
+    checkoutUrl:row.state==='Active' && !row.cancel_requested_at ? row.checkout_url ?? null : null,
+    cancellationPending:Boolean(row.cancel_requested_at && !row.provider_payment_id && ['Active','Creating','Review'].includes(row.state)),
+    refundReview:Boolean(row.state==='Review'&&row.provider_payment_id),
+    receiptId:row.receipt_id?Number(row.receipt_id):null,payerName:row.payer_name??null,schoolId:row.school_id??null,
+    description:row.description??null,reviewCode:row.review_code??null,
   }
 }
 
@@ -62,6 +66,23 @@ export function createPaymentsService(database: Pool = db, options: Options = {}
   }
 
   return {
+    async options(actor: PaymentActor, query: unknown) {
+      if (!['Student','Faculty'].includes(String(actor.role))) throw paymentError('Use a borrower account.','PAYMENT_ROLE_FORBIDDEN',403)
+      const target=parseTarget(query),accountId=positiveId(actor.accountId)
+      if (!enabled()) return {enabled:false,isSample:true,methods:[],active:null,balanceCentavos:0,paymentAllowed:false}
+      return transaction(async repository=>{
+        const userId=await owner(repository,accountId),charge=await repository.charge(target,userId)
+        if (!charge) throw paymentError('This bill or fine is unavailable.','PAYMENT_TARGET_NOT_FOUND',404)
+        const remaining=zeroOrCentavos(charge.assessed)-zeroOrCentavos(charge.paid)-zeroOrCentavos(charge.adjusted)
+        const {rules,active}=await repository.options(accountId,target)
+        return {enabled:true,isSample:true,balanceCentavos:Number(remaining>0n?remaining:0n),
+          paymentAllowed:remaining>0n && !charge.accruing && charge.job_status!=='Cancelled' && !['Paid','Waived','Voided'].includes(charge.status),
+          active:active?publicPayment(active):null,methods:rules.filter(rule=>rule.is_sample).map(rule=>({
+            channelCode:String(rule.channel_code),displayName:String(rule.display_name),
+            minTotalCentavos:Number(rule.min_total_centavos),maxTotalCentavos:Number(rule.max_total_centavos),
+          }))}
+      })
+    },
     async quote(actor: PaymentActor, body: unknown) {
       const accountId = borrower(actor), input = parseQuote(body)
       return transaction(async repository => {
@@ -150,7 +171,9 @@ export function createPaymentsService(database: Pool = db, options: Options = {}
       return transaction(async (repository,connection) => {
         await requireLibraryActor(connection,accountId,'desk.operate')
         const result = await repository.list(filters)
-        return {items:result.rows.map(publicPayment),pagination:{page:filters.page,limit:filters.limit,total:result.total}}
+        const methods=await repository.methods()
+        return {items:result.rows.map(publicPayment),pagination:{page:filters.page,limit:filters.limit,total:result.total},
+          methods:methods.map(method=>({channelCode:String(method.channel_code),displayName:String(method.display_name)}))}
       })
     },
   }

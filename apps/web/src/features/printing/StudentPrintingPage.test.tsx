@@ -14,7 +14,7 @@ afterEach(cleanup)
 it('shows printing payment records inside the Printing Service page',async()=>{
   render(<StudentPrintingPage/>)
   expect(await screen.findByText('Payment records')).toBeTruthy()
-  expect(screen.getByText('Your printing cash payments appear here after the library records them.')).toBeTruthy()
+  expect(screen.getByText('Your confirmed printing payments appear here, including any online transaction fee.')).toBeTruthy()
   expect(screen.getAllByText('PR-20260923-000021').length).toBeGreaterThan(0)
 })
 

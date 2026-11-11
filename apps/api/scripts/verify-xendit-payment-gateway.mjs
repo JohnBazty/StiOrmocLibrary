@@ -9,7 +9,7 @@ import { createPaymentWebhookRouter } from '../src/modules/payments/payments.rou
 import { HttpError } from '../src/core/http-error.ts'
 import { createFinesService } from '../src/modules/fines/fines.service.ts'
 
-export async function verifyPaymentGateway(pool, owner) {
+export async function verifyPaymentGateway(pool, owner,{counter=false}={}) {
   await owner.query(`ALTER TABLE users ADD COLUMN full_name text DEFAULT 'Disposable fixture',ADD COLUMN school_id text DEFAULT 'QA-ONLY';
     ALTER TABLE print_requests ADD COLUMN file_name text DEFAULT 'fixture.pdf',ADD COLUMN page_count integer DEFAULT 1,
       ADD COLUMN number_of_copies integer DEFAULT 1,ADD COLUMN total_sheets integer DEFAULT 1,
@@ -27,7 +27,7 @@ export async function verifyPaymentGateway(pool, owner) {
   const baseline = await readFile(new URL('../../../database/supabase/001_from_baseline.sql',import.meta.url),'utf8')
   await owner.query(baseline.match(/CREATE TABLE IF NOT EXISTS clearance_statuses \([\s\S]*?\r?\n\);/)[0])
   const sessions = new Map(), captured = new Map()
-  let creates = 0, timeout = false, now = new Date(), providerOffline = false
+  let creates = 0, timeout = false, now = new Date(), providerOffline = false, cancelHangs=false, cancelRace=false
   const config = ()=>({enabled:true,mode:'test',webhookToken:'fixture-callback-token-0123456789',returnUrl:null})
   const provider = {
     async createSession(body) {
@@ -42,6 +42,12 @@ export async function verifyPaymentGateway(pool, owner) {
     },
     async getSession(id) { if(providerOffline)throw new Error('Synthetic outage');return structuredClone(sessions.get(id)) },
     async getPayment(id) { if(providerOffline)throw new Error('Synthetic outage');return structuredClone(captured.get(id)) },
+    async cancelSession(id){
+      if(cancelHangs)throw new Error('Synthetic cancellation outage')
+      const session=sessions.get(id)
+      if(cancelRace){cancelRace=false;finish(session)}else if(session.status==='ACTIVE')session.status='CANCELED'
+      return structuredClone(session)
+    },
   }
   const service = createPaymentsService(pool,{enabled:()=>true,clock:()=>now})
   const gateway = createPaymentGatewayService(pool,{config,provider,clock:()=>now})
@@ -65,7 +71,7 @@ export async function verifyPaymentGateway(pool, owner) {
   const findSession = id=>[...sessions.values()].find(item=>item.reference_id==='sti-pay-'+id)
   const sessionFor = async (kind,id,amount)=>{
     const quoted=await quote(kind,id,amount)
-    await gateway.checkout(actor,{quoteId:quoted.paymentId,requestKey:'gateway-'+id+'-'+kind})
+    await gateway.checkout(actor,{quoteId:quoted.paymentId,requestKey:'gateway-'+quoted.paymentId})
     return {quoted,session:findSession(quoted.paymentId)}
   }
 
@@ -189,7 +195,14 @@ export async function verifyPaymentGateway(pool, owner) {
   await gateway.receive(config().webhookToken,event(lost.session));await gateway.recover()
   assert.equal((await owner.query('SELECT payment_status FROM lost_book_reports WHERE lost_book_report_id=1')).rows[0].payment_status,'Paid')
   assert.equal((await owner.query('SELECT amount_allocated FROM fine_payment_allocations WHERE lost_book_report_id=1')).rows[0].amount_allocated,'150.00')
-  return {provider:'controlled-fixture',sessionConcurrency:'passed',duplicateCallbacks:'passed',fineAllocation:'passed',
+  let counterResult
+  if(counter){
+    const {verifyPaymentCounter}=await import('./verify-xendit-payment-counter.mjs')
+    counterResult=await verifyPaymentCounter({pool,owner,service,gateway,actor,sessionFor,sessionByPayment:findSession,finish,event,config,
+      controls:{hangCancel:value=>{cancelHangs=value},raceCancel:()=>{cancelRace=true},
+        advance:minutes=>{now=new Date(now.getTime()+minutes*60_000)}}})
+  }
+  return {provider:'controlled-fixture',sessionConcurrency:'passed',duplicateCallbacks:'passed',fineAllocation:'passed',counter:counterResult,
     printingReceipt:'passed',unknownCreationRecovery:'passed',changedBalance:'passed',providerOutageRecovery:'passed',outOfOrder:'passed',
     settlementRollback:'passed',pendingCaptureRecovery:'passed',expiredLeaseRecovery:'passed',lostBookSettlement:'passed'}
 }

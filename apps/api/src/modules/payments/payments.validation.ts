@@ -61,6 +61,12 @@ export function parseCheckout(value: unknown) {
   return { quoteId: paymentId(body.quoteId), requestKey: retryKey(body.requestKey) }
 }
 
+export function parseTarget(value: unknown) {
+  const body=object(value,['kind','targetId'])
+  if (!['Printing','Fine','LostBook'].includes(String(body.kind))) throw paymentError('Choose a printing bill or fine.')
+  return {kind:body.kind as 'Printing'|'Fine'|'LostBook',targetId:positiveId(body.targetId)}
+}
+
 export function parseFeeRule(value: unknown) {
   const body = object(value, ['channelCode','displayName','fixedFee','percentageBasisPoints','taxBasisPoints','minTotal','maxTotal','requestKey'])
   const name = typeof body.displayName === 'string' ? body.displayName.trim() : ''
@@ -88,5 +94,7 @@ export function parsePaymentFilters(query: Record<string, unknown>) {
   }
   const page = query.page === undefined ? 1 : positiveId(query.page)
   if (page > 10000) throw paymentError('Choose an earlier results page.')
-  return { state, page, limit: 25 }
+  const method=query.channel===undefined||query.channel===''?null:channel(query.channel)
+  const kind=query.kind===undefined||query.kind===''?null:parseTarget({kind:query.kind,targetId:1}).kind
+  return { state, channel:method, kind, page, limit: 25 }
 }

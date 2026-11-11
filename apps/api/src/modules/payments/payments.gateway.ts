@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { db, type Pool, type PoolConnection, type RowDataPacket, type ResultSetHeader } from '../../config/db.js'
 import { env } from '../../config/env.js'
+import { requireLibraryActor } from '../../core/library-permissions.ts'
 import type { XenditSandboxConfig } from '../../config/xendit-sandbox.ts'
 import { createPaymentsRepository, type PaymentRow } from './payments.repository.ts'
 import { createPaymentsService, publicPayment, targetOf, type PaymentActor } from './payments.service.ts'
@@ -80,8 +81,14 @@ export function createPaymentGatewayService(database: Pool = db, options: Option
     }
     const sessionId = snapshot.provider_session_id ?? event?.sessionId
     if (!sessionId) return
-    const session = await provider.getSession(sessionId)
+    let session = await provider.getSession(sessionId)
     verifySession(session,snapshot)
+    if (snapshot.cancel_requested_at && session.status==='ACTIVE') {
+      // Cancellation may have succeeded despite a lost response. Always read its actual outcome afterward.
+      try { await provider.cancelSession(sessionId) } catch { /* A verified GET below determines the outcome. */ }
+      session = await provider.getSession(sessionId)
+      verifySession(session,snapshot)
+    }
     if (event && (event.sessionId!==session.payment_session_id || event.reference!==session.reference_id
       || event.businessId!==session.business_id || event.amount!==String(snapshot.total_centavos)
       || (event.providerPaymentId && session.payment_id && event.providerPaymentId!==session.payment_id))) {
@@ -124,7 +131,7 @@ export function createPaymentGatewayService(database: Pool = db, options: Option
     })
   }
 
-  return {
+  const gateway = {
     async checkout(actor: PaymentActor, body: unknown) {
       const settings = available()
       const prepared = await payments.prepare(actor,body)
@@ -180,6 +187,50 @@ export function createPaymentGatewayService(database: Pool = db, options: Option
       })
       if (claimed) await reconcile(id)
       return payments.read(actor,id)
+    },
+
+    async resume(actor: PaymentActor, value: unknown) {
+      available()
+      const saved = await payments.read(actor,value)
+      const attempt = await row(database,saved.paymentId)
+      if (!attempt?.request_key || attempt.cancel_requested_at) return saved
+      return gateway.checkout(actor,{quoteId:saved.paymentId,requestKey:attempt.request_key})
+    },
+
+    async cancel(actor: PaymentActor, value: unknown, administrative = false) {
+      available()
+      const id = paymentId(value)
+      if (administrative) await transaction(connection=>requireLibraryActor(connection,Number(actor.accountId),'library.manage'))
+      else await payments.read(actor,id)
+      const claimed = await transaction(async connection=>{
+        const attempt = await row(connection,id,true)
+        if (!attempt) throw paymentError('This payment is unavailable.','PAYMENT_NOT_FOUND',404)
+        if (!administrative && Number(attempt.account_id)!==Number(actor.accountId)) throw paymentError('This payment is unavailable.','PAYMENT_NOT_FOUND',404)
+        if (['Succeeded','Expired','Cancelled'].includes(attempt.state)) return false
+        if (attempt.provider_payment_id) throw paymentError('This payment was captured. The library must review a provider refund.','ONLINE_REFUND_REQUIRED',409)
+        if (!attempt.provider_session_id && !attempt.creation_started_at && ['Quoted','Prepared'].includes(attempt.state)) {
+          await connection.execute(`UPDATE online_payment_attempts SET state='Cancelled',request_key=COALESCE(request_key,?),
+            cancel_requested_at=?,updated_at=? WHERE payment_id=?`,['cancel:'+id,clock(),clock(),id])
+          return false
+        }
+        await connection.execute('UPDATE online_payment_attempts SET cancel_requested_at=?,next_check_at=? WHERE payment_id=?',[clock(),clock(),id])
+        return true
+      })
+      if (claimed) await reconcile(id)
+      return publicPayment((await row(database,id))!)
+    },
+
+    async adminCheck(actor: PaymentActor, value: unknown) {
+      available()
+      await transaction(connection=>requireLibraryActor(connection,Number(actor.accountId),'desk.operate'))
+      const id=paymentId(value)
+      const attempt=await row(database,id)
+      if (!attempt) throw paymentError('This payment is unavailable.','PAYMENT_NOT_FOUND',404)
+      // Share the same per-attempt throttle with borrower checks.
+      const [claim]=await database.execute<ResultSetHeader>(`UPDATE online_payment_attempts SET next_check_at=?,check_count=check_count+1
+        WHERE payment_id=? AND next_check_at<=?`,[wait(1,clock()),id,clock()])
+      if (claim.affectedRows) await reconcile(id)
+      return publicPayment((await row(database,id))!)
     },
 
     async receive(token: string | undefined, body: unknown) {
@@ -250,6 +301,7 @@ export function createPaymentGatewayService(database: Pool = db, options: Option
       return {processed,pending,reviewed}
     },
   }
+  return gateway
 }
 
 export const paymentGatewayService = createPaymentGatewayService()

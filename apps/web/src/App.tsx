@@ -43,6 +43,8 @@ import { StudentClearancePage } from './features/clearance/StudentClearancePage'
 import { AdminClearancePage } from './features/clearance/AdminClearancePage'
 import { AdminFinesPage } from './features/fines/AdminFinesPage'
 import { StudentFinesPage } from './features/fines/StudentFinesPage'
+import { PaymentResultPage } from './features/payments/PaymentResultPage'
+import { AdminPaymentsPage } from './features/payments/AdminPaymentsPage'
 import { PublicCatalogPage } from './features/catalog/PublicCatalogPage'
 import { BorrowingPoliciesArchivedPage } from './features/borrowing-policies/BorrowingPoliciesArchivedPage'
 import { CatalogMaintenancePage } from './features/catalog/CatalogMaintenancePage'
@@ -65,6 +67,9 @@ export default function App() {
       <Route path="/admin/login" element={<Navigate to="/staff" replace />} />
       <Route path="/staff" element={<AdminLoginPage />} />
       <Route path="/forgot-password" element={<PasswordRecoveryPage />} />
+      <Route element={<ProtectedRoute roles={['Student','Faculty']} />}>
+        <Route path="/payments/result" element={<PaymentResultPage/>}/>
+      </Route>
 
       <Route element={<ProtectedRoute roles={['Student']} />}>
         <Route element={<PortalLayout role="student" />}>
@@ -117,6 +122,7 @@ export default function App() {
           <Route path="/librarian/circulation" element={<AdminCirculationMonitor />} />
           <Route path="/librarian/reservations" element={<AdminReservationQueuePage />} />
           <Route path="/librarian/fines" element={<AdminFinesPage />} />
+          <Route path="/librarian/payments" element={<AdminPaymentsPage/>}/>
           <Route path="/librarian/inventory" element={<InventoryDashboard />} />
           <Route path="/librarian/floor-plan" element={<FloorPlanImagePage />} />
           <Route path="/librarian/printing" element={<AdminPrintingQueuePage />} />
@@ -133,6 +139,7 @@ export default function App() {
           <Route path="/staff/circulation" element={<AdminCirculationMonitor />} />
           <Route path="/staff/reservations" element={<AdminReservationQueuePage />} />
           <Route path="/staff/printing" element={<StaffPrintingQueuePage />} />
+          <Route path="/staff/payments" element={<AdminPaymentsPage/>}/>
           <Route path="/staff/attendance" element={<StaffAttendancePage />} />
           <Route path="/staff/announcements" element={<StaffAnnouncementsPage />} />
           <Route path="/staff/notifications" element={<NotificationCenterPage />} />
@@ -153,6 +160,7 @@ export default function App() {
           <Route path="/faculty/attendance" element={<UserAttendancePage />} />
           <Route path="/faculty/notifications" element={<NotificationCenterPage />} />
           <Route path="/faculty/fines" element={<StudentFinesPage />} />
+          <Route path="/faculty/printing" element={<StudentPrintingPage/>}/>
           <Route path="/faculty/clearance" element={<StudentClearancePage />} />
           <Route path="/faculty/profile" element={<ProfileAvatarPage />} />
         </Route>
