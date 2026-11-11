@@ -29,7 +29,7 @@ Live database (2026-11-11): `032` and `036` applied, `033` pending, `034` (job r
 | Stocktake sessions | `feat/stocktake-sessions` | No PR; table `018` already on `main`. Carry over `7a4d478` (Admin → Librarian role) from `integration/2026-10` first |
 | Long-overdue and damage case | port commit `6dd0c64` from `feat/long-overdue-and-damage-case` | Table `017_circulation_cases` is on `main` and live, but no code uses it. Port the code, align with "lost = book price". Its job-runner commit is replaced by PR #17 |
 | Dynamic attendance QR | PR #10 (draft), `feat/dynamic-attendance-qr` | Spec only, approval gate 1 |
-| Attendance QR self-heal (rehash) fix | port commit `75f4ed9` from `fix/attendance-qr-rehash` | Not on `main` or the kiosk branch; 2 files. The kiosk needs it. The branch's other kiosk commits are already in `feat/self-service-kiosk` |
+| Attendance QR self-heal (rehash) fix | PR #23, `fix/attendance-qr-self-heal` (ported `75f4ed9` plus review fixes) | Waits for John. After merge, bring it into `feat/self-service-kiosk`; then drop `fix/attendance-qr-rehash` (its other kiosk commits are already in the kiosk branch) |
 | Printer unavailable at zero supply | PR #12 (draft), `feat/printer-supply-availability` | Spec only, approval gate 1 |
 | Self-service kiosk | `feat/self-service-kiosk` (local only) | WIP; needs HTTPS deploy, a real-tablet test and the rehash fix. Ethan: keep local |
 
