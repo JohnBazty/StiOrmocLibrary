@@ -1,6 +1,7 @@
 -- Durable job runner hardening (safety sprint Part A, approved by Ethan 2026-11-11).
 -- Safe to run more than once. Live already has row-level security on both job tables;
 -- this records it in the repository so a rebuild cannot leave them open.
+-- No policies on purpose: only the table owner or a BYPASSRLS role (the API's server connection) may read or write.
 
 ALTER TABLE public.scheduled_job_state ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.scheduled_job_runs ENABLE ROW LEVEL SECURITY;

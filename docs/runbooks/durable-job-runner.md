@@ -66,7 +66,7 @@ select r.rolname, has_table_privilege(r.oid, 'net.http_request_queue', 'SELECT')
   from pg_roles r where r.rolname in ('anon', 'authenticated');
 ```
 
-This keeps the `net` functions working (they run as their owner); it only removes table access the app never uses.
+This keeps the `net` functions working (they run as their owner); it only removes table access the app never uses. Right after the revoke, run `select count(*) from net._http_response;` in the SQL Editor; if it now fails with permission denied, the step 6 checks need `grant select on net._http_response to postgres;` first.
 
 `cron.job` and `cron.job_run_details` also hold command text and replies. On 2026-11-11 `anon` and `authenticated` had no `USAGE` on the `cron` schema, so they cannot reach them. Confirm it is still so (both `false`):
 
