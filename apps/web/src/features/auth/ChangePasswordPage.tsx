@@ -4,7 +4,7 @@ import { AuthMessage } from './AuthMessage'
 import { changePassword, restoreCookieSession } from './auth-api'
 import { getCsrfToken, getStoredClaims, passwordChangeRequired } from './auth-storage'
 
-const field = 'mt-2 h-12 w-full rounded-xl border border-[#003399]/20 bg-white px-4 text-[#003399] focus:outline-none focus:ring-4 focus:ring-[#003399]/15'
+const field = 'mt-2 h-12 w-full rounded-xl border border-[#0b5ea2]/20 bg-white px-4 text-[#0b5ea2] focus:outline-none focus:ring-4 focus:ring-[#0b5ea2]/15'
 
 /** Required after an Admin sets a temporary password; also open to any signed-in account. */
 export function ChangePasswordPage() {
@@ -19,7 +19,7 @@ export function ChangePasswordPage() {
   useEffect(() => {
     if (signedIn === null) void restoreCookieSession().then(identity => setSignedIn(Boolean(identity)))
   }, [signedIn])
-  if (signedIn === null) return <main className="flex min-h-screen items-center justify-center bg-[#003399] text-white" aria-busy="true">Please wait…</main>
+  if (signedIn === null) return <main className="flex min-h-screen items-center justify-center bg-[#0b5ea2] text-white" aria-busy="true">Please wait…</main>
   if (!signedIn || (!getCsrfToken() && !busy)) return <Navigate to="/login" replace />
   const claims = getStoredClaims(true)
   const required = passwordChangeRequired()
@@ -38,8 +38,8 @@ export function ChangePasswordPage() {
     }
   }
 
-  return <main className="flex min-h-screen items-center justify-center bg-[#003399] px-4 py-10">
-    <section className="w-full max-w-md rounded-3xl bg-white p-7 text-[#003399] shadow-xl sm:p-9">
+  return <main className="flex min-h-screen items-center justify-center bg-[#0b5ea2] px-4 py-10">
+    <section className="w-full max-w-md rounded-3xl bg-white p-7 text-[#0b5ea2] shadow-xl sm:p-9">
       <h1 className="font-display text-3xl font-black">Change your password</h1>
       <p className="mt-3 text-sm">{required ? 'The library set a temporary password for you. Choose your own password to continue.' : 'Choose a new password. You will sign in again afterwards.'}</p>
       {error ? <AuthMessage>{error}</AuthMessage> : null}
@@ -47,7 +47,7 @@ export function ChangePasswordPage() {
         <label className="block text-sm font-bold">{required ? 'Temporary password' : 'Current password'}<input type="password" className={field} required autoComplete="current-password" value={current} onChange={event => setCurrent(event.target.value)} /></label>
         <label className="block text-sm font-bold">New password<input type="password" className={field} required minLength={8} autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)} /></label>
         <label className="block text-sm font-bold">Confirm new password<input type="password" className={field} required autoComplete="new-password" value={confirmation} onChange={event => setConfirmation(event.target.value)} /></label>
-        <button disabled={busy} className="h-12 w-full rounded-xl bg-[#003399] font-bold text-white disabled:opacity-60">{busy ? 'Please wait…' : 'Change password'}</button>
+        <button disabled={busy} className="h-12 w-full rounded-xl bg-[#0b5ea2] font-bold text-white disabled:opacity-60">{busy ? 'Please wait…' : 'Change password'}</button>
       </form>
     </section>
   </main>

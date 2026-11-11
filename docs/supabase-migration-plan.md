@@ -1,19 +1,22 @@
 # Title
 
+
+> Current local integration, November 12: sign-in 036 is already applied (checksum verified November 11). Payment drafts were renumbered to 038–041; 033–035 remain unapplied and the next local number is 042. Payment recovery uses the single durable 019 runner. Historical phase numbers below describe earlier work; the [local integration record](plans/2026-11-11-local-payment-integration.md) supplies current startup and verification. No payment migration was applied to Supabase.
+
 **MySQL → Supabase (PostgreSQL) conversion for STI Ormoc Smart Library**
 
 ## November 10 browser sign-in migration
 
 Applied **032_login_devices.sql** individually on 2026-11-10 after matching the production database target. Verified the migration checksum, row-level security, and browser-role access restrictions on the three authentication tables. Branding migration **033** and payment migrations **034–037** are pending review. The next unused number is **038**. The API requires **032** before enabling `LOGIN_DEVICES_ENABLED`. See the [device sign-in plan](plans/2026-11-10-remember-this-device.md).
 
-**2026-11-11 payment Phase 2:** Drafted `034_online_payment_foundation.sql` and verified it in a unique temporary schema on local PostgreSQL only. It adds private fee versions, payment attempts/events, receipt provenance and separate fees. Applied files and live data are unchanged. Production application requires separate approval; do not enable online payments on the normal database. See the [payment implementation record](plans/2026-11-11-xendit-sandbox-payments.md#phase-2-implementation-record--2026-11-11).
+**2026-11-11 payment Phase 2:** Drafted `038_online_payment_foundation.sql` and verified it in a unique temporary schema on local PostgreSQL only. It adds private fee versions, payment attempts/events, receipt provenance and separate fees. Applied files and live data are unchanged. Production application requires separate approval; do not enable online payments on the normal database. See the [payment implementation record](plans/2026-11-11-xendit-sandbox-payments.md#phase-2-implementation-record--2026-11-11).
 
-**2026-11-11 payment Phase 3:** Drafted additive `035_xendit_checkout_confirmation.sql` for session identities/URLs, bounded recovery, event leases and receipt-source immutability. Applied 034 then 035 only inside a disposable local schema. Verified actual Test session creation/read/cancel separately; completed-payment/callback delivery against Xendit remains pending a full isolated test deployment. No applied sources, live schema or operational data changed. See the [Phase 3 record](plans/2026-11-11-xendit-sandbox-payments.md#phase-3-implementation-record--2026-11-11).
+**2026-11-11 payment Phase 3:** Drafted additive `039_xendit_checkout_confirmation.sql` for session identities/URLs, bounded recovery, event leases and receipt-source immutability. Applied 034 then 035 only inside a disposable local schema. Verified actual Test session creation/read/cancel separately; completed-payment/callback delivery against Xendit remains pending a full isolated test deployment. No applied sources, live schema or operational data changed. See the [Phase 3 record](plans/2026-11-11-xendit-sandbox-payments.md#phase-3-implementation-record--2026-11-11).
 
-**2026-11-11 payment Phases 4–5:** Drafted additive `036_payment_counter_and_cancellation.sql`. Local PostgreSQL acceptance covers cash/online exclusion, verified cancellation, capture races, partial/full fine settlement and clearance, receipt reads and refund protection. Receipt PDFs and responsive payment screens were checked with disposable fixtures. No migration was applied to Supabase. See the [Phases 4–5 record](plans/2026-11-11-xendit-sandbox-payments.md#phases-4-5-implementation-record--2026-11-11).
+**2026-11-11 payment Phases 4–5:** Drafted additive `040_payment_counter_and_cancellation.sql`. Local PostgreSQL acceptance covers cash/online exclusion, verified cancellation, capture races, partial/full fine settlement and clearance, receipt reads and refund protection. Receipt PDFs and responsive payment screens were checked with disposable fixtures. No migration was applied to Supabase. See the [Phases 4–5 record](plans/2026-11-11-xendit-sandbox-payments.md#phases-4-5-implementation-record--2026-11-11).
 
 
-**2026-11-11 payment Phase 6:** Drafted `037_payment_reconciliation.sql` for append-only, server-only settlement evidence. Added accurate payment reports, printing collection sources, checkout pause control and bounded recovery in the owner-selected existing runner. Local acceptance uses disposable schemas; no live schema or applied file changed. Phase 7 external/browser/human acceptance is recorded in the payment plan and release checklist rather than inferred from automated tests.
+**2026-11-11 payment Phase 6:** Drafted `041_payment_reconciliation.sql` for append-only, server-only settlement evidence. Added accurate payment reports, printing collection sources, checkout pause control and bounded recovery in the owner-selected existing runner. Local acceptance uses disposable schemas; no live schema or applied file changed. Phase 7 external/browser/human acceptance is recorded in the payment plan and release checklist rather than inferred from automated tests.
 
 ## Historical cutover plan
 

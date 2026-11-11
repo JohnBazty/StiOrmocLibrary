@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-11-11 (Supabase `032` applied, `033–037` pending, next unused `038`) |
+| **Date last updated** | 2026-11-11 (Supabase `036` applied; `033`–`035` and `038`–`041` pending; next unused `042`) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---
@@ -100,17 +100,17 @@ Always know and document:
 | Item | Value |
 | --- | --- |
 | Migrations directory | `database/supabase/` (Postgres only; MySQL was retired 2026-11-10) |
-| Latest applied migration | `032_login_devices.sql` |
-| Files pending review | `033_rename_system_brand.sql`, `034_online_payment_foundation.sql`, `035_xendit_checkout_confirmation.sql`, `036_payment_counter_and_cancellation.sql`, `037_payment_reconciliation.sql` |
-| **Next available number** | **`038`** |
+| Latest applied migration | `036_sign_in_hardening.sql` (ledger and checksum verified 2026-11-11) |
+| Files pending review | `033_rename_system_brand.sql`, `034_job_runner_hardening.sql`, `035_rls_circulation_hardening.sql`, and payment drafts `038`–`041` |
+| **Next available number** | **`042`** |
 
 Applied enrollment 031 supersedes the removed 028 draft. Keep applied filenames and source bytes, including line endings. The 003 source still needs checksum reconciliation. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set.
 
-Payment foundation 034 was tested only in a disposable local PostgreSQL schema. It is unapplied on Supabase. Online payments remain disabled by default. See the [payment plan](../docs/plans/2026-11-11-xendit-sandbox-payments.md).
+Payment foundation 038 was tested only in a disposable local PostgreSQL schema. It is unapplied on Supabase. Online payments remain disabled by default. See the [payment plan](../docs/plans/2026-11-11-xendit-sandbox-payments.md).
 
-Gateway extension 035 adds saved checkout/recovery state and receipt-source protection. It also passed disposable local PostgreSQL checks only. Real Xendit Test session creation, lookup and cancellation passed. Public callback delivery and a full isolated app deployment remain pending; do not enable this on the normal database.
+Gateway extension 039 adds saved checkout/recovery state and receipt-source protection. It also passed disposable local PostgreSQL checks only. Real Xendit Test session creation, lookup and cancellation passed. Public callback delivery and a full isolated app deployment remain pending; do not enable this on the normal database.
 
-Counter extension 036 records cancellation intent, indexes method/status searches and blocks ordinary reversal of gateway receipts. Phases 4–5 add shared counter guards, usable online receipt reads/PDFs and borrower/staff payment screens. These remain local sandbox work. The live tracker is unchanged at 032. Phase 6 draft 037 adds append-only settlement evidence. The owner chose the existing operational-minute runner for payment recovery; no new scheduler is created.
+Counter extension 040 records cancellation intent, indexes method/status searches and blocks ordinary reversal of gateway receipts. Phases 4–5 add shared counter guards, usable online receipt reads/PDFs and borrower/staff payment screens. These remain local sandbox work. The live tracker now records the already applied sign-in 036 (checksum verified); no payment migration is applied. Phase 6 draft 041 adds append-only settlement evidence. The owner chose one runner. Payment recovery now runs as payment-recovery in the durable 019 runner, replacing the retired operational-minute implementation; no second scheduler is created.
 
 Naming pattern: `NNN_short_snake_description.sql`, hand-written Postgres with row-level security as in earlier files. Never regenerate or edit `002_from_migrations.sql`.
 

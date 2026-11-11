@@ -91,7 +91,7 @@ export async function verifyPaymentFoundation(cluster,{gateway=false,counter=fal
     const oldFine = (await owner.query('SELECT user_id,amount_received,payment_method,received_by_user_id FROM fine_payment_receipts')).rows
     const oldPrint = (await owner.query('SELECT * FROM print_payment_receipts')).rows[0]
     await owner.query('BEGIN')
-    await owner.query(await readFile(new URL('../../../database/supabase/034_online_payment_foundation.sql',import.meta.url),'utf8'))
+    await owner.query(await readFile(new URL('../../../database/supabase/038_online_payment_foundation.sql',import.meta.url),'utf8'))
     await owner.query('COMMIT')
     assert.deepEqual((await owner.query('SELECT user_id,amount_received,payment_method,received_by_user_id FROM fine_payment_receipts')).rows,oldFine)
     assert.equal((await owner.query('SELECT confirmation_source FROM fine_payment_receipts')).rows[0].confirmation_source,'Legacy')
@@ -171,6 +171,7 @@ export async function verifyPaymentFoundation(cluster,{gateway=false,counter=fal
     await assert.rejects(owner.query(`INSERT INTO fine_payment_receipts(request_key,user_id,amount_received,received_at)
       VALUES('missing-staff-fixture',1,1,now())`),error=>error.code==='23514')
 
+    await owner.query('ALTER TABLE accounts ADD COLUMN must_change_password boolean NOT NULL DEFAULT false')
     const routers = createPaymentsRouters(service)
     const app = express().use(express.json()).use(authenticateJwt,createActiveJwtAccountGuard(pool))
       .use('/api/v1/user/payments',routers.user).use('/api/v1/admin/payments',routers.admin)
@@ -236,9 +237,9 @@ export async function verifyPaymentFoundation(cluster,{gateway=false,counter=fal
     assert.equal((await owner.query(printReceipt,[1,'QA-NEW-PRINT','QA-NEW-CODE',renewed.paymentId])).rows[0].total_received,'52.50')
     let gatewayResult
     if (gateway) {
-      await owner.query(await readFile(new URL('../../../database/supabase/035_xendit_checkout_confirmation.sql',import.meta.url),'utf8'))
-      if(counter)await owner.query(await readFile(new URL('../../../database/supabase/036_payment_counter_and_cancellation.sql',import.meta.url),'utf8'))
-      if(operations)await owner.query(await readFile(new URL('../../../database/supabase/037_payment_reconciliation.sql',import.meta.url),'utf8'))
+      await owner.query(await readFile(new URL('../../../database/supabase/039_xendit_checkout_confirmation.sql',import.meta.url),'utf8'))
+      if(counter)await owner.query(await readFile(new URL('../../../database/supabase/040_payment_counter_and_cancellation.sql',import.meta.url),'utf8'))
+      if(operations)await owner.query(await readFile(new URL('../../../database/supabase/041_payment_reconciliation.sql',import.meta.url),'utf8'))
       const {verifyPaymentGateway} = await import('./verify-xendit-payment-gateway.mjs')
       gatewayResult = await verifyPaymentGateway(pool,owner,{counter,operations})
       if(hosted){
@@ -247,7 +248,7 @@ export async function verifyPaymentFoundation(cluster,{gateway=false,counter=fal
         gatewayResult.hosted=await verifyHostedPayment(pool,owner)
       }
     }
-    return {migration:'034',isolation:'temporary-local-schema',quoteMath:'passed',concurrency:'passed',gateway:gatewayResult,
+    return {migration:'038',isolation:'temporary-local-schema',quoteMath:'passed',concurrency:'passed',gateway:gatewayResult,
       ownership:'passed',cashCompatibility:'passed',receiptConstraints:'passed',eventDeduplication:'passed'}
   } catch (error) {
     // This verifier uses synthetic fixtures only. Report assertions without connection details.

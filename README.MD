@@ -6,11 +6,20 @@ This guide explains how to prepare a Windows development computer, run and test 
 
 ## AI agents — read this first
 
-1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) (start-session protocol, plan statuses, Supabase migration tracker: latest applied **032**, **033–037** pending review, next unused **038**).
+1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) (start-session protocol, plan statuses, Supabase migration tracker: latest applied **036**, **033–035** and payment **038–041** pending review, next unused **042**).
 2. Read [AGENTS.md](AGENTS.md) and [agent.md](agent.md).
 3. Database history: [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md) and [docs/mysql-removal-plan.md](docs/mysql-removal-plan.md).
 
 ## Contents
+
+**Latest local payment test:** from
+`C:\Users\JOHN\Documents\SSL\StiOrmocLibrary-main-sync`, run
+`npm run dev:payments` and open `http://localhost:5173`. This uses separate sample
+records and Xendit Test mode; it never charges real money or updates school
+balances. Sample sign-in steps are generated in ignored
+`output/xendit-sandbox/local-payment-sign-in.md`. See the
+[integration record](docs/plans/2026-11-11-local-payment-integration.md) for exact
+scope, verification and safe shutdown. No hosted release is included.
 
 1. [System overview](#system-overview)
 2. [Prerequisites](#prerequisites)

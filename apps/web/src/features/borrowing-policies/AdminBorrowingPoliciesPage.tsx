@@ -4,7 +4,7 @@ import { Button, PageHeader, SectionCard, StatusBadge } from '../../components/u
 import { borrowingPoliciesApi } from './borrowing-policies-api'
 import type { BorrowingPolicyList, BorrowingPolicyVersion, PublishBorrowingPolicyInput } from './types'
 
-const field = 'h-11 w-full rounded-xl border border-[#003399]/20 bg-white px-3 text-sm text-[#003399] outline-none focus:ring-4 focus:ring-[#003399]/10'
+const field = 'h-11 w-full rounded-xl border border-[#0b5ea2]/20 bg-white px-3 text-sm text-[#0b5ea2] outline-none focus:ring-4 focus:ring-[#0b5ea2]/10'
 
 function todayCampusDate() {
   return new Intl.DateTimeFormat('en-CA', {
@@ -44,14 +44,14 @@ function limitLabel(value: number | null) {
 
 function PolicySummary({ policy }: { policy: BorrowingPolicyVersion }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 text-sm text-[#003399]">
-      <div><p className="text-xs font-semibold uppercase tracking-wide text-[#003399]/55">Student books</p><p className="font-bold">{policy.studentMaxActiveBooks}</p></div>
-      <div><p className="text-xs font-semibold uppercase tracking-wide text-[#003399]/55">Faculty books</p><p className="font-bold">{limitLabel(policy.facultyMaxActiveBooks)}</p></div>
-      <div><p className="text-xs font-semibold uppercase tracking-wide text-[#003399]/55">Loan period</p><p className="font-bold">{policy.borrowingDays} operating day(s) @ {policy.dueCutoffLabel}</p></div>
-      <div><p className="text-xs font-semibold uppercase tracking-wide text-[#003399]/55">Reservations</p><p className="font-bold">Student {policy.studentMaxActiveReservations} · Faculty {limitLabel(policy.facultyMaxActiveReservations)}</p></div>
-      <div><p className="text-xs font-semibold uppercase tracking-wide text-[#003399]/55">Renewals</p><p className="font-bold">{policy.maxRenewals} × {policy.renewalExtensionDays} day(s)</p></div>
-      <div><p className="text-xs font-semibold uppercase tracking-wide text-[#003399]/55">Long overdue</p><p className="font-bold">{policy.longOverdueAfterDays ?? 'Disabled'}</p></div>
-      <div className="sm:col-span-2"><p className="text-xs font-semibold uppercase tracking-wide text-[#003399]/55">Materials</p><p className="font-bold">{policy.materialRules.map((rule) => `${rule.materialType}: ${rule.isBorrowable ? 'borrowable' : 'denied'}`).join(' · ')}</p></div>
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 text-sm text-[#0b5ea2]">
+      <div><p className="text-xs font-semibold uppercase tracking-wide text-[#0b5ea2]/55">Student books</p><p className="font-bold">{policy.studentMaxActiveBooks}</p></div>
+      <div><p className="text-xs font-semibold uppercase tracking-wide text-[#0b5ea2]/55">Faculty books</p><p className="font-bold">{limitLabel(policy.facultyMaxActiveBooks)}</p></div>
+      <div><p className="text-xs font-semibold uppercase tracking-wide text-[#0b5ea2]/55">Loan period</p><p className="font-bold">{policy.borrowingDays} operating day(s) @ {policy.dueCutoffLabel}</p></div>
+      <div><p className="text-xs font-semibold uppercase tracking-wide text-[#0b5ea2]/55">Reservations</p><p className="font-bold">Student {policy.studentMaxActiveReservations} · Faculty {limitLabel(policy.facultyMaxActiveReservations)}</p></div>
+      <div><p className="text-xs font-semibold uppercase tracking-wide text-[#0b5ea2]/55">Renewals</p><p className="font-bold">{policy.maxRenewals} × {policy.renewalExtensionDays} day(s)</p></div>
+      <div><p className="text-xs font-semibold uppercase tracking-wide text-[#0b5ea2]/55">Long overdue</p><p className="font-bold">{policy.longOverdueAfterDays ?? 'Disabled'}</p></div>
+      <div className="sm:col-span-2"><p className="text-xs font-semibold uppercase tracking-wide text-[#0b5ea2]/55">Materials</p><p className="font-bold">{policy.materialRules.map((rule) => `${rule.materialType}: ${rule.isBorrowable ? 'borrowable' : 'denied'}`).join(' · ')}</p></div>
     </div>
   )
 }
@@ -147,46 +147,46 @@ export function AdminBorrowingPoliciesPage() {
           </div>
         )}
       />
-      {error ? <div role="alert" className="mb-4 flex gap-2 rounded-xl bg-[#FFF200] p-4 font-bold text-[#003399]"><AlertTriangle size={18} />{error}</div> : null}
-      {notice ? <div className="mb-4 rounded-xl border border-[#003399]/15 bg-[#003399]/5 p-4 font-semibold text-[#003399]">{notice}</div> : null}
+      {error ? <div role="alert" className="mb-4 flex gap-2 rounded-xl bg-[#FFF200] p-4 font-bold text-[#0b5ea2]"><AlertTriangle size={18} />{error}</div> : null}
+      {notice ? <div className="mb-4 rounded-xl border border-[#0b5ea2]/15 bg-[#0b5ea2]/5 p-4 font-semibold text-[#0b5ea2]">{notice}</div> : null}
 
       <SectionCard className="mb-5 p-5">
-        <div className="mb-4 flex items-center gap-2"><Shield size={18} className="text-[#003399]" /><h2 className="font-bold text-[#003399]">Active policy</h2>{data?.active ? <StatusBadge status={data.active.status} /> : null}</div>
+        <div className="mb-4 flex items-center gap-2"><Shield size={18} className="text-[#0b5ea2]" /><h2 className="font-bold text-[#0b5ea2]">Active policy</h2>{data?.active ? <StatusBadge status={data.active.status} /> : null}</div>
         {data?.active ? (
           <>
-            <p className="mb-3 text-sm text-[#003399]/70">{data.active.displayName} · Effective {data.active.effectiveOn} · {data.active.changeReason}</p>
+            <p className="mb-3 text-sm text-[#0b5ea2]/70">{data.active.displayName} · Effective {data.active.effectiveOn} · {data.active.changeReason}</p>
             <PolicySummary policy={data.active} />
           </>
-        ) : <p className="text-sm font-semibold text-[#003399]">No active policy is configured.</p>}
+        ) : <p className="text-sm font-semibold text-[#0b5ea2]">No active policy is configured.</p>}
       </SectionCard>
 
       <SectionCard className="mb-5 overflow-hidden">
-        <div className="border-b border-[#003399]/15 p-5 flex items-center gap-2"><CalendarClock size={18} className="text-[#003399]" /><h2 className="font-bold text-[#003399]">Scheduled versions</h2></div>
-        <div className="divide-y divide-[#003399]/10">
+        <div className="border-b border-[#0b5ea2]/15 p-5 flex items-center gap-2"><CalendarClock size={18} className="text-[#0b5ea2]" /><h2 className="font-bold text-[#0b5ea2]">Scheduled versions</h2></div>
+        <div className="divide-y divide-[#0b5ea2]/10">
           {data?.scheduled.length ? data.scheduled.map((policy) => (
             <div key={policy.versionId} className="p-5">
-              <div className="mb-2 flex flex-wrap items-center gap-2"><strong className="text-[#003399]">{policy.displayName}</strong><StatusBadge status={policy.status} /><span className="text-xs text-[#003399]/60">Effective {policy.effectiveOn}</span></div>
+              <div className="mb-2 flex flex-wrap items-center gap-2"><strong className="text-[#0b5ea2]">{policy.displayName}</strong><StatusBadge status={policy.status} /><span className="text-xs text-[#0b5ea2]/60">Effective {policy.effectiveOn}</span></div>
               <PolicySummary policy={policy} />
             </div>
-          )) : <p className="p-5 text-sm font-semibold text-[#003399]/70">No scheduled versions.</p>}
+          )) : <p className="p-5 text-sm font-semibold text-[#0b5ea2]/70">No scheduled versions.</p>}
         </div>
       </SectionCard>
 
       <SectionCard className="overflow-hidden">
-        <div className="border-b border-[#003399]/15 p-5 flex items-center gap-2"><ScrollText size={18} className="text-[#003399]" /><h2 className="font-bold text-[#003399]">Version history</h2></div>
+        <div className="border-b border-[#0b5ea2]/15 p-5 flex items-center gap-2"><ScrollText size={18} className="text-[#0b5ea2]" /><h2 className="font-bold text-[#0b5ea2]">Version history</h2></div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-left text-sm">
-            <thead className="bg-[#003399] text-white"><tr>{['Version', 'Status', 'Effective', 'Student limit', 'Loan days', 'Cutoff', 'Reason', 'Created'].map((label) => <th key={label} className="px-4 py-3">{label}</th>)}</tr></thead>
+            <thead className="bg-[#0b5ea2] text-white"><tr>{['Version', 'Status', 'Effective', 'Student limit', 'Loan days', 'Cutoff', 'Reason', 'Created'].map((label) => <th key={label} className="px-4 py-3">{label}</th>)}</tr></thead>
             <tbody>
               {data?.history.length ? data.history.map((policy) => (
-                <tr key={policy.versionId} className="border-b border-[#003399]/10">
-                  <td className="px-4 py-4 font-bold text-[#003399]">{policy.displayName}</td>
+                <tr key={policy.versionId} className="border-b border-[#0b5ea2]/10">
+                  <td className="px-4 py-4 font-bold text-[#0b5ea2]">{policy.displayName}</td>
                   <td className="px-4 py-4"><StatusBadge status={policy.status} /></td>
                   <td className="px-4 py-4">{policy.effectiveOn}</td>
                   <td className="px-4 py-4">{policy.studentMaxActiveBooks}</td>
                   <td className="px-4 py-4">{policy.borrowingDays}</td>
                   <td className="px-4 py-4">{policy.dueCutoffLabel}</td>
-                  <td className="max-w-xs px-4 py-4 text-[#003399]/75">{policy.changeReason}</td>
+                  <td className="max-w-xs px-4 py-4 text-[#0b5ea2]/75">{policy.changeReason}</td>
                   <td className="px-4 py-4 text-xs">{new Date(policy.createdAt).toLocaleString()}</td>
                 </tr>
               )) : <tr><td colSpan={8} className="p-12 text-center font-semibold">No policy versions yet.</td></tr>}
@@ -196,28 +196,28 @@ export function AdminBorrowingPoliciesPage() {
       </SectionCard>
 
       {showForm ? (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-[#003399]/75 p-4">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-[#0b5ea2]/75 p-4">
           <div className="mx-auto my-8 max-w-3xl rounded-2xl bg-white shadow-2xl">
-            <header className="border-b border-[#003399]/15 p-5">
-              <h2 className="font-display text-xl font-bold text-[#003399]">Publish new borrowing policy</h2>
-              <p className="mt-1 text-sm text-[#003399]/70">Published versions are permanent. Corrections require another version.</p>
+            <header className="border-b border-[#0b5ea2]/15 p-5">
+              <h2 className="font-display text-xl font-bold text-[#0b5ea2]">Publish new borrowing policy</h2>
+              <p className="mt-1 text-sm text-[#0b5ea2]/70">Published versions are permanent. Corrections require another version.</p>
             </header>
             <form onSubmit={publish} className="grid gap-4 p-5 sm:grid-cols-2">
-              <label className="text-sm font-bold text-[#003399]">Effective on<input required type="date" min={todayCampusDate()} value={draft.effectiveOn} onChange={(event) => setDraft({ ...draft, effectiveOn: event.target.value })} className={`${field} mt-1`} /></label>
-              <label className="text-sm font-bold text-[#003399]">Due cutoff<input required type="time" value={draft.dueTimeCutoff.slice(0, 5)} onChange={(event) => setDraft({ ...draft, dueTimeCutoff: event.target.value })} className={`${field} mt-1`} /></label>
-              <label className="text-sm font-bold text-[#003399]">Student max books<input required type="number" min={1} max={20} value={draft.studentMaxActiveBooks} onChange={(event) => setDraft({ ...draft, studentMaxActiveBooks: Number(event.target.value) })} className={`${field} mt-1`} /></label>
-              <label className="text-sm font-bold text-[#003399]">Faculty max books (blank = unlimited)<input type="number" min={1} max={100} value={draft.facultyMaxActiveBooks ?? ''} onChange={(event) => setDraft({ ...draft, facultyMaxActiveBooks: event.target.value === '' ? null : Number(event.target.value) })} className={`${field} mt-1`} /></label>
-              <label className="text-sm font-bold text-[#003399]">Borrowing days<input required type="number" min={1} max={60} value={draft.borrowingDays} onChange={(event) => setDraft({ ...draft, borrowingDays: Number(event.target.value) })} className={`${field} mt-1`} /></label>
-              <label className="text-sm font-bold text-[#003399]">Max renewals<input required type="number" min={0} max={10} value={draft.maxRenewals} onChange={(event) => setDraft({ ...draft, maxRenewals: Number(event.target.value) })} className={`${field} mt-1`} /></label>
-              <label className="text-sm font-bold text-[#003399]">Renewal extension days<input required type="number" min={1} max={60} value={draft.renewalExtensionDays} onChange={(event) => setDraft({ ...draft, renewalExtensionDays: Number(event.target.value) })} className={`${field} mt-1`} /></label>
-              <label className="text-sm font-bold text-[#003399]">Long overdue after days<input required type="number" min={1} max={365} value={draft.longOverdueAfterDays} onChange={(event) => setDraft({ ...draft, longOverdueAfterDays: Number(event.target.value) })} className={`${field} mt-1`} /></label>
-              <label className="text-sm font-bold text-[#003399]">Student max reservations<input required type="number" min={1} max={20} value={draft.studentMaxActiveReservations} onChange={(event) => setDraft({ ...draft, studentMaxActiveReservations: Number(event.target.value) })} className={`${field} mt-1`} /></label>
-              <label className="text-sm font-bold text-[#003399]">Faculty max reservations (blank = unlimited)<input type="number" min={1} max={100} value={draft.facultyMaxActiveReservations ?? ''} onChange={(event) => setDraft({ ...draft, facultyMaxActiveReservations: event.target.value === '' ? null : Number(event.target.value) })} className={`${field} mt-1`} /></label>
-              <label className="flex items-center gap-2 text-sm font-bold text-[#003399]"><input type="checkbox" checked={draft.blockRenewalIfOverdue} onChange={(event) => setDraft({ ...draft, blockRenewalIfOverdue: event.target.checked })} />Block renewal if overdue</label>
-              <label className="flex items-center gap-2 text-sm font-bold text-[#003399]"><input type="checkbox" checked={draft.blockRenewalIfUnpaidFines} onChange={(event) => setDraft({ ...draft, blockRenewalIfUnpaidFines: event.target.checked })} />Block renewal if unpaid fines</label>
-              <label className="flex items-center gap-2 text-sm font-bold text-[#003399] sm:col-span-2"><input type="checkbox" checked={draft.blockRenewalIfReserved} onChange={(event) => setDraft({ ...draft, blockRenewalIfReserved: event.target.checked })} />Block renewal if another user has an active reservation</label>
+              <label className="text-sm font-bold text-[#0b5ea2]">Effective on<input required type="date" min={todayCampusDate()} value={draft.effectiveOn} onChange={(event) => setDraft({ ...draft, effectiveOn: event.target.value })} className={`${field} mt-1`} /></label>
+              <label className="text-sm font-bold text-[#0b5ea2]">Due cutoff<input required type="time" value={draft.dueTimeCutoff.slice(0, 5)} onChange={(event) => setDraft({ ...draft, dueTimeCutoff: event.target.value })} className={`${field} mt-1`} /></label>
+              <label className="text-sm font-bold text-[#0b5ea2]">Student max books<input required type="number" min={1} max={20} value={draft.studentMaxActiveBooks} onChange={(event) => setDraft({ ...draft, studentMaxActiveBooks: Number(event.target.value) })} className={`${field} mt-1`} /></label>
+              <label className="text-sm font-bold text-[#0b5ea2]">Faculty max books (blank = unlimited)<input type="number" min={1} max={100} value={draft.facultyMaxActiveBooks ?? ''} onChange={(event) => setDraft({ ...draft, facultyMaxActiveBooks: event.target.value === '' ? null : Number(event.target.value) })} className={`${field} mt-1`} /></label>
+              <label className="text-sm font-bold text-[#0b5ea2]">Borrowing days<input required type="number" min={1} max={60} value={draft.borrowingDays} onChange={(event) => setDraft({ ...draft, borrowingDays: Number(event.target.value) })} className={`${field} mt-1`} /></label>
+              <label className="text-sm font-bold text-[#0b5ea2]">Max renewals<input required type="number" min={0} max={10} value={draft.maxRenewals} onChange={(event) => setDraft({ ...draft, maxRenewals: Number(event.target.value) })} className={`${field} mt-1`} /></label>
+              <label className="text-sm font-bold text-[#0b5ea2]">Renewal extension days<input required type="number" min={1} max={60} value={draft.renewalExtensionDays} onChange={(event) => setDraft({ ...draft, renewalExtensionDays: Number(event.target.value) })} className={`${field} mt-1`} /></label>
+              <label className="text-sm font-bold text-[#0b5ea2]">Long overdue after days<input required type="number" min={1} max={365} value={draft.longOverdueAfterDays} onChange={(event) => setDraft({ ...draft, longOverdueAfterDays: Number(event.target.value) })} className={`${field} mt-1`} /></label>
+              <label className="text-sm font-bold text-[#0b5ea2]">Student max reservations<input required type="number" min={1} max={20} value={draft.studentMaxActiveReservations} onChange={(event) => setDraft({ ...draft, studentMaxActiveReservations: Number(event.target.value) })} className={`${field} mt-1`} /></label>
+              <label className="text-sm font-bold text-[#0b5ea2]">Faculty max reservations (blank = unlimited)<input type="number" min={1} max={100} value={draft.facultyMaxActiveReservations ?? ''} onChange={(event) => setDraft({ ...draft, facultyMaxActiveReservations: event.target.value === '' ? null : Number(event.target.value) })} className={`${field} mt-1`} /></label>
+              <label className="flex items-center gap-2 text-sm font-bold text-[#0b5ea2]"><input type="checkbox" checked={draft.blockRenewalIfOverdue} onChange={(event) => setDraft({ ...draft, blockRenewalIfOverdue: event.target.checked })} />Block renewal if overdue</label>
+              <label className="flex items-center gap-2 text-sm font-bold text-[#0b5ea2]"><input type="checkbox" checked={draft.blockRenewalIfUnpaidFines} onChange={(event) => setDraft({ ...draft, blockRenewalIfUnpaidFines: event.target.checked })} />Block renewal if unpaid fines</label>
+              <label className="flex items-center gap-2 text-sm font-bold text-[#0b5ea2] sm:col-span-2"><input type="checkbox" checked={draft.blockRenewalIfReserved} onChange={(event) => setDraft({ ...draft, blockRenewalIfReserved: event.target.checked })} />Block renewal if another user has an active reservation</label>
               {draft.materialRules.map((rule, index) => (
-                <label key={rule.materialType} className="flex items-center gap-2 text-sm font-bold text-[#003399]">
+                <label key={rule.materialType} className="flex items-center gap-2 text-sm font-bold text-[#0b5ea2]">
                   <input
                     type="checkbox"
                     checked={rule.isBorrowable}
@@ -231,9 +231,9 @@ export function AdminBorrowingPoliciesPage() {
                   {rule.materialType} borrowable
                 </label>
               ))}
-              <label className="text-sm font-bold text-[#003399] sm:col-span-2">Change reason<textarea required minLength={10} maxLength={500} value={draft.changeReason} onChange={(event) => setDraft({ ...draft, changeReason: event.target.value })} className={`${field} mt-1 h-28 py-3`} placeholder="Explain why this policy version is being published" /></label>
+              <label className="text-sm font-bold text-[#0b5ea2] sm:col-span-2">Change reason<textarea required minLength={10} maxLength={500} value={draft.changeReason} onChange={(event) => setDraft({ ...draft, changeReason: event.target.value })} className={`${field} mt-1 h-28 py-3`} placeholder="Explain why this policy version is being published" /></label>
               {confirming ? (
-                <div className="rounded-xl bg-[#FFF200] p-4 text-sm font-semibold text-[#003399] sm:col-span-2">
+                <div className="rounded-xl bg-[#FFF200] p-4 text-sm font-semibold text-[#0b5ea2] sm:col-span-2">
                   <p className="mb-2">Confirm permanent publication. Changed fields:</p>
                   <ul className="list-disc space-y-1 pl-5">{changes.length ? changes.map((item) => <li key={item}>{item}</li>) : <li>No field differences from the active policy (same values, new version).</li>}</ul>
                 </div>

@@ -14,7 +14,8 @@
     "build": "npm run build -w @sti-library/api && npm run build -w @sti-library/web",
     "test": "npm test -w @sti-library/api && npm test -w @sti-library/web",
     "typecheck": "npm run typecheck -w @sti-library/api && npm run typecheck -w @sti-library/web",
-    "coverage": "npm run test:coverage -w @sti-library/api && npm run test:coverage -w @sti-library/web"
+    "coverage": "npm run test:coverage -w @sti-library/api && npm run test:coverage -w @sti-library/web",
+    "dev:payments": "npm run build && node apps/api/scripts/verify-payment-app.mjs --local-preview"
   },
   "devDependencies": {
     "concurrently": "latest",

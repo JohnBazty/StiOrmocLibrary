@@ -10,8 +10,8 @@ import {guardCounterPayment} from '../src/modules/payments/payments.guard.ts'
 
 export async function verifyPaymentOperations({pool,owner,service,gateway,actor,config,provider,clock,sessionFor,finish,event}){
   await owner.query(`CREATE TABLE academic_terms(academic_term_id bigint,academic_year text,term_name text,starts_on date,ends_on date);
-    CREATE TABLE library_job_runs(job_name text,last_success_at timestamp,last_error text);
-    INSERT INTO library_job_runs VALUES('operational-minute',now(),NULL);
+    CREATE TABLE scheduled_job_state(job_name text,last_success_at timestamp,last_error_message text);
+    INSERT INTO scheduled_job_state VALUES('payment-recovery',now(),NULL);
     INSERT INTO print_requests(request_id,user_id,calculated_cost,payment_status,job_status) VALUES(70,1,50,'Unpaid','Pending'),(80,1,50,'Unpaid','Pending');`)
   const older=await sessionFor('Printing',80)
   await gateway.cancel(actor,older.quoted.paymentId)
@@ -39,7 +39,7 @@ export async function verifyPaymentOperations({pool,owner,service,gateway,actor,
   await operations.recover()
   assert.equal((await service.read(actor,pending.quoted.paymentId)).state,'Succeeded')
   const status=await operations.status(librarian)
-  assert.equal(status.checkoutEnabled,false);assert.equal(status.runner,'operational-minute')
+  assert.equal(status.checkoutEnabled,false);assert.equal(status.runner,'payment-recovery')
   await assert.rejects(operations.status(actor),error=>error.status===403)
   const settlement={reference:'TEST-SETTLEMENT-ONLY',processingCost:'1.50',settledAt:clock().toISOString()}
   await operations.settlement(librarian,pending.quoted.paymentId,settlement)

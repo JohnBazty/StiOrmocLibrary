@@ -10,6 +10,15 @@
 
 ## Current evidence and boundary
 
+**Latest local continuation (November 12):** use the
+[local integration record](2026-11-11-local-payment-integration.md). The active
+localhost preview now uses a dedicated sample database with Xendit Test checkout
+enabled, the restored deployed theme and cookie authentication. Start it with
+`npm run dev:payments` from `StiOrmocLibrary-main-sync`. The older ordinary-preview
+entry below is historical and must not replace that command. Payment migrations
+are now unapplied drafts 038–041; live sign-in 036 remains unchanged. Browser,
+external callback and actual completed hosted capture remain separate gates.
+
 The fresh QA chat initially returned **No browser is available**. A later continuation successfully used the supported in-app browser for the component checks recorded below. On the next turn, opening the full isolated application returned **Local browser access is unavailable for this chat**, including the supported troubleshooting call. Browser access is intermittent; do not repeat extension installation instructions or infer that the user has left a setting off. No alternate browser driver was used.
 
 The saved `output/xendit-sandbox/phase67-hosted-payment.json` says `Not completed; session canceled or terminal`, with a null checkout URL and `publicCallback: not tested`. It does not contain a provider session ID. This is an incomplete test record, not evidence of verified capture, a local receipt or a separately rechecked provider terminal status. Preserve it. No new hosted session was created in this continuation. If a later retry is required, first reconcile its provider history through authorized access and retain the original audit; do not delete it to bypass the script's rerun guard.
@@ -19,6 +28,43 @@ The recorded 689 application tests, typecheck, build, coverage and prior inspect
 Migration state stays: live latest **032**, pending **033–037**, next unused **038**. No live database, applied migration source, production configuration, hosting or real funds are touched.
 
 ## How: local screen inspection
+
+### Latest ordinary localhost preview — owner correction, November 11
+
+The owner clarified that localhost must show the newest local work, even while
+production remains on an older release. Both local servers now run the payment
+branch `feat/xendit-sandbox-setup` at `3d16f04` from
+`C:/Users/JOHN/Documents/SSL/StiOrmocLibrary-main-sync`: web port 5173 and API port
+4000. The older checkout and unrelated changes remain preserved. No push,
+deployment or migration was performed.
+
+The API reads the existing original checkout's configuration through Node's
+`--env-file` runtime option; no credentials file was copied or created. This
+ordinary preview retains the existing database. Enrollment and remembered-device
+availability remain enabled. Xendit checkout remains disabled for this database;
+the loopback-only sandbox guard was not removed. Showing the Payments page does
+not certify or enable a real checkout. Student/Faculty navigation includes
+Payments; a Pay now button requires an eligible unpaid charge and an enabled,
+configured isolated sandbox.
+
+To restart after stopping these local servers, use two terminals:
+
+```powershell
+# Terminal 1
+Set-Location C:\Users\JOHN\Documents\SSL\StiOrmocLibrary-main-sync\apps\api
+node --env-file=C:/Users/JOHN/Documents/SSL/StiOrmocLibrary/apps/api/.env src/server.ts
+
+# Terminal 2
+Set-Location C:\Users\JOHN\Documents\SSL\StiOrmocLibrary-main-sync
+npm run dev -w @sti-library/web
+```
+
+Open `http://localhost:5173/`. Home, login, staff entry, the protected Payments SPA
+entry and API health passed HTTP checks. Served modules contain the actual new
+payment routes, payment center and navigation from this checkout. Eight payment
+and navigation tests passed. Authenticated visual inspection and real provider
+checkout were not performed during this server switch. Use the isolated
+application instructions below for synthetic payment acceptance.
 
 The UI harness runs actual React components with synthetic API responses. It provides no real authentication, provider capture, runner cadence, external webhook delivery or complete application acceptance. Its status and settlement actions deliberately simulate outcomes.
 
