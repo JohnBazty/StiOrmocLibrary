@@ -90,6 +90,7 @@ The parked WIP (`db7e90c`) was not reused: it used MySQL syntax, replaced John's
 
 | Date | Change |
 | --- | --- |
+| 2026-11-11 | Localhost browser check (not a Vercel preview) on live Supabase: checks 1-9 pass, 10 pass with the blocked-routes step not observed live; minor wording issues noted in `sign-in-hardening-preview-check.md`. Vercel preview check still with John. |
 | 2026-11-11 | `036` applied to live Supabase (column `NOT NULL DEFAULT false`, all 9 rows `false`, `schema_migrations` checksum `3641915f…`). Browser check not run: no Vercel preview exists for this branch (repo deploys by CLI, not Git). |
 | 2026-11-11 | Gate 1 approved. `036` checked on a throwaway Postgres; reviews found nothing HIGH; sign-out, new-tab change-password and message fixes with tests; open items listed for Ethan. |
 | 2026-11-11 | Resumed: branch already on current `main`; migration renamed to `036` (`035` = audit RLS fix); typecheck, API 399/399 and web 281/281 pass on fakes; status back to `planned` for gate 1. |

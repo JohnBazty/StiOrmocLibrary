@@ -36,7 +36,28 @@ Use **test accounts only**: one Student and one Staff/Admin. Never use a real st
 | 9 | Temporary password | As Admin, set a temporary password for the test Student | The password is shown once |
 | 10 | Forced change | Sign in as the test Student with the temporary password | A "change your password" form appears; nothing else works until the password is changed; after changing, the dashboard opens |
 
-## Results (fill in)
+## Results: localhost run (not a Vercel preview)
+
+URL: `http://localhost:5173` (web) + `http://localhost:4000` (API), branch `feat/sign-in-hardening` at `df9bc75` · Database used: live Supabase · Tested by Ethan with Claude in the desktop browser pane, 2026-11-11 · `/api/health`: schema ready. A POST to `/api/v1/auth/change-password` with no sign-in answered "Sign in to continue." (this branch).
+
+Accounts: Ethan's own Student account (Ethan's choice, no separate test Student) and Ethan's Librarian account. Librarian holds `accounts.manage` for Student accounts, so it did the unlock and temporary-password steps (no Admin needed).
+
+| # | Pass / Fail | Note |
+|---|---|---|
+| 1 | Pass | Student dashboard opened. |
+| 2 | Pass | Librarian sign-in at `/staff` opened the Library Admin workspace (`/librarian/dashboard`). |
+| 3 | Pass | Session storage holds one key, `smartlib_auth_session`, with `session` (decoded claims only), `csrfToken`, `mustChangePassword`; no JWT string. `document.cookie` is empty (sign-in cookie is httpOnly), yet `GET /api/v1/auth/me` with no Bearer header returned 200. A PATCH without `X-CSRF-Token` was refused with 403. |
+| 4 | Pass | Profile save sent `PATCH /api/v1/profile/me` with CSRF and passed sign-in and CSRF; the server answered 422 "Change at least one profile field before saving." because nothing changed. App `POST /api/v1/auth/activity` calls returned 200. |
+| 5 | Pass | Second tab stayed signed in; its CSRF token was restored and a PATCH there reached validation (422), not 401/403. |
+| 6 | Pass | After sign-out, reload in both tabs went to `/login`, `/auth/me` answered 401 "Sign in to continue.". Minor: the login page then shows "Your account cannot open that page. Please sign in with an authorized account." instead of a signed-out message. |
+| 7 | Pass | Attempts 1-4 said "Wrong credentials." (4th: "1 attempts remaining.", grammar slip); 5th said "Too many wrong attempts. Try again in 15 minutes."; the correct password then got "Sign-in is paused. Try again in 15 minutes." |
+| 8 | Pass | Librarian "Unlock sign-in" with an audit reason showed "Sign-in unlocked. The account can try again now."; the Student signed in at once. |
+| 9 | Pass | "Set temporary password" with an audit reason showed the password once under "Temporary password (shown once)". |
+| 10 | Pass (partial) | Sign-in with the temporary password opened the change-password form; after the change the page said "Password changed. Sign in with your new password." (by design, plan C3) and the new password opened the dashboard. Not observed in the browser: other routes blocked while the form is up (the password was changed before that probe; covered by `sign-in-hardening.routes.test.ts`). |
+
+Setup note: the desktop preview launcher sets `PORT=5173` for the whole `npm run dev`, which overrides `apps/api/.env` and stops the API from taking 4000. A `dev-api4000` launch entry (`set PORT=4000&& npm run dev`) was used locally; not committed.
+
+## Results for a Vercel preview (fill in)
 
 Preview URL: _____ · Deployment id: _____ · Database used: _____ · Tested by / date: _____
 
