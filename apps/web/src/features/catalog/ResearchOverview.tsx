@@ -4,6 +4,7 @@ import { fetchResearchOverview } from './research-catalog-api'
 import { buildApaResearchReference } from './research-citation'
 import type { ResearchCatalogItem } from './research-catalog-types'
 import { CatalogDetailsPanel } from './CatalogDetailsPanel'
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape'
 
 export function ResearchOverview({ researchId, onClose }: { researchId: number; onClose: () => void }) {
   const [paper, setPaper] = useState<ResearchCatalogItem | null>(null)
@@ -12,6 +13,7 @@ export function ResearchOverview({ researchId, onClose }: { researchId: number; 
   const [errorMessage, setErrorMessage] = useState('')
   const [citationVisible, setCitationVisible] = useState(false)
   const [copied, setCopied] = useState(false)
+  useCloseOnEscape(onClose)
 
   useEffect(() => {
     const controller = new AbortController()

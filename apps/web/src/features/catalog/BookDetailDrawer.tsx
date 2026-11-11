@@ -5,11 +5,13 @@ import { AssetCodeCanvas } from './AssetCodeCanvas'
 import { fetchBookOverview, fetchCatalogCopyAsset } from './book-catalog-api'
 import type { BookCatalogItem, CatalogCopyAsset } from './book-catalog-types'
 import { BookCoverThumbnail } from './BookCoverThumbnail'
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape'
 
 export function BookDetailDrawer({ titleId, barcode, onClose }: { titleId: number; barcode: string | null; onClose: () => void }) {
   const [book, setBook] = useState<BookCatalogItem | null>(null)
   const [asset, setAsset] = useState<CatalogCopyAsset | null>(null)
   const [error, setError] = useState('')
+  useCloseOnEscape(onClose)
   useEffect(() => {
     const controller = new AbortController()
     setBook(null); setAsset(null); setError('')
