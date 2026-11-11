@@ -44,7 +44,7 @@ test('five wrong passwords pause sign-in for 15 minutes with the remaining-attem
   assert.deepEqual(replies.map(error => [error?.status, error?.code]), Array(4).fill([401, 'INVALID_CREDENTIALS']))
   assert.equal(replies[0]?.message, 'Wrong credentials.')
   assert.equal(replies[1]?.message, 'Wrong credentials. 3 attempts remaining.')
-  assert.equal(replies[3]?.message, 'Wrong credentials. 1 attempts remaining.')
+  assert.equal(replies[3]?.message, 'Wrong credentials. 1 attempt remaining.')
   const fifth = await attempt(service)
   assert.equal(fifth?.status, 429)
   assert.equal(fifth?.code, 'LOGIN_PAUSED')

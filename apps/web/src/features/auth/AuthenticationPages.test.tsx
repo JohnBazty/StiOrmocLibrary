@@ -15,6 +15,13 @@ describe('authentication pages', () => {
     render(<MemoryRouter initialEntries={['/register?catalogTitleId=42']}><RegistrationPage /></MemoryRouter>)
     expect(screen.getByRole('link',{name:'Sign In Here'}).getAttribute('href')).toBe('/login?catalogTitleId=42')
   })
+  it('asks a signed-out visitor sent from a protected page to sign in, not to use another account', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 401 })))
+    render(<MemoryRouter initialEntries={[{ pathname: '/login', state: { deniedPath: '/faculty/dashboard' } }]}><ThemeProvider><LoginPage /></ThemeProvider></MemoryRouter>)
+    expect(await screen.findByText('Sign in to continue.')).toBeTruthy()
+    expect(screen.queryByText(/cannot open that page/)).toBeNull()
+    vi.unstubAllGlobals()
+  })
   it('shows school-ID login without public personnel links with a registration link', () => {
     render(<MemoryRouter><ThemeProvider><LoginPage /></ThemeProvider></MemoryRouter>)
     expect(screen.queryByLabelText('Login as')).toBeNull()

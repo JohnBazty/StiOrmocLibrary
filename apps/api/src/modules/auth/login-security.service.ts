@@ -156,7 +156,7 @@ export function createLoginSecurityService(database: Pool = db,
           const lock = count >= ACCOUNT_LOCK_THRESHOLD
           await c.execute('UPDATE login_attempt_windows SET failed_count=?,locked_until=? WHERE identifier_hash=?', [count, lock ? new Date(timestamp + ACCOUNT_LOCK_MS) : null, identifier])
           const remaining = Math.max(0, ACCOUNT_LOCK_THRESHOLD - count)
-          return { error: new HttpError(lock ? 429 : 401, lock ? 'LOGIN_PAUSED' : 'INVALID_CREDENTIALS', lock ? `Too many wrong attempts. Try again in ${LOCK_MINUTES} minutes.` : 'Wrong credentials.' + (remaining <= 3 ? ` ${remaining} attempts remaining.` : '')) }
+          return { error: new HttpError(lock ? 429 : 401, lock ? 'LOGIN_PAUSED' : 'INVALID_CREDENTIALS', lock ? `Too many wrong attempts. Try again in ${LOCK_MINUTES} minutes.` : 'Wrong credentials.' + (remaining <= 3 ? ` ${remaining} ${remaining === 1 ? 'attempt' : 'attempts'} remaining.` : '')) }
         }
         await c.execute('UPDATE login_attempt_windows SET failed_count=0,locked_until=NULL WHERE identifier_hash=?', [identifier])
         if (!['Student', 'Faculty'].includes(verified.role)) return { data: await complete(c, verified, null, { browserToken }) }

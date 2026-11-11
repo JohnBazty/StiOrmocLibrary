@@ -55,7 +55,8 @@ export function LoginPage({ popup = false }: { popup?: boolean }) {
     } else if (state?.sessionExpired) { setMessage('Your sign-in has ended. Sign in to continue.')
     } else if (state?.passwordChanged) { setMessageError(false); setMessage(state.passwordChanged)
     } else if (state?.deniedPath) {
-      setMessage('Your account cannot open that page. Please sign in with an authorized account.')
+      // ProtectedRoute sends deniedPath only when nobody is signed in (wrong roles go to their own dashboard).
+      setMessage('Sign in to continue.')
     }
     if (claims || state?.sessionExpired || state?.rememberedExpired) return
     let active = true
