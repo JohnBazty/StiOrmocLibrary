@@ -45,6 +45,7 @@ import { AdminFinesPage } from './features/fines/AdminFinesPage'
 import { StudentFinesPage } from './features/fines/StudentFinesPage'
 import { PaymentResultPage } from './features/payments/PaymentResultPage'
 import { AdminPaymentsPage } from './features/payments/AdminPaymentsPage'
+import { UserPaymentsPage } from './features/payments/UserPaymentsPage'
 import { PublicCatalogPage } from './features/catalog/PublicCatalogPage'
 import { BorrowingPoliciesArchivedPage } from './features/borrowing-policies/BorrowingPoliciesArchivedPage'
 import { CatalogMaintenancePage } from './features/catalog/CatalogMaintenancePage'
@@ -86,6 +87,7 @@ export default function App() {
           <Route path="/student/attendance" element={<UserAttendancePage />} />
           <Route path="/student/notifications" element={<NotificationCenterPage />} />
           <Route path="/student/fines" element={<StudentFinesPage />} />
+          <Route path="/student/payments" element={<UserPaymentsPage />} />
           <Route path="/student/clearance" element={<StudentClearancePage />} />
           <Route path="/student/profile" element={<ProfileAvatarPage />} />
         </Route>
@@ -160,6 +162,7 @@ export default function App() {
           <Route path="/faculty/attendance" element={<UserAttendancePage />} />
           <Route path="/faculty/notifications" element={<NotificationCenterPage />} />
           <Route path="/faculty/fines" element={<StudentFinesPage />} />
+          <Route path="/faculty/payments" element={<UserPaymentsPage />} />
           <Route path="/faculty/printing" element={<StudentPrintingPage/>}/>
           <Route path="/faculty/clearance" element={<StudentClearancePage />} />
           <Route path="/faculty/profile" element={<ProfileAvatarPage />} />

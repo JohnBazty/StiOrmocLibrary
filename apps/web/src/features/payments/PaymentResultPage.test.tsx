@@ -1,4 +1,4 @@
-import {cleanup,render,screen,waitFor} from '@testing-library/react'
+import {act,cleanup,render,screen,waitFor} from '@testing-library/react'
 import {MemoryRouter} from 'react-router-dom'
 import {afterEach,expect,it,vi} from 'vitest'
 import {PaymentResultPage} from './PaymentResultPage'
@@ -6,7 +6,16 @@ const api=vi.hoisted(()=>({check:vi.fn(),read:vi.fn()}))
 vi.mock('./payments-api',async(original)=>({...await original<typeof import('./payments-api')>(),paymentsApi:api}))
 const id='00000000-0000-4000-8000-000000000001'
 const payment={paymentId:id,kind:'Fine',targetId:1,principalCentavos:4000,feeCentavos:140,totalCentavos:4140,remainingCentavos:6000,channelCode:'GCASH',state:'Review',isSample:true,checkoutUrl:null,receiptId:null}
-afterEach(()=>{cleanup();vi.clearAllMocks()})
+afterEach(()=>{cleanup();vi.clearAllMocks();vi.useRealTimers()})
+it('refreshes a pending return automatically and stops once the server verifies payment',async()=>{
+  vi.useFakeTimers()
+  api.check.mockResolvedValueOnce({...payment,state:'Active'}).mockResolvedValue({...payment,state:'Succeeded',remainingCentavos:0})
+  await act(async()=>{render(<MemoryRouter initialEntries={['/payments/result?payment='+id]}><PaymentResultPage/></MemoryRouter>)})
+  await act(async()=>{await vi.advanceTimersByTimeAsync(15000)})
+  expect(screen.getByText('Paid')).toBeTruthy()
+  await act(async()=>{await vi.advanceTimersByTimeAsync(60000)})
+  expect(api.check).toHaveBeenCalledTimes(2)
+})
 it('a claimed success in the return URL never overrides saved server status',async()=>{
   api.check.mockResolvedValue(payment)
   render(<MemoryRouter initialEntries={['/payments/result?payment='+id+'&status=paid']}><PaymentResultPage/></MemoryRouter>)

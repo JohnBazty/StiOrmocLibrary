@@ -53,6 +53,7 @@ const userNav = (role: 'student' | 'faculty'): NavItem[] => {
     { label: 'Requests & reservations', to: `${prefix}/reservations`, icon: BookMarked },
     { label: 'My books', to: `${prefix}/my-books`, icon: LibraryBig },
     { label: 'Printing service', to: `${prefix}/printing`, icon: Printer },
+    { label: 'Payments', to: `${prefix}/payments`, icon: CircleDollarSign },
     { label: 'QR attendance', to: `${prefix}/attendance`, icon: QrCode },
     { label: 'Notifications', to: `${prefix}/notifications`, icon: Bell, section: 'My account' },
     { label: 'Fines', to: `${prefix}/fines`, icon: CircleDollarSign },

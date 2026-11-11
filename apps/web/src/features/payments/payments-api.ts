@@ -33,6 +33,7 @@ async function request<T>(path:string,body?:unknown) {
 }
 const base='user/payments'
 export const paymentsApi={
+  mine:(view:'pending'|'history',page=1)=>request<{enabled:boolean;items:Payment[];pagination:{page:number;limit:number;total:number}}>(base+'?'+new URLSearchParams({view,page:String(page)})),
   options:(kind:PaymentKind,targetId:number)=>request<PaymentOptions>(base+'/options?'+new URLSearchParams({kind,targetId:String(targetId)})),
   quote:(input:{kind:PaymentKind;targetId:number;channelCode:string;amount?:string})=>request<Payment>(base+'/quote',input),
   checkout:(quoteId:string,requestKey:string)=>request<Payment>(base+'/checkout',{quoteId,requestKey}),

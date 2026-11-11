@@ -39,6 +39,7 @@ The first command uses the existing ignored local tool installation and private 
 | Fine payment records | `http://127.0.0.1:5174/payment-qa.html?view=reports&report=payments` |
 | Printing payment records | `http://127.0.0.1:5174/payment-qa.html?view=reports&report=printRevenue` |
 | Borrower fines / printing / result | Same base page with `view=fines`, `view=printing` or `view=result` |
+| Borrower payment center | `http://127.0.0.1:5174/payment-qa.html?view=payments` |
 
 Report selection now serves its matching generated JSON. Unsupported report kinds return an explicit 400. The harness does not implement report filters, pagination or export downloads against a database; those interactions must pass in the full isolated app. The administrative link to the normal reports route is also a full-app check.
 
@@ -79,6 +80,8 @@ This is a local application-required schema, not a checksum-matched replica of S
 Passed: healthy schema and API, all four sign-ins, anonymous/Student/Staff restrictions, other-borrower printing ownership denial, Librarian recovery access and all three real report reads/CSV/PDF exports. A PHP 40 cash payment left PHP 60, same-key retry kept one receipt, another borrower was forbidden from that receipt and its owner downloaded the PDF. Rendered receipt/report PDFs were visually inspected; optional renderer font substitutions did not show clipped or missing content. See ignored `phase7-app-schema.json`, `phase7-app-acceptance.json` and local worker observations for actual timestamps. Browser inspection of these full routes remains blocked by the renewed connection failure. Public callback delivery, deployed scheduler cadence, actual sandbox capture and human/device acceptance remain open.
 
 Final cadence run: 19:48:38, 19:49:38, 19:50:38 and 19:51:39 Asia/Manila on 2026-11-11. The fourth followed a stop/restart of the same worker; zero recorded failures, roughly 60–61-second gaps. `stop()` now awaits its active operation before pool closure. Confirmed loopback listeners 4174/47146/55438/47145/5174 stopped and exact temporary HTML/TSX/private code files removed. Regression **412 API + 278 web = 690**, typecheck, build, fixture HTTP regression and syntax/diff checks passed. Existing bundle-size advisory remains. A later browser inventory retry still returned no browser connection; no settings changes or new provider session were attempted.
+
+Borrower-center continuation: full app acceptance also exercises an owner QR quote/prepare, scoped pending/terminal lists, provider-off historical reads and cancellation before provider creation; no provider money is fabricated. QRPH capture/duplicate confirmation is tested separately with the controlled provider. Current regression is 701 tests. Build first, then run the full-app verifier; do not serve its production assets while the build replaces them. Browser visual and actual hosted QR/callback gates remain pending.
 
 ## Full isolated application setup to complete locally before exposure approval
 

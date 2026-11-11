@@ -1,5 +1,5 @@
 import { useCallback,useEffect,useId,useRef,useState } from 'react'
-import { CreditCard,RefreshCw,X } from 'lucide-react'
+import { CreditCard,QrCode,RefreshCw,ShieldCheck,X } from 'lucide-react'
 import { Button } from '../../components/ui'
 import { downloadPaymentRecord,paymentMoney,paymentsApi,paymentStatus,providerCheckout,type Payment,type PaymentKind,type PaymentOptions } from './payments-api'
 
@@ -20,7 +20,7 @@ export function PaymentStatusPanel({payment,onChange,onUpdated}:{payment:Payment
   const [busy,setBusy]=useState(false),[error,setError]=useState('')
   async function action(run:()=>Promise<Payment|void>){if(busy)return;setBusy(true);setError('');try{const result=await run();if(result){onChange(result);if(result.state==='Succeeded')onUpdated?.()}}catch(error){setError(message(error))}finally{setBusy(false)}}
   const closed=['Succeeded','Expired','Cancelled'].includes(payment.state)
-  return <div className="space-y-3 rounded-xl border border-slate-200 p-4 text-sm dark:border-white/20" aria-live="polite">
+  return <div className={'space-y-3 rounded-xl border p-4 text-sm '+(payment.state==='Succeeded'?'border-emerald-200 bg-emerald-50/60 dark:border-emerald-400/25 dark:bg-emerald-400/10':'border-slate-200 bg-slate-50/60 dark:border-white/20 dark:bg-white/5')} aria-live="polite">
     <p className={`text-base font-bold ${payment.state==='Succeeded'?'text-emerald-700 dark:text-emerald-300':''}`}>{paymentStatus(payment)}</p>
     {payment.state==='Review'?<p>The library needs to check this payment. Please do not pay again until it is resolved.</p>:null}
     {payment.cancellationPending?<p>Your payment stays reserved until Xendit confirms cancellation. Wait before paying cash.</p>:null}
@@ -71,21 +71,22 @@ function PaymentReview({kind,targetId,title,options,onClose,onPayment}:{kind:Pay
         <label className="flex min-h-11 items-center gap-3"><input type="radio" name="amount-choice" checked={part} onChange={()=>setPart(true)} disabled={busy}/>Pay part of the balance</label>
         {part?<label className="block">Amount to pay<input aria-label="Amount to pay" className={field+' mt-2'} inputMode="decimal" value={amount} onChange={event=>setAmount(event.target.value)} disabled={busy}/><span className="mt-2 block text-sm opacity-70">Up to {paymentMoney(options.balanceCentavos)}. Fees are added separately.</span>{amount&&!validAmount?<span role="alert" className="block text-sm text-red-700 dark:text-red-300">Enter an amount within your balance, with up to two decimal places.</span>:null}</label>:null}
       </fieldset>:null}
-      <label className="block font-semibold">Payment method<select className={field+' mt-2'} value={channel} onChange={event=>setChannel(event.target.value)} disabled={busy}>{options.methods.map(method=><option key={method.channelCode} value={method.channelCode}>{method.displayName}</option>)}</select></label>
+      <label className="block font-semibold">Payment method<select className={field+' mt-2'} value={channel} onChange={event=>setChannel(event.target.value)} disabled={busy}>{options.methods.map(method=><option key={method.channelCode} value={method.channelCode}>{method.channelCode==='QRPH'?'Scan QR · QRPh':method.displayName}</option>)}</select></label>
+      {channel==='QRPH'?<div className="space-y-2 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-950 dark:border-blue-300/25 dark:bg-blue-400/10 dark:text-blue-100"><p className="flex items-center gap-2 font-semibold"><QrCode size={20} aria-hidden="true"/>Scan the payment QR in secure checkout</p><p>Open your bank or wallet app, scan the QR, and check the merchant and total before confirming. Each payment has its own QR.</p><p>Using the same phone? Choose a wallet method that opens its app, or use QR image import only if your wallet supports it.</p></div>:null}
       {selected?<p className="text-sm opacity-70">Total including fees must be between {paymentMoney(selected.minTotalCentavos)} and {paymentMoney(selected.maxTotalCentavos)}.</p>:null}
       {quote?<PaymentSummary payment={quote}/>:validAmount?<p role="status" className="text-sm">Calculating your payment…</p>:null}
       {error?<div role="alert" className="auth-error rounded-xl p-3"><p>{error}</p><button type="button" disabled={busy} className="mt-2 min-h-11 font-semibold underline" onClick={()=>setRetry(value=>value+1)}>Try again</button></div>:null}
-      <p className="text-sm opacity-70">Xendit handles your payment details. Your balance changes after payment is verified.</p>
-      <Button className="min-h-12 w-full" disabled={!quote||busy||!validAmount} onClick={()=>void checkout()}><CreditCard size={18}/>{busy?'Opening secure checkout…':'Continue to Xendit'}</Button>
+      <p className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300"><ShieldCheck size={18} className="shrink-0" aria-hidden="true"/>Xendit handles your payment details. Your balance changes after payment is verified.</p>
+      <Button className="min-h-12 w-full" disabled={!quote||busy||!validAmount} onClick={()=>void checkout()}>{channel==='QRPH'?<QrCode size={18}/>:<CreditCard size={18}/>} {busy?'Opening secure checkout…':channel==='QRPH'?'Continue to QR payment':'Continue to Xendit'}</Button>
     </div>
   </dialog>
 }
 
-export function PaymentAction({kind,targetId,title,onUpdated,allowNew=true}:{kind:PaymentKind;targetId:number;title:string;onUpdated?:()=>void;allowNew?:boolean}) {
+export function PaymentAction({kind,targetId,title,onUpdated,allowNew=true,refreshKey=0}:{kind:PaymentKind;targetId:number;title:string;onUpdated?:()=>void;allowNew?:boolean;refreshKey?:number}) {
   const [options,setOptions]=useState<PaymentOptions|null>(null),[error,setError]=useState(''),[open,setOpen]=useState(false),[cash,setCash]=useState(false)
   const [payment,setPayment]=useState<Payment|null>(null)
   const load=useCallback(async()=>{try{const next=await paymentsApi.options(kind,targetId);setOptions(next);setPayment(next.active);setError('')}catch(error){setError(message(error))}},[kind,targetId])
-  useEffect(()=>{let mounted=true;void paymentsApi.options(kind,targetId).then(next=>{if(mounted){setOptions(next);setPayment(next.active)}}).catch(error=>{if(mounted)setError(message(error))});return()=>{mounted=false}},[kind,targetId])
+  useEffect(()=>{let mounted=true;void paymentsApi.options(kind,targetId).then(next=>{if(mounted){setOptions(next);setPayment(next.active);setError('')}}).catch(error=>{if(mounted)setError(message(error))});return()=>{mounted=false}},[kind,targetId,refreshKey])
   const closed=payment&&['Succeeded','Expired','Cancelled'].includes(payment.state)
   const canStart=allowNew&&!(payment?.state==='Succeeded'&&payment.remainingCentavos===0)
   function changed(next:Payment){setPayment(next);if(['Succeeded','Expired','Cancelled'].includes(next.state)){
@@ -94,7 +95,7 @@ export function PaymentAction({kind,targetId,title,onUpdated,allowNew=true}:{kin
   return <div className="mt-3 min-w-0 space-y-3">
     {payment?<PaymentStatusPanel payment={payment} onChange={changed} onUpdated={onUpdated}/>:null}
     {canStart&&(!payment||closed)?<div className="flex flex-wrap gap-2">
-      {options?.enabled&&options.paymentAllowed&&options.methods.length?<Button className="min-h-11" onClick={()=>setOpen(true)}>Pay online</Button>:null}
+      {options?.enabled&&options.paymentAllowed&&options.methods.length?<Button className="min-h-12" onClick={()=>setOpen(true)}><CreditCard size={17}/>Pay now</Button>:null}
       <Button variant="secondary" className="min-h-11" onClick={()=>setCash(value=>!value)}>Pay cash at library</Button>
       {closed?<Button variant="ghost" className="min-h-11" onClick={()=>void load()}>Review remaining balance</Button>:null}
     </div>:null}

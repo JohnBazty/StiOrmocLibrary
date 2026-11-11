@@ -18,6 +18,7 @@ export function createPaymentsRouters(service: ReturnType<typeof createPaymentsS
     message:{success:false,code:'PAYMENT_RATE_LIMIT',message:'Wait a moment before reviewing another payment.'},
   })
   user.use(requireJwtRoles('Student','Faculty'),requireCsrfForStateChanges)
+  user.get('/',controller.userList)
   user.get('/options',controller.options)
   user.post('/quote',writes,controller.quote)
   user.post('/checkout',writes,controller.prepare)

@@ -17,8 +17,9 @@ const settlements=new Map()
 let stopRun
 api.post('/qa/stop',(_request,response)=>{reply(response,{stopping:true});setTimeout(()=>stopRun?.(),25)})
 api.get('/qa/reset',(request,response)=>{payment={...payment,state:request.query.state??'Quoted',cancellationPending:false,receiptId:null};reply(response,{reset:true})})
+api.get('/api/v1/user/payments',(request,response)=>{const states=request.query.view==='history'?['Succeeded','Cancelled','Expired']:['Prepared','Creating','Active','Review'];const items=states.includes(payment.state)?[payment]:[];reply(response,{enabled:true,items,pagination:{page:1,limit:25,total:items.length}})})
 api.get('/api/v1/user/payments/options',(request,response)=>reply(response,{enabled:true,isSample:true,paymentAllowed:true,balanceCentavos:request.query.kind==='Printing'?5000:10000,
-  methods:[{channelCode:'GCASH',displayName:'GCash',minTotalCentavos:100,maxTotalCentavos:1000000},{channelCode:'CARDS',displayName:'Cards',minTotalCentavos:2000,maxTotalCentavos:10000000}],
+  methods:[{channelCode:'QRPH',displayName:'QRPh',minTotalCentavos:100,maxTotalCentavos:5000000},{channelCode:'GCASH',displayName:'GCash',minTotalCentavos:100,maxTotalCentavos:1000000},{channelCode:'CARDS',displayName:'Cards',minTotalCentavos:2000,maxTotalCentavos:10000000}],
   active:['Active','Review','Creating'].includes(payment.state)&&request.query.kind===payment.kind?payment:null}))
 api.post('/api/v1/user/payments/quote',(request,response)=>{const principal=request.body.amount?Math.round(Number(request.body.amount)*100):request.body.kind==='Printing'?5000:10000;
   payment={...payment,kind:request.body.kind,targetId:Number(request.body.targetId),channelCode:request.body.channelCode,principalCentavos:principal,
@@ -59,11 +60,12 @@ try{
 import {StudentFinesPage} from '/src/features/fines/StudentFinesPage';import {StudentPrintingPage} from '/src/features/printing/StudentPrintingPage';
 import {AdminPaymentsPage} from '/src/features/payments/AdminPaymentsPage';import {PaymentResultPage} from '/src/features/payments/PaymentResultPage';import {setSessionIdentity} from '/src/features/auth/auth-storage';
 import {OperationalReports} from '/src/features/catalog/OperationalReports';
+import {UserPaymentsPage} from '/src/features/payments/UserPaymentsPage';
 import {ThemeProvider,useTheme} from '/src/features/theme/ThemeProvider';
 function QaTheme(){const {toggleTheme}=useTheme();return <button type="button" className="mb-4 min-h-11 rounded-xl border px-4" onClick={toggleTheme}>Toggle QA theme</button>}
 const view=new URLSearchParams(location.search).get('view')||'fines';setSessionIdentity({userId:1,schoolId:'QA-PAYMENT-001',role:['admin','reports'].includes(view)?'Librarian':'Student',source:'session'});
 const requestedReport=new URLSearchParams(location.search).get('report'),report=['payments','printRevenue','onlinePayments'].includes(requestedReport??'')?requestedReport:'onlinePayments';
-createRoot(document.getElementById('root')!).render(<ThemeProvider><MemoryRouter initialEntries={['/payments/result?payment=${id}'+(view==='reports'?'&kind='+report:'')]}><div className="mx-auto max-w-6xl p-4 sm:p-8"><p className="mb-5 rounded-xl bg-slate-100 p-3 text-sm text-slate-900">Local QA · disposable data only</p><QaTheme/>{view==='admin'?<AdminPaymentsPage/>:view==='reports'?<OperationalReports/>:view==='printing'?<StudentPrintingPage/>:view==='result'?<PaymentResultPage/>:<StudentFinesPage/>}</div></MemoryRouter></ThemeProvider>);`,{flag:'wx'});createdEntry=true
+createRoot(document.getElementById('root')!).render(<ThemeProvider><MemoryRouter initialEntries={['/payments/result?payment=${id}'+(view==='reports'?'&kind='+report:'')]}><div className="mx-auto max-w-6xl p-4 sm:p-8"><p className="mb-5 rounded-xl bg-slate-100 p-3 text-sm text-slate-900">Local QA · disposable data only</p><QaTheme/>{view==='payments'?<UserPaymentsPage/>:view==='admin'?<AdminPaymentsPage/>:view==='reports'?<OperationalReports/>:view==='printing'?<StudentPrintingPage/>:view==='result'?<PaymentResultPage/>:<StudentFinesPage/>}</div></MemoryRouter></ThemeProvider>);`,{flag:'wx'});createdEntry=true
   server=api.listen(47145,'127.0.0.1')
   vite=spawn(process.execPath,[fileURLToPath(new URL('../../../node_modules/vite/bin/vite.js',import.meta.url)),'--host','127.0.0.1','--port','5174'],
     {cwd:fileURLToPath(web),env:{...process.env,VITE_API_PROXY_TARGET:'http://127.0.0.1:47145'},windowsHide:true,stdio:'ignore'})

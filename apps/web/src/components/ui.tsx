@@ -19,13 +19,13 @@ export function PageHeader({ eyebrow, title, action }: { eyebrow?: string; title
   )
 }
 
-export function Button({ children, variant = 'primary', className, type = 'button', onClick, disabled = false }: { children: ReactNode; variant?: 'primary' | 'secondary' | 'ghost'; className?: string; type?: 'button' | 'submit'; onClick?: () => void; disabled?: boolean }) {
+export function Button({ children, variant = 'primary', className, type = 'button', onClick, disabled = false, 'aria-label':ariaLabel }: { children: ReactNode; variant?: 'primary' | 'secondary' | 'ghost'; className?: string; type?: 'button' | 'submit'; onClick?: () => void; disabled?: boolean; 'aria-label'?:string }) {
   const variants = {
     primary: 'bg-[#003399] text-white shadow-sm hover:bg-[#003399]',
     secondary: 'border border-[#003399]/15 bg-white text-[#003399] hover:border-[#003399]/15 hover:text-[#003399] dark:border-white/20 dark:bg-[#001a4d] dark:text-[#f2f6ff]',
     ghost: 'text-[#003399]/65 hover:bg-[#003399]/5 hover:text-[#003399] dark:text-white/70 dark:hover:bg-white/10 dark:hover:text-white',
   }
-  return <button type={type} onClick={onClick} disabled={disabled} className={cn('smartlib-button inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-45', variants[variant], className)}>{children}</button>
+  return <button type={type} aria-label={ariaLabel} onClick={onClick} disabled={disabled} className={cn('smartlib-button inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-45', variants[variant], className)}>{children}</button>
 }
 
 export function SectionCard({ children, className }: { children: ReactNode; className?: string }) {

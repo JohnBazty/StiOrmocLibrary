@@ -1,4 +1,4 @@
-import { db, type Pool } from '../../config/db.js'
+import { db, type Pool, type RowDataPacket } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { requireLibraryActor } from '../../core/library-permissions.ts'
 import { createPaymentsRepository, type PaymentRow, type PaymentTarget } from './payments.repository.ts'
@@ -67,6 +67,21 @@ export function createPaymentsService(database: Pool = db, options: Options = {}
   }
 
   return {
+    async userList(actor:PaymentActor,query:Record<string,unknown>){
+      if(!['Student','Faculty'].includes(String(actor.role)))throw paymentError('Use a borrower account.','PAYMENT_ROLE_FORBIDDEN',403)
+      const accountId=positiveId(actor.accountId),filters=parsePaymentFilters(query),view=query.view??'pending'
+      if(typeof view!=='string'||!['pending','history'].includes(view))throw paymentError('Choose pending payments or payment history.')
+      const onlineEnabled=enabled()
+      if(!onlineEnabled){
+        const [installed]=await database.execute<RowDataPacket[]>("SELECT to_regclass('public.online_payment_attempts') IS NOT NULL AS installed")
+        if(!installed[0]?.installed)return {enabled:false,items:[],pagination:{page:filters.page,limit:filters.limit,total:0}}
+      }
+      return transaction(async repository=>{
+        const userId=await owner(repository,accountId)
+        const result=await repository.userList(filters,accountId,userId,view as 'pending'|'history')
+        return {enabled:onlineEnabled,items:result.rows.map(publicPayment),pagination:{page:filters.page,limit:filters.limit,total:result.total}}
+      })
+    },
     async options(actor: PaymentActor, query: unknown) {
       if (!['Student','Faculty'].includes(String(actor.role))) throw paymentError('Use a borrower account.','PAYMENT_ROLE_FORBIDDEN',403)
       const target=parseTarget(query),accountId=positiveId(actor.accountId)

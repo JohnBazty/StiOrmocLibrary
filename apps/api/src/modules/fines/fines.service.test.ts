@@ -42,3 +42,11 @@ test('admin fine records expose receipt verification data and support verificati
   const missing=await service.list({search:'NOT-A-RECEIPT',status:'all',type:'all',period:'all',date:null,month:null,week:null,termId:null,from:null,to:null,page:1,limit:25})
   assert.equal(missing.pagination.total,0)
 })
+
+test('outstanding filter includes partially paid balances and excludes fully paid records before pagination',async()=>{
+  const base=database()
+  const mixed={async execute(sql:string){const result=await base.execute(sql);if(sql.includes('FROM fines f INNER JOIN users'))return [[{...(result[0] as RowDataPacket[])[0],paid_amount:0},{...(result[0] as RowDataPacket[])[0],fine_id:3,school_id:'QA-PAYMENT-USER',full_name:'Disposable Student',fine_amount:100,paid_amount:40,payment_status:'Partially Paid'}],[]];return result}} as unknown as Pool
+  const service=createFinesService(mixed)
+  const result=await service.list(service.filters({status:'outstanding'}))
+  assert.equal(result.pagination.total,1);assert.equal(result.items[0].balance,60)
+})

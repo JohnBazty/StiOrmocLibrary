@@ -18,6 +18,7 @@ export function createPaymentsController(service: ReturnType<typeof createPaymen
     }
   }
   return {
+    userList:handle((request,identity)=>service.userList(identity,request.query as Record<string,unknown>)),
     operations:handle((_request,identity)=>operations.status(identity)),
     readSettlement:handle((request,identity)=>operations.readSettlement(identity,request.params.id)),
     recover:handle(async(_request,identity)=>{await operations.status(identity);return operations.recover()}),

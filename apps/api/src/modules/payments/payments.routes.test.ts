@@ -33,6 +33,17 @@ test('payment routes require authentication and separate borrower, staff and Lib
   assert.equal(feeWrites,1)
 })
 
+test('borrowers can read only their own payment overview through the user route',async()=>{
+  let actorId=0
+  const service={userList:async(actor:{accountId:number})=>{actorId=actor.accountId;return {items:[],pagination:{page:1,limit:25,total:0}}}} as unknown as ReturnType<typeof createPaymentsService>
+  const {user}=createPaymentsRouters(service)
+  const app=express().use(authenticateJwt).use(user)
+  assert.equal((await request(app).get('/?accountId=999').auth(token('Staff'),{type:'bearer'})).status,403)
+  const response=await request(app).get('/?accountId=999').auth(token('Student',7),{type:'bearer'})
+  assert.equal(response.status,200);assert.equal(actorId,7)
+  assert.equal(response.headers['cache-control'],'private, no-store')
+})
+
 test('a prepared checkout is returned without claiming a provider payment exists', async () => {
   const service = {prepare:async()=>({state:'Prepared',gatewayConnected:false})} as unknown as ReturnType<typeof createPaymentsService>
   const {user} = createPaymentsRouters(service)

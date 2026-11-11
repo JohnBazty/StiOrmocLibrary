@@ -26,6 +26,7 @@ Recorded live migration is 032. Draft 033 branding and payment drafts 034–037 
 - [x] Old cash rows remain identifiable and are not counted twice. Receipt source and settlement evidence are protected.
 - [x] A late captured payment can retain Needs review evidence alongside a newer checkout. Unallocated captures appear in Online payment reconciliation and block further collection.
 - [x] Existing operational-minute runner chosen by the owner; no second scheduler added. Local recovery logic is exercised against real PostgreSQL.
+- [x] Student/Faculty payment center, owner-scoped pending/history, preserved counter records, QR method review and bounded return-page refresh built locally. Automated/controlled QR acceptance passed; actual hosted scanning and visual acceptance remain below.
 - [ ] Confirm the approved deployed scheduler calls that runner often enough for the chosen hosting plan. No hosting configuration was changed here.
 - [ ] Finish browser and physical-device checks as recorded in the implementation plan.
 - [ ] Record Librarian usability feedback after reviewing the actual screens. An automated pass is not human sign-off.
@@ -63,6 +64,8 @@ The [Xendit simulator reference](https://docs.xendit.co/apidocs/simulate-payment
 - [ ] Complete security review, full end-to-end acceptance and Librarian sign-off; record date and responsible person.
 
 ## Change log
+
+2026-11-11 — Built the owner-approved borrower payment center locally, with no push/hosting. Added QRPh review guidance, scoped activity/history, provider-off history access and outstanding-balance filtering. Regression 701, typecheck/build/coverage and isolated PostgreSQL acceptance passed. No real funds, real hosted QR capture, live migration or new visual sign-off.
 
 2026-11-11 — Browser briefly became available: tested recovery, settlement, partial fine review and three report components at desktop/mobile widths; retained screenshots with explicit keyboard/zoom/device limits. Full app browser navigation subsequently failed again. Added the guarded synthetic full-app verifier, corrected pending 033's table name and made worker shutdown await its active run (regression covered). Normal sign-in/access, cash remainder/idempotency and protected exports passed. No hosting, live migrations, provider capture or real email was performed.
 

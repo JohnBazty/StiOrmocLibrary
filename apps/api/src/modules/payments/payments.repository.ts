@@ -123,6 +123,18 @@ export function createPaymentsRepository(query: Query) {
       const count = await first(`SELECT COUNT(*)::int AS count FROM online_payment_attempts p WHERE ${where}`,values)
       return { rows, total: Number(count?.count ?? 0) }
     },
+    async userList(filters:ReturnType<typeof parsePaymentFilters>,accountId:number,userId:number,view:'pending'|'history'){
+      const states=view==='pending'?"('Prepared','Creating','Active','Review')":"('Succeeded','Expired','Cancelled')"
+      let where=`p.environment='test' AND p.account_id=? AND p.user_id=? AND p.state IN ${states}`
+      const values:unknown[]=[accountId,userId]
+      if(filters.state){where+=' AND p.state=?';values.push(filters.state)}
+      if(filters.channel){where+=' AND p.channel_code=?';values.push(filters.channel)}
+      if(filters.kind)where+=' AND p.'+targetColumn[filters.kind]+' IS NOT NULL'
+      const [rows]=await query.execute<PaymentRow[]>(`${paymentSelect} WHERE ${where}
+        ORDER BY p.created_at DESC,p.payment_id LIMIT ? OFFSET ?`,[...values,filters.limit,(filters.page-1)*filters.limit])
+      const count=await first(`SELECT COUNT(*)::int count FROM online_payment_attempts p WHERE ${where}`,values)
+      return {rows,total:Number(count?.count??0)}
+    },
     async options(accountId: number,target: PaymentTarget) {
       const rules=await methods()
       const active=await first<PaymentRow>(paymentSelect+` WHERE p.account_id=? AND p.environment='test'

@@ -62,7 +62,7 @@ export async function verifyPaymentGateway(pool, owner,{counter=false,operations
       session.payment_request_id='pr-'+randomUUID()
       captured.set(session.payment_id,{payment_id:session.payment_id,payment_request_id:session.payment_request_id,
         business_id:session.business_id,type:'PAY',country:'PH',currency:'PHP',request_amount:session.amount,
-        status:'SUCCEEDED',capture_method:'AUTOMATIC',channel_code:'GCASH',
+        status:'SUCCEEDED',capture_method:'AUTOMATIC',channel_code:session.allowed_payment_channels[0],
         captures:[{capture_id:'cap-'+randomUUID(),capture_amount:session.amount}]})
     }
   }
@@ -204,7 +204,18 @@ export async function verifyPaymentGateway(pool, owner,{counter=false,operations
   }
   let operationsResult
   if(operations){const {verifyPaymentOperations}=await import('./verify-xendit-payment-operations.mjs');operationsResult=await verifyPaymentOperations({pool,owner,service,gateway,actor,config,provider,clock:()=>now,sessionFor,finish,event})}
-  return {provider:'controlled-fixture',sessionConcurrency:'passed',duplicateCallbacks:'passed',fineAllocation:'passed',counter:counterResult,operations:operationsResult,
+  await owner.query("INSERT INTO fines(fine_id,user_id,fine_amount,fine_type,payment_status) VALUES(96,1,100,'Infraction','Unpaid')")
+  await service.setFee({accountId:3,role:'Librarian'},{channelCode:'QRPH',displayName:'QRPh',fixedFee:'1',percentageBasisPoints:100,taxBasisPoints:0,minTotal:'1',maxTotal:'50000',requestKey:'qa-qr-fee'})
+  const qrQuote=await service.quote(actor,{kind:'Fine',targetId:96,channelCode:'QRPH',amount:'40'})
+  await gateway.checkout(actor,{quoteId:qrQuote.paymentId,requestKey:'qa-qr-checkout'})
+  const qrSession=findSession(qrQuote.paymentId)
+  assert.deepEqual(qrSession.allowed_payment_channels,['QRPH']);assert.equal(qrSession.amount,41.4)
+  finish(qrSession);await gateway.receive(config().webhookToken,event(qrSession));await gateway.recover()
+  const verifiedQr=await service.read(actor,qrQuote.paymentId)
+  assert.equal(verifiedQr.state,'Succeeded');assert.ok(verifiedQr.receiptId);assert.equal(verifiedQr.remainingCentavos,6000)
+  await gateway.receive(config().webhookToken,event(qrSession));await gateway.recover()
+  assert.equal((await owner.query('SELECT count(*)::int count FROM fine_payment_receipts WHERE online_payment_attempt_id=$1',[qrQuote.paymentId])).rows[0].count,1)
+  return {provider:'controlled-fixture',qrCheckout:'verified amount, selected QRPH channel, capture and one receipt',sessionConcurrency:'passed',duplicateCallbacks:'passed',fineAllocation:'passed',counter:counterResult,operations:operationsResult,
     printingReceipt:'passed',unknownCreationRecovery:'passed',changedBalance:'passed',providerOutageRecovery:'passed',outOfOrder:'passed',
     settlementRollback:'passed',pendingCaptureRecovery:'passed',expiredLeaseRecovery:'passed',lostBookSettlement:'passed'}
 }

@@ -191,7 +191,7 @@ async function queryObligations(database: Pool, filters: FineFilters, onlyUserId
   const needle = filters.search.toLocaleLowerCase('en-US')
   const filtered = obligations.filter((item) => {
     if (filters.type !== 'all' && item.type !== filters.type) return false
-    if (filters.status !== 'all' && item.status !== filters.status) return false
+    if (filters.status === 'outstanding' ? item.balance <= 0 || ['Paid','Waived','Voided'].includes(item.status) : filters.status !== 'all' && item.status !== filters.status) return false
     return !needle || [item.id,item.userName,item.schoolId,item.title,item.reason,...item.receipts.flatMap((receipt) => [receipt.receiptNumber,receipt.verificationCode])].some((value) => value.toLocaleLowerCase('en-US').includes(needle))
   }).sort((left, right) => new Date(String(right.occurredAt)).getTime() - new Date(String(left.occurredAt)).getTime())
   return { range, items: filtered }

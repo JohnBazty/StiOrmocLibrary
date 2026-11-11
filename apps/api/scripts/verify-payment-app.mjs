@@ -93,6 +93,9 @@ try{
   }
   await owner.query("INSERT INTO fines(user_id,fine_type,fine_amount,payment_status,finalized_at) VALUES(1,'Infraction',100,'Unpaid',now())")
   await owner.query("INSERT INTO print_requests(user_id,file_name,file_path,calculated_cost,payment_status) VALUES(1,'Disposable course notes.pdf','qa-no-upload.pdf',50,'Unpaid')")
+  const reference=JSON.parse(await readFile(new URL('./fixtures/xendit-sandbox-channels.json',import.meta.url),'utf8'))
+  for(const method of reference.channels.filter(row=>['QRPH','GCASH'].includes(row.channelCode)))await owner.query(`INSERT INTO online_payment_fee_rules(environment,channel_code,display_name,fixed_centavos,percentage_basis_points,tax_basis_points,min_total_centavos,max_total_centavos,created_by_account_id,request_key)
+    VALUES('test',$1,$2,100,100,0,$3,$4,4,$5)`,[method.channelCode,method.displayName,method.minTotalCentavos,method.maxTotalCentavos,'qa-app-'+method.channelCode])
   // Private app role gets normal RLS access only in this disposable database.
   await owner.query('GRANT USAGE ON SCHEMA public TO sandbox_app; GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO sandbox_app; GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO sandbox_app')
   const secured=await owner.query("SELECT tablename FROM pg_tables WHERE schemaname='public' AND rowsecurity")
@@ -143,6 +146,31 @@ try{
   const paused=await call('/api/v1/user/payments/quote',{kind:'Fine',targetId:1,channelCode:'GCASH',amount:'40'},tokens.Student)
   assert.equal(paused.status,503);assert.equal(paused.value.code,'ONLINE_CHECKOUT_PAUSED')
   evidence.boundaries.push({role:'Student',path:'own finalized fine, checkout paused',status:503,balanceCentavos:10000})
+  phase='borrower payment activity'
+  // Quoted drafts are deliberately absent from both user-facing lists.
+  const due=await call('/api/v1/fines/me?status=outstanding',null,tokens.Student)
+  assert.equal(due.status,200);assert.equal(due.value.data.items.length,1)
+  for(const view of ['pending','history']){
+    const result=await call('/api/v1/user/payments?view='+view,null,tokens.Student)
+    assert.equal(result.status,200);assert.deepEqual(result.value.data.items,[])
+    assert.equal((await call('/api/v1/user/payments?view='+view,null,tokens.Staff)).status,403)
+  }
+  const {createPaymentsService}=await import('../src/modules/payments/payments.service.ts')
+  const quoteService=createPaymentsService(db,{enabled:()=>true})
+  const qr=await quoteService.quote({accountId:1,role:'Student'},{kind:'Fine',targetId:1,channelCode:'QRPH',amount:'40'})
+  assert.equal(qr.totalCentavos,4140);assert.equal(qr.remainingCentavos,6000)
+  await quoteService.prepare({accountId:1,role:'Student'},{quoteId:qr.paymentId,requestKey:'qa-user-qr-review'})
+  const pending=await call('/api/v1/user/payments?view=pending',null,tokens.Student)
+  assert.equal(pending.value.data.items.length,1);assert.equal(pending.value.data.items[0].channelCode,'QRPH')
+  const otherPending=await call('/api/v1/user/payments?view=pending',null,tokens.Faculty)
+  assert.equal(otherPending.value.data.items.length,0)
+  const cancelled=await call('/api/v1/user/payments/'+qr.paymentId+'/cancel',{},tokens.Student)
+  assert.equal(cancelled.value.data.state,'Cancelled')
+  const history=await call('/api/v1/user/payments?view=history',null,tokens.Student)
+  assert.equal(history.value.data.items[0].paymentId,qr.paymentId)
+  const offlineHistory=await createPaymentsService(db,{enabled:()=>false}).userList({accountId:1,role:'Student'},{view:'history'})
+  assert.equal(offlineHistory.enabled,false);assert.equal(offlineHistory.items[0].paymentId,qr.paymentId)
+  evidence.userActivity={qrQuote:'4140 centavos',pendingOwnership:'passed',cancelBeforeProvider:'passed',terminalHistory:'passed',providerCreation:'not called'}
   phase='cash coexistence and protected receipt'
   const cashBody={requestKey:'qa-app-cash-partial',allocations:[{fineId:1,amount:40}],notes:'Disposable Phase 7 acceptance only'}
   const cash=await call('/api/v1/admin/fines/payments',cashBody,tokens.Librarian)
@@ -192,8 +220,8 @@ try{
     }
     if(process.argv.includes('--cadence'))assert.ok(evidence.worker.length>=4,'Three successive local runs and a restarted runner must complete.')
   }
-  const history=await db.execute("SELECT run_count,failure_count,last_error,last_success_at AT TIME ZONE 'UTC' last_success_at FROM library_job_runs WHERE job_name='operational-minute'")
-  evidence.lastWorker=history[0];await writeFile(new URL('phase7-app-acceptance.json',output),JSON.stringify(evidence,null,2))
+  const workerHistory=await db.execute("SELECT run_count,failure_count,last_error,last_success_at AT TIME ZONE 'UTC' last_success_at FROM library_job_runs WHERE job_name='operational-minute'")
+  evidence.lastWorker=workerHistory[0];await writeFile(new URL('phase7-app-acceptance.json',output),JSON.stringify(evidence,null,2))
 }catch(error){failure={phase,code:error.code??error.name,message:error.message};console.error(JSON.stringify(failure))}
 finally{
   await worker?.stop()
