@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import express from 'express'
 import request from 'supertest'
-import type { Pool } from 'mysql2/promise'
+import type { Pool } from '../../config/db.js'
 import { requireJwtRoles } from '../auth/jwt-auth.middleware.ts'
 import { createAssetCodeController } from './asset-code.controller.ts'
 import { createAssetCodeService } from './asset-code.service.ts'
@@ -31,10 +31,10 @@ function fakeDatabase() {
   } } as unknown as Pool
 }
 
-test('Admin can inspect and download research inventory codes', async () => {
+test('Librarian can inspect and download research inventory codes', async () => {
   const app = express()
   const assets = createAssetCodeController(createAssetCodeService(fakeDatabase()))
-  app.use('/api/v1/admin/research', authenticated('Admin'), requireJwtRoles('Admin'), createResearchAssetRouter(assets))
+  app.use('/api/v1/admin/research', authenticated('Librarian'), requireJwtRoles('Librarian'), createResearchAssetRouter(assets))
   const response = await request(app).get('/api/v1/admin/research/assets/31')
   assert.equal(response.status, 200)
   assert.equal(response.body.data.researchInventoryId, 31)
@@ -54,11 +54,11 @@ function authenticated(role: string) {
   }
 }
 
-test('Admin barcode download returns a generated PNG attachment', async () => {
+test('Librarian barcode download returns a generated PNG attachment', async () => {
   const app = express()
   const assets = createAssetCodeController(createAssetCodeService(fakeDatabase()))
   const bulk = { addBulk: (_request: express.Request, response: express.Response) => response.status(501).end() }
-  app.use('/api/v1/admin/books', authenticated('Admin'), requireJwtRoles('Admin'), createBulkBookRouter(bulk as never, assets))
+  app.use('/api/v1/admin/books', authenticated('Librarian'), requireJwtRoles('Librarian'), createBulkBookRouter(bulk as never, assets))
   const response = await request(app).get('/api/v1/admin/books/assets/21/barcode.png')
   assert.equal(response.status, 200)
   assert.match(response.headers['content-type'], /^image\/png/)
@@ -74,7 +74,7 @@ test('Student cannot inspect or download administrative QR assets', async () => 
   const app = express()
   const assets = createAssetCodeController(createAssetCodeService(fakeDatabase()))
   const bulk = { addBulk: (_request: express.Request, response: express.Response) => response.status(501).end() }
-  app.use('/api/v1/admin/books', authenticated('Student'), requireJwtRoles('Admin'), createBulkBookRouter(bulk as never, assets))
+  app.use('/api/v1/admin/books', authenticated('Student'), requireJwtRoles('Librarian'), createBulkBookRouter(bulk as never, assets))
   const response = await request(app).get('/api/v1/admin/books/assets/21/qr.png')
   assert.equal(response.status, 403)
   assert.equal(response.body.code, 'JWT_ROLE_FORBIDDEN')

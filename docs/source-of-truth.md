@@ -19,7 +19,7 @@ Use this order when designing a feature or database change:
 2. `docs/source/Final-Draft.pdf` for product behavior and business policy.
 3. `docs/source/Admin-System-Flow.pdf` for administrative workflow and screen coverage.
 4. This index and `agent.md` for normalized architecture guidance.
-5. `docs/schema-context.md` and `database/mysql56-schema.sql` for the currently implemented database baseline.
+5. `docs/schema-context.md` and `database/supabase/` for the currently implemented database baseline.
 
 If the current schema or application differs from the PDFs, do not silently reinterpret the requirement and do not destructively replace existing data. Identify the difference, create a planned migration, update tests, and update the schema context.
 
@@ -40,10 +40,6 @@ If the current schema or application differs from the PDFs, do not silently rein
 - **Student:** catalog, personal dashboard/history, up to two active borrowed items, reservations, printing, attendance, notifications, and clearance.
 - **Faculty:** the same self-service areas, exempt from the student two-item cap under the documented policy.
 - **System Administrator:** identified as a stakeholder/technical administrator in the Final Draft. Keep this separate from the Librarian's library-policy role when technical administration is implemented.
-
-### Approved authorization variance (Admin is the Librarian)
-
-Application authorization stores and issues a single administrative role value: **`Admin`**. That value represents the Librarian/Super Admin described above. “Librarian” may still appear in UI copy as the real-world job title, but it is not a separate permission role, login destination, or dashboard. Legacy `Librarian` and `System Administrator` identity values are migration aliases only. This supersedes the Final Draft’s separation of System Administrator for *application* authorization; the PDFs themselves are unchanged. Tracked in `docs/admin-librarian-role-consolidation-plan.md`.
 
 Authorization is enforced by the API, not merely by hiding frontend controls.
 

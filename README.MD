@@ -1,24 +1,24 @@
 # STI College Ormoc Integrated Library Management System
 
-The STI College Ormoc Integrated Library Management System is a web-based library platform for STI College Ormoc. It combines a React administration and user portal with a modular-monolith Node.js API. The active local and deployed database is Supabase Postgres; the MySQL schema remains a rollback reference. See [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md).
+The STI College Ormoc Integrated Library Management System is a web-based library platform for STI College Ormoc. It combines a React administration and user portal with a modular-monolith Node.js API. The active local and deployed database is Supabase Postgres. MySQL was retired on 2026-11-10 (see [docs/mysql-removal-plan.md](docs/mysql-removal-plan.md)).
 
-This guide explains how to prepare a Windows development computer, run and test the system, and prepare a production build. Its MySQL setup sections document the retained rollback environment.
+This guide explains how to prepare a Windows development computer, run and test the system, and prepare a production build.
 
 ## AI agents — read this first
 
-1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) (start-session protocol, plan statuses, MySQL reference migration tracker: latest **046**, next **047**; Supabase: latest **016**, next **017**).
+1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) (start-session protocol, plan statuses, Supabase migration tracker: latest applied **032**, **033** pending review, next unused **034**).
 2. Read [AGENTS.md](AGENTS.md) and [agent.md](agent.md).
-3. Database cutover status: [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md).
+3. Database history: [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md) and [docs/mysql-removal-plan.md](docs/mysql-removal-plan.md).
 
 ## Contents
 
 1. [System overview](#system-overview)
 2. [Prerequisites](#prerequisites)
 3. [Clone and install](#clone-and-install)
-4. [Configure MySQL](#configure-mysql)
+4. [Configure the database](#configure-the-database)
 5. [Configure environment variables](#configure-environment-variables)
 6. [Initialize the database](#initialize-the-database)
-7. [Create an Admin (Librarian)](#create-an-admin-librarian)
+7. [Create a System Administrator](#create-a-system-administrator)
 8. [Run the application](#run-the-application)
 9. [Verify the installation](#verify-the-installation)
 10. [Common development commands](#common-development-commands)
@@ -44,11 +44,15 @@ Node.js + Express modular-monolith API
 The repository is an npm workspace:
 
 - `apps/web` — React, Vite, TypeScript, and Tailwind CSS frontend.
-- `apps/api` — Node.js, Express, TypeScript, authentication, business modules, and MySQL queries.
-- `database` — MySQL 5.6-compatible baseline schema and ordered migrations.
+- `apps/api` — Node.js, Express, TypeScript, authentication, business modules, and SQL queries (Postgres).
+- `database/supabase` — ordered Postgres schema files for Supabase.
 - `docs` — architecture, database, feature, and development documentation.
 
 Implemented live database areas include authentication, categories, normalized books/research records, physical-copy inventory, thesis inventory, reservations, and inventory CSV/PDF reports. Some remaining presentation screens still use mock operational data while their backend modules are developed.
+
+Revision Phase 8 adds live actionable Librarian/Staff tasks, owner-scoped dashboard links and a Librarian Reports page with 13 filtered source reports and CSV/PDF exports. The active report overview uses real database records. Local technical checks passed; human Librarian acceptance remains open. See [implementation evidence](docs/revision-phase8-local-implementation.md) and [trial guide](docs/revision-phase8-librarian-trial.md).
+
+The owner-approved combined Librarian/Admin login is `ADMIN-PORTAL-001` at `/staff`, using its existing password and opening `/librarian/dashboard`. The temporary `LIB-TEST-001` login is archived with its history preserved. See [account consolidation record](docs/admin-librarian-account-consolidation.md).
 
 ## Prerequisites
 
@@ -59,8 +63,7 @@ Install the following software before continuing:
 | Git | Current Windows release |
 | Node.js | `22.18` or newer; Node.js 24 is recommended |
 | npm | Installed with Node.js |
-| MySQL Server | MySQL 5.6-compatible; MySQL 8.4 LTS is recommended locally |
-| MySQL Workbench | Current Windows release |
+| Database | A Supabase Postgres project (`DATABASE_URL`) |
 | Browser | Current Chrome, Edge, or Firefox |
 
 Verify Git, Node.js, and npm in PowerShell:
@@ -70,8 +73,6 @@ git --version
 node --version
 npm --version
 ```
-
-MySQL Workbench is only a graphical management client. MySQL Server must also be installed and running.
 
 ## Clone and install
 
@@ -93,71 +94,9 @@ npm install
 
 Run all commands in this guide from the repository root unless a section says otherwise.
 
-## Configure MySQL
+## Configure the database
 
-### 1. Install and start MySQL Server
-
-During MySQL installation:
-
-1. Enable TCP/IP.
-2. Use port `3306` unless it conflicts with another service.
-3. Configure MySQL as a Windows service.
-4. Create and securely save the MySQL `root` password.
-5. Confirm that the Windows MySQL service is running.
-
-Do not place the root password in source files or commit it to Git.
-
-### 2. Create a Workbench administrator connection
-
-In MySQL Workbench, select the `+` button beside **MySQL Connections** and use:
-
-| Setting | Value |
-| --- | --- |
-| Connection Name | `Local MySQL Administrator` |
-| Connection Method | `Standard (TCP/IP)` |
-| Hostname | `127.0.0.1` |
-| Port | `3306` |
-| Username | `root` |
-
-Select **Test Connection**, enter the root password, and save the connection.
-
-### 3. Create the project database account
-
-Open the administrator connection and execute the following SQL. Replace `CHANGE_ME_STRONG_PASSWORD` with a password used only for this local database account.
-
-```sql
-CREATE DATABASE IF NOT EXISTS `sti_ormoc_library`
-  CHARACTER SET utf8
-  COLLATE utf8_general_ci;
-
-CREATE USER IF NOT EXISTS 'sti_library_app'@'127.0.0.1'
-  IDENTIFIED BY 'CHANGE_ME_STRONG_PASSWORD';
-
-GRANT ALL PRIVILEGES
-  ON `sti_ormoc_library`.*
-  TO 'sti_library_app'@'127.0.0.1';
-
-FLUSH PRIVILEGES;
-SHOW GRANTS FOR 'sti_library_app'@'127.0.0.1';
-```
-
-`ALL PRIVILEGES` is appropriate for a local account restricted to this single development schema. Use narrower privileges for production after the deployment process is finalized.
-
-If an older MySQL version does not accept `CREATE USER IF NOT EXISTS`, run `CREATE USER` without `IF NOT EXISTS` for a new account.
-
-### 4. Create the application Workbench connection
-
-Create a second Workbench connection:
-
-| Setting | Value |
-| --- | --- |
-| Connection Name | `STI Ormoc Library - App` |
-| Hostname | `127.0.0.1` |
-| Port | `3306` |
-| Username | `sti_library_app` |
-| Default Schema | `sti_ormoc_library` |
-
-Test and save it. Use this connection for normal development and keep the root connection for database administration only.
+The system uses Supabase Postgres only. Create or obtain access to the Supabase project, then copy its Session pooler connection string (port 5432) into `DATABASE_URL` in the next step. Never commit it.
 
 ## Configure environment variables
 
@@ -174,11 +113,7 @@ PORT=4000
 WEB_ORIGIN=http://localhost:5173
 NODE_ENV=development
 
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_USER=sti_library_app
-DB_PASSWORD=CHANGE_ME_STRONG_PASSWORD
-DB_NAME=sti_ormoc_library
+DATABASE_URL=postgresql://postgres.<project-ref>:CHANGE_ME@<pooler-host>:5432/postgres
 DB_CONNECTION_LIMIT=10
 
 SESSION_SECRET=REPLACE_WITH_A_RANDOM_SECRET_OF_AT_LEAST_32_CHARACTERS
@@ -209,107 +144,51 @@ The frontend uses Vite's development proxy and normally requires no environment 
 
 ## Initialize the database
 
-### Recommended command-line method
-
-Run the canonical baseline schema:
+The schema lives in `database/supabase/` as numbered Postgres files. Apply a reviewed file with:
 
 ```powershell
-npm run db:schema -w @sti-library/api
+npm run db:supabase -w @sti-library/api -- 016_configurable_borrowing_policies.sql
 ```
 
-Then apply every pending migration in filename order:
+Never edit an already-applied file. Create the next numbered file instead (see the tracker in `.cursor/agent-protocol.md`). Back up the database before applying production changes.
 
-```powershell
-npm run db:migrate -w @sti-library/api
-```
+## Create a System Administrator
 
-The migration runner creates a `schema_migrations` ledger containing migration filenames, SHA-256 checksums, and application timestamps.
-
-It is safe to run `db:migrate` again:
-
-- Unapplied migrations are executed in order.
-- Applied migrations are skipped.
-- An applied migration whose file was later edited is rejected.
-
-Never edit an already-deployed migration. Create a new migration file instead.
-
-To run one migration explicitly:
-
-```powershell
-npm run db:migrate -w @sti-library/api -- 20260820_011_backfill_published_research_inventory.sql
-```
-
-### MySQL Workbench method
-
-The command-line method is preferred because it maintains the migration ledger. To execute the baseline manually:
-
-1. Open the `STI Ormoc Library - App` Workbench connection.
-2. Select **File > Open SQL Script**.
-3. Open `database/mysql56-schema.sql`.
-4. Select the lightning-bolt button to execute the complete script.
-5. Refresh the **Schemas** panel.
-6. Run `npm run db:migrate -w @sti-library/api` afterward to register and apply the versioned migrations.
-
-Do not execute only highlighted fragments of the baseline unless you understand their foreign-key order and trigger dependencies.
-
-### Confirm the schema
-
-In Workbench:
-
-```sql
-USE `sti_ormoc_library`;
-
-SELECT COUNT(*) AS tables_created
-FROM information_schema.tables
-WHERE table_schema = 'sti_ormoc_library';
-
-SELECT migration_name, applied_at
-FROM schema_migrations
-ORDER BY migration_name;
-```
-
-## Create an Admin (Librarian)
-
-The dedicated staff portal is located at `/staff` (`/admin/login` redirects there). It requires an `Admin` identity in the normalized `accounts` table. Admin is the Librarian/Super Admin authorization role.
+The dedicated administrator portal is located at `/admin/login`. It requires an `Admin` identity in the normalized `accounts` table.
 
 ### 1. Create the secure credential
 
 Run the interactive account utility:
 
 ```powershell
-npm run auth:create-user -w @sti-library/api -- --email admin@ormoc.sti.edu.ph --role Admin --id ADMIN-001 --name "Campus Librarian"
+npm run auth:create-user -w @sti-library/api -- --email admin@ormoc.sti.edu.ph --role "System Administrator" --id ADMIN-001 --name "Campus Administrator"
 ```
 
 The command prompts for the password without displaying it. Passwords must contain 8–72 characters and are hashed with bcrypt before storage.
 
-Use a real authorized institutional address ending in `@ormoc.sti.edu.ph`. Change `ADMIN-001` to the librarian's official school or staff identifier.
+Use a real authorized institutional address ending in `@ormoc.sti.edu.ph`. Change `ADMIN-001` to the administrator's official school or staff identifier.
 
 ### 2. Synchronize the normalized login identity
 
-After the account utility finishes, execute this idempotent SQL in Workbench. Change `ADMIN-001` if you selected another identifier.
+After the account utility finishes, execute this idempotent SQL in the Supabase SQL editor. Change `ADMIN-001` if you selected another identifier.
 
 ```sql
-USE `sti_ormoc_library`;
-
-INSERT INTO `accounts`
-  (`user_id`, `school_id`, `contact_number`, `password_hash`, `role`, `account_status`)
+INSERT INTO accounts
+  (user_id, school_id, contact_number, password_hash, role, account_status)
 SELECT
-  u.`user_id`,
-  u.`school_id`,
+  u.user_id,
+  u.school_id,
   NULL,
-  u.`password_hash`,
-  u.`user_role`,
-  CASE u.`account_status`
-    WHEN 'Active' THEN 'Active'
-    ELSE 'Deactivated'
-  END
-FROM `users` u
-WHERE u.`school_id` = 'ADMIN-001'
-ON DUPLICATE KEY UPDATE
-  `accounts`.`password_hash` = VALUES(`password_hash`),
-  `accounts`.`role` = VALUES(`role`),
-  `accounts`.`account_status` = VALUES(`account_status`),
-  `accounts`.`user_id` = IFNULL(`accounts`.`user_id`, VALUES(`user_id`));
+  u.password_hash,
+  u.user_role,
+  CASE u.account_status WHEN 'Active' THEN 'Active' ELSE 'Deactivated' END
+FROM users u
+WHERE u.school_id = 'ADMIN-001'
+ON CONFLICT (school_id) DO UPDATE SET
+  password_hash = EXCLUDED.password_hash,
+  role = EXCLUDED.role,
+  account_status = EXCLUDED.account_status,
+  user_id = COALESCE(accounts.user_id, EXCLUDED.user_id);
 ```
 
 Confirm the identity without displaying its password hash:
@@ -330,7 +209,7 @@ Students may register through:
 http://localhost:5173/register
 ```
 
-Public registration always creates an active Student account. Admin (Librarian) privileges must never be accepted from a public registration form.
+Public registration always creates an active Student account. Administrative and Librarian privileges must never be accepted from a public registration form.
 
 ## Run the application
 
@@ -414,8 +293,6 @@ All three commands should finish without failures.
 | `npm run dev` | Run frontend and API together |
 | `npm run dev:web` | Run only Vite on port 5173 |
 | `npm run dev:api` | Run only Express on port 4000 |
-| `npm run db:schema -w @sti-library/api` | Execute the canonical baseline schema |
-| `npm run db:migrate -w @sti-library/api` | Apply pending migrations |
 | `npm run auth:create-user -w @sti-library/api -- ...` | Create a bcrypt-protected institutional user |
 | `npm test` | Run API and frontend test suites |
 | `npm run typecheck` | Check API and frontend TypeScript |
@@ -482,55 +359,23 @@ Before production deployment:
 5. Keep `INVENTORY_PREVIEW_ENABLED` disabled.
 6. Apply migrations before starting the new API version.
 7. Run tests, type checking, and the production build.
-8. Store uploaded files outside MySQL and outside the Git repository.
+8. Store uploaded files outside the database and outside the Git repository.
 
 The current application does not provide a Docker or one-command cloud deployment configuration.
 
 ## Troubleshooting
 
-### `Access denied for user ... (using password: NO)`
+### `DATABASE_URL` is required
 
-The API did not receive a database password.
+The API refuses to start without a Postgres connection string. Set `DATABASE_URL` in `apps/api/.env` and restart.
 
-1. Confirm `apps/api/.env` exists.
-2. Set `DB_PASSWORD` to the application database account password.
-3. Restart the API.
+### Connection refused or timeout
 
-Do not add quotes unless the quotes are part of the password.
-
-### `ER_ACCESS_DENIED_ERROR`
-
-The username or password is incorrect, or the account lacks schema privileges.
-
-1. Test the same account in Workbench.
-2. Confirm `DB_USER`, `DB_PASSWORD`, and `DB_NAME`.
-3. Run `SHOW GRANTS FOR 'sti_library_app'@'127.0.0.1';` as root.
-
-### `ECONNREFUSED 127.0.0.1:3306`
-
-MySQL Server is not running or is using another port. Start the Windows MySQL service and confirm its configured port.
-
-### `Unknown database 'sti_ormoc_library'`
-
-Run:
-
-```powershell
-npm run db:schema -w @sti-library/api
-```
+The direct Supabase host is often IPv6-only. Use the Session pooler (port 5432) with user `postgres.<project-ref>` on IPv4 networks.
 
 ### `DATABASE_MIGRATION_REQUIRED`
 
-Run:
-
-```powershell
-npm run db:migrate -w @sti-library/api
-```
-
-Then restart the API and check `/api/health` again.
-
-### `Applied migration ... has changed`
-
-An already-applied SQL migration was edited. Restore the original migration file from Git and create a new migration for the change.
+A required table or column is missing. Apply the pending file from `database/supabase/`, restart the API, and check `/api/health` again.
 
 ### `Unexpected token '<', "<!doctype" is not valid JSON`
 
@@ -556,16 +401,6 @@ For the dedicated administrator portal, confirm `accounts.role = 'Admin'`.
 
 Stop the process using that port, or change both the configured port and the corresponding proxy/origin configuration. Vite intentionally uses strict port `5173`.
 
-### The schema runs in Workbench but the API still fails
-
-Workbench and the API may be using different accounts or servers. Compare:
-
-```sql
-SELECT DATABASE(), CURRENT_USER(), VERSION();
-```
-
-with `DB_HOST`, `DB_PORT`, `DB_USER`, and `DB_NAME` in `apps/api/.env`.
-
 ## Project structure
 
 ```text
@@ -574,7 +409,7 @@ StiOrmocLibrary/
 │   ├── api/
 │   │   ├── scripts/                 Database and account utilities
 │   │   ├── src/
-│   │   │   ├── config/              Environment and MySQL pool
+│   │   │   ├── config/              Environment and Postgres pool
 │   │   │   ├── core/                Errors, sessions, schema readiness
 │   │   │   └── modules/             Modular-monolith business modules
 │   │   └── .env.example
@@ -585,8 +420,7 @@ StiOrmocLibrary/
 │           ├── layouts/             Admin and user portal shell
 │           └── pages/               Portal pages
 ├── database/
-│   ├── migrations/                  Ordered, versioned SQL migrations
-│   └── mysql56-schema.sql           Canonical baseline schema
+│   └── supabase/                    Ordered Postgres schema files
 ├── docs/                             Architecture and feature guides
 ├── agent.md                          Development architecture contract
 ├── package.json                      Workspace scripts
@@ -597,7 +431,7 @@ StiOrmocLibrary/
 
 - Never commit `.env`, database backups, real user exports, or uploaded files.
 - Never store plain-text passwords; use the provided bcrypt account flows.
-- Use a dedicated MySQL account instead of `root` for the application.
+- Use the least-privileged database role the application needs.
 - Use unique production secrets with at least 32 characters.
 - Keep RBAC checks in the API; frontend route guards are not sufficient.
 - Keep prepared SQL statements and server-side request validation.
@@ -610,7 +444,6 @@ StiOrmocLibrary/
 - [Product source of truth](docs/source-of-truth.md)
 - [Architecture guide](agent.md)
 - [Schema context](docs/schema-context.md)
-- [Detailed MySQL Workbench tutorial](docs/mysql-workbench-setup.md)
 - [Authentication setup](docs/authentication-setup.md)
 - [Inventory implementation](docs/inventory-management-implementation.md)
 - [Book and Research/Thesis API](docs/book-research-thesis-module-api.md)
@@ -619,13 +452,17 @@ StiOrmocLibrary/
 
 ## Quick setup checklist
 
-- [ ] Install Git, Node.js, MySQL Server, and MySQL Workbench.
+- [ ] Install Git, Node.js, and access to the Supabase project.
 - [ ] Clone the repository and run `npm install`.
-- [ ] Create the `sti_library_app` MySQL account.
 - [ ] Copy and configure `apps/api/.env`.
-- [ ] Run `db:schema` and `db:migrate`.
+- [ ] Check the live migration ledger. Apply only individually reviewed Supabase SQL files.
 - [ ] Create and synchronize an Admin (Librarian) account.
 - [ ] Run `npm run dev`.
 - [ ] Confirm `/api/health` reports a ready schema.
 - [ ] Sign in through `/admin/login`.
 - [ ] Run tests, type checking, and the production build.
+
+
+## Main integration — 2026-10-11
+
+The main branch was reconciled with the current revision permission model and phase workflows. Borrowing policy management uses the Librarian workspace; prior login sessions are invalidated when a new login succeeds. The original SQL references remain in Git history. The follow-up reconciliation verified the live filenames and restored matching migration sources to the Supabase directory. See `docs/main-branch-integration.md`.

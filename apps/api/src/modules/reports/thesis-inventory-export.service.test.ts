@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Pool } from 'mysql2/promise'
+import type { Pool } from '../../config/db.js'
 import { iterateThesisInventoryRows } from '../inventory/thesis-inventory.repository.ts'
 import { createThesisCsvStream, createThesisInventoryPdf, type ThesisInventoryExportRow } from './thesis-inventory-export.service.ts'
 import { CSV_INTEGRITY_MARKER, verifyIntegrityProtectedCsv } from './csv-integrity.ts'

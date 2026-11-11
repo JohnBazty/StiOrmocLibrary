@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
-import type { RowDataPacket } from 'mysql2/promise'
+import type { RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
@@ -39,7 +39,7 @@ export const floorPlanImageService = {
   },
   async upload(fileValue: Express.Multer.File | undefined, actorId: number) {
     const file = validateImage(fileValue)
-    if (!client || env.db.driver !== 'postgres') throw new HttpError(503, 'FLOOR_IMAGE_STORAGE_UNAVAILABLE', 'Floor plan image storage is unavailable.')
+    if (!client) throw new HttpError(503, 'FLOOR_IMAGE_STORAGE_UNAVAILABLE', 'Floor plan image storage is unavailable.')
     const storage = client.storage.from(bucket)
     const objectPath = `${randomUUID()}.${allowed[file.mimetype]}`
     const { error: uploadError } = await storage.upload(objectPath, file.buffer, { contentType: file.mimetype, upsert: false })

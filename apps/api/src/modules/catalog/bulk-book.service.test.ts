@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Pool } from 'mysql2/promise'
+import type { Pool } from '../../config/db.js'
 import { createBulkBookService } from './bulk-book.service.ts'
 
 function fakePool() {
@@ -9,9 +9,10 @@ function fakePool() {
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() {},
     async execute(sql: string, parameters: unknown[] = []) {
       if (sql.includes('FROM categories c')) return [[{ category_id: 2, shelf_location: 'Shelf A-1', shelf_id: 1 }]]
+      if (sql.includes('FROM catalog_locations')) return parameters?.[0] === 'Unknown Room' ? [[]] : [[{ location_id: 1 }]]
       if (sql.includes('FROM titles t')) return [[{ title_id: 44, title: 'Clean Code', author_name: 'Robert C. Martin', category_id: 2 }]]
       if (sql.includes('INSERT INTO barcode_sequences')) return [{ affectedRows: 1 }]
-      if (sql.includes('SELECT `last_value` FROM barcode_sequences')) return [[{ last_value: 141 }]]
+      if (sql.includes('SELECT last_value FROM barcode_sequences')) return [[{ last_value: 141 }]]
       if (sql.includes('UPDATE barcode_sequences')) return [{ affectedRows: 1 }]
       if (sql.includes('INSERT INTO materials')) { state.materialInserts += 1; return [{ insertId: 100 + state.materialInserts }] }
       if (sql.includes('INSERT INTO physical_copies')) { state.copyInserts += 1; state.copyParameters.push(parameters); return [{ insertId: 200 + state.copyInserts }] }
@@ -38,21 +39,20 @@ test('creates two isolated copies under one title with consecutive institutional
   assert.match(String(state.copyParameters[0][3]), /^data:image\/png;base64,STIORMOC/)
 })
 
-test('uses the authoritative category shelf instead of a client-provided location', async () => {
+test('rejects a copy location that staff have not configured', async () => {
   const { state, database } = fakePool()
-  const result = await createBulkBookService(database, () => new Date('2026-08-23T08:00:00+08:00'), async (payload) => ({
-    trackingJson: JSON.stringify(payload), qrCodeData: 'qr', barcodeImageData: 'barcode',
-  })).addBulk({ ...body, shelf_location: 'Unknown Room' })
-  assert.ok(result.copies.every((copy) => copy.shelfLocation === 'Shelf A-1'))
-  assert.ok(state.copyParameters.every((parameters) => parameters[5] === 'Shelf A-1'))
+  await assert.rejects(createBulkBookService(database).addBulk({ ...body, shelf_location: 'Unknown Room' }), { status: 422 })
+  assert.equal(state.copyInserts, 0)
+  assert.equal(state.rollbacks, 1)
 })
 
 test('rejects an ISBN already assigned to different catalog metadata before creating a copy', async () => {
   const state = { rollbacks: 0, copyInserts: 0 }
   const connection = {
     async beginTransaction() {}, async commit() {}, async rollback() { state.rollbacks += 1 }, release() {},
-    async execute(sql: string) {
+    async execute(sql: string, parameters: unknown[] = []) {
       if (sql.includes('FROM categories c')) return [[{ category_id: 2, shelf_location: 'Shelf A-1', shelf_id: 1 }]]
+      if (sql.includes('FROM catalog_locations')) return parameters?.[0] === 'Unknown Room' ? [[]] : [[{ location_id: 1 }]]
       if (sql.includes('FROM titles t')) return [[{ title_id: 44, title: 'Existing Book', author_name: 'Existing Author', category_id: 2 }]]
       if (sql.includes('INSERT INTO physical_copies')) { state.copyInserts += 1; return [{ insertId: 1 }] }
       throw new Error(`Unexpected SQL: ${sql}`)

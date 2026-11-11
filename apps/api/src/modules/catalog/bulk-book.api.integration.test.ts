@@ -13,19 +13,19 @@ function appFor(role: string) {
   const service = { addBulk: async () => ({ titleId: 8, createdTitle: true, numberOfCopies: 2, copies: [{ barcode: 'STIORMOC2026000142' }, { barcode: 'STIORMOC2026000143' }] }) }
   const controller = createBulkBookController(service as never)
   const isbn = createIsbnLookupController({ lookup: async (value: unknown) => ({ isbn: String(value), title: 'Clean Code', author: 'Robert C. Martin', publisher: 'Prentice Hall', publicationYear: 2008, source: 'local_catalog' }) } as never)
-  app.use('/api/v1/admin/books', requireJwtRoles('Admin'), createBulkBookRouter(controller, undefined, isbn))
-  app.use('/api/v1/admin/catalog', requireJwtRoles('Admin'), createBulkCatalogEntryRouter(controller))
+  app.use('/api/v1/admin/books', requireJwtRoles('Librarian'), createBulkBookRouter(controller, undefined, isbn))
+  app.use('/api/v1/admin/catalog', requireJwtRoles('Librarian'), createBulkCatalogEntryRouter(controller))
   return app
 }
 
-test('Admin bulk endpoint returns the generated copy array with 201 Created', async () => {
-  const response = await request(appFor('Admin')).post('/api/v1/admin/books/add-bulk').send({ number_of_copies: 2 })
+test('Librarian bulk endpoint returns the generated copy array with 201 Created', async () => {
+  const response = await request(appFor('Librarian')).post('/api/v1/admin/books/add-bulk').send({ number_of_copies: 2 })
   assert.equal(response.status, 201)
   assert.equal(response.body.data.copies.length, 2)
 })
 
-test('documented Admin catalog bulk-entry alias returns 201', async () => {
-  const response = await request(appFor('Admin')).post('/api/v1/admin/catalog/bulk-entry').send({ number_of_copies: 2 })
+test('documented Librarian catalog bulk-entry alias returns 201', async () => {
+  const response = await request(appFor('Librarian')).post('/api/v1/admin/catalog/bulk-entry').send({ number_of_copies: 2 })
   assert.equal(response.status, 201)
   assert.equal(response.body.data.numberOfCopies, 2)
 })
@@ -36,8 +36,8 @@ test('Student is forbidden from generating inventory labels', async () => {
   assert.equal(response.body.code, 'JWT_ROLE_FORBIDDEN')
 })
 
-test('Admin can resolve ISBN metadata while Student is forbidden', async () => {
-  const admin = await request(appFor('Admin')).get('/api/v1/admin/books/isbn/9780132350884')
+test('Librarian can resolve ISBN metadata while Student is forbidden', async () => {
+  const admin = await request(appFor('Librarian')).get('/api/v1/admin/books/isbn/9780132350884')
   assert.equal(admin.status, 200)
   assert.equal(admin.body.data.title, 'Clean Code')
   const student = await request(appFor('Student')).get('/api/v1/admin/books/isbn/9780132350884')

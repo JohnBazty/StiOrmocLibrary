@@ -1,4 +1,4 @@
-import type { Pool } from 'mysql2/promise'
+import type { Pool } from '../../../config/db.js'
 import { db } from '../../../config/db.js'
 import { HttpError } from '../../../core/http-error.ts'
 import {
@@ -112,6 +112,9 @@ export function createCategoryService(database: Pool = db) {
         return { categoryId, deleted: true }
       } catch (error) {
         await connection.rollback()
+        if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23503') {
+          throw new HttpError(422, 'CATEGORY_HAS_HISTORICAL_MATERIALS', 'This category is used by retained catalog records and cannot be deleted.')
+        }
         throw error
       } finally { connection.release() }
     },

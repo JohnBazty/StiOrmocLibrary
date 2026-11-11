@@ -27,11 +27,13 @@ if (isProduction && (!configuredAttendanceQrSecret || configuredAttendanceQrSecr
 
 const developmentJwtSecret = configuredJwtSecret || configuredSecret || randomBytes(48).toString('hex')
 
+// Tests run the Postgres dialect against a port that refuses at once, so a test that
+// forgets to fake `db` fails fast instead of reaching the database in apps/api/.env.
+// shortcut: Node sets NODE_TEST_CONTEXT per test process; --test-isolation=none would not.
+const TEST_DATABASE_URL = 'postgresql://test:test@127.0.0.1:1/never_connects'
+
 function resolveDatabaseUrl() {
-  // Unit tests assert MySQL SQL shapes; force local MySQL dialect when set.
-  if (process.env.DB_FORCE_MYSQL === '1' || process.env.DB_FORCE_MYSQL === 'true') {
-    return ''
-  }
+  if (process.env.NODE_TEST_CONTEXT && !isProduction) return TEST_DATABASE_URL
 
   const explicit = process.env.DATABASE_URL?.trim() || process.env.SUPABASE_DB_URL?.trim() || ''
   if (explicit.startsWith('postgres')) return explicit
@@ -50,11 +52,10 @@ function resolveDatabaseUrl() {
     }
     return `postgresql://postgres:${encoded}@db.${projectRef}.supabase.co:5432/postgres`
   }
-  return ''
+  throw new Error('DATABASE_URL is required (postgresql://...). Set it, or set SUPABASE_URL plus DB_PASS, in apps/api/.env.')
 }
 
 const databaseUrl = resolveDatabaseUrl()
-const dbDriver = databaseUrl.startsWith('postgres') ? 'postgres' : 'mysql'
 
 export const env = Object.freeze({
   isProduction,
@@ -69,13 +70,7 @@ export const env = Object.freeze({
     jwksUrl: process.env.SUPABASE_JWKS_URL?.trim() || '',
   },
   db: {
-    driver: dbDriver,
     connectionString: databaseUrl,
-    host: process.env.DB_HOST ?? '127.0.0.1',
-    port: Number(process.env.DB_PORT ?? 3306),
-    user: process.env.DB_USER ?? 'root',
-    password: process.env.DB_PASSWORD ?? '',
-    database: process.env.DB_NAME ?? 'sti_ormoc_library',
     // A Vercel deployment can run many API instances at once. Keep each
     // instance's pool small so bursts do not exhaust Supabase connections.
     connectionLimit: Number(process.env.DB_CONNECTION_LIMIT ?? (process.env.VERCEL ? 1 : 10)),
@@ -83,7 +78,7 @@ export const env = Object.freeze({
   session: {
     name: 'sti.sid',
     secret: configuredSecret || randomBytes(48).toString('hex'),
-    idleTimeoutMs: 30 * 60 * 1000,
+    idleTimeoutMs: 10 * 60 * 1000,
   },
   jwt: {
     secret: developmentJwtSecret,

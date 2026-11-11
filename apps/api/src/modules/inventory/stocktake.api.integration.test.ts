@@ -48,8 +48,8 @@ test('Student and Faculty cannot access stocktake routes', async () => {
   }
 })
 
-test('Admin create stocktake validates before database access', async () => {
-  const response = await request(appForRole('Admin')).post('/api/inventory/stocktakes').send({
+test('Librarian create stocktake validates before database access', async () => {
+  const response = await request(appForRole('Librarian')).post('/api/inventory/stocktakes').send({
     name: 'Missing scope id',
     scopeKind: 'shelf',
     assetKind: 'book',
@@ -59,8 +59,8 @@ test('Admin create stocktake validates before database access', async () => {
   assert.ok(response.body.details?.errors?.scopeId)
 })
 
-test('Admin scan validates observed shelf before database access', async () => {
-  const response = await request(appForRole('Admin')).post('/api/inventory/stocktakes/1/scans').send({
+test('Librarian scan validates observed shelf before database access', async () => {
+  const response = await request(appForRole('Librarian')).post('/api/inventory/stocktakes/1/scans').send({
     requestKey: 'k1',
     barcode: 'BC-1',
     source: 'manual',
@@ -69,8 +69,8 @@ test('Admin scan validates observed shelf before database access', async () => {
   assert.equal(response.body.code, 'STOCKTAKE_VALIDATION_FAILED')
 })
 
-test('Admin cancel requires a reason before database access', async () => {
-  const response = await request(appForRole('Admin')).post('/api/inventory/stocktakes/1/cancel').send({})
+test('Librarian cancel requires a reason before database access', async () => {
+  const response = await request(appForRole('Librarian')).post('/api/inventory/stocktakes/1/cancel').send({})
   assert.equal(response.status, 422)
   assert.equal(response.body.code, 'STOCKTAKE_VALIDATION_FAILED')
 })

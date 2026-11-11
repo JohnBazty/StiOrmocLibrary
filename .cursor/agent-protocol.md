@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-10-11 (stocktake sessions; MySQL `048` / next `049`; Supabase `018` / next `019`) |
+| **Date last updated** | 2026-11-11 (Supabase `032` applied, `033` pending, next unused `034`) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---
@@ -31,6 +31,8 @@ When Ethan says **start session** (or a clear equivalent such as “start the se
 5. **Do not start building** until Ethan gives the next explicit command after the briefing.
 
 Purpose: make every new chat session fast to resume without Ethan re-explaining context.
+
+**Wiki first (token saving):** before steps 2–3, read the Obsidian wiki (`wiki/hot.md` "Active Threads" and `wiki/entities/StiOrmocLibrary.md`). Then scan only what the wiki does not already cover; skip transcripts and diffs it summarises. The step-by-step version is the `start-session` skill (`.claude/skills/start-session/SKILL.md`, mirrored in `.agents/skills/start-session/`).
 
 ---
 
@@ -97,32 +99,20 @@ Always know and document:
 
 | Item | Value |
 | --- | --- |
-| Migrations directory | `database/migrations/` |
-| Latest migration | `20261011_048_stocktake_sessions.sql` |
-| Latest number | `048` |
-| **Next available number** | **`049`** |
-| Supabase / Postgres files | `database/supabase/` through `018_stocktake_sessions.sql`; next **019**. Hosted ledger already includes `017_loan_renewals.sql`. Earlier files through `015` remain in tree; reconcile ledger gaps before whole-directory replay. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set. |
+| Migrations directory | `database/supabase/` (Postgres only; MySQL was retired 2026-11-10) |
+| Latest applied migration | `032_login_devices.sql` |
+| Latest file pending review | `033_rename_system_brand.sql` |
+| **Next available number** | **`034`** |
 
-Naming pattern in this repo:
+Applied enrollment 031 supersedes the removed 028 draft. Keep applied filenames and source bytes, including line endings. The 003 source still needs checksum reconciliation. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set.
 
-```text
-YYYYMMDD_NNN_short_snake_description.sql
-```
+Naming pattern: `NNN_short_snake_description.sql`, hand-written Postgres with row-level security as in earlier files. Never regenerate or edit `002_from_migrations.sql`.
 
-Example next file (date prefix chosen on authoring day):
+When a new migration lands:
 
-```text
-20260926_042_example_change.sql
-```
-
-When a new **MySQL** migration lands:
-
-1. Update this table’s **Latest** and **Next available** values in this file.
-2. Mention the new number in the related work doc’s change log / How section.
+1. Update this table's **Latest** and **Next available** values in this file.
+2. Mention the new number in the related work doc's change log / How section.
 3. Do not reuse or renumber an already-applied migration; add a new file instead.
-4. Re-run `python tools/ai/mysql_to_pg.py --migrations -o database/supabase/002_from_migrations.sql` (or add a new numbered Supabase file) and review before applying to Supabase.
-
-Note: Supabase / PostgreSQL conversion is **in progress** (`docs/supabase-migration-plan.md`). Until cutover is trusted, the MySQL tree above remains authoritative for numbering additive MySQL fixes. After cutover, prefer new DDL under `database/supabase/`.
 
 ---
 
@@ -161,8 +151,9 @@ Prefer simple, readable scripts under a clear folder (for example `tools/` or `s
 | 2026-09-25 | Supabase conversion started: dual MySQL/Postgres driver, `database/supabase/` drafts, tracker notes for parallel Postgres tree. See `docs/supabase-migration-plan.md`. |
 | 2026-09-25 | Cutover ported into GitHub main: MySQL tracker advanced to `040` / next `041`; added `005_main_product_gapfill.sql` for MAIN product tables. |
 | 2026-09-26 | Phase 3 archive and image migration added: MySQL reference `041` / next `042`, Supabase applied `010` / next `011`. Phase 3 P1–P3, A9, and F1 deployed; R1 excluded as requested. |
+| 2026-10-09 | Added branding migrations MySQL `048` and Supabase `017`; tracker advanced to MySQL next `049` and Supabase next `018`. |
 | 2026-09-26 | Phase 2 item 1 account management deployed: MySQL reference `042` / next `043`, Supabase applied `011` / next `012`. Student lifecycle and audit flows passed production acceptance. Item 2 awaits user approval. |
 | 2026-10-09 | Added branding migrations `045` and Supabase `015`; tracker advanced to MySQL `045` / next `046` and Supabase next `016`. |
 | 2026-10-09 | Configurable borrowing policies: MySQL `046` / Supabase `016`; tracker advanced to MySQL next `047` and Supabase next `017`. |
-| 2026-10-10 | Stocktake sessions and discrepancy review: MySQL `047` / Supabase `018` on `feat/stocktake-sessions` (hosted already had `017_loan_renewals.sql`); tracker advanced to MySQL next `048` and Supabase next `019`. |
-| 2026-10-11 | Stocktake MySQL rollback renumbered to `048` so renewal can keep MySQL `047` on merge; tracker next MySQL `049`. |
+| 2026-11-10 | Start session now reads the Obsidian wiki first and scans only what it does not cover; added the `start-session` skill. Migration numbers unchanged. |
+| 2026-11-10 | MySQL retired (`docs/mysql-removal-plan.md`): tracker is Supabase only, `016` / next `017`; MySQL rows and the `mysql_to_pg.py` step removed. |

@@ -1,6 +1,6 @@
-import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
-import { currentDate, isPostgres } from '../../config/sql-dialect.js'
+import { currentDate } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import type { AnnouncementInput } from './notification.validation.ts'
 
@@ -24,22 +24,14 @@ function actorAccountId(actor: NotificationActor) {
 export function createNotificationRepository(database: Pool = db) {
   async function fanOutAnnouncement(connection: PoolConnection, announcement: RowDataPacket) {
     await connection.execute(
-      isPostgres
-        ? `INSERT INTO notifications
+      `INSERT INTO notifications
              (user_id, message_title, message_body, trigger_type, source_type, source_id,
               action_path, priority, dedupe_key, scheduled_for, delivered_at, expires_at)
            SELECT u.user_id, ?, ?, 'Announcement', 'Announcement', ?, '/student/notifications', ?,
                   CONCAT('announcement:', CAST(? AS text)), ?, NOW(), ?
              FROM users u
             WHERE u.account_status = 'Active'
-           ON CONFLICT (user_id, dedupe_key) DO NOTHING`
-        : `INSERT IGNORE INTO notifications
-             (user_id, message_title, message_body, trigger_type, source_type, source_id,
-              action_path, priority, dedupe_key, scheduled_for, delivered_at, expires_at)
-           SELECT u.user_id, ?, ?, 'Announcement', 'Announcement', ?, '/student/notifications', ?,
-                  CONCAT('announcement:', ?), ?, NOW(), ?
-             FROM users u
-            WHERE u.account_status = 'Active'`,
+           ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
       [announcement.title, announcement.message_body, announcement.announcement_id,
         announcement.priority, announcement.announcement_id,
         announcement.publish_at ?? new Date(), announcement.expires_at ?? null],
@@ -147,7 +139,7 @@ export function createNotificationRepository(database: Pool = db) {
     },
 
     async createAnnouncement(actor: NotificationActor, input: AnnouncementInput) {
-      if (actor.role !== 'Admin') throw new HttpError(403, 'ANNOUNCEMENT_ADMIN_ONLY', 'Only an Admin can publish announcements.')
+      if (actor.role !== 'Librarian' && actor.role !== 'Staff') throw new HttpError(403, 'ANNOUNCEMENT_ACCESS_DENIED', 'Only Librarians and Staff can publish announcements.')
       const connection = await database.getConnection()
       try {
         await connection.beginTransaction()
@@ -179,7 +171,7 @@ export function createNotificationRepository(database: Pool = db) {
     },
 
     async announcements(actor: NotificationActor) {
-      if (actor.role !== 'Admin') throw new HttpError(403, 'ANNOUNCEMENT_ADMIN_ONLY', 'Only an Admin can manage announcements.')
+      if (actor.role !== 'Librarian' && actor.role !== 'Staff') throw new HttpError(403, 'ANNOUNCEMENT_ACCESS_DENIED', 'Only Librarians and Staff can manage announcements.')
       const [rows] = await database.execute<RowDataPacket[]>(
         `SELECT a.announcement_id, a.title, a.message_body, a.priority, a.announcement_status,
                 a.publish_at, a.expires_at, a.published_at, a.archived_at, a.created_at,

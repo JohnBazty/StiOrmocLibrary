@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Pool } from 'mysql2/promise'
+import type { Pool } from '../../config/db.js'
 import { expireReadyReservations } from './reservation-expiration.service.ts'
 
 test('expiration transaction marks ready reservation expired and releases its accession', async () => {
@@ -9,7 +9,8 @@ test('expiration transaction marks ready reservation expired and releases its ac
     async beginTransaction() {}, async commit() { state.committed += 1 }, async rollback() { state.rolledBack += 1 }, release() { state.released += 1 },
     async execute(sql: string) {
       state.statements.push(sql)
-      if (sql.includes('SELECT reservation_id')) return [[{ reservation_id: 91, accession_id: 42 }]]
+      if (sql.includes('SELECT r.* FROM reservations r')) return [[{ reservation_id: 91, user_id: 8, accession_id: 42, assigned_physical_copy_id: 50, book_title_id: 10, reservation_status: 'ready_for_pickup', request_kind: 'Reservation', title: 'Emma' }]]
+      if (sql.startsWith('SELECT')) return [[]]
       return [{ affectedRows: 1 }]
     },
   }
@@ -18,8 +19,8 @@ test('expiration transaction marks ready reservation expired and releases its ac
   assert.equal(state.committed, 1)
   assert.equal(state.rolledBack, 0)
   assert.equal(state.released, 1)
-  assert.ok(state.statements.some((sql) => sql.includes("reservation_status = 'expired'")))
-  assert.ok(state.statements.some((sql) => sql.includes("UPDATE materials SET availability_status = 'Available'")))
-  assert.ok(state.statements.some((sql) => sql.includes("UPDATE physical_copies SET availability_status = 'Available'")))
+  assert.ok(state.statements.some((sql) => sql.includes("SET reservation_status=?")))
+  assert.ok(state.statements.some((sql) => sql.includes("UPDATE materials m SET availability_status=pc.availability_status")))
+  assert.ok(state.statements.some((sql) => sql.includes("UPDATE physical_copies SET availability_status=CASE")))
 })
 

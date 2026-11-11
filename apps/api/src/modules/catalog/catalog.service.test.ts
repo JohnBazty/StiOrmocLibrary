@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Pool } from 'mysql2/promise'
+import type { Pool } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { createCatalogService } from './catalog.service.ts'
 
@@ -17,8 +17,9 @@ function fakePool() {
       if (sql.includes('SELECT title_id') && sql.includes('FROM titles')) return [[]]
       if (sql.includes('SELECT research_record_id')) return [[]]
       if (sql.includes('SELECT research_inventory_id')) return [[]]
+      if (sql.includes('FROM catalog_locations')) return [[{ location_id: 1 }]]
       if (sql.includes('SELECT category_id FROM categories WHERE shelf_location')) return [[{ category_id: 1 }]]
-      if (sql.includes('SELECT `last_value` FROM barcode_sequences')) return [[{ last_value: 40 }]]
+      if (sql.includes('SELECT last_value FROM barcode_sequences')) return [[{ last_value: 40 }]]
       if (sql.includes('INSERT INTO titles')) return [{ insertId: 101 }]
       if (sql.includes('INSERT INTO physical_copies')) return [{ insertId: 202 }]
       if (sql.includes('INSERT INTO research_records')) return [{ insertId: 303 }]

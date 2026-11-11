@@ -12,3 +12,28 @@ apps/storage/
 apps/api/public/assets/covers/
 .vercel
 .env*
+coverage/
+
+# Local tool state and scratch output (never commit)
+.serena/
+graphify-out/
+.claude/.headroom_wrap_settings.lock
+.claude/settings.local.json
+skills-lock.json
+tasks/*.log
+
+# Skills Ethan installed locally that are not shared (see AGENTS.md "Shared skills")
+.claude/skills/banner-design/
+.claude/skills/brand/
+.claude/skills/design/
+.claude/skills/slides/
+.claude/skills/stageshow/
+.agents/skills/stageshow/
+
+# Local chat attachments and generated previews/deliverables
+/.codex-remote-attachments/
+/output/
+
+# Python bytecode generated while producing documentation
+__pycache__/
+*.pyc

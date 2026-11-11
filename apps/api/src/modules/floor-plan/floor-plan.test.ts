@@ -20,7 +20,7 @@ test('shelf grids accept practical dimensions and reject invalid sizes',()=>{
   assert.throws(()=>gridCount(13,'Columns'))
 })
 test('retired layout mutation and draft routes cannot be used by any role',async()=>{
-  for(const role of ['Student','Faculty','Admin']){
+  for(const role of ['Student','Faculty','Librarian','Admin']){
     const app=express();app.use(express.json());app.use((req,res,next)=>{res.locals.authenticatedUser={accountId:1,role};next()});app.use('/map',floorPlanRouter)
     for(const path of ['/publish','/shelves','/transfer','/background','/versions/1/restore'])assert.equal((await request(app).post(`/map${path}`).send({})).status,404)
     assert.equal((await request(app).get('/map/editor')).status,404)
@@ -29,10 +29,3 @@ test('retired layout mutation and draft routes cannot be used by any role',async
   }
 })
 
-test('shelf grid migration is additive and stores exact copy positions',async()=>{
-  const {readFile}=await import('node:fs/promises')
-  const sql=await readFile(new URL('../../../../../database/migrations/20260907_038_shelf_grid_locations.sql',import.meta.url),'utf8')
-  assert.match(sql,/floor_plan_shelves[\s\S]*column_count[\s\S]*row_count/i)
-  assert.match(sql,/physical_copies[\s\S]*shelf_column[\s\S]*shelf_row/i)
-  assert.doesNotMatch(sql,/DROP (TABLE|COLUMN)/i)
-})

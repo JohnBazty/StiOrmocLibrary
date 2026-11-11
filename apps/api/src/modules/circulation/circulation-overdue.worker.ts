@@ -1,4 +1,4 @@
-import type { Pool } from 'mysql2/promise'
+import type { Pool } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { escalateOverdueTransactions } from './circulation-overdue.service.ts'
 

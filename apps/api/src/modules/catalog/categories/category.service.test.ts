@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Pool } from 'mysql2/promise'
+import type { Pool } from '../../../config/db.js'
 import { HttpError } from '../../../core/http-error.ts'
 import { createCategoryService } from './category.service.ts'
-import { findCategoryByName } from './category.repository.ts'
+import { findCategoryByName, updateCategoryRow } from './category.repository.ts'
 
 test('category name lookup does not send an untyped nullable parameter', async () => {
   const calls: Array<{ sql: string; values: unknown[] }> = []
@@ -21,21 +21,30 @@ test('creates a unique category with prepared values', async () => {
     async execute(sql: string, values: unknown[]) {
       calls.push({ sql, values })
       if (sql.includes('SELECT category_id')) return [[]]
-      if (sql.includes('FROM floor_plan_shelves')) return [[{ id: 4, label: 'Shelf A-1' }]]
+      if (sql.includes('FROM catalog_locations')) return [[{ id: 4, label: 'Shelf A-1' }]]
       return [{ insertId: 14, affectedRows: 1 }]
     },
   } as unknown as Pool
-  const result = await createCategoryService(database).create({ categoryName: 'Programming', shelfLocation: 'Shelf A-1' })
+  const result = await createCategoryService(database).create({ categoryName: 'Programming', description: ' Software and code ', shelfLocation: 'Shelf A-1' })
   assert.equal(result.categoryId, 14)
-  assert.deepEqual(calls[2].values, ['Programming', 'Shelf A-1', 1, 1])
+  assert.equal(result.description, 'Software and code')
+  assert.deepEqual(calls[2].values, ['Programming', 'Software and code', 'Shelf A-1', 1, 1])
   assert.match(calls[2].sql, /INSERT INTO categories/)
+})
+
+test('editing a category saves its description on the same canonical row', async () => {
+  let statement = '', values: unknown[] = []
+  const connection = { async execute(sql: string, input: unknown[]) { statement = sql; values = input; return [{ affectedRows: 1 }] } } as never
+  await updateCategoryRow(connection, 14, { categoryName: 'Programming', description: 'New description', shelfLocation: 'Shelf A-1', shelfColumn: 1, shelfRow: 1 })
+  assert.match(statement, /UPDATE categories SET category_name = \?, description = \?/)
+  assert.deepEqual(values, ['Programming', 'New description', 'Shelf A-1', 1, 1, 14])
 })
 
 test('rejects a category shelf that is not managed in Category Management', async () => {
   const database = {
     async execute(sql: string) {
       if (sql.includes('FROM categories')) return [[]]
-      if (sql.includes('FROM floor_plan_shelves')) return [[]]
+      if (sql.includes('FROM catalog_locations')) return [[]]
       throw new Error(`Unexpected statement: ${sql}`)
     },
   } as unknown as Pool
@@ -61,7 +70,7 @@ test('translates a PostgreSQL duplicate category into a clear validation error',
   const database = {
     async execute(sql: string) {
       if (sql.includes('FROM categories')) return [[]]
-      if (sql.includes('FROM floor_plan_shelves')) return [[{ id: 1, label: 'Shelf A-1', column_count: 2, row_count: 2 }]]
+      if (sql.includes('FROM catalog_locations')) return [[{ id: 1, label: 'Shelf A-1', column_count: 2, row_count: 2 }]]
       throw Object.assign(new Error('duplicate key'), { code: '23505' })
     },
   } as unknown as Pool
@@ -103,6 +112,26 @@ test('rolls back and preserves data when deleting a category with active materia
   assert.equal(state.statements.some((sql) => /^DELETE FROM categories/.test(sql)), false)
 })
 
+test('retained historical references prevent deletion and return a useful error', async () => {
+  let committed = false, rolledBack = false
+  const connection = {
+    async beginTransaction() {}, async commit() { committed = true }, async rollback() { rolledBack = true }, release() {},
+    async execute(sql: string) {
+      if (sql.startsWith('DELETE FROM categories')) throw Object.assign(new Error('Referenced by archived title'), { code: '23503' })
+      if (sql.includes('FROM categories WHERE category_id')) return [[{ category_id: 7, category_name: 'History' }]]
+      return [[]]
+    },
+  }
+  await assert.rejects(createCategoryService({ getConnection: async () => connection } as unknown as Pool).remove(7), (error: unknown) => {
+    assert.ok(error instanceof HttpError)
+    assert.equal(error.status, 422)
+    assert.equal(error.code, 'CATEGORY_HAS_HISTORICAL_MATERIALS')
+    return true
+  })
+  assert.equal(committed, false)
+  assert.equal(rolledBack, true)
+})
+
 test('reassigns title and legacy identifiers before deleting the old category in one transaction', async () => {
   const state = { committed: 0, rolledBack: 0, statements: [] as string[] }
   const connection = {
@@ -110,7 +139,7 @@ test('reassigns title and legacy identifiers before deleting the old category in
     async execute(sql: string) {
       state.statements.push(sql)
       if (sql.includes('WHERE category_id IN')) return [[{ category_id: 3, shelf_location: 'Old shelf' }, { category_id: 9, shelf_location: 'Shelf 1A' }]]
-      if (sql.includes('FROM floor_plan_shelves')) return [[{ id: 1, label: 'Shelf 1A' }]]
+      if (sql.includes('FROM catalog_locations')) return [[{ id: 1, label: 'Shelf 1A' }]]
       if (sql.includes('SELECT pc.physical_copy_id')) return [[{ physical_copy_id: 1, shelf_location: 'F-A' }]]
       if (sql.includes('SELECT ri.research_inventory_id')) return [[]]
       if (sql.includes('UPDATE titles')) return [{ affectedRows: 6 }]
@@ -137,7 +166,7 @@ test('saving a category synchronizes every active book and research copy to its 
       state.statements.push(sql)
       if (sql.includes('FROM categories WHERE category_id')) return [[{ category_id: 7, category_name: 'Action', shelf_location: 'F-A' }]]
       if (sql.includes('category_name = ?')) return [[]]
-      if (sql.includes('FROM floor_plan_shelves')) return [[{ id: 5, label: 'SHELF 1A' }]]
+      if (sql.includes('FROM catalog_locations')) return [[{ id: 5, label: 'SHELF 1A' }]]
       if (sql.includes('SELECT pc.physical_copy_id')) return [[{ physical_copy_id: 1, shelf_location: 'F-A' }, { physical_copy_id: 2, shelf_location: 'SHELF 1A' }]]
       if (sql.includes('SELECT ri.research_inventory_id')) return [[{ research_inventory_id: 8, shelf_location: 'Old research shelf' }]]
       if (sql.includes('INSERT INTO floor_plan_events')) return [{ insertId: 1 }]
@@ -154,5 +183,6 @@ test('saving a category synchronizes every active book and research copy to its 
   assert.equal(state.rolledBack, 0)
   assert.ok(state.statements.some((sql) => sql.includes('UPDATE physical_copies')))
   assert.ok(state.statements.some((sql) => sql.includes('UPDATE research_inventory')))
+  assert.ok(state.statements.some((sql) => sql.includes('description = ?')))
   assert.ok(state.statements.some((sql) => sql.includes('INSERT INTO floor_plan_events')))
 })

@@ -2,7 +2,7 @@
 
 ## 1. DDL and relational contract
 
-The canonical structure is maintained in `database/mysql56-schema.sql`. Existing databases must apply `database/migrations/20260816_003_category_management.sql` after the Book and Research/Thesis migration.
+The canonical structure is maintained in `database/supabase/`. It originally shipped as `20260816_003_category_management.sql`, a retired MySQL migration (removed 2026-11-10; restore with `git show a767d88:database/migrations/<file>`).
 
 The category record uses:
 

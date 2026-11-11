@@ -1,10 +1,9 @@
-import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import { attendanceTodaySql as currentDate } from './attendance-calendar.ts'
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import {
-  isPostgres,
   formatDate,
   formatTime,
-  currentDate,
   currentTime,
   monthStart,
   lastDayOfMonth,
@@ -13,6 +12,7 @@ import {
 import { HttpError } from '../../core/http-error.ts'
 import { issueAttendanceCredential, validateAttendanceCredential } from './attendance-credential.service.ts'
 import { parseAttendanceScan, parseCapacityUpdate } from './attendance.validation.ts'
+import { libraryState } from './attendance-operations.service.ts'
 
 export type AttendanceActor = { accountId?: number; role?: string }
 
@@ -45,10 +45,10 @@ export function createAttendanceService(pool: Pool = db) {
              FROM users WHERE user_id=? LIMIT 1`, [userId],
         ),
         pool.execute<RowDataPacket[]>(
-          `SELECT log_id,${formatDate('attendance_date', '%Y-%m-%d', 'YYYY-MM-DD')} attendance_date,
+          `SELECT log_id,${formatDate('attendance_date', 'YYYY-MM-DD')} attendance_date,
                   ${formatTime('time_in')} time_in,
                   CASE WHEN time_out IS NULL THEN NULL ELSE ${formatTime('time_out')} END time_out,
-                  reason_for_visit purpose,CASE WHEN time_out IS NULL THEN 'Inside' ELSE 'Exited' END presence
+                  ${'checkout_source,'}reason_for_visit purpose,CASE WHEN time_out IS NULL THEN 'Inside' ELSE 'Exited' END presence
              FROM attendance_logs WHERE user_id=? ORDER BY attendance_date DESC,time_in DESC LIMIT 50`, [userId],
         ),
         pool.execute<RowDataPacket[]>(
@@ -101,6 +101,8 @@ export function createAttendanceService(pool: Pool = db) {
           return { duplicate:true, message:roleMessage(String(row.user_role)), visitor:{userId:Number(row.user_id),name:String(row.full_name),schoolId:String(row.school_id),role:String(row.user_role)}, attendance:{logId:Number(row.log_id),checkedInAt:row.checked_in_at,purpose:input.purpose} }
         }
         const visitor = await validateAttendanceCredential(connection,input.qrPayload,true)
+        // A signed visit QR fixes the purpose; desk input cannot override it.
+        if(visitor.purpose)input.purpose=visitor.purpose
         const [profileRows] = await connection.execute<RowDataPacket[]>(
           'SELECT seat_capacity FROM library_profile_settings WHERE settings_id=1 FOR UPDATE',
         )
@@ -125,9 +127,9 @@ export function createAttendanceService(pool: Pool = db) {
         await connection.execute('UPDATE attendance_qr_credentials SET last_used_at=NOW(),updated_at=NOW() WHERE credential_id=?',[visitor.credentialId])
         const actionPath=visitor.role==='Faculty'?'/faculty/attendance':visitor.role==='Student'?'/student/attendance':'/admin/attendance'
         await connection.execute(
-          `INSERT ${isPostgres ? '' : 'IGNORE '}INTO notifications
+          `INSERT INTO notifications
              (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,delivered_at)
-           VALUES (?,'Library check-in',?,'Attendance','Attendance',?,?,'Normal',?,NOW())${isPostgres ? ' ON CONFLICT (user_id, dedupe_key) DO NOTHING' : ''}`,
+           VALUES (?,'Library check-in',?,'Attendance','Attendance',?,?,'Normal',?,NOW()) ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
           [visitor.userId,`Your library entry was recorded for ${input.purpose}.`,insert.insertId,actionPath,`attendance:checkin:${insert.insertId}`],
         )
         await connection.commit()
@@ -187,10 +189,11 @@ export function createAttendanceService(pool: Pool = db) {
           `INSERT INTO library_capacity_changes(previous_capacity,new_capacity,change_reason,changed_by_user_id,changed_at)
            VALUES (?,?,?,?,NOW())`,[previous,input.capacity,input.reason,staffUserId],
         )
-        const [occupancy]=await connection.execute<RowDataPacket[]>(`SELECT COUNT(*) current_occupancy FROM attendance_logs WHERE attendance_date=${currentDate()} AND time_out IS NULL`)
+
+        const state=await libraryState(connection)
         await connection.commit()
-        const current=Number(occupancy[0]?.current_occupancy??0)
-        return {previousCapacity:previous,current,capacity:input.capacity,available:Math.max(0,input.capacity-current),percentage:Math.round(current/input.capacity*100),overCapacity:current>input.capacity,reason:input.reason}
+
+        return { previousCapacity: previous, reason: input.reason, ...state }
       } catch(error){await connection.rollback();throw error}finally{connection.release()}
     },
   }

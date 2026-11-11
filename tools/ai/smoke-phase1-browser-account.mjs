@@ -24,7 +24,7 @@ try {
     const result = await fetch(`${base}/api/v1/auth/register`, { method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ school_id: schoolId, first_name: 'Phase', last_name: 'One Browser Test',
-        contact_number: '09000000000', program_strand: 'BS Information Technology',
+        program_strand: 'BS Information Technology',
         year_grade_level: '4th Year', password, confirm_password: password }) })
     const payload = await result.json().catch(() => ({}))
     if (result.status !== 201 || !payload.success) throw new Error(`Registration failed: ${result.status} ${payload.code ?? ''}`)

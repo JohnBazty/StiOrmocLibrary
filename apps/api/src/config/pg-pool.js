@@ -1,7 +1,23 @@
 import pg from 'pg'
-import { stripBackticks, toPgPlaceholders } from './sql.js'
+import { toPgPlaceholders } from './sql.js'
 
 const { Pool } = pg
+
+// pg rejects active queries on disconnect, but its error events also need
+// listeners while a client is checked out and while it is idle in the pool.
+// Do not replay writes: callers still receive the failed query/transaction.
+export function handlePgConnectionErrors(pool, report = () => console.error('[Postgres] A database connection closed unexpectedly; affected requests failed.')) {
+  const reported = new WeakSet()
+  const reportOnce = (error) => {
+    if (error instanceof Error) {
+      if (reported.has(error)) return
+      reported.add(error)
+    }
+    report()
+  }
+  pool.on('error', reportOnce)
+  pool.on('connect', (client) => client.on('error', reportOnce))
+}
 
 function isWriteStatement(sql) {
   return /^\s*(INSERT|UPDATE|DELETE|REPLACE)/i.test(sql)
@@ -35,7 +51,7 @@ function wrapResult(sql, result) {
 }
 
 function prepareSql(sql) {
-  return toPgPlaceholders(stripBackticks(sql))
+  return toPgPlaceholders(sql)
 }
 
 async function runOnClient(client, sql, values = []) {
@@ -69,7 +85,7 @@ function wrapClient(client) {
 }
 
 /**
- * mysql2-shaped pool over node-postgres for gradual repository migration.
+ * Pool over node-postgres with a `?`-placeholder execute (see config/db.d.ts).
  * Supports execute/query/getConnection with `?` placeholders and insertId/affectedRows.
  */
 export function createPgPool(connectionString, connectionLimit) {
@@ -80,6 +96,7 @@ export function createPgPool(connectionString, connectionLimit) {
     connectionTimeoutMillis: 10000,
     options: '-c timezone=Asia/Manila',
   })
+  handlePgConnectionErrors(pool)
 
   return {
     driver: 'postgres',

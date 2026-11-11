@@ -19,7 +19,8 @@ describe('ResearchCatalog view-only UI', () => {
     api.fetchResearchOverview.mockResolvedValue(paper)
     render(<ResearchCatalog />)
 
-    expect(await screen.findByText('SmartLib Research')).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'View' })).toBeTruthy()
+    expect(screen.getAllByText('SmartLib Research').length).toBeGreaterThan(0)
     expect(screen.getByPlaceholderText('Search research...')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /borrow/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /add to cart/i })).toBeNull()

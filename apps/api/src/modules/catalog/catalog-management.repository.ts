@@ -1,4 +1,4 @@
-import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import type { BookMetadataInput, ThesisMetadataInput } from './catalog.validation.ts'
 import { forUpdate } from '../../config/sql-dialect.js'
 import { buildBookSearchText, buildThesisSearchText, insertAuthors } from './catalog.repository.ts'

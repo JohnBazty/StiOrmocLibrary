@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Pool } from 'mysql2/promise'
+import type { Pool } from '../../config/db.js'
 import { buildResearchCatalogQuery, queryResearchOverview } from './research-catalog.repository.ts'
 import { parseResearchCatalogFilters } from './research-catalog.validation.ts'
 
@@ -11,10 +11,10 @@ test('research query combines prepared title, authors, adviser, department, and 
   })
   const query = buildResearchCatalogQuery(filters)
 
-  assert.match(query.dataSql, /t\.title LIKE \?/)
-  assert.match(query.dataSql, /author_filter\.normalized_name LIKE \?/)
-  assert.match(query.dataSql, /rr\.adviser_name LIKE \?/)
-  assert.match(query.dataSql, /rr\.department_or_program LIKE \?/)
+  assert.match(query.dataSql, /t\.title ILIKE \?/)
+  assert.match(query.dataSql, /author_filter\.normalized_name ILIKE \?/)
+  assert.match(query.dataSql, /rr\.adviser_name ILIKE \?/)
+  assert.match(query.dataSql, /rr\.department_or_program ILIKE \?/)
   assert.match(query.dataSql, /t\.publication_year = \?/)
   assert.match(query.dataSql, /research_inventory ri/)
   assert.match(query.dataSql, /LIMIT 20 OFFSET 20/)
@@ -48,7 +48,7 @@ test('single-record lookup uses the inventory primary key and preserves author o
   } as unknown as Pool
 
   const record = await queryResearchOverview(database, 12)
-  assert.match(capturedSql, /GROUP_CONCAT\(a\.author_name ORDER BY a\.author_order/)
+  assert.match(capturedSql, /string_agg\(a\.author_name, ', ' ORDER BY a\.author_order\)/)
   assert.match(capturedSql, /WHERE ri\.research_inventory_id = \?/)
   assert.deepEqual(capturedValues, [12])
   assert.equal(record?.abstract, 'Complete abstract.')

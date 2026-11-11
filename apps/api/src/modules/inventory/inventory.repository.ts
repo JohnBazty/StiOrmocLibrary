@@ -1,4 +1,4 @@
-import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise'
+import type { Pool, PoolConnection, RowDataPacket } from '../../config/db.js'
 import { authorsAgg } from '../../config/sql-dialect.js'
 import type { InventoryListFilters } from './inventory.validation.ts'
 
@@ -60,8 +60,8 @@ export async function listInventoryCopies(database: Pool, filters: InventoryList
   if (filters.availabilityStatus) { where.push('pc.availability_status = ?'); parameters.push(filters.availabilityStatus) }
   if (filters.query) {
     const like = `%${filters.query}%`
-    where.push(`(t.title LIKE ? OR pc.barcode LIKE ? OR pc.accession_number LIKE ? OR
-      EXISTS (SELECT 1 FROM authors aq WHERE aq.title_id = t.title_id AND aq.author_name LIKE ?))`)
+    where.push(`(t.title ILIKE ? OR pc.barcode ILIKE ? OR pc.accession_number ILIKE ? OR
+      EXISTS (SELECT 1 FROM authors aq WHERE aq.title_id = t.title_id AND aq.author_name ILIKE ?))`)
     parameters.push(like, like, like, like)
   }
   const whereSql = `WHERE ${where.join(' AND ')}`

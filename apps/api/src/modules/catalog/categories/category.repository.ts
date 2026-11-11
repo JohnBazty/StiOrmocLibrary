@@ -1,10 +1,11 @@
-import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
-import { forUpdate, isPostgres } from '../../../config/sql-dialect.js'
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../../config/db.js'
+import { forUpdate } from '../../../config/sql-dialect.js'
 import type { CategoryInput } from './category.validation.ts'
 
 export type CategoryRecord = {
   categoryId: number
   categoryName: string
+  description: string
   shelfLocation: string
   shelfColumn: number
   shelfRow: number
@@ -16,7 +17,7 @@ export type CategoryRecord = {
 
 export async function listCategoriesWithCounts(database: Pool): Promise<CategoryRecord[]> {
   const [rows] = await database.execute<RowDataPacket[]>(
-    `SELECT c.category_id, c.category_name, c.shelf_location, c.shelf_column, c.shelf_row, c.created_at, c.updated_at,
+    `SELECT c.category_id, c.category_name, c.description, c.shelf_location, c.shelf_column, c.shelf_row, c.created_at, c.updated_at,
             COALESCE(book_totals.total_books_count, 0) AS total_books_count,
             COALESCE(thesis_totals.total_thesis_count, 0) AS total_thesis_count
        FROM categories c
@@ -41,6 +42,7 @@ export async function listCategoriesWithCounts(database: Pool): Promise<Category
   return rows.map((row) => ({
     categoryId: Number(row.category_id),
     categoryName: String(row.category_name),
+    description: String(row.description ?? ''),
     shelfLocation: String(row.shelf_location),
     shelfColumn: Number(row.shelf_column),
     shelfRow: Number(row.shelf_row),
@@ -62,19 +64,17 @@ export async function findCategoryByName(database: Pool | PoolConnection, catego
 }
 
 export async function findManagedShelfByLabel(database: Pool | PoolConnection, shelfLocation: string) {
-  const [rows] = await database.execute<RowDataPacket[]>(
-    'SELECT id, label, column_count, row_count FROM floor_plan_shelves WHERE label = ? LIMIT 1',
-    [shelfLocation],
-  )
-  return rows[0] ?? null
+  {
+    const [rows] = await database.execute<RowDataPacket[]>(`SELECT l.location_id AS id,l.name AS label,COALESCE(s.column_count,1) AS column_count,COALESCE(s.row_count,1) AS row_count FROM catalog_locations l LEFT JOIN floor_plan_shelves s ON s.label=l.name WHERE l.name=? AND l.lifecycle_status='Active' LIMIT 1`,[shelfLocation])
+    return rows[0]??null
+  }
 }
 
 export async function lockManagedShelfByLabel(connection: PoolConnection, shelfLocation: string) {
-  const [rows] = await connection.execute<RowDataPacket[]>(
-    'SELECT id, label, column_count, row_count FROM floor_plan_shelves WHERE label = ? LIMIT 1 FOR UPDATE',
-    [shelfLocation],
-  )
-  return rows[0] ?? null
+  {
+    const [rows] = await connection.execute<RowDataPacket[]>(`SELECT l.location_id AS id,l.name AS label,COALESCE(s.column_count,1) AS column_count,COALESCE(s.row_count,1) AS row_count FROM catalog_locations l LEFT JOIN floor_plan_shelves s ON s.label=l.name WHERE l.name=? AND l.lifecycle_status='Active' LIMIT 1 FOR UPDATE OF l`,[shelfLocation])
+    return rows[0]??null
+  }
 }
 
 export async function synchronizeCategoryShelf(connection: PoolConnection, categoryId: number, shelfLocation: string, shelfColumn = 1, shelfRow = 1) {
@@ -95,16 +95,10 @@ export async function synchronizeCategoryShelf(connection: PoolConnection, categ
       ${forUpdate('ri')}`, [categoryId],
   )
   await connection.execute(
-    isPostgres
-      ? `UPDATE physical_copies pc
+    `UPDATE physical_copies pc
             SET shelf_location = ?, shelf_column = ?, shelf_row = ?, updated_at = NOW()
            FROM titles t
           WHERE t.title_id = pc.title_id AND t.category_id = ? AND t.record_type = 'Book'
-            AND t.lifecycle_status = 'Active' AND pc.lifecycle_status = 'Active'`
-      : `UPDATE physical_copies pc
-           JOIN titles t ON t.title_id = pc.title_id
-            SET pc.shelf_location = ?, pc.shelf_column = ?, pc.shelf_row = ?, pc.updated_at = NOW()
-          WHERE t.category_id = ? AND t.record_type = 'Book'
             AND t.lifecycle_status = 'Active' AND pc.lifecycle_status = 'Active'`,
     [shelfLocation, shelfColumn, shelfRow, categoryId],
   )
@@ -113,16 +107,10 @@ export async function synchronizeCategoryShelf(connection: PoolConnection, categ
     [shelfLocation, categoryId],
   )
   await connection.execute(
-    isPostgres
-      ? `UPDATE research_inventory ri
+    `UPDATE research_inventory ri
             SET shelf_location = ?, shelf_column = ?, shelf_row = ?, updated_at = NOW(), row_version = ri.row_version + 1
            FROM titles t
           WHERE t.title_id = ri.title_id AND t.category_id = ? AND t.record_type = 'Research/Thesis'
-            AND t.lifecycle_status = 'Active' AND ri.lifecycle_status = 'Active'`
-      : `UPDATE research_inventory ri
-           JOIN titles t ON t.title_id = ri.title_id
-            SET ri.shelf_location = ?, ri.shelf_column = ?, ri.shelf_row = ?, ri.updated_at = NOW(), ri.row_version = ri.row_version + 1
-          WHERE t.category_id = ? AND t.record_type = 'Research/Thesis'
             AND t.lifecycle_status = 'Active' AND ri.lifecycle_status = 'Active'`,
     [shelfLocation, shelfColumn, shelfRow, categoryId],
   )
@@ -151,16 +139,16 @@ export async function recordCategoryShelfEvent(connection: PoolConnection, actor
 
 export async function insertCategory(database: Pool, input: CategoryInput) {
   const [result] = await database.execute<ResultSetHeader>(
-    `INSERT INTO categories (category_name, shelf_location, shelf_column, shelf_row, created_at)
-     VALUES (?, ?, ?, ?, NOW())`,
-    [input.categoryName, input.shelfLocation, input.shelfColumn, input.shelfRow],
+    `INSERT INTO categories (category_name, description, shelf_location, shelf_column, shelf_row, created_at)
+     VALUES (?, ?, ?, ?, ?, NOW())`,
+    [input.categoryName, input.description, input.shelfLocation, input.shelfColumn, input.shelfRow],
   )
   return result.insertId
 }
 
 export async function lockCategory(connection: PoolConnection, categoryId: number) {
   const [rows] = await connection.execute<RowDataPacket[]>(
-    `SELECT category_id, category_name, shelf_location, shelf_column, shelf_row
+    `SELECT category_id, category_name, description, shelf_location, shelf_column, shelf_row
        FROM categories WHERE category_id = ? LIMIT 1 FOR UPDATE`, [categoryId],
   )
   return rows[0] ?? null
@@ -168,8 +156,8 @@ export async function lockCategory(connection: PoolConnection, categoryId: numbe
 
 export async function updateCategoryRow(connection: PoolConnection, categoryId: number, input: CategoryInput) {
   await connection.execute<ResultSetHeader>(
-    `UPDATE categories SET category_name = ?, shelf_location = ?, shelf_column = ?, shelf_row = ?, updated_at = NOW()
-      WHERE category_id = ?`, [input.categoryName, input.shelfLocation, input.shelfColumn, input.shelfRow, categoryId],
+    `UPDATE categories SET category_name = ?, description = ?, shelf_location = ?, shelf_column = ?, shelf_row = ?, updated_at = NOW()
+      WHERE category_id = ?`, [input.categoryName, input.description, input.shelfLocation, input.shelfColumn, input.shelfRow, categoryId],
   )
 }
 

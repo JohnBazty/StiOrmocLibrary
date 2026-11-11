@@ -57,7 +57,7 @@ const missing = required.filter((key) => !args[key])
 
 if (missing.length > 0) {
   console.error(`Missing required arguments: ${missing.map((key) => `--${key}`).join(', ')}`)
-  console.error('Example: npm run auth:create-user -w @sti-library/api -- --email admin@ormoc.sti.edu.ph --role Admin --id ADMIN-001 --name "Campus Librarian"')
+  console.error('Example: npm run auth:create-user -w @sti-library/api -- --email admin@ormoc.sti.edu.ph --role "System Administrator" --id ADMIN-001 --name "Campus Administrator"')
   process.exit(1)
 }
 
@@ -73,7 +73,7 @@ if (password.length < 8 || password.length > 72) throw new Error('Password must 
 
 try {
   const [roleRows] = await db.execute('SELECT role_id FROM roles WHERE role_name = ? LIMIT 1', [args.role])
-  if (!Array.isArray(roleRows) || roleRows.length === 0) throw new Error('Role seed data is missing. Run database/mysql56-schema.sql first.')
+  if (!Array.isArray(roleRows) || roleRows.length === 0) throw new Error('Role seed data is missing. Apply the database/supabase/ schema files first.')
 
   const passwordHash = await bcrypt.hash(password, 12)
   await db.execute(
@@ -82,7 +82,7 @@ try {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
     [
       roleRows[0].role_id,
-      args.role,
+      args.role === 'System Administrator' ? 'Admin' : args.role,
       args.id,
       args.id,
       args.name,

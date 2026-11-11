@@ -1,4 +1,4 @@
-import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { excluded, forUpdate, upsert } from '../../config/sql-dialect.js'
 import type { StocktakeAssetKind, StocktakeScopeKind } from './stocktake.validation.ts'
 
@@ -71,7 +71,7 @@ export async function listStocktakeSessions(
   if (filters.status) { where.push('s.status = ?'); parameters.push(filters.status) }
   if (filters.scopeKind) { where.push('s.scope_kind = ?'); parameters.push(filters.scopeKind) }
   if (filters.query) {
-    where.push('(s.session_name LIKE ? OR s.scope_label LIKE ?)')
+    where.push('(s.session_name ILIKE ? OR s.scope_label ILIKE ?)')
     const like = `%${filters.query}%`
     parameters.push(like, like)
   }
@@ -310,7 +310,7 @@ export async function listExpectedItems(
   const where = ['stocktake_session_id = ?']
   const parameters: Array<string | number> = [sessionId]
   if (filters.query) {
-    where.push('(barcode LIKE ? OR accession_number LIKE ? OR title LIKE ?)')
+    where.push('(barcode ILIKE ? OR accession_number ILIKE ? OR title ILIKE ?)')
     const like = `%${filters.query}%`
     parameters.push(like, like, like)
   }
@@ -354,7 +354,7 @@ export async function listScans(
   const where = ['stocktake_session_id = ?']
   const parameters: Array<string | number> = [sessionId]
   if (filters.query) {
-    where.push('entered_barcode LIKE ?')
+    where.push('entered_barcode ILIKE ?')
     parameters.push(`%${filters.query}%`)
   }
   const offset = (filters.page - 1) * filters.limit
@@ -401,7 +401,7 @@ export async function listDiscrepancies(
     parameters.push(filters.assetKind)
   }
   if (filters.query) {
-    where.push('(e.barcode LIKE ? OR e.accession_number LIKE ? OR e.title LIKE ? OR d.finding_code LIKE ?)')
+    where.push('(e.barcode ILIKE ? OR e.accession_number ILIKE ? OR e.title ILIKE ? OR d.finding_code ILIKE ?)')
     const like = `%${filters.query}%`
     parameters.push(like, like, like, like)
   }

@@ -4,19 +4,13 @@ This module adds a versioned JWT login boundary without removing the system's ex
 
 ## Database migration
 
-The normalized authentication migration is `database/migrations/20260820_007_normalized_accounts_authentication.sql`. It adds:
+The normalized authentication migration was `20260820_007_normalized_accounts_authentication.sql`, a retired MySQL migration (removed 2026-11-10; restore with `git show a767d88:database/migrations/<file>`). Its Postgres form is part of `database/supabase/001_from_baseline.sql`. It adds:
 
 - `accounts`, which owns school-ID credentials, contact number, role, and account lifecycle;
 - `student_profiles`, which owns student names and academic metadata in a one-to-one row;
 - a nullable compatibility link to `users`, with an idempotent backfill for existing accounts.
 
-Apply it to an existing database:
-
-```bash
-npm run db:migrate -w @sti-library/api
-```
-
-The canonical fresh-install definition remains in `database/mysql56-schema.sql`.
+The canonical definition is in `database/supabase/`; apply the reviewed `database/supabase/` file with `npm run db:supabase -w @sti-library/api -- <file>.sql`.
 
 ## API contract
 
@@ -55,6 +49,7 @@ The service normalizes the school ID, validates every required field, performs a
 
 - `GET /api/v1/auth/me`
 - `GET /api/v1/admin/dashboard` — Admin only
+- `GET /api/v1/librarian/dashboard` — Librarian only
 - `GET /api/v1/faculty/dashboard` — Faculty only
 - `GET /api/v1/student/dashboard` — Student only
 
@@ -66,11 +61,10 @@ The login page performs usability validation, submits credentials to the API, va
 
 | Role | Dashboard |
 |---|---|
-| Admin (Librarian) | `/admin/dashboard` (staff entrance `/staff`) |
+| Admin | `/admin/dashboard` |
+| Librarian | `/librarian/dashboard` |
 | Faculty | `/faculty/dashboard` |
 | Student | `/student/dashboard` |
-
-Legacy `/librarian/dashboard` and `/librarian/floor-plan` bookmarks redirect to the Admin equivalents.
 
 React route guards reject missing, expired, or mismatched roles before rendering a protected view. This client check is only a user-experience boundary; the API independently verifies the JWT signature, issuer, audience, expiry, and role before returning protected data.
 

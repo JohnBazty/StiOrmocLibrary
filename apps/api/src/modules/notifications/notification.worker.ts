@@ -1,17 +1,11 @@
-import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import type { Pool, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import {
   currentDate,
   dateAddDays,
   dateAddHours,
   formatDate,
-  isPostgres,
 } from '../../config/sql-dialect.js'
-
-function insertIgnoreNotifications(sql: string) {
-  if (!isPostgres) return sql
-  return `${sql.replace(/^\s*INSERT\s+IGNORE\s+INTO/i, 'INSERT INTO')} ON CONFLICT (user_id, dedupe_key) DO NOTHING`
-}
 
 async function publishScheduledAnnouncements(database: Pool, now: Date) {
   const connection = await database.getConnection()
@@ -26,12 +20,13 @@ async function publishScheduledAnnouncements(database: Pool, now: Date) {
     )
     for (const row of rows) {
       await connection.execute(
-        insertIgnoreNotifications(`INSERT IGNORE INTO notifications
+        `INSERT INTO notifications
            (user_id, message_title, message_body, trigger_type, source_type, source_id,
             action_path, priority, dedupe_key, scheduled_for, delivered_at, expires_at)
          SELECT u.user_id, ?, ?, 'Announcement', 'Announcement', ?, '/student/notifications', ?,
-                CONCAT('announcement:', ${isPostgres ? 'CAST(? AS text)' : '?'}), ?, NOW(), ?
-           FROM users u WHERE u.account_status = 'Active'`),
+                CONCAT('announcement:', CAST(? AS text)), ?, NOW(), ?
+           FROM users u WHERE u.account_status = 'Active'
+          ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
         [row.title, row.message_body, row.announcement_id, row.priority, row.announcement_id, row.publish_at, row.expires_at],
       )
       await connection.execute(
@@ -46,39 +41,40 @@ async function publishScheduledAnnouncements(database: Pool, now: Date) {
 }
 
 export async function generateNotifications(database: Pool = db, now: Date = new Date()) {
-  const dueSoonFormat = formatDate('bt.due_at', '%b %e, %Y at %h:%i %p', 'Mon FMDD, YYYY at HH12:MI AM')
-  const dueHourFormat = formatDate('bt.due_at', '%h:%i %p', 'HH12:MI AM')
-  const pickupFormat = formatDate('r.pickup_deadline', '%b %e, %Y at %h:%i %p', 'Mon FMDD, YYYY at HH12:MI AM')
-  const closureLabel = formatDate('c.closed_date', '%b %e, %Y', 'Mon FMDD, YYYY')
-  const closureSourceId = formatDate('c.closed_date', '%Y%m%d', 'YYYYMMDD')
-  const closureDedupe = formatDate('c.closed_date', '%Y-%m-%d', 'YYYY-MM-DD')
-  const sourceIdCast = isPostgres
-    ? `CAST(${closureSourceId} AS INTEGER)`
-    : `CAST(${closureSourceId} AS UNSIGNED)`
+  const dueSoonFormat = formatDate('bt.due_at', 'Mon FMDD, YYYY at HH12:MI AM')
+  const dueHourFormat = formatDate('bt.due_at', 'HH12:MI AM')
+  const pickupFormat = formatDate('r.pickup_deadline', 'Mon FMDD, YYYY at HH12:MI AM')
+  const closureLabel = formatDate('c.closed_date', 'Mon FMDD, YYYY')
+  const closureSourceId = formatDate('c.closed_date', 'YYYYMMDD')
+  const closureDedupe = formatDate('c.closed_date', 'YYYY-MM-DD')
+  const sourceIdCast = `CAST(${closureSourceId} AS INTEGER)`
 
   const queries: Array<[string, Array<string | number | Date | null>]> = [
-    [insertIgnoreNotifications(`INSERT IGNORE INTO notifications
+    [`INSERT INTO notifications
         (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
       SELECT bt.user_id, 'Book due soon', CONCAT(COALESCE(t.title,m.title),' is due on ',${dueSoonFormat},'.'),
              'Due Date','Borrow Transaction',bt.transaction_id,'/student/borrowing','Important',CONCAT('loan:',bt.transaction_id,':due-12h'),NOW(),NOW()
         FROM borrow_transactions bt INNER JOIN materials m ON m.material_id=bt.material_id
         LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id LEFT JOIN titles t ON t.title_id=pc.title_id
-       WHERE bt.transaction_status='Borrowed' AND bt.lost_confirmed_at IS NULL AND bt.due_at>? AND bt.due_at<=${dateAddHours('?', 12)}`), [now, now]],
-    [insertIgnoreNotifications(`INSERT IGNORE INTO notifications
+       WHERE bt.transaction_status='Borrowed' AND bt.lost_confirmed_at IS NULL AND bt.due_at>? AND bt.due_at<=${dateAddHours('?', 12)}
+          ON CONFLICT (user_id, dedupe_key) DO NOTHING`, [now, now]],
+    [`INSERT INTO notifications
         (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
       SELECT bt.user_id, 'Book due within one hour', CONCAT(COALESCE(t.title,m.title),' is due at ',${dueHourFormat},'. Return it before the cutoff to avoid a fine.'),
              'Due Date','Borrow Transaction',bt.transaction_id,'/student/borrowing','Urgent',CONCAT('loan:',bt.transaction_id,':due-1h'),NOW(),NOW()
         FROM borrow_transactions bt INNER JOIN materials m ON m.material_id=bt.material_id
         LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id LEFT JOIN titles t ON t.title_id=pc.title_id
-       WHERE bt.transaction_status='Borrowed' AND bt.lost_confirmed_at IS NULL AND bt.due_at>? AND bt.due_at<=${dateAddHours('?', 1)}`), [now, now]],
-    [insertIgnoreNotifications(`INSERT IGNORE INTO notifications
+       WHERE bt.transaction_status='Borrowed' AND bt.lost_confirmed_at IS NULL AND bt.due_at>? AND bt.due_at<=${dateAddHours('?', 1)}
+          ON CONFLICT (user_id, dedupe_key) DO NOTHING`, [now, now]],
+    [`INSERT INTO notifications
         (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
       SELECT bt.user_id,'Book is overdue',CONCAT(COALESCE(t.title,m.title),' is overdue. Your fine and clearance status have been updated.'),
              'Overdue Penalty','Borrow Transaction',bt.transaction_id,'/student/clearance','Urgent',CONCAT('loan:',bt.transaction_id,':overdue'),NOW(),NOW()
         FROM borrow_transactions bt INNER JOIN materials m ON m.material_id=bt.material_id
         LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id LEFT JOIN titles t ON t.title_id=pc.title_id
-       WHERE bt.transaction_status IN ('Borrowed','Overdue') AND bt.lost_confirmed_at IS NULL AND bt.due_at<=?`), [now]],
-    [insertIgnoreNotifications(`INSERT IGNORE INTO notifications
+       WHERE bt.transaction_status IN ('Borrowed','Overdue') AND bt.lost_confirmed_at IS NULL AND bt.due_at<=?
+          ON CONFLICT (user_id, dedupe_key) DO NOTHING`, [now]],
+    [`INSERT INTO notifications
         (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
       SELECT r.user_id,
              CASE r.reservation_status WHEN 'pending' THEN 'Reservation received' WHEN 'approved' THEN 'Reservation approved'
@@ -89,24 +85,30 @@ export async function generateNotifications(database: Pool = db, now: Date = new
              'Reservation Arrival','Reservation',r.reservation_id,'/student/reservations',
              CASE WHEN r.reservation_status='ready_for_pickup' THEN 'Urgent' ELSE 'Important' END,
              CONCAT('reservation:',r.reservation_id,':',r.reservation_status),NOW(),NOW()
-        FROM reservations r INNER JOIN materials m ON m.material_id=r.material_id`), []],
-    [insertIgnoreNotifications(`INSERT IGNORE INTO notifications
+        FROM reservations r INNER JOIN materials m ON m.material_id=r.material_id
+          ON CONFLICT (user_id, dedupe_key) DO NOTHING`, []],
+    [`INSERT INTO notifications
         (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
       SELECT pr.user_id, CONCAT('Print request ',LOWER(pr.job_status)),
              CONCAT(pr.file_name,' is ',LOWER(pr.job_status),'. Request #',pr.request_id,'.'),
              'Printing Update','Print Request',pr.request_id,'/student/printing',
              CASE WHEN pr.job_status='Ready for Pickup' THEN 'Urgent' ELSE 'Normal' END,
              CONCAT('print:',pr.request_id,':',REPLACE(LOWER(pr.job_status),' ','-')),NOW(),NOW()
-        FROM print_requests pr`), []],
-    [insertIgnoreNotifications(`INSERT IGNORE INTO notifications
+        FROM print_requests pr
+          ON CONFLICT (user_id, dedupe_key) DO NOTHING`, []],
+    [`INSERT INTO notifications
         (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
       SELECT u.user_id,'Library schedule update',CONCAT('The library is closed on ',${closureLabel},': ',c.reason,'.'),
              'Library Schedule','Library Closure',${sourceIdCast},'/student/notifications','Important',
              CONCAT('closure:',${closureDedupe}),NOW(),NOW()
         FROM users u CROSS JOIN library_closed_days c
-       WHERE u.account_status='Active' AND c.closed_date BETWEEN ${currentDate()} AND ${dateAddDays(currentDate(), 7)}`), []],
+       WHERE u.account_status='Active' AND c.closed_date BETWEEN ${currentDate()} AND ${dateAddDays(currentDate(), 7)}
+          ON CONFLICT (user_id, dedupe_key) DO NOTHING`, []],
   ]
   let inserted = 0
+  // Phase 6 writes complete, deduplicated status notices at the transaction boundary.
+  // Do not manufacture a second historic reservation notice every minute.
+  queries.splice(3,1)
   for (const [sql, values] of queries) {
     const [result] = await database.execute(sql, values)
     inserted += (result as ResultSetHeader).affectedRows

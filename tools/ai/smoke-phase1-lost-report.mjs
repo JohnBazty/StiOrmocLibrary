@@ -10,7 +10,6 @@ process.env.DATABASE_URL = url.toString()
 const { db } = await import('../../apps/api/src/config/db.js')
 const { env } = await import('../../apps/api/src/config/env.js')
 const { createClearanceService } = await import('../../apps/api/src/modules/clearance/clearance.service.ts')
-if (env.db.driver !== 'postgres') throw new Error('Refusing to test a non-Postgres database')
 
 const connection = await db.getConnection()
 let transactionStarted = false

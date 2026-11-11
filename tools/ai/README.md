@@ -1,12 +1,9 @@
 # AI / developer helper scripts
 
-Small Python tools for documentation status, migration numbering, and MySQL→Postgres conversion.
+Small helper and smoke scripts for the Supabase Postgres database.
 
 | Script | Purpose |
 | --- | --- |
-| `mysql_to_pg.py` | Best-effort MySQL DDL → Postgres for `database/supabase/` drafts |
-| `audit-supabase-cutover.mjs` | Read-only source/target row, column, and identity audit; never prints secrets or row values |
-| `migrate-mysql-to-supabase.mjs` | One-time transactional source-row transfer; defaults to a rollback dry run and creates a hosted backup before `--apply` |
 | `smoke-supabase-registration.mjs` | Creates, logs in, and removes a temporary student through a supplied web address (local by default); `--printing` tests upload/staff download and `--borrow` tests cart submission/cancellation |
 | `migrate-print-documents-to-supabase.mjs` | Audits legacy local print files, then uploads and verifies them in private Supabase Storage with `--apply`; preserves local originals |
 | `smoke-phase1-categories.mjs` | Tests Category Add, Edit, Reassign, and Delete against Supabase inside a transaction that rolls back |
@@ -19,11 +16,6 @@ Small Python tools for documentation status, migration numbering, and MySQL→Po
 Run from repo root:
 
 ```powershell
-python tools/ai/mysql_to_pg.py database/mysql56-schema.sql -o database/supabase/001_from_baseline.sql
-node tools/ai/audit-supabase-cutover.mjs
-node tools/ai/migrate-mysql-to-supabase.mjs
-# Only for a reviewed first cutover; refuses a repeat once its backup exists:
-node tools/ai/migrate-mysql-to-supabase.mjs --apply
 node tools/ai/smoke-supabase-registration.mjs
 # Or verify a deployed site:
 node tools/ai/smoke-supabase-registration.mjs https://your-project.vercel.app
@@ -47,4 +39,4 @@ node tools/ai/smoke-phase1-browser-account.mjs --create
 node tools/ai/smoke-phase1-browser-account.mjs --cleanup
 ```
 
-Do not commit secrets. Prefer reviewing generated SQL before applying to Supabase.
+Do not commit secrets. Review SQL before applying it to Supabase.

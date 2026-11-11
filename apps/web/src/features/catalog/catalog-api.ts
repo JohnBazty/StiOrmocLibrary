@@ -43,6 +43,20 @@ export function filterQuery(filters: CatalogFilters) {
 }
 
 export const catalogApi = {
+  async quotations(titleId: number) { return request<Array<{ quotationId: number; titleId: number; filename: string; quotedAmount: number; uploadedAt: string; current: boolean }>>(`/api/v1/admin/catalog/titles/${titleId}/quotations`) },
+  async uploadQuotation(titleId: number, file: File, amount: number) {
+    const body = new FormData(); body.set('quotation', file); body.set('quoted_amount', String(amount))
+    const headers = new Headers({ Accept: 'application/json' }); const token = getAccessToken(); if (token) headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(`/api/v1/admin/catalog/titles/${titleId}/quotations`, { method: 'POST', body, headers, credentials: 'include' })
+    const payload = await response.json() as { success?: boolean; message?: string }
+    if (!response.ok || !payload.success) throw new ApiError(payload.message ?? 'Quotation upload failed.', 'QUOTATION_UPLOAD_FAILED')
+  },
+  async downloadQuotation(titleId: number, quotationId: number, filename: string) {
+    const headers = new Headers(); const token = getAccessToken(); if (token) headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(`/api/v1/admin/catalog/titles/${titleId}/quotations/${quotationId}/file`, { headers, credentials: 'include' })
+    if (!response.ok) throw new ApiError('The quotation could not be downloaded.', 'QUOTATION_DOWNLOAD_FAILED')
+    const url = URL.createObjectURL(await response.blob()); const link = document.createElement('a'); link.href = url; link.download = filename; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
+  },
   archivedBooks: (q = '') => request<Array<{ titleId: number; copyId?: number; title: string; isbn: string | null; authors: string | null; accession?: string; barcode?: string; archivedAt: string; reason: string | null; archivedBy: string | null; copyCount: number; recordKind: string }>>(`/api/v1/admin/catalog/archive?q=${encodeURIComponent(q)}`),
   deletedBookSnapshots: (q = '') => request<Array<{ eventId: number; barcode: string; lastCondition: string | null; lastAvailability: string | null; reason: string | null; staffLabel: string; deletedAt: string }>>(`/api/v1/admin/catalog/archive/deleted-snapshots?q=${encodeURIComponent(q)}`),
   archivedBookDetail: (titleId: number) => request<{ titleId: number; title: string; isbn: string | null; authors: string | null; reason: string | null; archivedAt: string | null; archivedBy: string | null; copies: Array<{ copyId: number; accession: string; barcode: string; shelf: string; condition: string; archivedAt: string; reason: string; borrowingCount: number }>; borrowings: Array<{ transactionId: number; accession: string; borrowerId: string; status: string; borrowedAt: string | null; returnedAt: string | null }>; auditEvents: Array<{ eventId: number; accession: string; eventType: string; reason: string | null; staffLabel: string; createdAt: string }> }>(`/api/v1/admin/catalog/archive/${titleId}`),
