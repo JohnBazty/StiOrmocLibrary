@@ -78,6 +78,8 @@ export async function verifyPaymentOperations({pool,owner,service,gateway,actor,
     await writeFile(`output/xendit-sandbox/phase67-${report.kind}.json`,JSON.stringify(report))
     await writeFile(`output/xendit-sandbox/phase67-${report.kind}.pdf`,await bytes(exportLiveReport(report,'pdf')))
   }
+  // Retain the actual captured-review rows for the separate reconciliation screen fixture.
+  await writeFile('output/xendit-sandbox/phase67-onlinePayments.json',JSON.stringify(reconciliation))
   await owner.query("SET ROLE anon")
   await assert.rejects(owner.query('SELECT * FROM online_payment_settlements'),error=>error.code==='42501')
   await owner.query('RESET ROLE')

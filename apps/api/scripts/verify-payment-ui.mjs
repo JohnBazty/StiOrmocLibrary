@@ -36,7 +36,15 @@ api.get('/api/v1/admin/payments/operations',(_request,response)=>reply(response,
 api.post('/api/v1/admin/payments/recover',(_request,response)=>reply(response,{processed:1,pending:0,reviewed:1}))
 api.get('/api/v1/admin/payments/:id/settlement',(request,response)=>reply(response,settlements.get(request.params.id)??null))
 api.post('/api/v1/admin/payments/:id/settlement',(request,response)=>{settlements.set(request.params.id,{provider_reference:request.body.reference,processing_cost_centavos:String(Math.round(Number(request.body.processingCost)*100)),net_centavos:'4000',settled_at:request.body.settledAt,recorded_at:new Date().toISOString()});reply(response,{recorded:true})})
-api.get('/api/v1/admin/reports',async(request,response)=>{try{const kind=request.query.kind==='printRevenue'?'printRevenue':'payments';const report=JSON.parse(await readFile(new URL('../../../output/xendit-sandbox/phase67-'+kind+'.json',import.meta.url),'utf8'));reply(response,report)}catch{response.status(503).json({success:false,message:'Run --phase6 acceptance first to prepare synthetic report data.'})}})
+api.get('/api/v1/admin/reports',async(request,response)=>{
+  const kind=request.query.kind
+  if(!['payments','printRevenue','onlinePayments'].includes(kind))return response.status(400).json({success:false,message:'This fixture provides only the three payment reports.'})
+  try{
+    const report=JSON.parse(await readFile(new URL('../../../output/xendit-sandbox/phase67-'+kind+'.json',import.meta.url),'utf8'))
+    if(report.kind!==kind)throw new Error('Synthetic report kind does not match.')
+    reply(response,report)
+  }catch{response.status(503).json({success:false,message:'Run --phase6 acceptance first to prepare synthetic report data.'})}
+})
 api.get('/api/v1/fines/me',(_request,response)=>reply(response,{range:{label:'Fine history'},summary:{assessed:100,outstanding:100,collected:0,waived:0,accountsWithBalance:1},items:[fine],pagination:{page:1,limit:100,total:1,totalPages:1}}))
 api.get('/api/v1/fines/receipts',(_request,response)=>reply(response,[{receiptId:8,receiptNumber:'XF-QA-ONLY',amountReceived:40,totalReceived:41.4,transactionFeeCentavos:140,paymentMethod:'GCASH',status:'Issued',receivedAt:new Date().toISOString()}]))
 api.get('/api/v1/printing/service-status',(_request,response)=>reply(response,{accepting_requests:true,unavailable_reason:null,docx_auto_count_available:false}))
@@ -54,7 +62,8 @@ import {OperationalReports} from '/src/features/catalog/OperationalReports';
 import {ThemeProvider,useTheme} from '/src/features/theme/ThemeProvider';
 function QaTheme(){const {toggleTheme}=useTheme();return <button type="button" className="mb-4 min-h-11 rounded-xl border px-4" onClick={toggleTheme}>Toggle QA theme</button>}
 const view=new URLSearchParams(location.search).get('view')||'fines';setSessionIdentity({userId:1,schoolId:'QA-PAYMENT-001',role:['admin','reports'].includes(view)?'Librarian':'Student',source:'session'});
-createRoot(document.getElementById('root')!).render(<ThemeProvider><MemoryRouter initialEntries={['/payments/result?payment=${id}'+(view==='reports'?'&kind=printRevenue':'')]}><div className="mx-auto max-w-6xl p-4 sm:p-8"><p className="mb-5 rounded-xl bg-slate-100 p-3 text-sm text-slate-900">Local QA · disposable data only</p><QaTheme/>{view==='admin'?<AdminPaymentsPage/>:view==='reports'?<OperationalReports/>:view==='printing'?<StudentPrintingPage/>:view==='result'?<PaymentResultPage/>:<StudentFinesPage/>}</div></MemoryRouter></ThemeProvider>);`,{flag:'wx'});createdEntry=true
+const requestedReport=new URLSearchParams(location.search).get('report'),report=['payments','printRevenue','onlinePayments'].includes(requestedReport??'')?requestedReport:'onlinePayments';
+createRoot(document.getElementById('root')!).render(<ThemeProvider><MemoryRouter initialEntries={['/payments/result?payment=${id}'+(view==='reports'?'&kind='+report:'')]}><div className="mx-auto max-w-6xl p-4 sm:p-8"><p className="mb-5 rounded-xl bg-slate-100 p-3 text-sm text-slate-900">Local QA · disposable data only</p><QaTheme/>{view==='admin'?<AdminPaymentsPage/>:view==='reports'?<OperationalReports/>:view==='printing'?<StudentPrintingPage/>:view==='result'?<PaymentResultPage/>:<StudentFinesPage/>}</div></MemoryRouter></ThemeProvider>);`,{flag:'wx'});createdEntry=true
   server=api.listen(47145,'127.0.0.1')
   vite=spawn(process.execPath,[fileURLToPath(new URL('../../../node_modules/vite/bin/vite.js',import.meta.url)),'--host','127.0.0.1','--port','5174'],
     {cwd:fileURLToPath(web),env:{...process.env,VITE_API_PROXY_TARGET:'http://127.0.0.1:47145'},windowsHide:true,stdio:'ignore'})
