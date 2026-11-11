@@ -1,4 +1,4 @@
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 
 export type ServiceStatus={accepting_requests:number|boolean;unavailable_reason:string|null;updated_at?:string|null;docx_auto_count_available?:boolean}
 export type PricingRule={pricing_rule_id:number;print_type:'Colored'|'Monochrome';paper_size:'Short'|'A4'|'Long';price_per_page:number|string}
@@ -21,14 +21,14 @@ export type RestockEntry={created_at:string;supply_type:'Ink'|'Paper';supply_nam
 export type StockUsageEntry={created_at:string;supply_type:'Ink'|'Paper';supply_name:string;activity_code:'LoadedIntoPrinter'|'OpenedReam';quantity:number|string;unit:string;balance_before:number|string;balance_after:number|string;recorded_by:string|null}
 
 let csrfToken:string|null=null
-function headers(accept='application/json'){const h=new Headers({Accept:accept}),token=getAccessToken();if(token)h.set('Authorization',`Bearer ${token}`);return h}
-async function ensureCsrf(){if(getAccessToken()||csrfToken)return;const r=await fetch('/api/auth/csrf',{credentials:'include',headers:{Accept:'application/json'}}),p=await r.json() as {csrfToken?:string;message?:string};if(!r.ok||!p.csrfToken)throw new Error(p.message??'Unable to start a secure request.');csrfToken=p.csrfToken}
+function headers(accept='application/json'){const h=new Headers({Accept:accept}),token=getCsrfToken();if(token)h.set('X-CSRF-Token', token);return h}
+async function ensureCsrf(){if(getCsrfToken()||csrfToken)return;const r=await fetch('/api/auth/csrf',{credentials:'include',headers:{Accept:'application/json'}}),p=await r.json() as {csrfToken?:string;message?:string};if(!r.ok||!p.csrfToken)throw new Error(p.message??'Unable to start a secure request.');csrfToken=p.csrfToken}
 async function request<T>(url:string,options:RequestInit={}){
   const mutating=Boolean(options.method&&options.method!=='GET')
   if(mutating)await ensureCsrf()
   const h=headers()
   if(!(options.body instanceof FormData)&&options.body)h.set('Content-Type','application/json')
-  if(csrfToken&&!getAccessToken())h.set('x-csrf-token',csrfToken)
+  if(csrfToken&&!getCsrfToken())h.set('x-csrf-token',csrfToken)
   const r=await fetch(url,{...options,credentials:'include',headers:h})
   const p=await r.json().catch(()=>null) as {data?:T;message?:string;meta?:{pagination?:{page:number;limit:number;total:number;total_pages:number}}}|null
   if(!r.ok)throw new Error(p?.message??'The printing service is temporarily unavailable. Please try again.')

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Button, SectionCard } from '../../components/ui'
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 import { Download, RefreshCw } from 'lucide-react'
 
 export const reportChoices = [
@@ -15,7 +15,7 @@ type ReportData={title:string;label:string;timezone:string;generatedAt:string;co
 const field='min-h-11 w-full rounded-xl border border-[#003399]/20 bg-white px-3 text-sm text-[#003399] focus:outline-2 focus:outline-[#003399] dark:border-white/25 dark:bg-white/10 dark:text-white'
 const display=(v:unknown)=>v==null?'—':typeof v==='number'?v.toLocaleString('en-PH',{maximumFractionDigits:2}):String(v)
 const label=(s:string)=>s.replaceAll('_',' ')
-function headers(){const token=getAccessToken();return token?{Authorization:`Bearer ${token}`}:undefined}
+function headers(){const token=getCsrfToken();return token?{'X-CSRF-Token': token}:undefined}
 export async function loadLiveReport(filters:Filters):Promise<ReportData>{
   const response=await fetch(`/api/v1/admin/reports?${new URLSearchParams(filters)}`,{headers:headers(),credentials:'include'})
   const body=await response.json().catch(()=>null)

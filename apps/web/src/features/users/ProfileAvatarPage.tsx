@@ -3,7 +3,7 @@ import { Camera, CheckCircle2, GraduationCap, ImagePlus, LockKeyhole, Save, Shie
 import { useSearchParams } from 'react-router-dom'
 import { SelectedFilePreview } from '../../components/SelectedFilePreview'
 import { PageHeader } from '../../components/ui'
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 import { usersApi, type OwnProfile, type ProfileEdit } from './users-api'
 import { notifyProfileUpdated } from './profile-events'
 
@@ -41,7 +41,7 @@ export function ProfileAvatarPage() {
     setFile(selected); setMessage('')
   }
   const load = useCallback(async () => {
-    const response = await fetch('/api/v1/profile/avatar/me', { headers: { Authorization: `Bearer ${getAccessToken() ?? ''}` } })
+    const response = await fetch('/api/v1/profile/avatar/me', { headers: { 'X-CSRF-Token': getCsrfToken() ?? '' } })
     const payload = await response.json() as { data?: AvatarState; message?: string }
     if (!response.ok || !payload.data) throw new Error(payload.message ?? 'Unable to load your picture.')
     setData(payload.data)
@@ -68,7 +68,7 @@ export function ProfileAvatarPage() {
     try {
       const form = new FormData(); form.set('image', file)
       const response = await fetch('/api/v1/profile/avatar/me', {
-        method: 'POST', headers: { Authorization: `Bearer ${getAccessToken() ?? ''}` }, body: form,
+        method: 'POST', headers: { 'X-CSRF-Token': getCsrfToken() ?? '' }, body: form,
       })
       const payload = await response.json() as { message?: string }
       if (!response.ok) throw new Error(payload.message ?? 'Unable to upload your picture.')

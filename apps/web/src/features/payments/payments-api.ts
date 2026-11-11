@@ -1,4 +1,4 @@
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 
 export type PaymentKind='Printing'|'Fine'|'LostBook'
 export type Payment={paymentId:string;kind:PaymentKind;targetId:number;principalCentavos:number;feeCentavos:number;totalCentavos:number;
@@ -22,8 +22,8 @@ export function providerCheckout(value:string) {
 }
 export class PaymentRequestError extends Error {code?:string;details?:Record<string,unknown>}
 async function request<T>(path:string,body?:unknown) {
-  const headers=new Headers({Accept:'application/json'}),token=getAccessToken()
-  if(token)headers.set('Authorization','Bearer '+token)
+  const headers=new Headers({Accept:'application/json'}),token=getCsrfToken()
+  if(token)headers.set('X-CSRF-Token',token)
   if(body!==undefined)headers.set('Content-Type','application/json')
   const response=await fetch('/api/v1/'+path,{method:body===undefined?'GET':'POST',headers,credentials:'include',
     ...(body!==undefined?{body:JSON.stringify(body)}:{})})
@@ -54,8 +54,8 @@ export async function downloadPaymentRecord(payment:Payment,admin=false) {
   if(!payment.receiptId)throw new Error('The payment record is not ready yet. Check its status again.')
   const path=payment.kind==='Printing'?`${admin?'admin/printing':'printing'}/receipts/${payment.receiptId}/pdf`:
     `${admin?'admin/':''}fines/receipts/${payment.receiptId}.pdf?download=1`
-  const headers=new Headers({Accept:'application/pdf'}),token=getAccessToken()
-  if(token)headers.set('Authorization','Bearer '+token)
+  const headers=new Headers({Accept:'application/pdf'}),token=getCsrfToken()
+  if(token)headers.set('X-CSRF-Token',token)
   const response=await fetch('/api/v1/'+path,{headers,credentials:'include'})
   if(!response.ok||!response.headers.get('content-type')?.includes('application/pdf'))throw new Error('The payment record could not be downloaded. Please try again.')
   const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement('a')

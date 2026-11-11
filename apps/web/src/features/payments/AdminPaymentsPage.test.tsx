@@ -3,7 +3,7 @@ import {afterEach,expect,it,vi} from 'vitest'
 import {AdminPaymentsPage} from './AdminPaymentsPage'
 const api=vi.hoisted(()=>({list:vi.fn(),adminCheck:vi.fn(),adminCancel:vi.fn(),operations:vi.fn(async()=>({checkoutEnabled:false,needs_review:0,due_checks:0,review_events:0,pending_events:0,events:[],runnerStatus:null}))}))
 const identity=vi.hoisted(()=>({role:'Librarian'}))
-vi.mock('../auth/auth-storage',()=>({getCurrentIdentity:()=>identity,getAccessToken:()=>null}))
+vi.mock('../auth/auth-storage',()=>({getCurrentIdentity:()=>identity,getCsrfToken:()=>null}))
 vi.mock('./payments-api',async(original)=>({...await original<typeof import('./payments-api')>(),paymentsApi:api}))
 const payment={paymentId:'fixture',kind:'Fine',targetId:1,principalCentavos:4000,feeCentavos:140,totalCentavos:4140,remainingCentavos:6000,channelCode:'GCASH',state:'Active',isSample:true,checkoutUrl:null,receiptId:null,payerName:'Sandbox borrower',createdAt:new Date().toISOString()}
 const result={items:[payment],pagination:{page:1,limit:25,total:1},methods:[{channelCode:'GCASH',displayName:'GCash'}]}

@@ -1,5 +1,5 @@
 import type { AdminBookAsset, BulkBookResult, CatalogFilters, CatalogItem, Category, CategoryAssignmentResult, IsbnMetadata, PhysicalCopy } from './types'
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 
 export class ApiError extends Error {
   constructor(message: string, public code: string, public details?: { errors?: Record<string, string> }) { super(message) }
@@ -10,8 +10,8 @@ let csrfToken: string | null = null
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const method = options.method?.toUpperCase() ?? 'GET'
   const headers = new Headers(options.headers)
-  const accessToken = getAccessToken()
-  if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
+  const accessToken = getCsrfToken()
+  if (accessToken) headers.set('X-CSRF-Token', accessToken)
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
     if (!accessToken && !csrfToken) {
       const response = await fetch('/api/auth/csrf', { credentials: 'include' })
@@ -46,13 +46,13 @@ export const catalogApi = {
   async quotations(titleId: number) { return request<Array<{ quotationId: number; titleId: number; filename: string; quotedAmount: number; uploadedAt: string; current: boolean }>>(`/api/v1/admin/catalog/titles/${titleId}/quotations`) },
   async uploadQuotation(titleId: number, file: File, amount: number) {
     const body = new FormData(); body.set('quotation', file); body.set('quoted_amount', String(amount))
-    const headers = new Headers({ Accept: 'application/json' }); const token = getAccessToken(); if (token) headers.set('Authorization', `Bearer ${token}`)
+    const headers = new Headers({ Accept: 'application/json' }); const token = getCsrfToken(); if (token) headers.set('X-CSRF-Token', token)
     const response = await fetch(`/api/v1/admin/catalog/titles/${titleId}/quotations`, { method: 'POST', body, headers, credentials: 'include' })
     const payload = await response.json() as { success?: boolean; message?: string }
     if (!response.ok || !payload.success) throw new ApiError(payload.message ?? 'Quotation upload failed.', 'QUOTATION_UPLOAD_FAILED')
   },
   async downloadQuotation(titleId: number, quotationId: number, filename: string) {
-    const headers = new Headers(); const token = getAccessToken(); if (token) headers.set('Authorization', `Bearer ${token}`)
+    const headers = new Headers(); const token = getCsrfToken(); if (token) headers.set('X-CSRF-Token', token)
     const response = await fetch(`/api/v1/admin/catalog/titles/${titleId}/quotations/${quotationId}/file`, { headers, credentials: 'include' })
     if (!response.ok) throw new ApiError('The quotation could not be downloaded.', 'QUOTATION_DOWNLOAD_FAILED')
     const url = URL.createObjectURL(await response.blob()); const link = document.createElement('a'); link.href = url; link.download = filename; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
@@ -76,9 +76,9 @@ export const catalogApi = {
   asset: (physicalCopyId: number, signal?: AbortSignal) => request<AdminBookAsset>(`/api/v1/admin/books/assets/${physicalCopyId}`, { signal }),
   researchAsset: (researchInventoryId: number, signal?: AbortSignal) => request<AdminBookAsset>(`/api/v1/admin/research/assets/${researchInventoryId}`, { signal }),
   async downloadAssetPng(assetId: number, kind: 'barcode' | 'qr', assetType: 'book' | 'research' = 'book') {
-    const accessToken = getAccessToken()
+    const accessToken = getCsrfToken()
     const headers = new Headers({ Accept: 'image/png' })
-    if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
+    if (accessToken) headers.set('X-CSRF-Token', accessToken)
     const response = await fetch(`/api/v1/admin/${assetType === 'research' ? 'research' : 'books'}/assets/${assetId}/${kind}.png`, { headers, credentials: 'include' })
     if (!response.ok) {
       const isJson = (response.headers.get('content-type') ?? '').includes('application/json')
@@ -98,9 +98,9 @@ export const catalogApi = {
     method: 'POST', body: JSON.stringify({ value, mode: 'auto' }),
   }),
   async downloadInventory(format: 'csv' | 'pdf', filters: CatalogFilters) {
-    const accessToken = getAccessToken()
+    const accessToken = getCsrfToken()
     const headers = new Headers({ Accept: format === 'csv' ? 'text/csv' : 'application/pdf' })
-    if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
+    if (accessToken) headers.set('X-CSRF-Token', accessToken)
     const query = filterQuery(filters)
     const response = await fetch(`/api/reports/catalog/inventory.${format}${query ? `?${query}` : ''}`, {
       headers, credentials: 'include',

@@ -47,7 +47,6 @@ import { archivedBorrowingPolicyRouter } from './modules/circulation/borrowing-p
 import { publicCatalogRouter, catalogMaintenanceRouter } from './modules/catalog/catalog-enhancements.routes.ts'
 import { collectionReviewRouter } from './modules/catalog/collection-review.routes.ts'
 import { paymentRouters, paymentWebhookRouter } from './modules/payments/payments.routes.ts'
-import { paymentGatewayService } from './modules/payments/payments.gateway.ts'
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
 const publicDirectory = path.resolve(currentDirectory, '../public')
@@ -103,7 +102,7 @@ export function createApp() {
   app.use('/api/auth', authRouter)
   app.use('/api/v1/auth', jwtAuthRouter)
   app.use('/api/public/catalog', publicCatalogRouter)
-  app.use('/api/v1', authenticateJwt, ensureActiveJwtAccount)
+  app.use('/api/v1', authenticateJwt, ensureActiveJwtAccount, requireCsrfForStateChanges)
   app.use('/api/v1/user/payments', paymentRouters.user)
   app.use('/api/v1/admin/payments', paymentRouters.admin)
   app.use('/api/v1/admin/enrollment', enrollmentRouter)
