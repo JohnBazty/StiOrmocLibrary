@@ -4,6 +4,7 @@ import { AdminCirculationMonitor } from './AdminCirculationMonitor'
 
 const circulation = vi.hoisted(() => ({ monitor: vi.fn() }))
 const desk = vi.hoisted(() => ({ uses: vi.fn(), returnPreview: vi.fn(), returnCopy: vi.fn(), checkout: vi.fn() }))
+vi.mock('./DamageCasesPanel', () => ({ DamageCasesPanel: () => null }))
 vi.mock('./circulation-api', () => ({ circulationApi: circulation }))
 vi.mock('./desk-circulation-api', () => ({ deskCirculationApi: desk }))
 
