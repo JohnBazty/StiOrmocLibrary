@@ -25,6 +25,12 @@ if (isProduction && (!configuredAttendanceQrSecret || configuredAttendanceQrSecr
   throw new Error('ATTENDANCE_QR_SECRET must contain at least 32 characters in production.')
 }
 
+const configuredJobRunnerSecret = process.env.JOB_RUNNER_SECRET?.trim() || ''
+// Unset leaves the scheduled-job route refusing every call; a set but short secret is a mistake worth failing on.
+if (isProduction && configuredJobRunnerSecret && configuredJobRunnerSecret.length < 32) {
+  throw new Error('JOB_RUNNER_SECRET must contain at least 32 characters in production.')
+}
+
 const developmentJwtSecret = configuredJwtSecret || configuredSecret || randomBytes(48).toString('hex')
 
 // Tests run the Postgres dialect against a port that refuses at once, so a test that
@@ -93,6 +99,11 @@ export const env = Object.freeze({
   attendanceQr: {
     // Keep this key stable. Rotating it invalidates downloaded attendance passes.
     secret: configuredAttendanceQrSecret || configuredReportIntegritySecret || developmentJwtSecret,
+  },
+  jobRunner: {
+    secret: configuredJobRunnerSecret,
+    // A2: a laptop runs scheduled jobs only when asked, never by default against the live database.
+    localTimer: process.env.JOB_RUNNER_LOCAL_TIMER === 'on',
   },
   isbnLookup: {
     timeoutMs: Math.max(500, Math.min(10000, Number(process.env.ISBN_LOOKUP_TIMEOUT_MS ?? 3500))),
