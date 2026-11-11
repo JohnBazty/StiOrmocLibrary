@@ -5,13 +5,6 @@ import request from 'supertest'
 import { HttpError } from '../../core/http-error.ts'
 import { inventoryRouter } from './inventory.routes.ts'
 
-// Ensure no mock data routes remain on live system
-test('[SAFE CHECK] no non-test source file imports mock-data.ts', async () => {
-  // This test file exists to ensure the mock-data.ts file is removed
-  // or repurposed. The /api/inventory/supplies endpoint has been removed.
-  assert.ok(true, 'mock-data.ts imports checked - endpoint removed')
-})
-
 function appForRole(role: string) {
   const app = express()
   app.use(express.json())
@@ -50,4 +43,9 @@ test('manual availability route validates before database access', async () => {
   const response = await request(appForRole('Librarian')).patch('/api/inventory/copies/availability').send({ barcode: 'BC-1', availability_status: 'reserved' })
   assert.equal(response.status, 422)
   assert.ok(response.body.details.errors.availability_status)
+})
+
+test('the mock GET /api/inventory/supplies route is gone', async () => {
+  const response = await request(appForRole('Admin')).get('/api/inventory/supplies')
+  assert.equal(response.status, 404)
 })
