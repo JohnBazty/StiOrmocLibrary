@@ -1,6 +1,6 @@
 # Runbook: turn on the durable job runner
 
-Plan: `docs/safety-sprint-plan.md` Part A (decisions D1 to D5, A1, A2). The code runs nothing in production until these steps are done. **Each step needs Ethan's go-ahead, one at a time.** No migration is needed: `019_durable_job_runner.sql` is already applied.
+Plan: `docs/safety-sprint-plan.md` Part A (decisions D1 to D5, A1, A2). The code runs nothing in production until these steps are done. **Each step needs Ethan's go-ahead, one at a time.** `019_durable_job_runner.sql` is already applied; `034_job_runner_hardening.sql` is step 0b.
 
 Never paste the secret into chat, a commit, an issue, a log or this file.
 
@@ -9,6 +9,14 @@ Never paste the secret into chat, a commit, an issue, a log or this file.
 - The Part A PR is merged and the production deployment finished.
 - `https://<production-host>/api/health` answers `200` with `"status":"healthy"`. A `503 DATABASE_MIGRATION_REQUIRED` means the deployed code expects tables the database lacks; stop.
 - Ask John whether the Vercel project sets `TZ=Asia/Manila`. The runner does not depend on it, but some services read stored Manila times through the process zone. Write the answer in the plan's change log.
+
+## 0b. Apply migration 034 (go-ahead 0b)
+
+`034_job_runner_hardening.sql` records row-level security on the two job tables (already on live) and adds a partial index for the overdue cursor. It is safe to run twice. The index build briefly blocks writes to `borrow_transactions`; run it outside library hours.
+
+```bash
+npm run db:supabase -w @sti-library/api -- 034_job_runner_hardening.sql
+```
 
 ## 1. Make the secret (go-ahead 1)
 
@@ -48,7 +56,7 @@ Supabase → STI SMART LIBRARY → Project Settings → Vault (or Integrations �
 `pg_net` keeps each queued call, **including the `X-Job-Runner-Secret` header**, in `net.http_request_queue` until it is sent, and the reply in `net._http_response`. A read-only check on 2026-11-11 found that `anon` and `authenticated` can `SELECT` both tables. The `net` schema is not in the Data API's exposed schemas by default, so this is not reachable from the browser today, but one setting change would expose the secret. Run in the SQL Editor:
 
 ```sql
-revoke select, insert, update, delete on net.http_request_queue, net._http_response from anon, authenticated;
+revoke select, insert, update, delete on net.http_request_queue, net._http_response from public, anon, authenticated;
 ```
 
 Check (both columns should be `false` for both roles):
@@ -58,7 +66,13 @@ select r.rolname, has_table_privilege(r.oid, 'net.http_request_queue', 'SELECT')
   from pg_roles r where r.rolname in ('anon', 'authenticated');
 ```
 
-This keeps the `net` functions working; it only removes table access the app never uses.
+This keeps the `net` functions working (they run as their owner); it only removes table access the app never uses.
+
+`cron.job` and `cron.job_run_details` also hold command text and replies. On 2026-11-11 `anon` and `authenticated` had no `USAGE` on the `cron` schema, so they cannot reach them. Confirm it is still so (both `false`):
+
+```sql
+select rolname, has_schema_privilege(oid, 'cron', 'USAGE') as cron_usage from pg_roles where rolname in ('anon', 'authenticated');
+```
 
 ## 5. Create the Cron schedule (go-ahead 5)
 
@@ -116,7 +130,7 @@ The jobs stop; nothing else changes. Removing `JOB_RUNNER_SECRET` from Vercel al
 
 ## Rotate the secret
 
-Do steps 1 to 3 again with a new value (update the Vault secret in place), then redeploy. Calls fail with `401` for the minute between the two changes; the next minute catches up.
+Treat it as one change, in this order: update the Vault secret `smartlib_job_runner_secret` in place, set the same value as `JOB_RUNNER_SECRET` in Vercel, then redeploy production. Calls answer `401` between the Vault update and the end of the redeploy; each job catches up on its next run. Check step 6 afterwards. `timeout_milliseconds := 55000` assumes Vercel's 60-second limit; change both together.
 
 ## Local development
 

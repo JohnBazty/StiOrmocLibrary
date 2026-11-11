@@ -15,7 +15,7 @@ Checked and safe (no work): the copy and thesis `DELETE` routes only remove a Lo
 | --- | --- |
 | **Date created** | 2026-11-11 |
 | **Date last updated** | 2026-11-11 |
-| **Status** | `planned` |
+| **Status** | `inprogress` (Part A built and reviewed on PR #17; Parts B and C not started as their own PRs) |
 | **Sources** | `docs/rea-comparison-report.md` F1, F2, F3, F5, F8; REA specs `job-runner` (#8) and `accounts-sign-in` (#1); earlier plan `docs/durable-job-runner-plan.md` on `feat/long-overdue-and-damage-case` (decisions D1 to D5 approved by Ethan 2026-10-10) |
 | **Migrations** | `main` matches the live database since 2026-11-11: John's merge `d0321a0` and PR #16 (`bead6ce`, which restored 35 of 36 applied migrations byte for byte; `003_readiness_gapfill` differs, its schema verified live). Latest applied `032_login_devices`, `033_rename_system_brand` pending review, **next available `034`**. Re-check `.cursor/agent-protocol.md` before writing a migration |
 
@@ -64,7 +64,7 @@ Supabase Cron, every minute
 ```
 
 **API (`apps/api/src/modules/job-runner/`):** allowlist, repository (claim, finish, list state, list runs, prune), service, routes. `modules/jobs/` and its two routes are removed.
-- `POST /api/internal/jobs/:jobName`, mounted before the session, JWT and CSRF middleware. Only `X-Job-Runner-Secret`, compared with `crypto.timingSafeEqual` after a length check (D1). Unknown job: `404`. Secret missing, wrong or not configured: `401`; the value is never logged. `JOB_RUNNER_SECRET` is read in `config/env.js` and must be 32+ characters in production. The reply holds the outcome and counts only.
+- `POST /api/internal/jobs/:jobName`, mounted before body parsing and the session, JWT and CSRF middleware, rate limited to 30 calls a minute. Only `X-Job-Runner-Secret`, compared with `crypto.timingSafeEqual` after a length check (D1). Unknown job: `404`. Secret missing, wrong or not configured: `401`; the value is never logged. `JOB_RUNNER_SECRET` is read in `config/env.js`; in production a set secret shorter than 32 characters stops the API from starting, and an unset one leaves the route refusing every call. The reply holds the outcome and counts only.
 - `:jobName` = `all` runs every job in the order above, each with its own lease and run row; a failure in one does not stop the next (A1).
 - Lease (D2): 90 s from database `NOW()`. Lease held: the run is recorded `skipped`. Only the current lease token may write the result or advance the cursor.
 - Outcomes: `succeeded` (counts in `result_json`), `failed` (an error code plus a cleaned message: at most 500 characters, first line only, no stack, secrets or connection strings), `skipped`.
@@ -109,10 +109,10 @@ Supabase Cron, every minute
 
 Scope is the JWT sign-in (`/api/v1/auth`). The old session sign-in (`/api/auth`) is still used by about 18 web calls (catalog admin, inventory, reports, CSRF, `me`, logout). Merging the two is **out of scope** here and gets its own plan. Its accounts get the same lockout, because both sign-ins read the same `accounts` table.
 
-**Check first:** JohnBazty's `codex/library-revision-updates` already has `020_revision_phase1_password_recovery.sql` (applied live) and, on 2026-11-10, "remembered browser sign-in and device switching". Read both before building C1 to C3, reuse what fits, and plan only the gaps.
+**Check first:** JohnBazty's `codex/library-revision-updates` already has `020_revision_phase1_password_recovery.sql` (applied live) and, on 2026-11-10, "remembered browser sign-in and device switching". Read both before building C1 to C3, reuse what fits, and plan only the gaps. `main` already has `apps/api/src/modules/auth/login-security.service.ts`; check it for overlap with C1 first. A paused, untested draft is parked as one WIP commit on local branch `feat/sign-in-hardening` (not pushed); its migration must be renumbered to `035`, since Part A now uses `034`.
 
 **C1. Per-account lockout** (REA #1 R13 to R16):
-- A new migration (`034` or later) adds `failed_sign_in_count`, `locked_until`, `last_sign_in_at` and `must_change_password` to `accounts`.
+- A new migration (`035` or later) adds `failed_sign_in_count`, `locked_until`, `last_sign_in_at` and `must_change_password` to `accounts`.
 - A wrong password for an existing active account adds 1 to `failed_sign_in_count`. At the threshold, `locked_until` is set to the database `NOW()` plus the lock period.
 - A locked account gets the same `401 INVALID_CREDENTIALS` reply as a wrong password. The existing `DUMMY_BCRYPT_HASH` check keeps the timing the same.
 - A successful sign-in resets the count and clears the lock. A lock ends on its own when `locked_until` passes. An Admin can unlock an account from user management; that is recorded in `account_management_events` with the actor and reason.
@@ -153,11 +153,12 @@ Scope is the JWT sign-in (`/api/v1/auth`). The old session sign-in (`/api/auth`)
 
 - [x] Ethan answers the open questions (2026-11-11, S1 to S6).
 - [x] Ethan approves Part A for building (2026-11-11, with A1 and A2).
-- [ ] Part A: all nine jobs on the `019` runner (no migration), internal route, Admin route, dashboard panel, local timer on the runner, John's runner and routes removed, tests, runbook.
-- [ ] Part A: plan-verifier READY, security review, database review (new tables plus lease SQL), PR.
+- [x] Part A: all nine jobs on the `019` runner, internal route, Admin route, dashboard panel, local timer on the runner, John's runner and routes removed, tests, runbook (PR #17).
+- [x] Part A: `034_job_runner_hardening.sql` (job table RLS recorded in the repo, open-loan cursor index), added after the database review with Ethan's approval; not applied.
+- [x] Part A: plan-verifier, security review and database review run; every CRITICAL, HIGH and MEDIUM finding fixed with tests (none CRITICAL or HIGH).
 - [ ] Part A activation by Ethan (migration, secret, Cron).
 - [ ] Part B: routes and mock file removed, import test, RLS check, PR.
-- [ ] Part C: `020` migration, lockout, cookie token with CSRF, forced password change, Admin unlock and temporary password, tests.
+- [ ] Part C: `035` migration, lockout, cookie token with CSRF, forced password change, Admin unlock and temporary password, tests.
 - [ ] Part C: plan-verifier READY, security review, database review (`accounts` altered), PR.
 - [ ] Trackers updated with each migration (`.cursor/agent-protocol.md`, `README.MD`, `database/supabase/README.md`, `docs/schema-context.md`).
 
@@ -170,4 +171,5 @@ Scope is the JWT sign-in (`/api/v1/auth`). The old session sign-in (`/api/auth`)
 | 2026-11-11 | S7 resolved: `main` now matches the live database (PR #16 merged). Next migration `034`. Part A follows the runner decision in PR #16's review item (John proposes moving all jobs to the `019` tables, matching D1 to D5). |
 | 2026-11-11 | Part A re-planned against `main` `bead6ce`: John's nine steps mapped onto `019` (six new job names created on first claim, no migration); both entry points switch together; `library_job_runs` left in place. Live check: no Cron schedule exists, and the 3,618 recorded runs came from local dev servers. Open questions A1, A2. |
 | 2026-11-11 | Ethan answered A1 (one Cron call per minute running `all`) and A2 (local timer off unless `JOB_RUNNER_LOCAL_TIMER=on`), both as recommended, and approved Part A for building. Part A status `inprogress`. |
+| 2026-11-11 | Part A reviews: no CRITICAL or HIGH. Fixed MEDIUM: the run history row now locks the job row (`FOR UPDATE`) and a lost lease rolls back; `all` stops starting jobs after 40 s and reports the rest `deferred`; an unreadable overdue cursor is logged; the status window reads one index range per job; RLS and an open-loan cursor index recorded in new migration `034` (Ethan approved). Fixed LOW: the job route sits before body parsing with a 30/min limit; emails and bearer tokens are redacted from job errors; skipped runs no longer crowd the history window; prune uses `SKIP LOCKED`; print notices compare in the writers' zone and include never-updated rows; panel accessibility and STI-only colors; runbook revokes from `PUBLIC` and checks `cron` access. Part B moved to `fix/remove-mock-routes`, Part C parked on `feat/sign-in-hardening`. |
 | 2026-11-11 | Read-only check of the live database: migrations applied up to `029` from unmerged branches; `019_durable_job_runner` already applied but never run. Part A reuses that `019` file; Part C moves to `030` or later and first reads JohnBazty's password-recovery work. Added open decision S7 (product baseline branch), which blocks building. |
