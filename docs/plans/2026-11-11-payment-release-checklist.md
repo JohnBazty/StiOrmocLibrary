@@ -32,7 +32,7 @@ Recorded live migration is 032. Draft 033 branding and payment drafts 034–037 
 
 ## External sandbox acceptance still required
 
-The [Phase 7 acceptance runbook](2026-11-11-payment-phase7-acceptance-runbook.md) records the fresh-chat browser blocker, exact local screen URLs, visual/keyboard matrix, full-app isolation prerequisites and required external/human evidence. The corrected fixture serves actual synthetic reconciliation rows; it remains a component fixture, not a complete application deployment.
+The [Phase 7 acceptance runbook](2026-11-11-payment-phase7-acceptance-runbook.md) records scoped component browser evidence, the renewed connection failure, the full isolated local app and required external/human evidence. Four normal role sign-ins, local OTP verification (delivery sink only), role/ownership boundaries, partial cash/retry/receipt protection and real CSV/PDF report exports passed. Actual hosted capture and external callbacks remain untested.
 
 1. Prepare a complete isolated application/database with synthetic accounts, an approved HTTPS callback/return origin and current draft migrations. Do not point the sandbox at school records. The current loopback-only guard deliberately prevents using the normal production database.
 2. Set the Test callback token on the backend and matching Test-mode Xendit webhook. Do not expose keys in frontend code, the database, logs, screenshots or tracked files.
@@ -63,6 +63,8 @@ The [Xendit simulator reference](https://docs.xendit.co/apidocs/simulate-payment
 - [ ] Complete security review, full end-to-end acceptance and Librarian sign-off; record date and responsible person.
 
 ## Change log
+
+2026-11-11 — Browser briefly became available: tested recovery, settlement, partial fine review and three report components at desktop/mobile widths; retained screenshots with explicit keyboard/zoom/device limits. Full app browser navigation subsequently failed again. Added the guarded synthetic full-app verifier, corrected pending 033's table name and made worker shutdown await its active run (regression covered). Normal sign-in/access, cash remainder/idempotency and protected exports passed. No hosting, live migrations, provider capture or real email was performed.
 
 2026-11-11 — Fresh chat browser check returned **No browser is available**. Reviewed and preserved the terminal incomplete hosted audit; no new provider checkout was created. Reproduced and fixed the QA fixture returning fine records for Online payment reconciliation, then passed its HTTP regression and affected disposable PostgreSQL acceptance. Added the detailed acceptance runbook. Browser/full-app/external/device/Librarian gates remain open.
 

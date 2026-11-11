@@ -10,11 +10,11 @@
 
 ## Current evidence and boundary
 
-The fresh QA chat checked the supported browser connection once on 2026-11-11. It returned **No browser is available**. This differs from the previous chat's disabled-browser message, but still leaves no supported browser for visual or hosted-checkout acceptance. No settings loop, alternate browser driver or native Chrome fallback was used.
+The fresh QA chat initially returned **No browser is available**. A later continuation successfully used the supported in-app browser for the component checks recorded below. On the next turn, opening the full isolated application returned **Local browser access is unavailable for this chat**, including the supported troubleshooting call. Browser access is intermittent; do not repeat extension installation instructions or infer that the user has left a setting off. No alternate browser driver was used.
 
 The saved `output/xendit-sandbox/phase67-hosted-payment.json` says `Not completed; session canceled or terminal`, with a null checkout URL and `publicCallback: not tested`. It does not contain a provider session ID. This is an incomplete test record, not evidence of verified capture, a local receipt or a separately rechecked provider terminal status. Preserve it. No new hosted session was created in this continuation. If a later retry is required, first reconcile its provider history through authorized access and retain the original audit; do not delete it to bypass the script's rerun guard.
 
-The recorded 689 application tests, typecheck, build, coverage and prior inspected PDFs remain earlier evidence. This continuation changes QA tooling and documentation only. The affected disposable PostgreSQL acceptance and new fixture HTTP regression were run; unchanged application suites were not repeated. New visual acceptance remains **not run**.
+The recorded 689 application tests, typecheck, build, coverage and prior inspected PDFs remain earlier evidence. The current continuation adds the full local acceptance script and corrects unapplied branding draft 033 to target `library_profile_settings`, the actual application table, instead of nonexistent `library_profiles`. This does not resolve the historical 003 live-checksum discrepancy or authorize applying any live migration.
 
 Migration state stays: live latest **032**, pending **033–037**, next unused **038**. No live database, applied migration source, production configuration, hosting or real funds are touched.
 
@@ -50,25 +50,39 @@ Invoke-RestMethod -Method Post http://127.0.0.1:47145/qa/stop
 
 Verify ports 47145 and 5174 are no longer listening and `apps/web/payment-qa.html` and `apps/web/.payment-qa.tsx` are absent. The integration test checks the report contract, not the rendered screen. Do not run it while someone is reviewing the harness; it refuses occupied ports.
 
-### Visual and keyboard matrix — all pending browser access
+### Visual and keyboard matrix — scoped component evidence
 
 Use 1440×900 desktop and 390×844 mobile viewports, both light and dark themes. Also check 320 CSS-pixel width and 200% text/zoom. Record actual viewport, browser, theme, screenshot name and outcome for each check. Browser emulation does not satisfy physical-device acceptance.
 
 | Area | Required observable outcome | State |
 | --- | --- | --- |
-| Recovery | Pause explanation, four readable counts, worker date in Asia/Manila, waiting/review details, busy state and recovery success/error remain visible without clipping | Not run |
-| Settlement dialog | Opens on a paid record; reference, cost and explicit Philippine date/time have readable labels; net matches gross minus cost; saved evidence remains readable | Not run |
-| Keyboard | Tab/Shift+Tab reach actions and native selects; focus is visible; settlement focus stays inside the modal; Escape closes it when idle; focus returns to its opener | Not run |
-| Reports | All three titles/columns match selection; successful principal, user fees, gross, known costs and recorded net are separate; reconciliation shows a nonzero captured-review amount outside successful totals | Not run |
-| Narrow reports | Report preview scrolls horizontally using keyboard and touch without making the entire page wider; controls and totals wrap legibly | Not run |
-| Dark mode / zoom | Inputs, native selects, modal backdrop, focus, error and success text retain contrast and remain usable | Not run |
+| Recovery | Pause explanation, four readable counts, worker date, waiting/review details, busy state and recovery result | Component PASS: 1440×900 light and 390×844 dark. Checking… and success observed. Error rendering not rechecked visually |
+| Settlement dialog | Reference, cost, Philippine date/time, net and saved evidence | Component PASS: entered QA-UI-SETTLEMENT, PHP 1.40 cost, PHP 41.40 gross and PHP 40 net. Synthetic save/read passed. 390×844 dark evidence readable |
+| Keyboard | Focus, modal boundary, Escape and opener restoration | PARTIAL: native date entry, report keyboard scroll and Escape/opener restoration observed. Full Tab/Shift+Tab trap remains inconclusive; do not claim a complete keyboard pass |
+| Reports | Three matching titles/columns and separate financial totals | Component PASS: fine/printing/reconciliation selected separately. Reconciliation showed PHP 730 successful principal, PHP 22.30 fees, PHP 752.30 gross and PHP 92.90 captured-review excluded from successful principal |
+| Narrow reports | Contained horizontal preview and readable wrapping | PARTIAL: 320×740 dark report, keyboard ArrowRight moved the focusable preview; preview client width 253px vs 2481px contents. Outer harness stayed within 320px, with scrollbar allowance. Physical touch untested |
+| Dark mode / zoom | Contrast, responsive inputs, focus and messages | PARTIAL: dark recovery/settlement/report and light partial-payment review inspected. Fine review showed PHP 40 principal + PHP 1.40 fee = PHP 41.40, PHP 60 remaining. 200% browser zoom not run |
 | Full application | Login, permissions, navigation, real filters, pagination, protected PDF/CSV downloads and receipt links work through the normal routes | Not run |
 
-Source inspection shows native labeled inputs/selects, a native modal dialog, a focusable report scroll container and theme classes. That is preparation only; it proves no rendered contrast, focus behavior or physical-device behavior.
+No warning/error console entries were captured in the controlled component tab. JPEG evidence is retained in ignored `output/xendit-sandbox/`: `phase7-mobile-recovery-dark.jpg`, `phase7-mobile-settlement-dark.jpg`, `phase7-mobile-partial-review-light.jpg`, `phase7-report-320-dark.jpg` and `phase7-desktop-print-report-light.jpg`. These do not validate full application authentication, real settlement, actual touch input or provider checkout.
+
+### Full local application acceptance
+
+`node apps/api/scripts/verify-payment-app.mjs` creates a complete synthetic application schema in the existing guarded loopback database, exercises the normal application and cleans it afterward. `--cadence` additionally observes three minute runs, restarts the same worker and observes a fourth. `--serve` leaves it available for up to 15 minutes. To stop politely, create `output/xendit-sandbox/phase7-app-stop`; do not kill PostgreSQL.
+
+The script refuses occupied web/API ports, nonempty public/storage schemas, wrong database/host/role and nonignored private paths. It records hashes for selected SQL sources. It excludes the old 002 migration and hosted advisor administration files. Four reviewed normalized catalog table definitions live in a dedicated fixture; no historical backfill or old trigger is replayed. Storage bucket metadata is a local stand-in, not Supabase Storage. Schema creation is transactional; after a committed test, cleanup rechecks the exact database/host, drops only the schemas this run created from empty and stops this cluster gracefully. The preexisting `xendit_sandbox` setup fixtures remain.
+
+Normal `createApp()` serves all real routes on 127.0.0.1:47146; the existing production web build and same-origin API proxy use 127.0.0.1:4174. Production environment values are blanked before app imports. Four random-password synthetic accounts use the actual password, OTP hashing/verification, session and authorization services. Only OTP delivery is replaced with a private local sink; it sends no emails and adds no HTTP login bypass. Private password/code state is ignored and removed at shutdown. Enrollment is off in this test; semester enforcement is not accepted by these results. New online checkout stays paused, and no provider capture is fabricated.
+
+This is a local application-required schema, not a checksum-matched replica of Supabase or a production installation procedure. Hosted advisor policies, Storage delivery, external mail and deployment infrastructure are outside its coverage.
+
+Passed: healthy schema and API, all four sign-ins, anonymous/Student/Staff restrictions, other-borrower printing ownership denial, Librarian recovery access and all three real report reads/CSV/PDF exports. A PHP 40 cash payment left PHP 60, same-key retry kept one receipt, another borrower was forbidden from that receipt and its owner downloaded the PDF. Rendered receipt/report PDFs were visually inspected; optional renderer font substitutions did not show clipped or missing content. See ignored `phase7-app-schema.json`, `phase7-app-acceptance.json` and local worker observations for actual timestamps. Browser inspection of these full routes remains blocked by the renewed connection failure. Public callback delivery, deployed scheduler cadence, actual sandbox capture and human/device acceptance remain open.
+
+Final cadence run: 19:48:38, 19:49:38, 19:50:38 and 19:51:39 Asia/Manila on 2026-11-11. The fourth followed a stop/restart of the same worker; zero recorded failures, roughly 60–61-second gaps. `stop()` now awaits its active operation before pool closure. Confirmed loopback listeners 4174/47146/55438/47145/5174 stopped and exact temporary HTML/TSX/private code files removed. Regression **412 API + 278 web = 690**, typecheck, build, fixture HTTP regression and syntax/diff checks passed. Existing bundle-size advisory remains. A later browser inventory retry still returned no browser connection; no settings changes or new provider session were attempted.
 
 ## Full isolated application setup to complete locally before exposure approval
 
-The current fixture database is **not** a complete application database. `prepare-xendit-sandbox.mjs` installs small reference tables; its service verifier builds a minimal temporary schema that it drops. The application health check inspects `public` explicitly. Pointing the ordinary API at the temporary service schema cannot pass full application acceptance.
+The standard `prepare-xendit-sandbox.mjs` fixture alone is **not** a complete application database: it installs small reference tables and its service verifier drops a minimal temporary schema. The dedicated `verify-payment-app.mjs` now constructs the separate full local app described above. The application health check inspects `public` explicitly; pointing the ordinary API at the minimal service schema cannot pass full application acceptance.
 
 The reviewable target is one synthetic-only local stack:
 
@@ -87,7 +101,7 @@ The reviewable target is one synthetic-only local stack:
 | Worker | Start `startOperationalJobWorker()` from the existing `operational-minute` module in the same dedicated API process. Do not add a second scheduler. Keep the existing authenticated `/api/jobs/run` route if the later approved host needs external invocation |
 | Private state | Tool/data/config remain in ignored sandbox paths; no secrets in logs, screenshots, tracked files, responses or this runbook |
 
-Before requesting public access approval, finish a bounded local start/stop implementation for this stack and record: healthy schema, all four role logins, forbidden-role responses, actual report reads/downloads, worker history across successive minutes, sanitized environment check and exact process/listener cleanup. None of those full-app results is claimed by the current fixture test. No public callback origin or hosting provider has been selected or enabled.
+The dedicated full-app verifier now implements the bounded local setup above; its results are recorded separately from the component fixture. It found a draft branding table-name defect and an active-worker shutdown race, both repaired and locally verified. Restore stable supported browser access and review this complete stack before proposing public access. No public callback origin or hosting provider has been selected or enabled.
 
 ### Exposure proposal after local readiness
 
@@ -130,11 +144,13 @@ Record the person's role/name only with permission, device/browser, date, task r
 - [x] Save actual controlled reconciliation data and serve each requested report kind correctly.
 - [x] Pass the affected PostgreSQL acceptance, HTTP regression and script syntax checks; clean temporary servers/entry files.
 - [x] Document the remaining visual matrix and exact isolation/exposure prerequisites.
-- [ ] Build and verify the full isolated local application stack described above.
+- [x] Build the full isolated local application stack; verify normal sign-ins, role/ownership guards, schema health and real report exports. Complete the additional acceptance assertions before claiming their result.
 - [ ] Complete supported browser, physical-device and configured-method acceptance.
 - [ ] Obtain separate approved public origin, external webhook/runner delivery and observed deployed cadence.
 - [ ] Obtain Librarian usability feedback and explicit sign-off.
 
 ## Change log
+
+2026-11-11 — Supported browser access briefly worked. Recorded scoped desktop/mobile/dark component evidence, recovery busy/success, synthetic settlement and financial report separation. Access failed again on the full app; no repeated installation requests. Built a loopback-only full application verifier and found/fixed pending 033's incorrect table name. Normal four-role sign-ins and report reads/exports passed; live data and applied migration history stayed untouched.
 
 2026-11-11 — Fresh chat found no available supported browser. Preserved the incomplete hosted audit and corrected the report fixture's substitution of fine records for reconciliation. Added a failing-then-passing HTTP regression and regenerated matching controlled SQL evidence. Defined the remaining full-app, visual, external and human acceptance steps without marking them passed.

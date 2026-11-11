@@ -36,6 +36,8 @@
 -- 034–037 passed disposable local PostgreSQL verification only. Next unused number: 038.
 -- 031_semester_enrollment.sql supersedes the removed, unapplied 028 draft.
 -- Preserve the original bytes of applied files. The 003 source still needs checksum reconciliation.
+-- Phase 7 local bootstrap corrected unapplied 033 to use library_profile_settings,
+-- the actual application table, instead of nonexistent library_profiles. Still pending.
 -- See docs/main-branch-integration.md for the live ledger audit.
 -- Apply reviewed files individually; do not renumber previously applied files.
 --

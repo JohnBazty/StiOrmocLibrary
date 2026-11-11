@@ -76,9 +76,16 @@ export async function runOperationalJobs(now = new Date(), database: Pool = db) 
 
 /** Local minute runner also recovers missed closing checkouts on startup. */
 export function startOperationalJobWorker(database:Pool=db,intervalMs=60_000){
- let running=false
- const run=async()=>{if(running)return;running=true;try{await runOperationalJobs(new Date(),database)}catch(error){console.error('[Library jobs] Operational run failed.',error)}finally{running=false}}
+ let inFlight:Promise<void>|null=null,stopped=false
+ const run=():Promise<void>=>{
+  if(stopped)return inFlight??Promise.resolve()
+  if(inFlight)return inFlight
+  inFlight=Promise.resolve().then(()=>runOperationalJobs(new Date(),database))
+   .then(()=>undefined).catch(error=>{console.error('[Library jobs] Operational run failed.',error)})
+   .finally(()=>{inFlight=null})
+  return inFlight
+ }
  void run()
  const timer=setInterval(()=>void run(),intervalMs);timer.unref()
- return {run,stop:()=>clearInterval(timer)}
+ return {run,stop:()=>{stopped=true;clearInterval(timer);return inFlight??Promise.resolve()}}
 }
