@@ -55,9 +55,14 @@ No migration. `017` is used as applied.
 - Web: `DamageCasesPanel.tsx` (new), `AdminCirculationMonitor.tsx`, `CirculationReturnDialog.tsx`, `BorrowingHistory.tsx`, `circulation-api.ts`, `desk-circulation-api.ts`, `types.ts`.
 - Tests: `circulation-case.service.test.ts` runs real SQL on PGlite with `017` applied as-is (`circulation-case.test.helper.ts`); `circulation-damage-return.test.ts`; additions to `circulation.service.test.ts`, `circulation.api.integration.test.ts`, `clearance.service.test.ts`; web `DamageCasesPanel.test.tsx`, plus additions to `BorrowingHistory.test.tsx` and `CirculationReturnDialog.test.tsx`.
 
-## Open question
+## Lost-book reports (branch `fix/lost-book-price`, stacked on this one)
 
-The existing lost-book report flow (`clearanceService.decideLost`, borrower or staff "Report lost") still charges the latest supplier quotation, not the book price. Ethan's 2026-11-11 rule says the book price. Changing that flow is a separate change; ask Ethan before doing it.
+Ethan approved on 2026-11-12 changing the existing "Report lost" flow to the same rule.
+
+- `clearanceService.decideLost` charges the book price (`'Book Price'`, `purchase_price_snapshot` set) when the title has a price, even if a supplier quotation exists. Only a title with no price falls back to the latest quotation (`'Quoted'`), else `'Awaiting Quotation'` with 0.
+- The Clearance page shows the book price on a pending report and sends the amount staff confirmed. The server refuses a different amount (`LOST_BOOK_CHARGE_MISMATCH`), so a price edited after the page loaded is never charged silently.
+- A Librarian can waive an unpaid `'Book Price'` charge with a reason of at least 10 characters (wrong price, book found). Waiving sets `replacement_charge` to 0, because the desk borrowing gate, fines and dashboard totals add up `replacement_charge`. It cannot be re-charged from a quotation.
+- `'Book Price'` charges now show **Record replacement payment** and **Waive charge** to staff, and appear under the student's Outstanding charges. Before this they were owed but hidden on both pages.
 
 ## Implementation tracking
 
@@ -76,6 +81,7 @@ The existing lost-book report flow (`clearanceService.decideLost`, borrower or s
 
 | Date | Change |
 | --- | --- |
+| 2026-11-12 | Ethan approved the book-price rule for the existing lost-book report flow; built on `fix/lost-book-price` (see Lost-book reports). Security review: no CRITICAL/HIGH; fixed the stale-price and no-waiver MEDIUM findings. |
 | 2026-11-12 | Local check on the live data (read only): panel, review and forms work for a Librarian. Fixed case event times, which used the database UTC clock and showed 8 hours behind the case time; events now use the same Manila clock. Events written before this fix stay in UTC. |
 | 2026-11-12 | Review fixes H1, M1-M4 (see tracking). Decisions now need the copy still held as damaged (`CASE_COPY_NOT_HELD`); a charged case cannot be dismissed (`CASE_CHARGED_CANNOT_DISMISS`). |
 | 2026-11-12 | Created. Ported Damage cases from `6dd0c64` to Postgres-only `main`; charge for a written-off copy = book price (Ethan, 2026-11-11). Case opening moved into the existing desk return instead of the old separate report-damage endpoint. Long-overdue cases left for later. |
