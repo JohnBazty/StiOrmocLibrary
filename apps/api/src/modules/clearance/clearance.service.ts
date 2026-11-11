@@ -120,7 +120,7 @@ export function createClearanceService(database: Pool = db) {
       database.execute<RowDataPacket[]>(
         `SELECT l.lost_book_report_id, l.transaction_id, l.report_status, l.purchase_price_snapshot,
                 l.replacement_charge, l.charge_resolution, l.resolution_reason, l.payment_status, l.reported_at, l.verified_at,
-                t.title_id, q.quotation_id AS current_quotation_id, q.quoted_amount AS current_quotation_amount,
+                t.title_id, t.purchase_price AS title_price, q.quotation_id AS current_quotation_id, q.quoted_amount AS current_quotation_amount,
                 COALESCE(t.title,m.title) AS title
            FROM lost_book_reports l INNER JOIN borrow_transactions bt ON bt.transaction_id=l.transaction_id
            INNER JOIN materials m ON m.material_id=bt.material_id
@@ -177,7 +177,7 @@ export function createClearanceService(database: Pool = db) {
       summary: { activeLoans, unpaidOverdueFines: unpaidFines, unpaidReplacementCharges: unpaidReplacement, totalOutstanding: unpaidFines + unpaidReplacement, blockCount: activeLoans + fineRows.length + lostRows.filter((row) => row.report_status === 'Confirmed' && CHARGED_RESOLUTIONS.includes(String(row.charge_resolution)) && row.payment_status === 'Unpaid').length },
       loans: loanRows.map((row) => ({ transactionId: Number(row.transaction_id), title: String(row.title), accessionNumber: row.accession_number, status: String(row.transaction_status), borrowedAt: row.borrowed_at, dueAt: row.due_at, overdueHours: Number(row.overdue_hours ?? 0), currentFine: Number(row.current_fine ?? 0) })),
       fines: fineRows.map((row) => ({ fineId: Number(row.fine_id), transactionId: row.transaction_id ? Number(row.transaction_id) : null, title: String(row.title), amount: Number(row.fine_amount), basis: String(row.calculation_basis), overdueUnits: Number(row.overdue_units), rate: Number(row.rate_applied), appliedAt: row.applied_date, notes: row.notes })),
-      lostBooks: lostRows.map((row) => ({ lostBookReportId: Number(row.lost_book_report_id), transactionId: Number(row.transaction_id), titleId: row.title_id ? Number(row.title_id) : null, title: String(row.title), status: String(row.report_status), chargeResolution: String(row.charge_resolution), resolutionReason: row.resolution_reason ? String(row.resolution_reason) : null, quotationId: row.current_quotation_id ? Number(row.current_quotation_id) : null, quotedAmount: row.current_quotation_amount === null ? null : Number(row.current_quotation_amount), replacementCharge: Number(row.replacement_charge), paymentStatus: String(row.payment_status), reportedAt: row.reported_at, verifiedAt: row.verified_at })),
+      lostBooks: lostRows.map((row) => ({ lostBookReportId: Number(row.lost_book_report_id), transactionId: Number(row.transaction_id), titleId: row.title_id ? Number(row.title_id) : null, title: String(row.title), status: String(row.report_status), chargeResolution: String(row.charge_resolution), resolutionReason: row.resolution_reason ? String(row.resolution_reason) : null, quotationId: row.current_quotation_id ? Number(row.current_quotation_id) : null, quotedAmount: row.current_quotation_amount === null ? null : Number(row.current_quotation_amount), titlePrice: row.title_price === null || row.title_price === undefined || Number(row.title_price) <= 0 ? null : Number(row.title_price), replacementCharge: Number(row.replacement_charge), paymentStatus: String(row.payment_status), reportedAt: row.reported_at, verifiedAt: row.verified_at })),
       activeOverride: activeOverride ? { overrideId: Number(activeOverride.clearance_override_id), status: String(activeOverride.override_status), reason: String(activeOverride.reason), appliedAt: activeOverride.applied_at, expiresAt: activeOverride.expires_at, appliedBy: String(activeOverride.applied_by) } : null,
       overrideHistory: historyRows.map((row) => ({ overrideId: Number(row.clearance_override_id), status: String(row.override_status), reason: String(row.reason), appliedAt: row.applied_at, expiresAt: row.expires_at, revokedAt: row.revoked_at, revocationReason: row.revocation_reason, appliedBy: String(row.applied_by), revokedBy: row.revoked_by ? String(row.revoked_by) : null })),
     }
@@ -322,7 +322,7 @@ export function createClearanceService(database: Pool = db) {
         await connection.beginTransaction()
         const staffUserId = await linkedUserId(connection, actorAccountId(actor))
         const [rows] = await connection.execute<RowDataPacket[]>(
-          `SELECT l.*,bt.material_id,bt.physical_copy_id,COALESCE(t.title,m.title) AS title,
+          `SELECT l.*,bt.material_id,bt.physical_copy_id,COALESCE(t.title,m.title) AS title,t.purchase_price AS title_price,
                   q.quotation_id AS current_quotation_id,q.quoted_amount AS current_quotation_amount
              FROM lost_book_reports l INNER JOIN borrow_transactions bt ON bt.transaction_id=l.transaction_id
              INNER JOIN materials m ON m.material_id=bt.material_id
@@ -335,26 +335,31 @@ export function createClearanceService(database: Pool = db) {
         if (!report) throw new HttpError(404, 'LOST_BOOK_REPORT_NOT_FOUND', 'The lost-book report was not found.')
         if (report.report_status !== 'Pending') throw new HttpError(422, 'LOST_BOOK_ALREADY_REVIEWED', 'This lost-book report has already been reviewed.')
         if (input.status === 'Confirmed') {
-          const charge = report.current_quotation_amount === null ? null : Number(report.current_quotation_amount)
-          if (input.replacementCharge !== null && input.replacementCharge !== charge) throw new HttpError(422, 'LOST_BOOK_QUOTATION_MISMATCH', 'The replacement charge must match the latest supplier quotation. Refresh and review it.')
-          const hasQuotation = Boolean(report.current_quotation_id && charge && charge > 0)
+          // Ethan, 2026-11-11: a lost book is charged its book price, no extra fee. A supplier quotation is used only when the title has no price.
+          const titlePrice = report.title_price === null || report.title_price === undefined ? 0 : Number(report.title_price)
+          const bookPrice = Number.isFinite(titlePrice) && titlePrice > 0 ? titlePrice : null
+          const quoted = report.current_quotation_amount === null ? null : Number(report.current_quotation_amount)
+          if (bookPrice !== null && input.replacementCharge !== null && input.replacementCharge !== bookPrice) throw new HttpError(422, 'LOST_BOOK_CHARGE_MISMATCH', `The replacement charge must equal the book price, PHP ${bookPrice.toFixed(2)}. Refresh and review it.`)
+          if (bookPrice === null && input.replacementCharge !== null && input.replacementCharge !== quoted) throw new HttpError(422, 'LOST_BOOK_QUOTATION_MISMATCH', 'The replacement charge must match the latest supplier quotation. Refresh and review it.')
+          const hasQuotation = bookPrice === null && Boolean(report.current_quotation_id && quoted && quoted > 0)
+          const charge = bookPrice ?? (hasQuotation ? quoted : null)
           await connection.execute(
-            `UPDATE lost_book_reports SET report_status='Confirmed',quotation_id=?,replacement_charge=?,charge_resolution=?,
+            `UPDATE lost_book_reports SET report_status='Confirmed',quotation_id=?,purchase_price_snapshot=?,replacement_charge=?,charge_resolution=?,
                verified_by_user_id=?,verified_at=NOW(),staff_notes=?,updated_at=NOW() WHERE lost_book_report_id=?`,
-            [hasQuotation ? report.current_quotation_id : null, hasQuotation ? charge : 0, hasQuotation ? 'Quoted' : 'Awaiting Quotation', staffUserId, input.notes, reportId],
+            [hasQuotation ? report.current_quotation_id : null, bookPrice, charge ?? 0, bookPrice !== null ? 'Book Price' : hasQuotation ? 'Quoted' : 'Awaiting Quotation', staffUserId, input.notes, reportId],
           )
           await connection.execute('UPDATE borrow_transactions SET lost_confirmed_at=NOW(),updated_at=NOW() WHERE transaction_id=?', [report.transaction_id])
           if (report.physical_copy_id) await connection.execute("UPDATE physical_copies SET condition_status='Lost',availability_status='Unavailable',updated_at=NOW() WHERE physical_copy_id=?", [report.physical_copy_id])
           await connection.execute("UPDATE materials SET availability_status='Unavailable',updated_at=NOW() WHERE material_id=?", [report.material_id])
           await connection.execute(
             `INSERT INTO admin_notifications(event_type,actor_user_id,borrow_transaction_id,message_title,message_body)
-             VALUES ('lost_book_confirmed',?,?, 'Lost book confirmed',?)`, [report.user_id, report.transaction_id, hasQuotation ? `${report.title} was confirmed lost. Replacement charge: PHP ${charge!.toFixed(2)}.` : `${report.title} was confirmed lost. Staff are awaiting a supplier quotation before assessing a charge.`],
+             VALUES ('lost_book_confirmed',?,?, 'Lost book confirmed',?)`, [report.user_id, report.transaction_id, charge !== null ? `${report.title} was confirmed lost. Replacement charge: PHP ${charge.toFixed(2)}.` : `${report.title} was confirmed lost. Staff are awaiting a supplier quotation before assessing a charge.`],
           )
           await connection.execute(
             `INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
              VALUES (?, 'Lost book charge confirmed', ?, 'Lost Book','Lost Book Report',?,'/student/clearance','Urgent',?,NOW(),NOW())
           ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
-            [report.user_id, hasQuotation ? `${report.title} was confirmed lost. Replacement charge: PHP ${charge!.toFixed(2)}.` : `${report.title} was confirmed lost. Awaiting a supplier quotation; no charge has been assessed.`, reportId, `lost-report:${reportId}:confirmed`],
+            [report.user_id, charge !== null ? `${report.title} was confirmed lost. Replacement charge: PHP ${charge.toFixed(2)}.` : `${report.title} was confirmed lost. Awaiting a supplier quotation; no charge has been assessed.`, reportId, `lost-report:${reportId}:confirmed`],
           )
         } else {
           await connection.execute(
@@ -394,14 +399,16 @@ export function createClearanceService(database: Pool = db) {
             WHERE l.lost_book_report_id=? LIMIT 1 ${forUpdate('l')}`, [reportId])
         const report = rows[0]
         if (!report || report.report_status !== 'Confirmed') throw new HttpError(422, 'LOST_BOOK_RESOLUTION_INVALID', 'Confirm the lost book before resolving its charge.')
-        if (report.charge_resolution !== 'Awaiting Quotation') throw new HttpError(422, 'LOST_BOOK_ALREADY_RESOLVED', 'This lost-book charge has already been resolved.')
+        // An unpaid book-price charge may be waived (for example a wrong price or a book found), never re-charged from a quotation.
+        const waivableBookPrice = action === 'Waive' && report.charge_resolution === 'Book Price' && report.payment_status === 'Unpaid'
+        if (report.charge_resolution !== 'Awaiting Quotation' && !waivableBookPrice) throw new HttpError(422, 'LOST_BOOK_ALREADY_RESOLVED', 'This lost-book charge has already been resolved.')
         const actorId = await linkedUserId(connection, actorAccountId(actor))
         if (action === 'Charge') {
           const quoted = Number(report.current_quotation_amount)
           if (!report.current_quotation_id || !Number.isFinite(quoted) || quoted <= 0) throw new HttpError(422, 'LOST_BOOK_QUOTATION_REQUIRED', 'Upload a supplier quotation before assessing a charge.')
           await connection.execute("UPDATE lost_book_reports SET quotation_id=?,replacement_charge=?,charge_resolution='Quoted',resolution_reason=?,updated_at=NOW() WHERE lost_book_report_id=?", [report.current_quotation_id, quoted, reason || null, reportId])
         } else {
-          await connection.execute("UPDATE lost_book_reports SET charge_resolution='Waived',resolution_reason=?,updated_at=NOW() WHERE lost_book_report_id=?", [reason, reportId])
+          await connection.execute("UPDATE lost_book_reports SET charge_resolution='Waived',replacement_charge=0,resolution_reason=?,updated_at=NOW() WHERE lost_book_report_id=?", [reason, reportId])
         }
         const message = action === 'Charge' ? `${report.title}: replacement charge confirmed from supplier quotation.` : `${report.title}: no monetary replacement charge is due. ${reason}`
         await connection.execute(`INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
