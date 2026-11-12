@@ -46,7 +46,6 @@ export function createCirculationController(service: Service = circulationServic
     }),
     returnBook: asyncController(async (request, response) => { response.json({ success: true, message: 'Return completed successfully.', data: await service.returnBook(authenticatedAccount(response), request.params.transactionId) }) }),
     calculatePenalty: asyncController(async (request, response) => { response.json({ success: true, data: await service.calculatePenalty(request.params.transactionId) }) }),
-    notifications: asyncController(async (request, response) => { response.json({ success: true, data: await service.adminNotifications(request.query.limit) }) }),
   }
 }
 export const circulationController = createCirculationController()
