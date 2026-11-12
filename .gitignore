@@ -29,3 +29,11 @@ tasks/*.log
 .claude/skills/slides/
 .claude/skills/stageshow/
 .agents/skills/stageshow/
+
+# Local chat attachments and generated previews/deliverables
+/.codex-remote-attachments/
+/output/
+
+# Python bytecode generated while producing documentation
+__pycache__/
+*.pyc

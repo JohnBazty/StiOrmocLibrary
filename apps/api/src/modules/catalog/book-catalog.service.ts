@@ -8,12 +8,13 @@ import {
   queryBookCatalog,
   queryBookCategories,
   queryBookOverview,
+  queryBookCopyDetails,
   queryReservationTarget,
   queryViewerActiveBookCount,
 } from './book-catalog.repository.ts'
 import { parseBookCatalogFilters, parseBookTitleId } from './book-catalog.validation.ts'
 
-export type CatalogViewer = { accountId: number; role: 'Admin' | 'Student' | 'Faculty' }
+export type CatalogViewer = { accountId: number; role: 'Librarian' | 'Student' | 'Faculty' }
 
 export function createBookCatalogService(database: Pool = db) {
   return {
@@ -43,10 +44,10 @@ export function createBookCatalogService(database: Pool = db) {
       const titleId = parseBookTitleId(titleIdValue)
       const book = await queryBookOverview(database, titleId)
       if (!book) throw new HttpError(404, 'BOOK_TITLE_NOT_FOUND', 'The requested book title does not exist or is archived.')
-      return book
+      return { ...book, copies: await queryBookCopyDetails(database, titleId) }
     },
 
-    async reserve(titleIdValue: unknown, viewer: CatalogViewer) {
+    async reserve(titleIdValue: unknown, viewer: CatalogViewer, body: unknown = {}) {
       if (!['Student', 'Faculty'].includes(viewer.role)) {
         throw new HttpError(403, 'BOOK_RESERVATION_ROLE_FORBIDDEN', 'Only Student or Faculty accounts may reserve catalog books.')
       }
@@ -55,7 +56,8 @@ export function createBookCatalogService(database: Pool = db) {
       if (!target || !target.userId || !target.materialId) {
         throw new HttpError(422, 'BOOK_RESERVATION_UNAVAILABLE', 'This account or title is not linked to a reservable physical copy.')
       }
-      return reservationService.create(target.userId, { materialId: target.materialId })
+      return reservationService.create(target.userId, { materialId: target.materialId,
+        requestId: body && typeof body==='object' ? (body as Record<string,unknown>).requestId : undefined })
     },
   }
 }

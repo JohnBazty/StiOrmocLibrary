@@ -6,7 +6,15 @@
 2. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) for session start, plan status values, and the Supabase migration tracker.
 3. When Ethan says **`start session`**, run that Start session protocol before building.
 
+## Owner-installed skills
+
+Caveman is installed for this repository at `.agents/skills/caveman/SKILL.md`. Use normal mode for planning and concise Caveman mode for implementation unless the owner requests a different style. Preserve clear nontechnical explanations, required progress updates, verification results and material limitations. Full explanations, plans and other saved documents retain the detail their task needs. This is a reply-style skill, not a token cap or permission to skip work.
+
+The owner's Claude skill collection is adapted for Codex under `C:/Users/JOHN/.codex/skills/claude-*`. Select and read the relevant skill when it improves the task: UI/UX and baseline UI for interface work; systematic debugging and webapp testing for defects and QA; React/coding standards for implementation; database/SQL/API security for relevant backend work. Do not load all skills for every request. Follow each Codex entrypoint's compatibility notes and this repository's requirements. Missing source helper files are not installed capabilities. See [installation and limits](docs/codex-local-skills-20261016.md).
+
 ## Before making design, implementation, or database decisions
+
+Design every feature for a person with no technical background. Follow the owner's plain-language and reduced-workflow requirement in `agent.md`, including automatic recognition and clear review before saving.
 
 1. Read [docs/source-of-truth.md](docs/source-of-truth.md) and consult its preserved Final Draft and Administrative System Flow PDFs for the relevant feature.
 2. Read and follow [agent.md](agent.md).
@@ -93,6 +101,13 @@ Pages read as dated facts (`YYYY-MM-DD`), short summaries and links, not copies 
 - **Destructive-command hook** (`.claude/hooks/guard-destructive.mjs`, wired in `.claude/settings.json`): read its `RULES` list and refuse those commands yourself. Its `ASK_RULES` list (database migration, schema, backfill and user-creation scripts, `tools/ai` smoke, migration and audit scripts, the Vercel CLI) touches the live database or production: run those only after Ethan approves that exact step. Keep command approval on.
 - **Subagents** (`.claude/agents/*.md`): run each role as a separate step or prompt. Per feature, after Ethan approves the plan doc: `library-builder.md` (build, tests first, one Supabase migration per schema change), then `plan-verifier.md` (read-only check of tracking items, migrations, trackers and status), then one combined security review of `git diff main...HEAD` (plus a database review when there is a migration), fixes, then ask Ethan before push or PR.
 - **Start session** (`.claude/skills/start-session/SKILL.md`, mirrored in `.agents/skills/start-session/`): follow it when Ethan says `start session`.
+- **User-level skills (Ethan, 2026-11-12):** use these when the task matches; they live at `C:\Users\Ethan\.claude\skills\<name>\SKILL.md`, so read that file yourself. Project rules in this file win over their advice.
+  - `supabase`, `supabase-postgres-best-practices`: Supabase and SQL work, migrations under `database/supabase/`, RLS policies and their tests, indexes, locking. Never act on `sti_ilms_rea`; ignore the skill's advice to create `.mcp.json`.
+  - `vercel-react-best-practices`, `vercel-composition-patterns`: React code in `apps/web` (waterfalls, bundle size, re-renders, component APIs).
+  - `differential-review`, `sharp-edges`: security pass on a diff before a PR (part of the combined review, not an extra agent); risky API or config design.
+  - `property-based-testing`: fast-check tests for parsers, validators, money and date rules (fines, due dates).
+  - `diagnosing-bugs`: hard bugs and slow code. `codebase-design`, `domain-modeling`: module seams, glossary and ADR wording.
+  - Only when Ethan asks: `improve-codebase-architecture`, `grill-with-docs` (it writes ADR and glossary files).
 - **Dev server** (`.claude/launch.json`): `npm run dev`, web on port 5173, API on 4000.
 - **MCP servers** (set up at Ethan's user level, not in the repo): Supabase (read-only checks; schema changes only through reviewed migration files), Serena (code navigation), graphify (`graphify-out/` knowledge graph). If your tool lacks one, say so instead of guessing what it would return.
 - **Files git does not hold** (`apps/api/.env`, `.vercel/`, runtime uploads): they exist only in Ethan's checkout. If one is missing, ask Ethan; never recreate `.env` with guessed values.

@@ -31,6 +31,7 @@ function checkoutBody(input: CheckoutConfirmationInput) {
 }
 
 export const circulationApi = {
+  myBooks: () => request<Pick<BorrowingHistoryData, 'items'>>('/api/v1/borrowing/my-books', { cache: 'no-store' }),
   history: (page = 1) => request<BorrowingHistoryData>(`/api/v1/borrowing/history?page=${page}&limit=25`),
   cancelRequest: (transactionId: number, reason?: string) => request<{ transactionId: number; status: 'Cancelled'; copyAvailability: string }>(`/api/v1/circulation/requests/${transactionId}/cancel`, {
     method: 'PUT', body: JSON.stringify({ reason }),
@@ -47,4 +48,5 @@ export const circulationApi = {
   }),
   returnBook: (transactionId: number) => request(`/api/v1/admin/borrowing/${transactionId}/return`, { method: 'PUT' }),
   calculatePenalty: (transactionId: number) => request<{ amount: number; currency: string }>(`/api/v1/admin/borrowing/${transactionId}/calculate-penalty`, { method: 'POST' }),
+  reportLost: (transactionId: number) => request<{ lostBookReportId: number; status: string; alreadyReported?: boolean }>(`/api/v1/admin/clearance/lost-books/loans/${transactionId}/report`, { method: 'POST' }),
 }

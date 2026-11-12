@@ -165,3 +165,7 @@ footer { padding: 17px 20px; text-align: center; color: rgba(0, 51, 102, 0.66); 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
 }
+
+/* Revision Phase 1 error appearance. */
+.alert[data-kind="error"] { background:#b42318; color:#fff; border-color:#b42318; }
+.field-error { color:#b42318; }

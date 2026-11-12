@@ -4,6 +4,8 @@ import type { Pool } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { createReservationService } from './reservation.service.ts'
 
+import { borrowerEligibilityRows } from '../attendance/attendance-test-fixtures.ts'
+
 const legacyPolicyRow = {
   borrowing_policy_version_id: 1, effective_on: '2000-01-01', student_max_active_books: 2, faculty_max_active_books: null,
   borrowing_days: 1, due_time_cutoff: '08:59:00', max_renewals: 1, renewal_extension_days: 1,
@@ -17,6 +19,18 @@ function reservationPool(role: 'Student' | 'Faculty', activeCount: number, mater
   const connection = {
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() { state.releases += 1 },
     async execute(sql: string) {
+      const eligible = borrowerEligibilityRows(sql, role, 4)
+      if (eligible) return [eligible]
+      if (sql.includes('SELECT title_id FROM physical_copies')) return [[{ title_id: 9 }]]
+      if (sql.includes('SELECT t.*,MIN(pc.material_id)')) return [[{ title_id: 9, material_id: 17, title: 'Clean Code', record_type: materialType }]]
+      if (sql.includes('UNION ALL SELECT bt.transaction_id')) return [activeBorrowStatus ? [{ transaction_id: 71 }] : []]
+      if (sql.includes('COUNT(*) AS total FROM (')) return [[{ total: activeCount }]]
+      if (sql.includes('COUNT(*) AS n FROM reservations')) { state.activeCountQueried = true; return [[{ n: activeCount }]] }
+      if (sql.includes('AS position FROM reservations')) return [[{ position: 3 }]]
+      if (sql.includes('SELECT pc.* FROM physical_copies') || sql.includes('SELECT pc.*,t.title')) return [[]]
+      if (sql.includes('SELECT r.*,t.title')) return [[{ reservation_id: 501, user_id: 4, material_id: 17, book_title_id: 9, reservation_status: 'pending', request_kind: 'Reservation', queue_position: 3 }]]
+      if (sql.includes('SELECT r.user_id,r.request_kind,r.assigned_physical_copy_id')) return [[]]
+      if (sql.includes('INSERT INTO book_request_events') || sql.includes('INTO book_request_email_deliveries')) return [{ insertId: 1, affectedRows: 1 }]
       if (sql.includes('FROM borrowing_policy_versions')) return [[legacyPolicyRow]]
       if (sql.includes('FROM borrowing_policy_material_rules')) {
         return [[{ borrowing_policy_version_id: 1, material_type: 'Book', is_borrowable: 1 }, { borrowing_policy_version_id: 1, material_type: 'Thesis/Manuscript', is_borrowable: 0 }]]
@@ -35,11 +49,11 @@ function reservationPool(role: 'Student' | 'Faculty', activeCount: number, mater
       }
       if (sql.includes('MAX(r.queue_position)')) return [[{ next_position: 3 }]]
       if (sql.includes('INSERT INTO reservations')) { state.inserted = true; return [{ insertId: 501, affectedRows: 1 }] }
-      if (sql.includes('INSERT INTO admin_notifications')) return [{ insertId: 900, affectedRows: 1 }]
+      if (sql.includes('INSERT INTO admin_notifications') || sql.includes('INTO notifications')) return [{ insertId: 900, affectedRows: 1 }]
       throw new Error(`Unexpected SQL: ${sql}`)
     },
   }
-  return { state, database: { getConnection: async () => connection } as unknown as Pool }
+  return { state, database: { getConnection: async () => connection, execute: connection.execute.bind(connection) } as unknown as Pool }
 }
 
 test('Student with two active books receives 422 and no third reservation insert', async () => {
@@ -48,7 +62,7 @@ test('Student with two active books receives 422 and no third reservation insert
     assert.ok(error instanceof HttpError)
     assert.equal(error.status, 422)
     assert.equal(error.code, 'STUDENT_BORROW_LIMIT_REACHED')
-    assert.match(error.message, /Student cannot exceed 2 books/)
+    assert.match(error.message, /2 active books or requests/)
     return true
   })
   assert.equal(state.inserted, false)
@@ -74,7 +88,7 @@ test('borrower cannot reserve the same title already held in a pending or active
       assert.ok(error instanceof HttpError)
       assert.equal(error.status, 422)
       assert.equal(error.code, 'BOOK_ALREADY_IN_ACCOUNT')
-      assert.match(error.message, status === 'Pending' ? /already checked out/i : /already borrowed/i)
+      assert.match(error.message, /already have this title/i)
       return true
     })
     assert.equal(state.inserted, false)
@@ -88,11 +102,13 @@ test('administrator cannot approve a legacy queue row when the user already has 
   const connection = {
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() {},
     async execute(sql: string) {
-      if (sql.includes('SELECT r.*, m.title')) return [[{
-        reservation_id: 501, user_id: 4, reservation_status: 'pending', resolved_title_id: 9,
+      if (sql.includes('FROM library_profile_settings')) return [[]]
+      if (sql.includes('SELECT user_id,role,account_status FROM accounts')) return [[{ user_id: 1, role: 'Librarian', account_status: 'Active' }]]
+      if (sql.includes('SELECT r.*,t.title')) return [[{
+        reservation_id: 501, user_id: 4, reservation_status: 'pending', request_kind: 'Reservation', book_title_id: 9,
         title: 'Clean Code', isbn: '9780132350884', material_type: 'Book', queue_position: 1,
       }]]
-      if (sql.includes('FROM borrow_transactions bt') && sql.includes('borrowed_material')) {
+      if (sql.includes('FROM borrow_transactions bt') && sql.includes('bt.transaction_status IN')) {
         return [[{ transaction_id: 71, transaction_status: 'Borrowed' }]]
       }
       if (sql.startsWith('UPDATE reservations')) { state.statusUpdates += 1; return [{ affectedRows: 1 }] }
@@ -100,7 +116,7 @@ test('administrator cannot approve a legacy queue row when the user already has 
     },
   }
   await assert.rejects(
-    createReservationService({ getConnection: async () => connection } as unknown as Pool)
+    createReservationService({ getConnection: async () => connection, execute: connection.execute.bind(connection) } as unknown as Pool)
       .adjustStatus(1, 501, { status: 'approved' }),
     (error: unknown) => error instanceof HttpError && error.status === 422 && error.code === 'BOOK_ALREADY_IN_ACCOUNT',
   )

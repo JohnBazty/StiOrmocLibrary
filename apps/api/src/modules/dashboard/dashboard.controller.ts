@@ -1,3 +1,4 @@
+import { clearanceScheduleService } from '../clearance/clearance-schedule.service.ts'
 import type { NextFunction, Request, Response } from 'express'
 import { createBrandedTablePdf } from '../reports/branded-table-pdf.ts'
 import { dashboardRepository } from './dashboard.repository.ts'
@@ -19,7 +20,7 @@ async function* summaryRows(data: Awaited<ReturnType<typeof dashboardRepository.
     ['Attendance today', data.kpis.dailyAttendance], ['Active reservations', data.kpis.activeReservations],
     ['Outstanding fines', `PHP ${data.kpis.outstandingFines.toFixed(2)}`],
     ['Current occupancy', `${data.occupancy.current} of ${data.occupancy.capacity}`],
-    ['Peak hour today', data.occupancy.peakHour ?? 'No visits yet'], ['Average visit', `${data.occupancy.averageMinutes} minutes`],
+    ['Peak occupied seats today',String(data.occupancy.peakOccupancy??0)],['Busiest arrival hour today', data.occupancy.peakHour ?? 'No visits yet'], ['Average visit', `${data.occupancy.averageMinutes} minutes`],
   ]
   for (const [metric, value] of rows) yield { section: 'Operational summary', metric, value }
   for (const item of data.weeklyAttendance) yield { section: 'Weekly attendance', metric: item.label, value: item.value }
@@ -32,7 +33,10 @@ export const dashboardController = {
     response.set('Cache-Control', 'private, no-store').json({ success: true, message: 'Dashboard loaded.', data })
   }),
   user: handle(async (request, response) => {
-    const data = await dashboardRepository.user(actor(request, response))
+    const [dashboard, clearanceSchedule] = await Promise.all([
+      dashboardRepository.user(actor(request, response)), actor(request, response).role === 'Student' ? clearanceScheduleService.current() : Promise.resolve(null),
+    ])
+    const data = { ...dashboard, clearanceSchedule }
     response.set('Cache-Control', 'private, no-store').json({ success: true, message: 'Dashboard loaded.', data })
   }),
   adminPdf: handle(async (request, response) => {

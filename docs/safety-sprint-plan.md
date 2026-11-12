@@ -15,7 +15,7 @@ Checked and safe (no work): the copy and thesis `DELETE` routes only remove a Lo
 | --- | --- |
 | **Date created** | 2026-11-11 |
 | **Date last updated** | 2026-11-11 |
-| **Status** | `planned` |
+| **Status** | `inprogress` (Part A built and reviewed on PR #17; Parts B and C not started as their own PRs) |
 | **Sources** | `docs/rea-comparison-report.md` F1, F2, F3, F5, F8; REA specs `job-runner` (#8) and `accounts-sign-in` (#1); earlier plan `docs/durable-job-runner-plan.md` on `feat/long-overdue-and-damage-case` (decisions D1 to D5 approved by Ethan 2026-10-10) |
 | **Migrations** | `main` matches the live database since 2026-11-11: John's merge `d0321a0` and PR #16 (`bead6ce`, which restored 35 of 36 applied migrations byte for byte; `003_readiness_gapfill` differs, its schema verified live). Latest applied `032_login_devices`, `033_rename_system_brand` pending review, **next available `034`**. Re-check `.cursor/agent-protocol.md` before writing a migration |
 
@@ -27,50 +27,75 @@ Three parts. Each is its own branch, plan-verifier run, review and PR, in this o
 
 ### Part A: Durable job runner (`feat/durable-job-runner`)
 
-Port the approved October design to the Postgres-only `main`. Do not cherry-pick the old branch: it targets the MySQL-era code and also contains the long-overdue case feature. Read it for design only.
+**Re-planned 2026-11-11 against `main` at `bead6ce`.** `main` has two job systems. Part A keeps one: every active job moves to the `019` tables, as John proposed in PR #16, and both entry points switch together.
 
-**Re-plan after John's merge (2026-11-11):** `codex/library-revision-updates` has its own job runner (`apps/api/src/modules/jobs/job-runner.ts`, migration `013_phase2_job_runner`, applied live), started from `server.ts` as `startOperationalJobWorker()`. Once that branch is in `main`, Part A finishes one runner and retires the other's tables; the October design below may no longer be the one to build.
+**What runs today (read-only check of the live database, 2026-11-11):**
+- John's runner (`apps/api/src/modules/jobs/job-runner.ts`, table `library_job_runs` from `013`) runs nine steps in one chain called `operational-minute`. It starts from `server.ts` (`startOperationalJobWorker()`, every 60 s) and from `POST /api/jobs/run` (`Authorization: Bearer`, 32+ character `JOB_RUNNER_SECRET`). Admin reads it at `GET /api/v1/admin/jobs/status`.
+- **No Supabase Cron schedule exists** (`cron.job` is empty). `pg_cron` 1.6.4, `pg_net` 0.20.4 and Vault are already installed.
+- `library_job_runs` shows 3,618 runs, last success 2026-11-09 17:19 UTC, last run 5.9 s. With no Cron, these came from **laptops running `npm run dev` against the live database**. On Vercel nothing has run.
+- One failing step stops every later step in the chain (for example, an enrollment failure stops the overdue scan).
+- The `019` tables (`scheduled_job_state`, `scheduled_job_runs`) are on `main` and live, with row-level security on and no `anon` or `authenticated` grants. The three seeded rows have never run.
 
-**The schema already exists live.** `019_durable_job_runner.sql` from `feat/long-overdue-and-damage-case` was applied to the live database on 2026-10-10, and `scheduled_job_state` holds the three job rows, none of which has ever succeeded (`last_success_at` is null; checked 2026-11-11). So Part A **does not write a new migration**. It brings that exact `019_durable_job_runner.sql` file into `main` unchanged (same name and content, so the migration runner's checksum matches), and builds the code against it. Check whether the live `019` depends on `017_circulation_cases`; if it does, Part A must wait for that decision (see Decision S7).
+**Job map (John's nine steps onto `019`):**
 
-**Flow** (approved D1 to D5, unchanged):
+| # | Step in `runOperationalJobs` | `019` job name | Backlog bound |
+| --- | --- | --- | --- |
+| 1 | `createEnrollmentService().closeDue()` | `enrollment-close` | due windows only |
+| 2 | `createAttendanceOperations().autoCheckout()` | `attendance-auto-checkout` | cutoff rows only |
+| 3 | `flagUnreturnedInLibrary()` | `in-library-unreturned` | room-use loans only |
+| 4 | `expireReadyReservations()` | `reservation-expiration` (seeded) | 100 per run, already |
+| 5 | `createBookRequestService().advanceWaiting()` | `book-request-advance` | waiting requests only |
+| 6 | `escalateOverdueTransactions()` | `circulation-overdue` (seeded) | **cursor (D5)**, 100 per run |
+| 7 | `generateNotifications()` | `notifications` (seeded) | print notices limited to requests updated in the last 24 h (D5); the reservation query is already removed |
+| 8 | `deliverBookRequestEmails()` | `book-request-emails` | existing batch |
+| 9 | `createCollectionReviewService().refresh()` | `collection-review-refresh` | one snapshot |
+
+The six new names need no migration: the claim is one `INSERT ... ON CONFLICT (job_name) DO UPDATE ... WHERE the lease is free RETURNING`, so a job's state row is created on its first claim. Only names in the code allowlist are accepted.
+
+**Flow** (D1 to D5, kept by Ethan as S2):
 
 ```text
-Supabase Cron (one schedule per job, every minute)
+Supabase Cron, every minute
   -> pg_net HTTPS POST to the Vercel URL, secret held in Supabase Vault
   -> POST /api/internal/jobs/:jobName   (header X-Job-Runner-Secret)
-  -> lease claim in Postgres (90 s, database clock)
-  -> existing service: expireReadyReservations / escalateOverdueTransactions / generateNotifications
+  -> per job: lease claim in Postgres (90 s, database clock)
+  -> existing service
   -> run row recorded, lease released, Admin status updated
 ```
 
-**Schema (`019_durable_job_runner.sql`, already applied live; shown for reference):**
-- `scheduled_job_state`: one row per allowed job (`reservation-expiration`, `circulation-overdue`, `notifications`) with lease token and expiry, last start, success and failure times, last outcome, a short error code and a cleaned message (at most 500 characters, no stack traces or secrets), bounded result counts, and an overdue progress cursor. The three rows are seeded.
-- `scheduled_job_runs`: append-only history (job, start, finish, outcome, counts, error code and message), indexed by job and start time. Runs older than 30 days are deleted in bounded batches.
-- Row-level security on; no grants to `anon` or `authenticated`.
-- The Cron schedules are **not** created by the migration. They go in `docs/runbooks/durable-job-runner.md` as copy-paste SQL that Ethan runs once, after the deploy.
+**API (`apps/api/src/modules/job-runner/`):** allowlist, repository (claim, finish, list state, list runs, prune), service, routes. `modules/jobs/` and its two routes are removed.
+- `POST /api/internal/jobs/:jobName`, mounted before body parsing and the session, JWT and CSRF middleware, rate limited to 30 calls a minute. Only `X-Job-Runner-Secret`, compared with `crypto.timingSafeEqual` after a length check (D1). Unknown job: `404`. Secret missing, wrong or not configured: `401`; the value is never logged. `JOB_RUNNER_SECRET` is read in `config/env.js`; in production a set secret shorter than 32 characters stops the API from starting, and an unset one leaves the route refusing every call. The reply holds the outcome and counts only.
+- `:jobName` = `all` runs every job in the order above, each with its own lease and run row; a failure in one does not stop the next (A1).
+- Lease (D2): 90 s from database `NOW()`. Lease held: the run is recorded `skipped`. Only the current lease token may write the result or advance the cursor.
+- Outcomes: `succeeded` (counts in `result_json`), `failed` (an error code plus a cleaned message: at most 500 characters, first line only, no stack, secrets or connection strings), `skipped`.
+- Failure alert: one `admin_notifications` row `scheduled_job_failed` when a job starts failing or its error code changes; no repeat every minute (D3).
+- Health (D3): `failed` when the last outcome failed and nothing succeeded since; `stale` when there is no success in the last 3 minutes; else `healthy`.
+- Retention: after each success, delete at most 1,000 of that job's runs older than 30 days.
+- `GET /api/v1/admin/jobs` (`requireLibraryPermission('library.manage')`, i.e. Admin): each job's state, health and last 20 runs. Read-only, no "Run now" (D4). `GET /api/v1/admin/jobs/status` is removed.
+- `/api/health` schema check: `library_job_runs` is replaced by the two `019` tables. `library_job_runs` stays in the database untouched; dropping it is a later migration, not this part.
 
-**API (`apps/api/src/modules/job-runner/`):** types, repository (claim, release, list state, list runs), service, routes.
-- `POST /api/internal/jobs/:jobName`, mounted **before** the session, JWT and CSRF middleware. It accepts only `X-Job-Runner-Secret`, compared with `crypto.timingSafeEqual` after a length check (D1). Unknown job name: `404`. Secret missing or wrong: `401`, with nothing logged about the value. `JOB_RUNNER_SECRET` is read in `config/env.js` and must be at least 32 characters in production, like `JWT_SECRET`.
-- Lease: an atomic `UPDATE ... WHERE lease_token IS NULL OR lease_expires_at < NOW() RETURNING *`. No row means another run holds the lease, so the run is recorded as `skipped` (D2). Only the holder of the current lease token may write the result.
-- Health: a job is `failed` when its last outcome failed and nothing has succeeded since; `stale` when it has no success in the last 3 minutes; otherwise `healthy` (D3).
-- `GET /api/v1/admin/jobs` (Admin only): state and the last 20 runs per job. Read-only: no manual "Run now" button in this part (D4).
-- Backlog limits: the overdue scan walks a stored cursor (`due_at`, `transaction_id`) in batches of 100 so newer loans are not starved (D5). The notification queries that scan all reservations and all print requests get a time window (changes in the last 24 hours), so a run fits Vercel's 60-second limit.
+**Overdue cursor (D5):** `circulation-overdue` reads loans with `(due_at, transaction_id)` after the stored `progress_cursor`, 100 at a time, and stores the last row it saw. Fewer than 100 rows means the pass is done and the cursor resets to null. Every loan past its due time is reached within one pass, even with a backlog.
 
-**Web:** a read-only "Scheduled jobs" panel on `AdminDashboardPage`, showing each job's status in words (Healthy, Stale, Failed) plus an icon, never color alone, and the last success time in Manila time.
+**Web:** a read-only "Scheduled jobs" panel on `AdminDashboardPage`: each job's name, status in words (Healthy, Stale, Failed) with an icon, last success in Manila time, and the last error message. It loads on its own, so a jobs error never hides the dashboard.
 
-**Local development:** `server.ts` keeps the timers, but each tick calls the same runner service (claim, run, record), so local and production take one code path.
+**Local development:** `server.ts` starts a 60 s timer only when `JOB_RUNNER_LOCAL_TIMER=on` (A2). It calls the same runner (`all`), so local and production share one code path, and the lease stops a laptop and Cron running the same job at once.
+
+**Time zone risk:** loan dates are Manila wall time without a zone. The overdue and notification queries pass a JS `Date` and convert in SQL (`AT TIME ZONE 'Asia/Manila'`), so they do not depend on the server's zone, but node-pg reads `timestamp` columns in the process zone. Tests use a fixed clock; John confirms whether Vercel sets `TZ=Asia/Manila`. The runner itself uses only database `NOW()` for leases and health.
 
 **Tests first:**
-- The secret check: missing, wrong length, wrong value and right value.
-- Lease: two claims at once, so only one runs; an expired lease can be reclaimed; a stale token cannot write.
-- Each job records `succeeded`, `failed` (error cleaned) and `skipped`.
-- The cursor advances and wraps.
-- Health derivation for each state.
-- The Admin route needs the Admin role.
-- The dashboard panel renders each state with text.
+- Secret: missing, not configured, wrong length, wrong value, right value; the value never appears in a log or reply.
+- Lease: two claims at once, so only one runs; an expired lease is reclaimed; a stale token cannot write the result or the cursor.
+- Each job records `succeeded`, `failed` (message cleaned) and `skipped`; `all` continues after a failure; the alert is not repeated.
+- The overdue cursor advances, and resets after a short batch.
+- Health for each state.
+- The Admin route refuses other roles and unauthenticated calls.
+- The dashboard panel renders each status in words, and a load error.
 
-**Activation (Ethan, after merge and deploy):** apply `019`, set `JOB_RUNNER_SECRET` in Vercel, enable `pg_cron` and `pg_net`, store the URL and secret in Vault, then run the runbook SQL. Each of these is a separate go-ahead.
+**Activation (Ethan, after merge and deploy, each a separate go-ahead):** set `JOB_RUNNER_SECRET` in Vercel, store the URL and secret in Vault, run the runbook's `cron.schedule` SQL, then check the Admin panel. Runbook: `docs/runbooks/durable-job-runner.md`, with the rollback (`cron.unschedule`).
+
+**Part A decisions (answered by Ethan, 2026-11-11):**
+- **A1. How many Cron calls?** Answer: **one schedule every minute calling `all`**, each job with its own lease and record. Nine schedules (one per job) would be nine Vercel calls a minute (about 390,000 a month) for no gain at this size; the whole chain took 5.9 s from a laptop. Splitting later needs only new schedules, no code.
+- **A2. Should `npm run dev` on a laptop run jobs against the live database?** Answer: **no**; the local timer starts only when `JOB_RUNNER_LOCAL_TIMER=on`, off by default. Today any laptop on any branch runs production jobs with its own, possibly unmerged, code.
 
 ### Part B: Remove mock routes and guard row-level security (`fix/remove-mock-routes`)
 
@@ -84,10 +109,10 @@ Supabase Cron (one schedule per job, every minute)
 
 Scope is the JWT sign-in (`/api/v1/auth`). The old session sign-in (`/api/auth`) is still used by about 18 web calls (catalog admin, inventory, reports, CSRF, `me`, logout). Merging the two is **out of scope** here and gets its own plan. Its accounts get the same lockout, because both sign-ins read the same `accounts` table.
 
-**Check first:** JohnBazty's `codex/library-revision-updates` already has `020_revision_phase1_password_recovery.sql` (applied live) and, on 2026-11-10, "remembered browser sign-in and device switching". Read both before building C1 to C3, reuse what fits, and plan only the gaps.
+**Check first:** JohnBazty's `codex/library-revision-updates` already has `020_revision_phase1_password_recovery.sql` (applied live) and, on 2026-11-10, "remembered browser sign-in and device switching". Read both before building C1 to C3, reuse what fits, and plan only the gaps. `main` already has `apps/api/src/modules/auth/login-security.service.ts`; check it for overlap with C1 first. A paused, untested draft is parked as one WIP commit on local branch `feat/sign-in-hardening` (not pushed); its migration must be renumbered to `035`, since Part A now uses `034`.
 
 **C1. Per-account lockout** (REA #1 R13 to R16):
-- A new migration (`034` or later) adds `failed_sign_in_count`, `locked_until`, `last_sign_in_at` and `must_change_password` to `accounts`.
+- A new migration (`035` or later) adds `failed_sign_in_count`, `locked_until`, `last_sign_in_at` and `must_change_password` to `accounts`.
 - A wrong password for an existing active account adds 1 to `failed_sign_in_count`. At the threshold, `locked_until` is set to the database `NOW()` plus the lock period.
 - A locked account gets the same `401 INVALID_CREDENTIALS` reply as a wrong password. The existing `DUMMY_BCRYPT_HASH` check keeps the timing the same.
 - A successful sign-in resets the count and clears the lock. A lock ends on its own when `locked_until` passes. An Admin can unlock an account from user management; that is recorded in `account_management_events` with the actor and reason.
@@ -127,12 +152,13 @@ Scope is the JWT sign-in (`/api/v1/auth`). The old session sign-in (`/api/auth`)
 ## Implementation tracking
 
 - [x] Ethan answers the open questions (2026-11-11, S1 to S6).
-- [ ] Ethan approves the plan for building.
-- [ ] Part A: `019` migration, runner module, internal route, Admin route, dashboard panel, local timers on the runner, tests, runbook.
-- [ ] Part A: plan-verifier READY, security review, database review (new tables plus lease SQL), PR.
+- [x] Ethan approves Part A for building (2026-11-11, with A1 and A2).
+- [x] Part A: all nine jobs on the `019` runner, internal route, Admin route, dashboard panel, local timer on the runner, John's runner and routes removed, tests, runbook (PR #17).
+- [x] Part A: `034_job_runner_hardening.sql` (job table RLS recorded in the repo, open-loan cursor index), added after the database review with Ethan's approval; applied live 2026-11-11.
+- [x] Part A: plan-verifier, security review and database review run; every CRITICAL, HIGH and MEDIUM finding fixed with tests (none CRITICAL or HIGH).
 - [ ] Part A activation by Ethan (migration, secret, Cron).
 - [ ] Part B: routes and mock file removed, import test, RLS check, PR.
-- [ ] Part C: `020` migration, lockout, cookie token with CSRF, forced password change, Admin unlock and temporary password, tests.
+- [ ] Part C: `035` migration, lockout, cookie token with CSRF, forced password change, Admin unlock and temporary password, tests.
 - [ ] Part C: plan-verifier READY, security review, database review (`accounts` altered), PR.
 - [ ] Trackers updated with each migration (`.cursor/agent-protocol.md`, `README.MD`, `database/supabase/README.md`, `docs/schema-context.md`).
 
@@ -143,4 +169,8 @@ Scope is the JWT sign-in (`/api/v1/auth`). The old session sign-in (`/api/auth`)
 | 2026-11-11 | Created from `docs/rea-comparison-report.md`; status `planned`. Copy delete routes checked and found safe, so they are not part of the sprint. |
 | 2026-11-11 | Ethan answered S1 to S6, all as recommended. Status stays `planned` until he approves building. |
 | 2026-11-11 | S7 resolved: `main` now matches the live database (PR #16 merged). Next migration `034`. Part A follows the runner decision in PR #16's review item (John proposes moving all jobs to the `019` tables, matching D1 to D5). |
+| 2026-11-11 | Part A re-planned against `main` `bead6ce`: John's nine steps mapped onto `019` (six new job names created on first claim, no migration); both entry points switch together; `library_job_runs` left in place. Live check: no Cron schedule exists, and the 3,618 recorded runs came from local dev servers. Open questions A1, A2. |
+| 2026-11-11 | Ethan answered A1 (one Cron call per minute running `all`) and A2 (local timer off unless `JOB_RUNNER_LOCAL_TIMER=on`), both as recommended, and approved Part A for building. Part A status `inprogress`. |
+| 2026-11-11 | Part A reviews: no CRITICAL or HIGH. Fixed MEDIUM: the run history row now locks the job row (`FOR UPDATE`) and a lost lease rolls back; `all` stops starting jobs after 40 s and reports the rest `deferred`; an unreadable overdue cursor is logged; the status window reads one index range per job; RLS and an open-loan cursor index recorded in new migration `034` (Ethan approved). Fixed LOW: the job route sits before body parsing with a 30/min limit; emails and bearer tokens are redacted from job errors; skipped runs no longer crowd the history window; prune uses `SKIP LOCKED`; print notices compare in the writers' zone and include never-updated rows; panel accessibility and STI-only colors; runbook revokes from `PUBLIC` and checks `cron` access. Part B moved to `fix/remove-mock-routes`, Part C parked on `feat/sign-in-hardening`. |
 | 2026-11-11 | Read-only check of the live database: migrations applied up to `029` from unmerged branches; `019_durable_job_runner` already applied but never run. Part A reuses that `019` file; Part C moves to `030` or later and first reads JohnBazty's password-recovery work. Added open decision S7 (product baseline branch), which blocks building. |
+| 2026-11-11 | Part A activation started: PR #17 merged by John; `034` applied live and verified. Runbook step 4 revoke does nothing (`supabase_admin` owns `net` and granted it to `PUBLIC`), so step 4 is now a read-only check that the Data API refuses the `net` schema (passed). Still open: John deploys `main` to production and sets `JOB_RUNNER_SECRET`; Ethan makes the secret and the Vault entries; then Cron. |

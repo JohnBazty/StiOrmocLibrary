@@ -17,11 +17,18 @@ type PdfTableOptions<Row> = {
   subtitle: string
   emptyMessage: string
   columns: Array<PdfTableColumn<Row>>
+  fonts?: { regular: string; bold: string }
 }
 
 /** Creates a paginated A3 landscape report containing one complete bordered table. */
 export function createBrandedTablePdf<Row extends object>(rows: AsyncIterable<Row>, options: PdfTableOptions<Row>) {
   const document = new PDFDocument({ size: 'A3', layout: 'landscape', margin: 32, bufferPages: false })
+  if (options.fonts) {
+    document.registerFont('ReportRegular', options.fonts.regular)
+    document.registerFont('ReportBold', options.fonts.bold)
+  }
+  const regular = options.fonts ? 'ReportRegular' : 'Helvetica'
+  const bold = options.fonts ? 'ReportBold' : 'Helvetica-Bold'
   const pageMargin = 32
   const tableTop = 86
   const headerHeight = 30
@@ -36,20 +43,20 @@ export function createBrandedTablePdf<Row extends object>(rows: AsyncIterable<Ro
   function pageHeader() {
     pageNumber += 1
     document.rect(0, 0, document.page.width, 66).fill(BLUE)
-    document.fillColor(WHITE).fontSize(11.5).font('Helvetica-Bold').text(SYSTEM_NAME, pageMargin, 14, {
+    document.fillColor(WHITE).fontSize(11.5).font(bold).text(SYSTEM_NAME, pageMargin, 14, {
       width: document.page.width - pageMargin * 2 - 92,
       lineBreak: false,
     })
     document.fillColor(YELLOW).fontSize(9).text(options.title, pageMargin, 37)
-    document.fillColor(WHITE).font('Helvetica').fontSize(6.5).text(options.subtitle, pageMargin, 51)
-    document.fillColor(YELLOW).font('Helvetica-Bold').fontSize(7).text(`PAGE ${pageNumber}`, document.page.width - 110, 27, {
+    document.fillColor(WHITE).font(regular).fontSize(6.5).text(options.subtitle, pageMargin, 51)
+    document.fillColor(YELLOW).font(bold).fontSize(7).text(`PAGE ${pageNumber}`, document.page.width - 110, 27, {
       width: 78, align: 'right', lineBreak: false,
     })
 
     document.rect(pageMargin, tableTop, tableWidth, headerHeight).fill(YELLOW)
     document.rect(pageMargin, tableTop, tableWidth, headerHeight).lineWidth(0.8).strokeColor(BLUE).stroke()
     let x = pageMargin
-    document.fillColor(BLUE).font('Helvetica-Bold').fontSize(6.5)
+    document.fillColor(BLUE).font(bold).fontSize(6.5)
     for (const column of columns) {
       document.text(column.label, x + 4, tableTop + 8, { width: column.width - 8, height: headerHeight - 10, align: 'left' })
       x += column.width
@@ -66,7 +73,7 @@ export function createBrandedTablePdf<Row extends object>(rows: AsyncIterable<Ro
   }
 
   function rowHeight(row: Row) {
-    document.font('Helvetica').fontSize(6.5)
+    document.font(regular).fontSize(6.5)
     return Math.max(25, ...columns.map((column) => (
       document.heightOfString(valueFor(row, column), { width: column.width - 8, lineGap: 1 }) + 10
     )))
@@ -80,7 +87,7 @@ export function createBrandedTablePdf<Row extends object>(rows: AsyncIterable<Ro
     document.rect(pageMargin, y, tableWidth, height).lineWidth(0.5).strokeColor(BLUE).strokeOpacity(0.35).stroke().strokeOpacity(1)
 
     let x = pageMargin
-    document.fillColor(BLUE).font('Helvetica').fontSize(6.5)
+    document.fillColor(BLUE).font(regular).fontSize(6.5)
     for (const column of columns) {
       document.text(valueFor(row, column), x + 4, y + 5, { width: column.width - 8, height: height - 8, lineGap: 1 })
       x += column.width
@@ -107,7 +114,7 @@ export function createBrandedTablePdf<Row extends object>(rows: AsyncIterable<Ro
     if (rowIndex === 0) {
       const height = 44
       document.rect(pageMargin, y, tableWidth, height).lineWidth(0.5).strokeColor(BLUE).strokeOpacity(0.35).stroke().strokeOpacity(1)
-      document.fillColor(BLUE).font('Helvetica-Bold').fontSize(9).text(options.emptyMessage, pageMargin + 8, y + 16, { width: tableWidth - 16, align: 'center' })
+      document.fillColor(BLUE).font(bold).fontSize(9).text(options.emptyMessage, pageMargin + 8, y + 16, { width: tableWidth - 16, align: 'center' })
     }
     document.end()
   }
