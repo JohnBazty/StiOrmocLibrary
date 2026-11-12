@@ -127,3 +127,29 @@ test('JWT-only Librarian with no session user passes the guards', async () => {
   const response = await request(guardedApp(undefined, 'Librarian')).post('/api/inventory/stocktakes').send({ name: 'x', scopeKind: 'shelf', assetKind: 'book' })
   assert.equal(response.status, 422)
 })
+
+const ROUTES: Array<['get' | 'post', string]> = [
+  ['post', '/api/inventory/stocktakes'],
+  ['post', '/api/inventory/stocktakes/abc/scans'],
+  ['post', '/api/inventory/stocktakes/abc/close'],
+  ['post', '/api/inventory/stocktakes/abc/discrepancies/2/resolve'],
+  ['get', '/api/inventory/stocktakes/abc/discrepancies'],
+  ['get', '/api/inventory/stocktakes/abc/discrepancies.csv'],
+  ['get', '/api/inventory/stocktakes/abc/discrepancies.pdf'],
+]
+
+test('T3 Student, Faculty, Admin and System Administrator get 403 on every stocktake action and export', async () => {
+  for (const role of ['Student', 'Faculty', 'Admin', 'System Administrator']) {
+    for (const [method, path] of ROUTES) {
+      assert.equal((await request(guardedApp({ role }))[method](path).send({})).status, 403, `${role} ${method} ${path}`)
+    }
+  }
+})
+
+test('S5 Staff pass the guard on scans, close and both exports (bad id answers 4xx, never 403)', async () => {
+  for (const [method, path] of ROUTES.filter(([, p]) => /scans|close|\.csv|\.pdf|discrepancies$/.test(p))) {
+    const response = await request(guardedApp({ role: 'Staff' }))[method](path).send({})
+    assert.notEqual(response.status, 403, `${method} ${path}`)
+    assert.ok(response.status >= 400 && response.status < 500, `${method} ${path} -> ${response.status}`)
+  }
+})

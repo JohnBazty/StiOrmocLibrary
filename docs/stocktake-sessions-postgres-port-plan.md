@@ -84,14 +84,15 @@ Keep it. Update it in place (merge `main`, the port commits above), keep it a dr
 - [x] T1 to T4 written and seen failing (or noted as already passing)
 - [x] Fixes for T1 to T4 and for any baseline failures
 - [x] Docs: `schema-context.md`, `api-reference.md`, `roadmap.md`
-- [ ] `plan-verifier` clean
-- [ ] `security-reviewer` findings (CRITICAL/HIGH/MEDIUM) fixed
+- [x] `plan-verifier` clean (findings fixed 2026-11-12)
+- [x] `security-reviewer` findings (CRITICAL/HIGH/MEDIUM) fixed (findings fixed 2026-11-12)
 - [ ] Ethan's go-ahead to push and mark PR #2 ready for John
 
 ## Change log
 
 | Date | Change |
 | --- | --- |
+| 2026-11-12 | Review fixes: C1 and H1 (stocktake reads loans without FOR UPDATE, so lock order matches checkout), H2 (create, preview and close use a constant number of queries; findings and close snapshots written in multi-row statements), H3 (CSV and PDF export errors destroy the response), M1 (CSV guard covers tab and CR), M2 (apply_* locks the counted copy, 409 if the barcode moved, real reservation check), M3 (vanished live row becomes an `archived` finding with a `Removed` close snapshot), M4 (kept: ordinary book verify also bumps `row_version`), M5 (dev preview rejects X-Forwarded-For and non-local Host). V1 route matrix and V2 string-count test added. |
 | 2026-11-12 | Built: preview role fix, Staff access split, apply_condition/apply_availability for books, spec tests S1-S8/E3/T2. Not done: T4 (counts already `Number()`-cast), research-copy apply_* (still via Inventory). Awaiting verifier and security review. |
 | 2026-11-12 | Spec approved with the recommended answers; Q1 adds Staff access to the scan side. Status `inprogress`. |
 | 2026-11-12 | Ethan approved the plan, then asked for a spec first: `docs/stocktake-sessions-spec.md` added; building waits for the spec's approval. |
