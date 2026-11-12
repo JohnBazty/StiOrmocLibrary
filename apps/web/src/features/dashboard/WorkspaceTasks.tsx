@@ -2,13 +2,13 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowUpRight, RefreshCw } from 'lucide-react'
 import { Button, SectionCard } from '../../components/ui'
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 
 export type WorkspaceTasksData = { generatedAt:string; role:string; cards:Array<{label:string;value:number;path:string}>;
   pickups:Array<{id:number;title:string;borrower:string;deadline:string}>;
   operations:{state:string;capacity:number;serviceVisits:number;allowBorrowing:boolean;allowPrinting:boolean;events:Array<{title:string}>};enrollment:string }
 export async function fetchWorkspaceTasks():Promise<WorkspaceTasksData> {
-  const token=getAccessToken(), response=await fetch('/api/v1/workspace/tasks',{credentials:'include',headers:token?{Authorization:`Bearer ${token}`}:{}})
+  const token=getCsrfToken(), response=await fetch('/api/v1/workspace/tasks',{credentials:'include',headers:token?{'X-CSRF-Token': token}:{}})
   const body=await response.json().catch(()=>null)
   if(!response.ok||!body?.success)throw new Error(body?.message??'Workspace tasks are unavailable.')
   return body.data

@@ -1,8 +1,13 @@
 import { Router } from 'express'
+import jwt, { type JwtPayload } from 'jsonwebtoken'
 import { rateLimit } from 'express-rate-limit'
 import type { NextFunction, Request, Response } from 'express'
 import { jwtAuthService } from './jwt-auth.service.ts'
-import { authenticateJwt, bearerToken, ensureActiveJwtAccount, requireJwtRoles, verifyAccessToken } from './jwt-auth.middleware.ts'
+import {
+  authenticateJwt, clearAccessCookie, csrfTokenFor, ensureActiveJwtAccount, requestAccessToken, requireJwtCsrf, requireJwtRoles,
+  setAccessCookie, verifyAccessToken,
+} from './jwt-auth.middleware.ts'
+import { passwordChangeService } from './password-change.service.ts'
 import { passwordRecoveryService } from './password-recovery.service.ts'
 import { deviceAccessLifetime, loginSecurityService, signSessionToken } from './login-security.service.ts'
 import { DEVICE_DEADLINE_SQL, DEVICE_IDLE_SQL, LOGIN_IDLE_MS, isDeviceSessionId, isDeviceToken, loginDevicesEnabled } from './login-device-policy.ts'
@@ -38,8 +43,18 @@ function sameOrigin(request: Request) {
     && (!origin || origin === env.webOrigin || origin === `${request.protocol}://${request.get('host')}`)
 }
 
-function sendLogin(request: Request, response: Response, result: object | undefined) {
-  const { deviceCookie, ...data } = (result ?? {}) as { deviceCookie?: { token: string; sessionId: string; deadline?: number } }
+/** The JWT goes only into the httpOnly cookie; the body carries its public claims and the CSRF token. */
+export function sessionBody(token: string) {
+  const session = jwt.decode(token) as JwtPayload
+  return { session, csrfToken: csrfTokenFor(String(session.sessionId)) }
+}
+
+export function sendLogin(request: Request, response: Response, result: object | undefined) {
+  const { deviceCookie, token, tokenType: _tokenType, ...rest } = (result ?? {}) as {
+    deviceCookie?: { token: string; sessionId: string; deadline?: number }; token?: string; tokenType?: string; expiresIn?: number
+  }
+  const data = typeof token === 'string' ? { ...rest, ...sessionBody(token) } : rest
+  if (typeof token === 'string') setAccessCookie(response, token, Number(rest.expiresIn ?? env.jwt.expiresInSeconds))
   if (deviceCookie) {
     const { token, sessionId, deadline } = deviceCookie
     const previous = request.body?.device_session_id
@@ -69,7 +84,7 @@ for (const action of ['resume', 'switch', 'logout'] as const) jwtAuthRouter.post
       sendLogin(request, response, await loginSecurityService.resumeDevice(browserToken(request, sessionId), sessionId))
       return
     }
-    const token = bearerToken(request)
+    const token = requestAccessToken(request)?.token
     let identity: ReturnType<typeof verifyAccessToken> | undefined
     if (token) {
       try { identity = verifyAccessToken(token, { ignoreExpiration: true }) }
@@ -83,6 +98,7 @@ for (const action of ['resume', 'switch', 'logout'] as const) jwtAuthRouter.post
     }
     await loginSecurityService.revokeDevice(cookie, identity)
     if (isDeviceSessionId(sessionId)) response.clearCookie(`${deviceCookieName}-${sessionId}`, deviceCookieOptions)
+    clearAccessCookie(response)
     response.json({ success: true, data: { signedOut: true } })
   } catch (error) { next(error) }
 })
@@ -124,7 +140,8 @@ jwtAuthRouter.post(['/register', '/register/resend', '/register/verify'], (_requ
 jwtAuthRouter.post('/login', rateLimit({ windowMs: 10 * 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false }), async (request, response, next) => {
   response.set('Cache-Control', 'no-store')
   try {
-    if (loginDevicesEnabled() && !sameOrigin(request)) throw new HttpError(403, 'DEVICE_ORIGIN', 'Open the library website and try again.')
+    // The reply sets the sign-in cookie, so a cross-site form must not reach it (login CSRF).
+    if (!sameOrigin(request)) throw new HttpError(403, 'DEVICE_ORIGIN', 'Open the library website and try again.')
     sendLogin(request, response, await loginSecurityService.login(request.body, browserToken(request, request.body?.device_session_id)))
   } catch (error) { next(error) }
 })
@@ -132,11 +149,11 @@ const otpLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 30, standardHeaders
 for (const action of ['verify', 'resend'] as const) jwtAuthRouter.post(`/login/${action}`, otpLimiter, async (request, response, next) => {
   response.set('Cache-Control', 'no-store')
   try {
-    if (loginDevicesEnabled() && !sameOrigin(request)) throw new HttpError(403, 'DEVICE_ORIGIN', 'Open the library website and try again.')
+    if (!sameOrigin(request)) throw new HttpError(403, 'DEVICE_ORIGIN', 'Open the library website and try again.')
     sendLogin(request, response, action === 'verify' ? await loginSecurityService.verify(request.body, browserToken(request, request.body?.device_session_id)) : await loginSecurityService.resend(request.body))
   } catch (error) { next(error) }
 })
-jwtAuthRouter.post('/activity', authenticateJwt, ensureActiveJwtAccount, async (_request, response, next) => {
+jwtAuthRouter.post('/activity', authenticateJwt, ensureActiveJwtAccount, requireJwtCsrf, async (_request, response, next) => {
   response.set('Cache-Control', 'no-store')
   try {
     const identity = response.locals.authenticatedUser
@@ -148,10 +165,30 @@ jwtAuthRouter.post('/activity', authenticateJwt, ensureActiveJwtAccount, async (
     const [result] = await db.execute(`UPDATE library_login_sessions SET last_activity_at=NOW() WHERE session_id=? AND account_id=? AND auth_version=? AND revoked_at IS NULL AND ${DEVICE_IDLE_SQL}${deadline}`, [identity.sessionId, identity.accountId, identity.authVersion])
     if (!(result as { affectedRows: number }).affectedRows) { response.status(401).json({ success: false, message: 'Your session expired. Sign in again.' }); return }
     const renewed = identity.deviceSession ? { ...identity, idleUntil: timestamp + LOGIN_IDLE_MS } : identity
-    response.json({ success: true, data: { token: signSessionToken(renewed, expiresIn), idleSeconds: 600 } })
+    const token = signSessionToken(renewed, expiresIn)
+    setAccessCookie(response, token, expiresIn ?? env.jwt.expiresInSeconds)
+    response.json({ success: true, data: { ...sessionBody(token), idleSeconds: 600 } })
   } catch (error) { next(error) }
 })
-jwtAuthRouter.get('/me', authenticateJwt, ensureActiveJwtAccount, (_request, response) => response.json({ success: true, data: response.locals.authenticatedUser }))
+const passwordChangeLimiter = rateLimit({
+  windowMs: 15 * 60_000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false,
+  keyGenerator: (_request, response) => `account:${response.locals.authenticatedUser.accountId}`,
+  message: { success: false, code: 'PASSWORD_CHANGE_RATE_LIMITED', message: 'Too many password change attempts. Please wait 15 minutes.' },
+})
+jwtAuthRouter.post('/change-password', authenticateJwt, ensureActiveJwtAccount, requireJwtCsrf, passwordChangeLimiter, async (request, response, next) => {
+  response.set('Cache-Control', 'no-store')
+  try {
+    const data = await passwordChangeService.change(response.locals.authenticatedUser.accountId, request.body)
+    clearAccessCookie(response)
+    response.json({ success: true, data })
+  } catch (error) { next(error) }
+})
+// Also re-seeds a new tab, which has the cookie but not the CSRF token.
+jwtAuthRouter.get('/me', authenticateJwt, ensureActiveJwtAccount, (request, response) => {
+  response.set('Cache-Control', 'no-store').json({ success: true, data: {
+    ...response.locals.authenticatedUser, ...sessionBody(requestAccessToken(request)!.token), mustChangePassword: response.locals.mustChangePassword === true,
+  } })
+})
 
 export const jwtProtectedRouter = Router()
 jwtProtectedRouter.get('/admin/dashboard', authenticateJwt, requireJwtRoles('Admin'), (_request, response) => response.json({ success: true, data: { area: 'admin' } }))

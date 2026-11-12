@@ -1,7 +1,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { env } from '../../config/env.js'
 import { dashboardForRole } from './auth.constants.js'
-import { authenticateJwt, bearerToken, ensureActiveJwtAccount, verifyAccessToken } from './jwt-auth.middleware.ts'
+import { authenticateJwt, ensureActiveJwtAccount, requestAccessToken, requireJwtCsrf, verifyAccessToken } from './jwt-auth.middleware.ts'
 import { db } from '../../config/db.js'
 
 export function createCsrfToken() {
@@ -32,9 +32,8 @@ export function verifyCsrfToken(request, response, next) {
 
 export function requireCsrfForStateChanges(request, response, next) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return next()
-  // Bearer tokens are explicitly supplied by the client and are not ambient
-  // browser credentials, so cookie-oriented CSRF verification is unnecessary.
-  if (response.locals.authenticationType === 'jwt') return next()
+  // Bearer tokens are not ambient credentials; a JWT read from the cookie needs its session CSRF token.
+  if (response.locals.authenticationType === 'jwt') return requireJwtCsrf(request, response, next)
   return verifyCsrfToken(request, response, next)
 }
 
@@ -54,11 +53,12 @@ function isApiRequest(request) {
 export function requireAuth(request, response, next) {
   const user = request.session?.user
   if (!user) {
-    const token = bearerToken(request)
-    if (token) {
+    const access = requestAccessToken(request)
+    if (access) {
       try {
-        response.locals.authenticatedUser = verifyAccessToken(token)
+        response.locals.authenticatedUser = verifyAccessToken(access.token)
         response.locals.authenticationType = 'jwt'
+        response.locals.authenticationSource = access.source
         return ensureActiveJwtAccount(request, response, next)
       } catch {
         return response.status(401).json({ success: false, code: 'INVALID_ACCESS_TOKEN', message: 'Your access token is invalid or expired. Please sign in again.' })
@@ -118,10 +118,14 @@ export function requireRoles(...allowedRoles) {
   }
 }
 
-// Logout must revoke the explicitly supplied token, even if an unrelated cookie
-// session is also present. Cookie-only callers retain their existing auth flow.
+// Logout must revoke the JWT (Bearer or cookie), even if an unrelated express session is also present.
 export function requireLogoutAuth(request, response, next) {
-  if (bearerToken(request)) {
+  const access = requestAccessToken(request)
+  if (access) {
+    // A stale JWT cookie must not block an express-session sign-out.
+    if (access.source === 'cookie' && request.session?.user) {
+      try { verifyAccessToken(access.token) } catch { return requireAuth(request, response, next) }
+    }
     return authenticateJwt(request, response, () => ensureActiveJwtAccount(request, response, next))
   }
   return requireAuth(request, response, next)

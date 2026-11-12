@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { FloorPlanImagePage } from './FloorPlanImagePage'
 
 const auth = vi.hoisted(() => ({ role: 'Student' }))
-vi.mock('../auth/auth-storage', () => ({ getAccessToken: () => 'test-token', getCurrentIdentity: () => ({ role: auth.role }) }))
+vi.mock('../auth/auth-storage', () => ({ getCsrfToken: () => 'test-token', getCurrentIdentity: () => ({ role: auth.role }) }))
 
 beforeEach(() => {
   auth.role = 'Student'

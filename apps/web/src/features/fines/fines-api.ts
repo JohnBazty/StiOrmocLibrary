@@ -1,7 +1,7 @@
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 import type { FineFilters,FineList,FineReceipt,FineReceiptSummary,FineTerm } from './types'
 
-function headers(accept='application/json'){const value=new Headers({Accept:accept});const token=getAccessToken();if(token)value.set('Authorization',`Bearer ${token}`);return value}
+function headers(accept='application/json'){const value=new Headers({Accept:accept});const token=getCsrfToken();if(token)value.set('X-CSRF-Token', token);return value}
 async function request<T>(url:string,options:RequestInit={}){const requestHeaders=headers();if(options.body)requestHeaders.set('Content-Type','application/json');const response=await fetch(url,{...options,headers:requestHeaders,credentials:'include'});const payload=await response.json().catch(()=>null) as {success?:boolean;data?:T;message?:string}|null;if(!response.ok||!payload?.success)throw new Error(payload?.message??'The fines request failed.');return payload.data as T}
 function query(filters:FineFilters){const values=new URLSearchParams();Object.entries(filters).forEach(([key,value])=>{if(value!==undefined&&value!==null&&value!=='')values.set(key,String(value))});return values.toString()}
 async function download(url:string,filename:string){const response=await fetch(url,{headers:headers('application/pdf'),credentials:'include'});if(!response.ok){const payload=await response.json().catch(()=>null) as {message?:string}|null;throw new Error(payload?.message??'The PDF could not be generated.')}const blob=await response.blob();const objectUrl=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=objectUrl;anchor.download=filename;anchor.click();URL.revokeObjectURL(objectUrl)}

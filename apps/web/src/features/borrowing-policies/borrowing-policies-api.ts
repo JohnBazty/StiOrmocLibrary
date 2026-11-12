@@ -1,10 +1,10 @@
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 import type { BorrowingPolicyList, BorrowingPolicyVersion, PublishBorrowingPolicyInput } from './types'
 
 function headers() {
   const value = new Headers({ Accept: 'application/json' })
-  const token = getAccessToken()
-  if (token) value.set('Authorization', `Bearer ${token}`)
+  const token = getCsrfToken()
+  if (token) value.set('X-CSRF-Token', token)
   return value
 }
 

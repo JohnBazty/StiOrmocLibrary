@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { AuthMessage } from './AuthMessage'
 import { requestPasswordRecovery, verifyPasswordRecovery, resetPassword } from './auth-api'
-import { clearAccessToken, setSessionIdentity } from './auth-storage'
+import { clearAuthSession, setSessionIdentity } from './auth-storage'
 
 const field = 'mt-2 h-12 w-full rounded-xl border border-[#003399]/20 bg-white px-4 text-[#003399] focus:outline-none focus:ring-4 focus:ring-[#003399]/15'
 export function PasswordRecoveryPage() {
@@ -34,7 +34,7 @@ export function PasswordRecoveryPage() {
       } else if (stage === 'reset') {
         if (password.length < 8 || password !== confirmation) throw new Error('Use at least 8 characters and matching passwords.')
         const result = await resetPassword(challengeId, resetToken, password, confirmation)
-        clearAccessToken(); setSessionIdentity(null); setResetToken(''); setPassword(''); setConfirmation(''); setStage('done'); setMessage(result.message)
+        clearAuthSession(); setSessionIdentity(null); setResetToken(''); setPassword(''); setConfirmation(''); setStage('done'); setMessage(result.message)
       }
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Password recovery is unavailable. Please try again.') }
     finally { setBusy(false) }

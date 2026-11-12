@@ -2,7 +2,7 @@ import { Bell, Check, List } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from '../../hooks/useLiveQuery'
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 import { notificationApi } from './notification-api'
 import { formatNotificationDate, notificationIcon, notificationRoute, notificationsUpdated } from './notification-display'
 import type { NotificationItem } from './types'
@@ -16,7 +16,7 @@ export function NotificationShortcut({ path }: { path: string }) {
   const panelId = useId()
   const navigate = useNavigate()
   const location = useLocation()
-  const enabled = Boolean(getAccessToken())
+  const enabled = Boolean(getCsrfToken())
   const badge = useLiveQuery(`notification-unread:${path}`, async signal => (await notificationApi.list(signal, 1)).unreadCount, { enabled, events: [notificationsUpdated] })
   const preview = useLiveQuery(`notification-preview:${path}`, signal => notificationApi.list(signal, 5), { enabled: enabled && open, events: [notificationsUpdated] })
   const unreadCount = badge.data ?? 0

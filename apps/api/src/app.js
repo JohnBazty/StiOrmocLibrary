@@ -100,7 +100,7 @@ export function createApp() {
   app.use('/api/auth', authRouter)
   app.use('/api/v1/auth', jwtAuthRouter)
   app.use('/api/public/catalog', publicCatalogRouter)
-  app.use('/api/v1', authenticateJwt, ensureActiveJwtAccount)
+  app.use('/api/v1', authenticateJwt, ensureActiveJwtAccount, requireCsrfForStateChanges)
   app.use('/api/v1/admin/enrollment', enrollmentRouter)
   app.use('/api/v1/admin/borrowing-policies', requireLibraryPermission('library.manage'), archivedBorrowingPolicyRouter)
   app.use('/api/v1/admin/maintenance', requireLibraryPermission('library.manage'), catalogMaintenanceRouter)

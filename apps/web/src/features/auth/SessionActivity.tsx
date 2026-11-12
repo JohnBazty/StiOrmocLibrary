@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { decodeAccessToken, getAccessToken, saveAccessToken, clearAccessToken, setSessionIdentity } from './auth-storage'
+import { getCsrfToken, getStoredClaims, parseAuthSession, passwordChangeRequired, saveAuthSession, clearAuthSession, setSessionIdentity } from './auth-storage'
 import { resumeDeviceSession } from './auth-api'
 
 const IDLE = 600_000
@@ -13,22 +13,21 @@ export function SessionActivity() {
   const [seconds, setSeconds] = useState(600)
   const [unavailable, setUnavailable] = useState(false)
   useEffect(() => {
-    const initialToken = getAccessToken()
-    if (!initialToken) return
-    const initial = decodeAccessToken(initialToken, true)
+    if (!getCsrfToken()) return
+    const initial = getStoredClaims(true)
     const sessionId = initial?.sessionId
     const rememberedUntil = initial?.rememberedUntil
     let lastActivity = initial?.idleUntil ? initial.idleUntil - IDLE : Date.now()
     let lastSent = 0, pending = false, ended = false
     let hasGesture = !initial?.deviceSession
-    const token = () => getAccessToken()
+    const token = () => getCsrfToken()
     // Broadcast contains timestamps and account identity only, never credentials or QR data.
     const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel(CHANNEL)
     const accountId = initial?.userId
     const exit = (reason: 'idle' | 'expired' | 'logout' = 'idle') => {
       if (ended) return
       ended = true
-      clearAccessToken(); setSessionIdentity(null)
+      clearAuthSession(); setSessionIdentity(null)
       const login = initial && ['Admin', 'Librarian', 'Staff'].includes(initial.role) ? '/staff' : '/login'
       navigate(login, { replace: true, state: { deniedPath: currentPath.current, sessionExpired: reason !== 'logout', rememberedExpired: reason === 'expired' } })
     }
@@ -40,7 +39,7 @@ export function SessionActivity() {
         const identity = await resumeDeviceSession(sessionId)
         if (ended) return
         if (!identity) { exit(); return }
-        const resumed = decodeAccessToken(token() ?? '')
+        const resumed = getStoredClaims()
         lastActivity = resumed?.idleUntil ? resumed.idleUntil - IDLE : Date.now()
         lastSent = Date.now()
         setUnavailable(false)
@@ -49,11 +48,11 @@ export function SessionActivity() {
     }
     const sendActivity = async () => {
       if (pending || ended || !hasGesture || Date.now() - lastSent < 30_000 || Date.now() - lastActivity > 35_000) return
-      if (initial?.deviceSession && !decodeAccessToken(token() ?? '')) { void resume(); return }
+      if (initial?.deviceSession && !getStoredClaims()) { void resume(); return }
       pending = true
       hasGesture = false
       try {
-        const response = await fetch('/api/v1/auth/activity', { method: 'POST', headers: { Authorization: `Bearer ${token() ?? ''}`, 'Content-Type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(10_000) })
+        const response = await fetch('/api/v1/auth/activity', { method: 'POST', headers: { 'X-CSRF-Token': token() ?? '', 'Content-Type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(10_000) })
         if (response.status === 401 || response.status === 403) {
           if (initial?.deviceSession) { pending = false; void resume() }
           else exit()
@@ -61,14 +60,15 @@ export function SessionActivity() {
         }
         if (!response.ok) throw new Error('Session renewal unavailable')
         const payload = await response.json()
-        if (ended || !token() || (sessionId && decodeAccessToken(token() ?? '', true)?.sessionId !== sessionId)) return
-        if (payload.data?.token) saveAccessToken(payload.data.token)
+        if (ended || !token() || (sessionId && getStoredClaims(true)?.sessionId !== sessionId)) return
+        const renewed = parseAuthSession(payload.data)
+        if (renewed) saveAuthSession({ ...renewed, mustChangePassword: passwordChangeRequired() })
         lastSent = Date.now(); setUnavailable(false)
       } catch { if (!ended) { hasGesture = true; setUnavailable(true) } } finally { pending = false }
     }
     const activity = (event: Event) => {
       if (!event.isTrusted || ended) return
-      if (initial?.deviceSession && !decodeAccessToken(token() ?? '')) { void resume(); return }
+      if (initial?.deviceSession && !getStoredClaims()) { void resume(); return }
       if (Date.now() - lastActivity >= IDLE) { exit(); return }
       lastActivity = Date.now()
       hasGesture = true
@@ -84,7 +84,7 @@ export function SessionActivity() {
       }
     })
     const returned = () => {
-      if (initial?.deviceSession && !decodeAccessToken(token() ?? '')) void resume()
+      if (initial?.deviceSession && !getStoredClaims()) void resume()
     }
     const events = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'click']
     events.forEach(name => window.addEventListener(name, activity, { passive: true, capture: true }))
@@ -95,7 +95,7 @@ export function SessionActivity() {
     const timer = window.setInterval(() => {
       if (rememberedUntil) {
         if (Date.now() >= rememberedUntil) exit('expired')
-        else if (hasGesture && decodeAccessToken(token() ?? '')) void sendActivity()
+        else if (hasGesture && getStoredClaims()) void sendActivity()
         return
       }
       const remaining = Math.max(0, Math.ceil((IDLE - (Date.now() - lastActivity)) / 1000))

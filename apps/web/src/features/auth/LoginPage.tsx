@@ -10,7 +10,7 @@ import { useAuthPopupBusy } from './PublicAuthLayout'
 import { DeviceSwitchPrompt } from './DeviceSwitchPrompt'
 
 const SCHOOL_ID = /^[A-Z0-9][A-Z0-9._-]{2,49}$/
-type LoginLocationState = { deniedPath?: string; registrationSuccess?: boolean; registrationSchoolId?: string; sessionExpired?: boolean; rememberedExpired?: boolean }
+type LoginLocationState = { deniedPath?: string; registrationSuccess?: boolean; registrationSchoolId?: string; sessionExpired?: boolean; rememberedExpired?: boolean; passwordChanged?: string }
 
 function loginDestination(search: string, role: AuthRole, state: LoginLocationState | null) {
   const path = state?.deniedPath
@@ -53,8 +53,10 @@ export function LoginPage({ popup = false }: { popup?: boolean }) {
       setMessage('Your school email is verified. Sign in using your School ID and password.')
     } else if (state?.rememberedExpired) { setMessage('Your remembered sign-in has expired. Sign in again to continue.')
     } else if (state?.sessionExpired) { setMessage('Your sign-in has ended. Sign in to continue.')
+    } else if (state?.passwordChanged) { setMessageError(false); setMessage(state.passwordChanged)
     } else if (state?.deniedPath) {
-      setMessage('Your account cannot open that page. Please sign in with an authorized account.')
+      // ProtectedRoute sends deniedPath only when nobody is signed in (wrong roles go to their own dashboard).
+      setMessage('Sign in to continue.')
     }
     if (claims || state?.sessionExpired || state?.rememberedExpired) return
     let active = true

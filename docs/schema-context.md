@@ -5,7 +5,7 @@
 The API runs on Supabase PostgreSQL only (`DATABASE_URL`, `pg`). MySQL was retired on 2026-11-10; see [mysql-removal-plan.md](mysql-removal-plan.md). History of the move: [supabase-migration-plan.md](supabase-migration-plan.md).
 
 - When `DATABASE_URL` (postgresql://…) is set, the runtime uses `pg` against drafts under [database/supabase/](../database/supabase/).
-- Device sign-in migration 032 is the latest applied Postgres file. Branding 033 and job runner hardening 034 are pending review. The next unused number is 035.
+- Migrations 033 to 036 are applied (2026-11-12): branding 033 (table name fixed in PR #28), job runner hardening 034, circulation RLS 035 (PR #20) and sign-in hardening 036. The next unused number is 037.
 - Additive MAIN product tables for Postgres land in `database/supabase/005_main_product_gapfill.sql` (033–040).
 - Applied Supabase Phase 2 files `012`–`014` add `book_quotations`, lost-report charge resolution, `library_job_runs`, `invoice_setup`, and `customer_invoices`. Since 2026-11-11 the scheduled jobs use `scheduled_job_state` and `scheduled_job_runs` from `019` (one row per job, created on first claim; leases, cursor, 30-day history); `library_job_runs` is no longer read or written. Existing payment rows now have `document_label='Legacy Receipt'`; future rows default to `Payment Record`.
 - Branding 033 changes the default public library name and updates the former stock name. It preserves customized names.
@@ -403,6 +403,15 @@ Applied Postgres migration `031_semester_enrollment.sql` supersedes draft 028. E
 - Public signup uses the active Student roster. Existing Faculty accounts continue to sign in with a password and school email code. New Faculty signup is paused.
 - Admin and Librarian can create Staff accounts from Users. Setup records a `StaffAccountCreated` audit event and generates a private random credential. The Staff member sets a password through the personnel login page. Existing password-recovery challenges also handle this Staff flow, limited to active Staff accounts created through the new setup.
 - New profile pictures publish on save. The storage bucket remains private, and the existing `Approved` storage status marks the published image for compatibility. Previously submitted pictures remain in history. Users can select and save an older pending picture again.
+
+## Sign-in hardening (2026-11-11, migration 036 applied)
+
+Postgres migration `036_sign_in_hardening.sql` (safety sprint Part C) was applied to live Supabase on 2026-11-11; all existing rows are `false`. The API that reads it is not deployed yet. `034` is reserved by Part A (PR #17) and `035` by the audit RLS fix.
+
+- `accounts.must_change_password BOOLEAN NOT NULL DEFAULT FALSE`: set by an Admin-set temporary password, cleared by `POST /api/v1/auth/change-password`. While it is set, `ensureActiveJwtAccount` answers `403 PASSWORD_CHANGE_REQUIRED` except on `/auth/me`, `/auth/activity`, `/auth/change-password` and sign-out.
+- The sign-in lock stays in `login_attempt_windows` (029): 5 wrong passwords within 15 minutes pause sign-in for 15 minutes. Admin unlock deletes that account's row.
+- New `account_management_events.action_code` values: `SignInUnlocked`, `TemporaryPasswordSet`, `PasswordChanged`. The temporary password itself is never stored or audited.
+- Deploy order: apply `036` before the API that reads the column; `/api/health` reports `migration_required` until then.
 
 ## Remembered browser sign-in (2026-11-10)
 

@@ -22,7 +22,7 @@ export function AdminLoginPage() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState(() => (location.state as { passwordChanged?: string } | null)?.passwordChanged ?? '')
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [switchToken, setSwitchToken] = useState('')
 
