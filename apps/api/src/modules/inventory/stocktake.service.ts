@@ -3,7 +3,7 @@ import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { createFloorPlanRepository } from '../floor-plan/floor-plan.repository.ts'
 import {
-  findActiveLoan, lockInventoryCopy, recordInventoryAudit, type InventoryActor,
+  findActiveLoan, lockInventoryCopy, recordInventoryAudit, synchronizeLegacyAvailability, type InventoryActor,
 } from './inventory.repository.ts'
 import type { ExpectedItemInsert, ScopeSnapshot } from './stocktake.repository.ts'
 import {
@@ -716,6 +716,67 @@ export async function reviewStocktakeSession(sessionId: number, actor: Inventory
   } finally { connection.release() }
 }
 
+const CORRECTABLE_CONDITIONS = new Set(['Good', 'Fair', 'For Repair', 'Damaged'])
+
+// Spec Q2: the Librarian's resolve decision is the only thing that changes a lost copy; it writes the normal inventory audit.
+// shortcut: books only; research copies still change in Inventory first, then confirm or dismiss.
+async function applyLiveCorrection(
+  connection: PoolConnection,
+  discrepancy: RowDataPacket,
+  input: { action: StocktakeResolveAction; condition: string | null; availability: string | null },
+  actor: InventoryActor,
+): Promise<Record<string, unknown>> {
+  if (String(discrepancy.asset_kind) !== 'book' || !discrepancy.barcode) {
+    throw new HttpError(
+      422,
+      'STOCKTAKE_CORRECTION_EXTERNAL',
+      'Apply this change in Inventory first, then confirm or dismiss this finding with the matching live state.',
+    )
+  }
+  const copy = await lockInventoryCopy(connection, String(discrepancy.barcode))
+  if (!copy || copy.lifecycle_status !== 'Active') {
+    throw new HttpError(409, 'STOCKTAKE_LIVE_STATE_CHANGED', 'The live copy is no longer active.')
+  }
+  const loan = await findActiveLoan(connection, copy.circulation_material_id)
+  if (loan || copy.availability_status === 'Borrowed' || copy.availability_status === 'Reserved') {
+    throw new HttpError(409, 'STOCKTAKE_LIVE_STATE_CHANGED', 'The copy is borrowed or reserved; handle it in Circulation first.')
+  }
+  const wasLost = copy.condition_status === LOST_BOOK
+  let nextCondition = copy.condition_status
+  let nextAvailability = copy.availability_status
+  if (input.action === 'apply_condition') {
+    if (!input.condition || !CORRECTABLE_CONDITIONS.has(input.condition)) {
+      throw new HttpError(422, 'STOCKTAKE_VALIDATION_FAILED', 'Choose Good, Fair, For Repair or Damaged.', {
+        errors: { condition: 'Choose Good, Fair, For Repair or Damaged.' },
+      })
+    }
+    nextCondition = input.condition
+    if (wasLost && copy.availability_status === 'Unavailable') nextAvailability = 'Available'
+  } else {
+    if (input.availability !== 'Available' && input.availability !== 'Unavailable') {
+      throw new HttpError(422, 'STOCKTAKE_VALIDATION_FAILED', 'Choose Available or Unavailable.', {
+        errors: { availability: 'Choose Available or Unavailable.' },
+      })
+    }
+    if (wasLost && input.availability === 'Available') {
+      throw new HttpError(422, 'LOST_COPY_MUST_REMAIN_UNAVAILABLE', 'Change the condition from Lost first.')
+    }
+    nextAvailability = input.availability
+  }
+  await connection.execute(`
+    UPDATE physical_copies
+       SET condition_status = ?, availability_status = ?, row_version = row_version + 1, updated_at = NOW()
+     WHERE physical_copy_id = ?`, [nextCondition, nextAvailability, copy.physical_copy_id])
+  if (nextAvailability !== copy.availability_status) {
+    await synchronizeLegacyAvailability(connection, copy.material_id, nextAvailability as 'Available' | 'Unavailable')
+  }
+  await recordInventoryAudit(
+    connection, copy, input.action === 'apply_condition' ? 'Condition Changed' : 'Availability Changed',
+    actor, nextCondition, nextAvailability,
+  )
+  return { action: input.action, condition_status: nextCondition, availability_status: nextAvailability }
+}
+
 export async function resolveStocktakeDiscrepancy(
   sessionId: number,
   discrepancyId: number,
@@ -760,11 +821,7 @@ export async function resolveStocktakeDiscrepancy(
     let afterSnapshot: Record<string, unknown> = { action: input.action }
 
     if (input.action === 'apply_condition' || input.action === 'apply_availability') {
-      throw new HttpError(
-        422,
-        'STOCKTAKE_CORRECTION_EXTERNAL',
-        'Apply condition or availability changes in Inventory first, then confirm or dismiss this finding with the matching live state.',
-      )
+      afterSnapshot = await applyLiveCorrection(connection, discrepancy, input, actor)
     }
 
     if (input.action === 'confirm_found_at_home' && discrepancy.asset_kind && discrepancy.source_item_id != null) {
