@@ -16,7 +16,7 @@ type ExportFilters = {
 
 function escapeCsv(value: unknown) {
   const text = value == null ? '' : String(value)
-  const escaped = /^[=+\-@]/.test(text) ? `'${text}` : text
+  const escaped = /^[\t\r=+\-@]/.test(text) ? `'${text}` : text
   return `"${escaped.replace(/"/g, '""')}"`
 }
 
@@ -70,7 +70,9 @@ export async function exportStocktakeDiscrepanciesCsv(
     'Cache-Control': 'private, no-store',
     'X-SmartLib-CSV-Integrity': 'HMAC-SHA256; version=v1',
   })
-  createIntegrityProtectedCsvStream(content(), 'stocktake_discrepancies', headers.length).pipe(response)
+  createIntegrityProtectedCsvStream(content(), 'stocktake_discrepancies', headers.length)
+    .on('error', (error) => response.destroy(error))
+    .pipe(response)
 }
 
 export async function exportStocktakeDiscrepanciesPdf(
@@ -101,5 +103,5 @@ export async function exportStocktakeDiscrepanciesPdf(
       { key: 'home_shelf_label', label: 'Home shelf', width: 100 },
     ],
   })
-  document.pipe(response)
+  document.on('error', (error) => response.destroy(error)).pipe(response)
 }

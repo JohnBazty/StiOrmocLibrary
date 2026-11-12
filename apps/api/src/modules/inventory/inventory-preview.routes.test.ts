@@ -28,3 +28,15 @@ test('dev preview session is a Librarian that passes inventory and catalog guard
   assert.equal((session.user as { role: string }).role, 'Librarian')
   assert.equal((await request(app).get('/guarded')).status, 200)
 })
+
+test('dev preview refuses forwarded requests and non-local Host headers', async () => {
+  const app = express()
+  app.use((req, _res, next) => {
+    Object.defineProperty(req, 'session', { configurable: true, value: { regenerate: (cb: () => void) => cb(), save: (cb: () => void) => cb() } })
+    next()
+  })
+  app.use('/preview', inventoryPreviewRouter)
+  assert.equal((await request(app).post('/preview/session').set('X-Forwarded-For', '203.0.113.9')).status, 403)
+  assert.equal((await request(app).post('/preview/session').set('Host', 'library.example.edu')).status, 403)
+  assert.equal((await request(app).post('/preview/session')).status, 200)
+})
