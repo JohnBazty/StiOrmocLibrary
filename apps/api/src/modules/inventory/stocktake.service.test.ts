@@ -122,16 +122,10 @@ function stocktakePool(options: {
       if (sql.includes('GROUP BY resolved_asset_kind')) {
         return [[]]
       }
-      if (sql.includes('FROM physical_copies') && sql.includes('WHERE pc.physical_copy_id = ?')) {
-        return [[{
-          lifecycle_status: 'Active',
-          row_version: 1,
-          condition_status: 'Good',
-          material_id: 501,
-          shelf_location: 'Shelf A',
-          shelf_column: 1,
-          shelf_row: 1,
-        }]]
+      if (sql.includes('FROM physical_copies') && sql.includes('ANY(')) {
+        return [(values[0] as number[]).map((id) => ({
+          physical_copy_id: id, lifecycle_status: 'Active', row_version: 1, condition_status: 'Good', material_id: 500 + id,
+        }))]
       }
       if (sql.includes('FROM physical_copies pc') && sql.includes('JOIN titles')) {
         return [[]]
@@ -351,9 +345,10 @@ function scanHandler(book: Record<string, unknown> | null, research: Record<stri
   }
 }
 
+// Each discrepancy upsert row is 7 bound values; the code is the third.
 const findingCodes = (calls: Array<{ sql: string; values: unknown[] }>) => calls
   .filter((call) => call.sql.includes('stocktake_discrepancies') && call.sql.includes('INSERT'))
-  .map((call) => String(call.values[2]))
+  .flatMap((call) => call.values.filter((_, index) => index % 7 === 2).map(String))
 
 test('S1 scanning a book in a different compartment records wrong_location', async () => {
   const { state, database } = stocktakePool({ handler: scanHandler(BOOK) })
@@ -408,9 +403,9 @@ test('apply_condition refuses Lost as the new condition', async () => {
 
 test('S3 an unscanned book on loan closes as borrowed_out, not missing', async () => {
   const { state, database } = stocktakePool({
-    expectedItems: [EXPECTED_BOOK],
+    expectedItems: [{ ...EXPECTED_BOOK, source_item_id: 101 }],
     handler: (sql) => (sql.includes('FROM borrow_transactions')
-      ? [[{ transaction_id: 1, transaction_status: 'Borrowed', due_at: new Date() }]]
+      ? [[{ material_id: 601, transaction_status: 'Borrowed' }]]
       : undefined),
   })
   await closeStocktakeSession(11, actor, database)
@@ -431,4 +426,91 @@ test('E3 a barcode shared by a book and a research copy is unknown and never ver
   const result = await recordStocktakeScan(11, scanInput, actor, database)
   assert.deepEqual(result.classifications, ['unknown'])
   assert.ok(!state.calls.some((call) => call.sql.includes('INSERT INTO inventory_audit_events')))
+})
+
+// ---- Review fixes: C1/H1/H2 locking and query count, M2, M3 ----
+
+const bookRows = (count: number) => Array.from({ length: count }, (_, index) => ({
+  physical_copy_id: 100 + index, material_id: 500 + index, barcode: `B-${index}`, accession_number: `A-${index}`,
+  title: 'T', category_id: 1, category_name: 'C', shelf_location: 'Shelf A', shelf_column: 1, shelf_row: 1,
+  condition_status: 'Good', availability_status: 'Available', lifecycle_status: 'Active', row_version: 1, home_shelf_id: 5,
+}))
+const expectedRowsFor = (count: number) => Array.from({ length: count }, (_, index) => ({
+  ...EXPECTED_BOOK, stocktake_expected_item_id: 21 + index, source_item_id: 100 + index, barcode: `B-${index}`,
+}))
+
+async function createCalls(count: number) {
+  const { state, database } = stocktakePool({
+    handler: (sql) => (sql.includes('FROM physical_copies pc') && sql.includes('LEFT JOIN categories') ? [bookRows(count)] : undefined),
+  })
+  await createStocktakeSession({ name: 'n', scopeKind: 'shelf', scopeId: '5', assetKind: 'book' }, actor, database)
+  return state.calls
+}
+
+test('create reads loan state without locks and with a constant number of queries', async () => {
+  const small = await createCalls(2)
+  const large = await createCalls(40)
+  assert.equal(large.length, small.length)
+  assert.equal(large.filter((call) => call.sql.includes('borrow_transactions')).length, 1)
+  assert.ok(!large.some((call) => call.sql.includes('FOR UPDATE')))
+})
+
+async function closeCalls(count: number) {
+  const { state, database } = stocktakePool({ expectedItems: expectedRowsFor(count) })
+  await closeStocktakeSession(11, actor, database)
+  return state.calls
+}
+
+test('close reads live rows and loans in constant queries, without locks, and writes findings in one statement', async () => {
+  const small = await closeCalls(2)
+  const large = await closeCalls(40)
+  assert.equal(large.length, small.length)
+  assert.ok(!large.some((call) => call.sql.includes('FOR UPDATE') && !call.sql.includes('stocktake_sessions')))
+  assert.equal(findingCodes(large).length, 40)
+  assert.equal(large.filter((call) => call.sql.includes('INSERT INTO stocktake_discrepancies')).length, 1)
+})
+
+test('scan reads loan state without FOR UPDATE on loans', async () => {
+  const { state, database } = stocktakePool({ handler: scanHandler(BOOK) })
+  await recordStocktakeScan(11, scanInput, actor, database)
+  const loanReads = state.calls.filter((call) => call.sql.includes('borrow_transactions'))
+  assert.ok(loanReads.length > 0)
+  assert.ok(loanReads.every((call) => !call.sql.includes('FOR UPDATE')))
+})
+
+test('M3 close freezes an archived finding when the live row is gone', async () => {
+  const { state, database } = stocktakePool({
+    expectedItems: [EXPECTED_BOOK],
+    handler: (sql) => (sql.includes('FROM physical_copies') && sql.includes('ANY(') ? [[]] : undefined),
+  })
+  await closeStocktakeSession(11, actor, database)
+  assert.deepEqual(findingCodes(state.calls), ['archived'])
+  const snapshot = state.calls.find((call) => call.sql.includes('UPDATE stocktake_expected_items'))
+  assert.deepEqual(snapshot?.values[1], ['Removed'])
+})
+
+test('M2 apply_condition refuses when the barcode now belongs to another copy', async () => {
+  const { database } = stocktakePool({
+    status: 'closed', discrepancy: { ...LOST_FINDING, source_item_id: 999 }, handler: lockCopyHandler('Lost', 'Unavailable'),
+  })
+  await assert.rejects(
+    resolveStocktakeDiscrepancy(11, 33, {
+      expectedRowVersion: 1, action: 'apply_condition', reason: 'x', condition: 'Good', availability: null,
+    }, actor, database),
+    (error: unknown) => error instanceof HttpError && error.code === 'STOCKTAKE_LIVE_STATE_CHANGED',
+  )
+})
+
+test('M2 apply_condition refuses when an active reservation exists', async () => {
+  const locked = lockCopyHandler('Lost', 'Unavailable')
+  const { database } = stocktakePool({
+    status: 'closed', discrepancy: LOST_FINDING,
+    handler: (sql) => (sql.includes('FROM reservations') ? [[{ reservation_id: 5, reservation_status: 'pending' }]] : locked(sql)),
+  })
+  await assert.rejects(
+    resolveStocktakeDiscrepancy(11, 33, {
+      expectedRowVersion: 1, action: 'apply_condition', reason: 'x', condition: 'Good', availability: null,
+    }, actor, database),
+    (error: unknown) => error instanceof HttpError && error.code === 'STOCKTAKE_LIVE_STATE_CHANGED',
+  )
 })

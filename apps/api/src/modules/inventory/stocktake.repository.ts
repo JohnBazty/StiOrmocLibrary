@@ -302,6 +302,55 @@ export async function upsertDiscrepancy(
   ])
 }
 
+export type DiscrepancyUpsert = {
+  sessionId: number
+  findingKey: string
+  findingCode: string
+  expectedItemId: number | null
+  scanId: number | null
+  evidence: unknown
+}
+
+const DISCREPANCY_CHUNK = 100
+
+/** Multi-row form of upsertDiscrepancy; finding keys must be unique within the call. */
+export async function upsertDiscrepancies(connection: PoolConnection, inputs: DiscrepancyUpsert[]) {
+  for (let index = 0; index < inputs.length; index += DISCREPANCY_CHUNK) {
+    const chunk = inputs.slice(index, index + DISCREPANCY_CHUNK)
+    const sql = upsert(
+      'stocktake_discrepancies',
+      'stocktake_session_id, finding_key, finding_code, status, stocktake_expected_item_id, stocktake_scan_id, evidence_snapshot',
+      chunk.map(() => '?,?,?,?,?,?,?').join('),('),
+      'stocktake_session_id, finding_key',
+      `finding_code = ${excluded('finding_code')},
+     stocktake_expected_item_id = ${excluded('stocktake_expected_item_id')},
+     stocktake_scan_id = ${excluded('stocktake_scan_id')},
+     evidence_snapshot = ${excluded('evidence_snapshot')},
+     updated_at = NOW()`,
+    )
+    await connection.execute(sql, chunk.flatMap((input) => [
+      input.sessionId, input.findingKey, input.findingCode, 'open',
+      input.expectedItemId, input.scanId, JSON.stringify(input.evidence),
+    ]))
+  }
+}
+
+export type CloseSnapshot = { id: number; lifecycle: string; loan: string; rowVersion: number }
+
+export async function updateCloseSnapshots(connection: PoolConnection, snapshots: CloseSnapshot[]) {
+  if (snapshots.length === 0) return
+  await connection.execute(`
+    UPDATE stocktake_expected_items e
+       SET close_lifecycle_snapshot = v.lifecycle, close_loan_state_snapshot = v.loan,
+           close_row_version_snapshot = v.row_version
+      FROM (SELECT unnest(?::bigint[]) AS id, unnest(?::text[]) AS lifecycle,
+                   unnest(?::text[]) AS loan, unnest(?::int[]) AS row_version) v
+     WHERE e.stocktake_expected_item_id = v.id`, [
+    snapshots.map((row) => row.id), snapshots.map((row) => row.lifecycle),
+    snapshots.map((row) => row.loan), snapshots.map((row) => row.rowVersion),
+  ])
+}
+
 export async function listExpectedItems(
   database: Pool,
   sessionId: number,

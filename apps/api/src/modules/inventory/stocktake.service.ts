@@ -3,7 +3,8 @@ import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { createFloorPlanRepository } from '../floor-plan/floor-plan.repository.ts'
 import {
-  findActiveLoan, lockInventoryCopy, recordInventoryAudit, synchronizeLegacyAvailability, type InventoryActor,
+  findActiveLoan, findActiveReservation, lockInventoryCopy, recordInventoryAudit,
+  synchronizeLegacyAvailability, type InventoryActor,
 } from './inventory.repository.ts'
 import type { ExpectedItemInsert, ScopeSnapshot } from './stocktake.repository.ts'
 import {
@@ -11,13 +12,14 @@ import {
   findExpectedItem, findScanByRequestKey, getStocktakeSession, insertExpectedItemsBatch,
   insertResolutionEvent, insertStocktakeScan, insertStocktakeSession, listDiscrepancies,
   listExpectedItems, listScans, listStocktakeSessions, lockDiscrepancy, lockStocktakeSession,
-  upsertDiscrepancy,
+  updateCloseSnapshots, upsertDiscrepancies, upsertDiscrepancy,
+  type CloseSnapshot, type DiscrepancyUpsert,
 } from './stocktake.repository.ts'
 import type {
   StocktakeAssetKind, StocktakeResolveAction, StocktakeScopeKind,
 } from './stocktake.validation.ts'
 import {
-  findOpenThesisLoan, lockThesisInventory, recordThesisInventoryAudit,
+  lockThesisInventory, recordThesisInventoryAudit,
 } from './thesis-inventory.repository.ts'
 
 const BATCH_SIZE = 100
@@ -139,19 +141,41 @@ async function resolveScope(connection: PoolConnection, input: CreateInput): Pro
   }
 }
 
+// Stocktake only reads loan state; plain SELECTs (no FOR UPDATE) keep the lock order of checkout
+// (copy, then loan) and let a count run beside circulation. One query per call, not per item.
+async function loanStatesByMaterial(connection: PoolConnection, materialIds: Array<number | null>) {
+  const states = new Map<number, string>()
+  const ids = [...new Set(materialIds.filter((id): id is number => id != null))]
+  if (ids.length === 0) return states
+  const [rows] = await connection.execute<RowDataPacket[]>(`
+    SELECT material_id, transaction_status
+      FROM borrow_transactions
+     WHERE material_id = ANY(?::bigint[]) AND transaction_status IN ('Borrowed', 'Overdue')
+     ORDER BY transaction_id ASC`, [ids])
+  for (const row of rows) states.set(Number(row.material_id), String(row.transaction_status).toLowerCase())
+  return states
+}
+
 async function bookLoanState(connection: PoolConnection, materialId: number | null) {
   if (materialId == null) return 'none'
-  const loan = await findActiveLoan(connection, materialId)
-  return loan ? String(loan.transaction_status).toLowerCase() : 'none'
+  return (await loanStatesByMaterial(connection, [materialId])).get(materialId) ?? 'none'
+}
+
+async function researchLoanStates(connection: PoolConnection, barcodes: string[]) {
+  const states = new Map<string, string>()
+  const unique = [...new Set(barcodes)]
+  if (unique.length === 0) return states
+  const [materialRows] = await connection.execute<RowDataPacket[]>(`
+    SELECT material_id, barcode FROM materials WHERE barcode = ANY(?::text[]) ORDER BY material_id DESC`, [unique])
+  // Later rows overwrite earlier ones, so the lowest material_id wins per barcode.
+  const materialByBarcode = new Map(materialRows.map((row) => [String(row.barcode), Number(row.material_id)]))
+  const loans = await loanStatesByMaterial(connection, [...materialByBarcode.values()])
+  for (const [barcode, materialId] of materialByBarcode) if (loans.has(materialId)) states.set(barcode, 'borrowed')
+  return states
 }
 
 async function researchLoanState(connection: PoolConnection, barcode: string) {
-  const [materialRows] = await connection.execute<RowDataPacket[]>(`
-    SELECT material_id FROM materials WHERE barcode = ? LIMIT 1`, [barcode])
-  const materialId = materialRows[0] ? Number(materialRows[0].material_id) : null
-  if (materialId == null) return 'none'
-  const loan = await findOpenThesisLoan(connection, materialId)
-  return loan ? 'borrowed' : 'none'
+  return (await researchLoanStates(connection, [barcode])).get(barcode) ?? 'none'
 }
 
 async function collectExpectedItems(connection: PoolConnection, scope: ScopeSnapshot): Promise<ExpectedItemInsert[]> {
@@ -181,6 +205,7 @@ async function collectExpectedItems(connection: PoolConnection, scope: ScopeSnap
         LEFT JOIN floor_plan_shelves s ON s.label = pc.shelf_location
        WHERE ${where.join(' AND ')}
        ORDER BY pc.physical_copy_id ASC`, parameters)
+    const loans = await loanStatesByMaterial(connection, rows.map((row) => (row.material_id == null ? null : Number(row.material_id))))
     for (const row of rows) {
       const materialId = row.material_id == null ? null : Number(row.material_id)
       items.push({
@@ -199,7 +224,7 @@ async function collectExpectedItems(connection: PoolConnection, scope: ScopeSnap
         availabilitySnapshot: String(row.availability_status),
         lifecycleSnapshot: String(row.lifecycle_status),
         rowVersionSnapshot: Number(row.row_version ?? 1),
-        loanStateSnapshot: await bookLoanState(connection, materialId),
+        loanStateSnapshot: materialId == null ? 'none' : loans.get(materialId) ?? 'none',
         reservationStateSnapshot: 'none',
       })
     }
@@ -226,6 +251,7 @@ async function collectExpectedItems(connection: PoolConnection, scope: ScopeSnap
         LEFT JOIN floor_plan_shelves s ON s.label = ri.shelf_location
        WHERE ${where.join(' AND ')}
        ORDER BY ri.research_inventory_id ASC`, parameters)
+    const loans = await researchLoanStates(connection, rows.map((row) => String(row.barcode)))
     for (const row of rows) {
       items.push({
         assetKind: 'research',
@@ -243,7 +269,7 @@ async function collectExpectedItems(connection: PoolConnection, scope: ScopeSnap
         availabilitySnapshot: String(row.availability_status),
         lifecycleSnapshot: String(row.lifecycle_status),
         rowVersionSnapshot: Number(row.row_version ?? 1),
-        loanStateSnapshot: await researchLoanState(connection, String(row.barcode)),
+        loanStateSnapshot: loans.get(String(row.barcode)) ?? 'none',
         reservationStateSnapshot: 'none',
       })
     }
@@ -562,95 +588,61 @@ export async function closeStocktakeSession(sessionId: number, actor: InventoryA
        GROUP BY resolved_asset_kind, resolved_source_item_id`, [sessionId])
     const present = new Set(firstScans.map((row) => `${row.resolved_asset_kind}:${row.resolved_source_item_id}`))
 
-    for (const expected of expectedRows) {
-      const key = `${expected.asset_kind}:${expected.source_item_id}`
-      let closeLifecycle = String(expected.lifecycle_snapshot)
-      let closeLoan = String(expected.loan_state_snapshot)
-      let closeRowVersion = Number(expected.row_version_snapshot)
-      if (String(expected.asset_kind) === 'book') {
-        const [live] = await connection.execute<RowDataPacket[]>(`
-          SELECT pc.lifecycle_status, pc.row_version, pc.condition_status, pc.material_id
-            FROM physical_copies pc WHERE pc.physical_copy_id = ? LIMIT 1`, [expected.source_item_id])
-        if (live[0]) {
-          closeLifecycle = String(live[0].lifecycle_status)
-          closeRowVersion = Number(live[0].row_version)
-          closeLoan = await bookLoanState(connection, live[0].material_id == null ? null : Number(live[0].material_id))
-          await connection.execute(`
-            UPDATE stocktake_expected_items
-               SET close_lifecycle_snapshot = ?, close_loan_state_snapshot = ?, close_row_version_snapshot = ?
-             WHERE stocktake_expected_item_id = ?`, [
-            closeLifecycle, closeLoan, closeRowVersion, expected.stocktake_expected_item_id,
-          ])
-          if (present.has(key)) continue
-          if (closeLifecycle !== 'Active') {
-            await upsertDiscrepancy(connection, {
-              sessionId, findingKey: `archived:book:${expected.source_item_id}`, findingCode: 'archived',
-              expectedItemId: Number(expected.stocktake_expected_item_id), scanId: null,
-              evidence: { closeLifecycle, closeLoan },
-            })
-          } else if (String(live[0].condition_status) === LOST_BOOK) {
-            await upsertDiscrepancy(connection, {
-              sessionId, findingKey: `known_lost:book:${expected.source_item_id}`, findingCode: 'known_lost',
-              expectedItemId: Number(expected.stocktake_expected_item_id), scanId: null,
-              evidence: { closeLifecycle, closeLoan },
-            })
-          } else if (closeLoan !== 'none') {
-            await upsertDiscrepancy(connection, {
-              sessionId, findingKey: `borrowed_out:book:${expected.source_item_id}`, findingCode: 'borrowed_out',
-              expectedItemId: Number(expected.stocktake_expected_item_id), scanId: null,
-              evidence: { closeLifecycle, closeLoan },
-            })
-          } else {
-            await upsertDiscrepancy(connection, {
-              sessionId, findingKey: `missing:book:${expected.source_item_id}`, findingCode: 'missing',
-              expectedItemId: Number(expected.stocktake_expected_item_id), scanId: null,
-              evidence: { closeLifecycle, closeLoan },
-            })
-          }
-        }
-      } else {
-        const [live] = await connection.execute<RowDataPacket[]>(`
-          SELECT lifecycle_status, row_version, condition_state, barcode
-            FROM research_inventory WHERE research_inventory_id = ? LIMIT 1`, [expected.source_item_id])
-        if (live[0]) {
-          closeLifecycle = String(live[0].lifecycle_status)
-          closeRowVersion = Number(live[0].row_version)
-          closeLoan = await researchLoanState(connection, String(live[0].barcode))
-          await connection.execute(`
-            UPDATE stocktake_expected_items
-               SET close_lifecycle_snapshot = ?, close_loan_state_snapshot = ?, close_row_version_snapshot = ?
-             WHERE stocktake_expected_item_id = ?`, [
-            closeLifecycle, closeLoan, closeRowVersion, expected.stocktake_expected_item_id,
-          ])
-          if (present.has(key)) continue
-          if (closeLifecycle !== 'Active') {
-            await upsertDiscrepancy(connection, {
-              sessionId, findingKey: `archived:research:${expected.source_item_id}`, findingCode: 'archived',
-              expectedItemId: Number(expected.stocktake_expected_item_id), scanId: null,
-              evidence: { closeLifecycle, closeLoan },
-            })
-          } else if (String(live[0].condition_state) === LOST_RESEARCH) {
-            await upsertDiscrepancy(connection, {
-              sessionId, findingKey: `known_lost:research:${expected.source_item_id}`, findingCode: 'known_lost',
-              expectedItemId: Number(expected.stocktake_expected_item_id), scanId: null,
-              evidence: { closeLifecycle, closeLoan },
-            })
-          } else if (closeLoan !== 'none') {
-            await upsertDiscrepancy(connection, {
-              sessionId, findingKey: `borrowed_out:research:${expected.source_item_id}`, findingCode: 'borrowed_out',
-              expectedItemId: Number(expected.stocktake_expected_item_id), scanId: null,
-              evidence: { closeLifecycle, closeLoan },
-            })
-          } else {
-            await upsertDiscrepancy(connection, {
-              sessionId, findingKey: `missing:research:${expected.source_item_id}`, findingCode: 'missing',
-              expectedItemId: Number(expected.stocktake_expected_item_id), scanId: null,
-              evidence: { closeLifecycle, closeLoan },
-            })
-          }
-        }
-      }
+    const bookIds = expectedRows.filter((row) => String(row.asset_kind) === 'book').map((row) => Number(row.source_item_id))
+    const researchIds = expectedRows.filter((row) => String(row.asset_kind) !== 'book').map((row) => Number(row.source_item_id))
+    const liveBooks = new Map<number, RowDataPacket>()
+    if (bookIds.length > 0) {
+      const [rows] = await connection.execute<RowDataPacket[]>(`
+        SELECT physical_copy_id, lifecycle_status, row_version, condition_status, material_id
+          FROM physical_copies WHERE physical_copy_id = ANY(?::bigint[])`, [bookIds])
+      for (const row of rows) liveBooks.set(Number(row.physical_copy_id), row)
     }
+    const liveResearch = new Map<number, RowDataPacket>()
+    if (researchIds.length > 0) {
+      const [rows] = await connection.execute<RowDataPacket[]>(`
+        SELECT research_inventory_id, lifecycle_status, row_version, condition_state, barcode
+          FROM research_inventory WHERE research_inventory_id = ANY(?::bigint[])`, [researchIds])
+      for (const row of rows) liveResearch.set(Number(row.research_inventory_id), row)
+    }
+    const bookLoans = await loanStatesByMaterial(
+      connection, [...liveBooks.values()].map((row) => (row.material_id == null ? null : Number(row.material_id))),
+    )
+    const researchLoans = await researchLoanStates(connection, [...liveResearch.values()].map((row) => String(row.barcode)))
+
+    const snapshots: CloseSnapshot[] = []
+    const findings: DiscrepancyUpsert[] = []
+    for (const expected of expectedRows) {
+      const isBook = String(expected.asset_kind) === 'book'
+      const kind = isBook ? 'book' : 'research'
+      const live = isBook ? liveBooks.get(Number(expected.source_item_id)) : liveResearch.get(Number(expected.source_item_id))
+      const expectedItemId = Number(expected.stocktake_expected_item_id)
+      const finding = (code: string, evidence: Record<string, unknown>) => findings.push({
+        sessionId, findingKey: `${code}:${kind}:${expected.source_item_id}`, findingCode: code,
+        expectedItemId, scanId: null, evidence,
+      })
+      const scanned = present.has(`${expected.asset_kind}:${expected.source_item_id}`)
+      if (!live) {
+        // The live row is gone (hard delete outside the guarded paths): freeze it as archived instead of skipping it.
+        const loan = String(expected.loan_state_snapshot)
+        snapshots.push({ id: expectedItemId, lifecycle: 'Removed', loan, rowVersion: Number(expected.row_version_snapshot) })
+        if (!scanned) finding('archived', { closeLifecycle: 'Removed', closeLoan: loan, liveRowMissing: true })
+        continue
+      }
+      const closeLifecycle = String(live.lifecycle_status)
+      const closeLoan = isBook
+        ? (live.material_id == null ? 'none' : bookLoans.get(Number(live.material_id)) ?? 'none')
+        : researchLoans.get(String(live.barcode)) ?? 'none'
+      snapshots.push({ id: expectedItemId, lifecycle: closeLifecycle, loan: closeLoan, rowVersion: Number(live.row_version) })
+      if (scanned) continue
+      const evidence = { closeLifecycle, closeLoan }
+      const condition = String(isBook ? live.condition_status : live.condition_state)
+      if (closeLifecycle !== 'Active') finding('archived', evidence)
+      else if (condition === (isBook ? LOST_BOOK : LOST_RESEARCH)) finding('known_lost', evidence)
+      else if (closeLoan !== 'none') finding('borrowed_out', evidence)
+      else finding('missing', evidence)
+    }
+    await updateCloseSnapshots(connection, snapshots)
+    await upsertDiscrepancies(connection, findings)
 
     await connection.execute(`
       UPDATE stocktake_sessions
@@ -734,11 +726,14 @@ async function applyLiveCorrection(
     )
   }
   const copy = await lockInventoryCopy(connection, String(discrepancy.barcode))
-  if (!copy || copy.lifecycle_status !== 'Active') {
-    throw new HttpError(409, 'STOCKTAKE_LIVE_STATE_CHANGED', 'The live copy is no longer active.')
+  // The snapshot barcode may have moved to another copy since the count; never change a different row.
+  if (!copy || Number(copy.physical_copy_id) !== Number(discrepancy.source_item_id) || copy.lifecycle_status !== 'Active') {
+    throw new HttpError(409, 'STOCKTAKE_LIVE_STATE_CHANGED', 'The live copy is no longer the counted active copy.')
   }
+  // Lock order matches checkout: copy first, then loan, then reservation.
   const loan = await findActiveLoan(connection, copy.circulation_material_id)
-  if (loan || copy.availability_status === 'Borrowed' || copy.availability_status === 'Reserved') {
+  const reservation = await findActiveReservation(connection, Number(copy.physical_copy_id))
+  if (loan || reservation || copy.availability_status === 'Borrowed' || copy.availability_status === 'Reserved') {
     throw new HttpError(409, 'STOCKTAKE_LIVE_STATE_CHANGED', 'The copy is borrowed or reserved; handle it in Circulation first.')
   }
   const wasLost = copy.condition_status === LOST_BOOK
