@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-11-11 (Supabase `032` applied, `033`, `034` and `035` pending, next unused `036`) |
+| **Date last updated** | 2026-11-12 (Supabase `032` to `036` applied; `035` from PR #20; next unused `037`) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---
@@ -100,9 +100,9 @@ Always know and document:
 | Item | Value |
 | --- | --- |
 | Migrations directory | `database/supabase/` (Postgres only; MySQL was retired 2026-11-10) |
-| Latest applied migration | `032_login_devices.sql` |
-| Latest file pending review | `035_rls_circulation_hardening.sql` (also pending: `033_rename_system_brand.sql`, `034_job_runner_hardening.sql`) |
-| **Next available number** | **`036`** |
+| Latest applied migration | `036_sign_in_hardening.sql` (`033`, `034` and `035` also applied by 2026-11-12) |
+| Latest file pending review | None; `033` (table name fixed) and `035` (PR #20, circulation RLS) applied 2026-11-12 |
+| **Next available number** | **`037`** |
 
 Applied enrollment 031 supersedes the removed 028 draft. Keep applied filenames and source bytes, including line endings. The 003 source still needs checksum reconciliation. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set.
 
