@@ -8,7 +8,7 @@ The roadmap's next catalog item is stocktake sessions (`docs/roadmap.md`, "Stock
 
 - **Date created:** 2026-11-12
 - **Date last updated:** 2026-11-12
-- **Status:** `inprogress`
+- **Status:** `built`
 - **Branch for the build:** `feat/stocktake-sessions` (the PR #2 branch), updated from `origin/main`
 - **Plan doc branch:** `docs/stocktake-sessions-plan`
 - **Spec (approve first):** [stocktake-sessions-spec.md](stocktake-sessions-spec.md). Its acceptance tests S1 to S8 join T1 to T4 below, and its answers to Q1 to Q4 can add work (Staff access, file upload).
@@ -92,6 +92,7 @@ Keep it. Update it in place (merge `main`, the port commits above), keep it a dr
 
 | Date | Change |
 | --- | --- |
+| 2026-11-12 | LOW fixes in the main session: a reused scan request key with a different barcode returns 409 `STOCKTAKE_REQUEST_KEY_REUSED` instead of silently replaying; list queries reject `page` over 10000 and `q` over 100 characters (422). The new set-based SQL (`unnest` close snapshots, multi-row discrepancy upsert, `= ANY(?::bigint[])`/`?::text[]`) was run against PGlite with the real `018` schema through `toPgPlaceholders`: correct rows, re-close keeps a resolved status, empty array returns no rows. Left as LOW follow-ups: LIKE wildcards in `q` not escaped, no per-session scan cap, correlated session counts could be one `FILTER` query, web panel has no `apply_*` buttons and generates a new request key on retry, Inventory page not in the Staff menu. Status `built`; push and PR #2 update wait for Ethan. |
 | 2026-11-12 | Review fixes: C1 and H1 (stocktake reads loans without FOR UPDATE, so lock order matches checkout), H2 (create, preview and close use a constant number of queries; findings and close snapshots written in multi-row statements), H3 (CSV and PDF export errors destroy the response), M1 (CSV guard covers tab and CR), M2 (apply_* locks the counted copy, 409 if the barcode moved, real reservation check), M3 (vanished live row becomes an `archived` finding with a `Removed` close snapshot), M4 (kept: ordinary book verify also bumps `row_version`), M5 (dev preview rejects X-Forwarded-For and non-local Host). V1 route matrix and V2 string-count test added. |
 | 2026-11-12 | Built: preview role fix, Staff access split, apply_condition/apply_availability for books, spec tests S1-S8/E3/T2. Not done: T4 (counts already `Number()`-cast), research-copy apply_* (still via Inventory). Awaiting verifier and security review. |
 | 2026-11-12 | Spec approved with the recommended answers; Q1 adds Staff access to the scan side. Status `inprogress`. |

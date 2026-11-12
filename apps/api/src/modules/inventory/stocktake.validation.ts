@@ -38,8 +38,14 @@ function positiveInteger(value: unknown, field: string, required = true) {
   return parsed
 }
 
+const MAX_PAGE = 10000
+const MAX_QUERY_LENGTH = 100
+
 function pageLimit(query: Request['query']) {
   const page = positiveInteger(query.page, 'page', false) ?? 1
+  if (page > MAX_PAGE) {
+    throw new HttpError(422, 'STOCKTAKE_VALIDATION_FAILED', `page must be ${MAX_PAGE} or less.`, { errors: { page: 'Too large.' } })
+  }
   const limitRaw = positiveInteger(query.limit, 'limit', false) ?? 25
   const limit = Math.min(limitRaw, 100)
   return { page, limit }
@@ -111,8 +117,16 @@ export function parseStocktakeListQuery(query: Request['query']) {
     limit,
     status: status || null,
     scopeKind: first(query.scopeKind).trim() || null,
-    query: first(query.q).trim() || null,
+    query: searchText(query.q),
   }
+}
+
+function searchText(value: unknown) {
+  const text = first(value).trim()
+  if (text.length > MAX_QUERY_LENGTH) {
+    throw new HttpError(422, 'STOCKTAKE_VALIDATION_FAILED', `q must be ${MAX_QUERY_LENGTH} characters or fewer.`, { errors: { q: 'Too long.' } })
+  }
+  return text || null
 }
 
 export function parsePagedQuery(query: Request['query']) {
@@ -120,7 +134,7 @@ export function parsePagedQuery(query: Request['query']) {
   return {
     page,
     limit,
-    query: first(query.q).trim() || null,
+    query: searchText(query.q),
     status: first(query.status).trim() || null,
     findingCode: first(query.findingCode).trim() || null,
     assetKind: first(query.assetKind).trim() || null,

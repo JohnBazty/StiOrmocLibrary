@@ -422,6 +422,9 @@ export async function recordStocktakeScan(
     await connection.beginTransaction()
     await requireInProgress(connection, sessionId)
     const existing = await findScanByRequestKey(connection, sessionId, input.requestKey)
+    if (existing && String(existing.entered_barcode) !== input.barcode) {
+      throw new HttpError(409, 'STOCKTAKE_REQUEST_KEY_REUSED', 'This scan key was already used for a different barcode. Scan again.')
+    }
     if (existing) {
       await connection.commit()
       return {

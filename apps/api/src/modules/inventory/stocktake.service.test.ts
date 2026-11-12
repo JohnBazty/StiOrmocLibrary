@@ -20,7 +20,7 @@ interface FixtureState {
   scans: number
   discrepancies: number
   resolutionEvents: number
-  requestKeys: Set<string>
+  requestKeys: Map<string, string>
   calls: Array<{ sql: string; values: unknown[] }>
   expectedItems: Array<Record<string, unknown>>
 }
@@ -40,7 +40,7 @@ function stocktakePool(options: {
     scans: 0,
     discrepancies: 0,
     resolutionEvents: 0,
-    requestKeys: new Set(),
+    requestKeys: new Map(),
     calls: [],
     expectedItems: options.expectedItems ?? [],
   }
@@ -94,7 +94,7 @@ function stocktakePool(options: {
       }
       if (sql.includes('FROM stocktake_scans') && sql.includes('request_key')) {
         if (state.requestKeys.has(String(values[1]))) {
-          return [[{ stocktake_scan_id: 77, entered_barcode: 'UNKNOWN-1', request_key: values[1] }]]
+          return [[{ stocktake_scan_id: 77, entered_barcode: state.requestKeys.get(String(values[1])), request_key: values[1] }]]
         }
         return [[]]
       }
@@ -109,7 +109,7 @@ function stocktakePool(options: {
       }
       if (sql.includes('INSERT INTO stocktake_scans')) {
         state.scans += 1
-        state.requestKeys.add(String(values[1]))
+        state.requestKeys.set(String(values[1]), String(values[2]))
         return [{ insertId: 70 + state.scans, affectedRows: 1 }]
       }
       if (sql.includes('stocktake_discrepancies') && (sql.includes('INSERT') || sql.includes('ON DUPLICATE') || sql.includes('ON CONFLICT'))) {
@@ -230,6 +230,17 @@ test('repeated request key returns the stored scan without another insert', asyn
     source: 'scanner',
   }, actor, database)
   assert.equal(replay.duplicate_request, true)
+  assert.equal(state.scans, 1)
+})
+
+test('a reused request key with a different barcode is rejected, not silently replayed', async () => {
+  const { state, database } = stocktakePool()
+  const scan = { requestKey: 'scan-reused', observedShelfId: 5, observedColumn: null, observedRow: null, source: 'scanner' as const }
+  await recordStocktakeScan(11, { ...scan, barcode: 'UNKNOWN-3' }, actor, database)
+  await assert.rejects(
+    recordStocktakeScan(11, { ...scan, barcode: 'UNKNOWN-4' }, actor, database),
+    (error: unknown) => error instanceof HttpError && error.status === 409 && error.code === 'STOCKTAKE_REQUEST_KEY_REUSED',
+  )
   assert.equal(state.scans, 1)
 })
 

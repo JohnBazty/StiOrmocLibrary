@@ -3,6 +3,7 @@ import test from 'node:test'
 import { HttpError } from '../../core/http-error.ts'
 import {
   parseCancelBody,
+  parsePagedQuery,
   parseCreateStocktakeBody,
   parseResolveBody,
   parseScanBody,
@@ -59,4 +60,13 @@ test('cancel and resolve bodies require reasons and supported actions', () => {
   })
   assert.equal(resolve.action, 'dismiss')
   assert.equal(resolve.expectedRowVersion, 2)
+})
+
+test('paged query rejects an oversized page and search text', () => {
+  assert.equal(parsePagedQuery({ page: '10000', q: 'x'.repeat(100) }).page, 10000)
+  for (const query of [{ page: '10001' }, { q: 'x'.repeat(101) }]) {
+    assert.throws(() => parsePagedQuery(query), (error: unknown) => (
+      error instanceof HttpError && error.status === 422 && error.code === 'STOCKTAKE_VALIDATION_FAILED'
+    ))
+  }
 })
