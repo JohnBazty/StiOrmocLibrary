@@ -60,11 +60,16 @@ const ALLOWED: Record<string, readonly Role[]> = {
   '/api/v1/admin/dashboard': LIBRARIAN,
   '/api/v1/admin': DESK,
 }
+// A prefix mounted more than once: roles for the second, third... router, in app.js order.
+// Unlisted later mounts use the same roles as the first.
+const LATER_MOUNTS: Record<string, readonly (readonly Role[])[]> = {
+  '/api/v1/admin': [LIBRARIAN], // thesis inventory: library.manage, stricter than the desk mount before it
+}
 // Public sign-in routes, and the root mounts whose routes each carry their own guard.
 const NOT_IN_TABLE = new Set(['/api/v1/auth', '/api/v1'])
 
 const appSource = readFileSync(new URL('../app.js', import.meta.url), 'utf8')
-const mountedPrefixes = new Set([...appSource.matchAll(/app\.(?:use|get|post|put|patch|delete)\('(\/api\/v1[^']*)'/g)].map(m => m[1]))
+const mountedPrefixes = new Set([...appSource.matchAll(/app\.(?:use|get|post|put|patch|delete)\(\s*['"`](\/api\/v1[^'"`]*)['"`]/g)].map(m => m[1]))
 
 function tokenFor(role: Role) {
   return jwt.sign({ accountId: 7, userId: 7, schoolId: `TEST-${role}`, role, authVersion: 1, sessionId: 'guard-test-session' }, env.jwt.secret, {
@@ -89,36 +94,44 @@ test('every /api/v1 mount in app.js has an entry in the guard table', () => {
 })
 
 type Layer = { handle: { stack?: Layer[] }; route?: { path: string | string[]; methods: Record<string, boolean> }; path?: string; match(path: string): boolean }
-type Probe = { prefix: string; method: string; path: string }
+type Probe = { allowed: readonly Role[]; method: string; path: string }
 
-/** Every concrete route under each /api/v1 mount, read from Express's router stack. */
-function routesUnderMounts(app: ReturnType<typeof createApp>): Probe[] {
+/** Every concrete route under each /api/v1 mount, read from Express's router stack, with the roles its mount allows. */
+function routesUnderMounts(app: ReturnType<typeof createApp>) {
   const stack = (app as unknown as { router: { stack: Layer[] } }).router.stack
   const prefixes = Object.keys(ALLOWED)
   const concrete = (path: string) => path.replace(/:\w+/g, '1').replace(/\*\w+/g, 'x').replace(/[{}]/g, '')
   const probes: Probe[] = []
+  const nestedRouters: string[] = []
+  const mountsSeen: Record<string, number> = {}
   for (const layer of stack) {
     if (layer.route) {
       const path = String(layer.route.path)
-      if (path in ALLOWED) for (const method of Object.keys(layer.route.methods)) probes.push({ prefix: path, method, path })
+      if (path in ALLOWED) for (const method of Object.keys(layer.route.methods)) probes.push({ allowed: ALLOWED[path], method, path })
       continue
     }
     if (!layer.handle.stack) continue
     const prefix = prefixes.find(p => layer.match(`${p}/guard-probe`) && layer.path === p)
     if (!prefix) continue
+    const mount = mountsSeen[prefix] = (mountsSeen[prefix] ?? -1) + 1
+    const allowed = mount === 0 ? ALLOWED[prefix] : LATER_MOUNTS[prefix]?.[mount - 1] ?? ALLOWED[prefix]
     for (const inner of layer.handle.stack) {
-      if (!inner.route) continue
+      if (!inner.route) {
+        if (inner.handle.stack) nestedRouters.push(prefix)
+        continue
+      }
       for (const routePath of ([] as string[]).concat(inner.route.path)) {
-        for (const method of Object.keys(inner.route.methods)) probes.push({ prefix, method, path: concrete(`${prefix}${routePath === '/' ? '' : routePath}`) })
+        for (const method of Object.keys(inner.route.methods)) probes.push({ allowed, method, path: concrete(`${prefix}${routePath === '/' ? '' : routePath}`) })
       }
     }
   }
-  return probes
+  return { probes, nestedRouters }
 }
 
 test('roles outside each /api/v1 mount get 403 on every route before any handler runs', async () => {
   const app = createApp()
-  const probes = routesUnderMounts(app)
+  const { probes, nestedRouters } = routesUnderMounts(app)
+  assert.deepEqual(nestedRouters, [], 'a router nested inside a mounted router is not probed; extend routesUnderMounts')
   assert.ok(probes.length > 150, `expected the full route list, found ${probes.length}`)
   const execute = db.execute
   const failures: string[] = []
@@ -126,8 +139,8 @@ test('roles outside each /api/v1 mount get 403 on every route before any handler
     for (const role of ROLES) {
       db.execute = stubDatabase(role)
       const token = tokenFor(role)
-      for (const { prefix, method, path } of probes) {
-        if (ALLOWED[prefix].includes(role)) continue
+      for (const { allowed, method, path } of probes) {
+        if (allowed.includes(role)) continue
         const response = await (request(app) as unknown as Record<string, (p: string) => request.Test>)[method](path).set('Authorization', `Bearer ${token}`)
         if (response.status !== 403) failures.push(`${role} ${method.toUpperCase()} ${path} -> ${response.status}`)
       }
