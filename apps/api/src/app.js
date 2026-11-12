@@ -17,6 +17,7 @@ import { authRouter, logoutRouter } from './modules/auth/auth.routes.js'
 import { jwtAuthRouter, jwtProtectedRouter } from './modules/auth/jwt-auth.routes.ts'
 import { enrollmentRouter } from './modules/enrollment/enrollment.routes.ts'
 import { authenticateJwt, ensureActiveJwtAccount, requireJwtRoles, requireLibraryPermission } from './modules/auth/jwt-auth.middleware.ts'
+import { inventoryAccessGuard } from './modules/inventory/inventory.access.ts'
 import { inventoryPreviewRouter } from './modules/inventory/inventory-preview.routes.ts'
 import { thesisInventoryV1AdminRouter } from './modules/inventory/thesis-inventory.routes.ts'
 import { bookCatalogRouter } from './modules/catalog/book-catalog.routes.ts'
@@ -181,7 +182,7 @@ export function createApp() {
   app.use('/api/users', requireRoles(ROLES.SYSTEM_ADMINISTRATOR, ROLES.LIBRARIAN))
   app.use('/api/circulation', requireRoles(...STAFF_ROLES))
   app.use('/api/fines', requireRoles(ROLES.LIBRARIAN))
-  app.use('/api/inventory', requireRoles(ROLES.LIBRARIAN))
+  app.use('/api/inventory', inventoryAccessGuard)
   app.use('/api/reports', requireRoles(ROLES.LIBRARIAN))
   registerModules(app)
 
