@@ -5,6 +5,7 @@ import { dashboardApi } from './dashboard-api'
 import type { AdminDashboardData } from './types'
 import { Link } from 'react-router-dom'
 import { WorkspaceTasks } from './WorkspaceTasks'
+import { ScheduledJobsPanel } from './ScheduledJobsPanel'
 
 const peso=(value:number)=>new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP'}).format(value)
 const count=(value:number)=>new Intl.NumberFormat('en-PH').format(value)
@@ -39,6 +40,7 @@ export function AdminDashboardPage(){
       <SectionCard className="p-5"><p className="text-xs font-bold uppercase tracking-wider text-[#003399]/45">Attendance purpose today</p><h2 className="mt-1 font-display text-lg font-bold text-[#003399]">Why visitors came in</h2><div className="mt-4 grid gap-3 sm:grid-cols-2">{data.purposeBreakdown.map(item=><Mini key={item.label} label={item.label} value={String(item.value)}/>)}{!data.purposeBreakdown.length?<Empty text="No attendance recorded today."/>:null}</div></SectionCard>
       <SectionCard className="p-5"><p className="text-xs font-bold uppercase tracking-wider text-[#003399]/45">Operational feed</p><h2 className="mt-1 font-display text-lg font-bold text-[#003399]">Recent activity</h2><div className="mt-3 divide-y divide-[#003399]/10">{data.recentActivity.map(item=><div key={item.id} className="py-3"><p className="text-sm font-semibold text-[#003399]">{item.title}</p><p className="mt-1 line-clamp-2 text-xs text-[#003399]/65">{item.message}</p><p className="mt-1 text-[10px] text-[#003399]/45">{item.createdAt}</p></div>)}{!data.recentActivity.length?<Empty text="No recent operational events."/>:null}</div></SectionCard>
     </div>
+    <ScheduledJobsPanel />
     <p className="mt-4 text-right text-[11px] text-[#003399]/45">Last updated {new Date(data.generatedAt).toLocaleString('en-PH',{timeZone:'Asia/Manila'})}</p>
   </>
 }
