@@ -33,7 +33,9 @@
 -- Latest applied migration: 036_sign_in_hardening.sql (on PR #19's branch).
 -- 034_job_runner_hardening.sql (job table RLS in the repo, open-loan cursor index) was applied 2026-11-11.
 -- 033_rename_system_brand.sql is pending review. 035 is reserved by PR #20, not applied.
--- Next unused number: 037.
+-- 037_shared_rate_limits.sql (shared auth rate-limit counters) is reserved by fix/shared-rate-limit, not applied.
+--   Apply it before deploying that branch: the auth limiters fail without the table.
+-- Next unused number: 038.
 -- 031_semester_enrollment.sql supersedes the removed, unapplied 028 draft.
 -- Preserve the original bytes of applied files. The 003 source still needs checksum reconciliation.
 -- See docs/main-branch-integration.md for the live ledger audit.

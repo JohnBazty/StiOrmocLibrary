@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-11-11 (Supabase `032`, `034` and `036` applied, `033` pending, `035` reserved by PR #20, next unused `037`) |
+| **Date last updated** | 2026-11-12 (Supabase `032` to `036` applied, `037` reserved by `fix/shared-rate-limit` and not applied, next unused `038`) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---

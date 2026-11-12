@@ -9,6 +9,7 @@ import { DEVICE_DEADLINE_SQL, DEVICE_IDLE_SQL, LOGIN_IDLE_MS, isDeviceSessionId,
 import { db } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
+import { PgRateLimitStore } from '../../core/pg-rate-limit-store.ts'
 import { activeEnrollmentSemester, enrollmentEnabled, rosterRegistrationRequired } from '../enrollment/enrollment-policy.ts'
 import { rosterRegistration } from '../enrollment/roster-registration.service.ts'
 
@@ -57,7 +58,9 @@ jwtAuthRouter.use('/device', (_request, response, next) => {
 jwtAuthRouter.get('/device', (_request, response) => {
   response.json({ success: true, data: { enabled: loginDevicesEnabled() } })
 })
-const deviceLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false })
+// Auth limits live in Postgres so every Vercel instance shares one budget per client.
+const sharedStore = (prefix: string) => new PgRateLimitStore(prefix, db)
+const deviceLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false, store: sharedStore('device') })
 for (const action of ['resume', 'switch', 'logout'] as const) jwtAuthRouter.post(`/device/${action}`, deviceLimiter, async (request, response, next) => {
   try {
     if (!loginDevicesEnabled()) throw new HttpError(404, 'DEVICE_DISABLED', 'Device sign-in is unavailable.')
@@ -86,8 +89,8 @@ for (const action of ['resume', 'switch', 'logout'] as const) jwtAuthRouter.post
     response.json({ success: true, data: { signedOut: true } })
   } catch (error) { next(error) }
 })
-const rosterCodeLimiter=rateLimit({windowMs:15*60_000,limit:12,standardHeaders:'draft-8',legacyHeaders:false})
-const rosterStepLimiter=rateLimit({windowMs:15*60_000,limit:35,standardHeaders:'draft-8',legacyHeaders:false})
+const rosterCodeLimiter=rateLimit({windowMs:15*60_000,limit:12,standardHeaders:'draft-8',legacyHeaders:false,store:sharedStore('roster-code')})
+const rosterStepLimiter=rateLimit({windowMs:15*60_000,limit:35,standardHeaders:'draft-8',legacyHeaders:false,store:sharedStore('roster-step')})
 jwtAuthRouter.get('/roster-registration',async (_request,response,next)=>{
   response.set('Cache-Control','no-store')
   try {
@@ -102,11 +105,11 @@ for(const step of ['begin','verify','complete'] as const) jwtAuthRouter.post(`/r
   try{response.json({success:true,data:await rosterRegistration[step](request.body)})}catch(e){next(e)}
 })
 const recoveryLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false,
+  windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false, store: sharedStore('recovery'),
   message: { success: false, code: 'RECOVERY_RATE_LIMITED', message: 'Too many recovery attempts. Please wait 15 minutes.' },
 })
 const recoveryRequestLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, limit: 5, standardHeaders: 'draft-8', legacyHeaders: false,
+  windowMs: 15 * 60 * 1000, limit: 5, standardHeaders: 'draft-8', legacyHeaders: false, store: sharedStore('recovery-request'),
   message: { success: false, code: 'RECOVERY_RATE_LIMITED', message: 'Too many code requests. Please wait 15 minutes.' },
 })
 for (const action of ['request', 'verify', 'reset'] as const) {
@@ -121,14 +124,14 @@ jwtAuthRouter.post(['/register', '/register/resend', '/register/verify'], (_requ
     success: false, code: 'REGISTRATION_FLOW_REPLACED', message: 'Open the latest registration page to use Student roster signup. Staff accounts are set up by the library.',
   })
 })
-jwtAuthRouter.post('/login', rateLimit({ windowMs: 10 * 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false }), async (request, response, next) => {
+jwtAuthRouter.post('/login', rateLimit({ windowMs: 10 * 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false, store: sharedStore('login') }), async (request, response, next) => {
   response.set('Cache-Control', 'no-store')
   try {
     if (loginDevicesEnabled() && !sameOrigin(request)) throw new HttpError(403, 'DEVICE_ORIGIN', 'Open the library website and try again.')
     sendLogin(request, response, await loginSecurityService.login(request.body, browserToken(request, request.body?.device_session_id)))
   } catch (error) { next(error) }
 })
-const otpLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false })
+const otpLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false, store: sharedStore('otp') })
 for (const action of ['verify', 'resend'] as const) jwtAuthRouter.post(`/login/${action}`, otpLimiter, async (request, response, next) => {
   response.set('Cache-Control', 'no-store')
   try {
