@@ -76,3 +76,57 @@ export type InventoryRemovalTarget = {
   accession_number: string
   barcode: string
 }
+
+export type StocktakeSession = {
+  stocktake_session_id: number
+  session_name: string
+  scope_kind: string
+  scope_id: string | null
+  scope_label: string
+  asset_kind: string
+  status: string
+  started_at: string
+  started_by_label: string
+  closed_at: string | null
+  reviewed_at: string | null
+  cancelled_at: string | null
+  cancel_reason: string | null
+  row_version: number
+  expected_count: number
+  present_count: number
+  missing_count: number
+  exception_count: number
+  open_discrepancy_count: number
+}
+
+export type StocktakeScopeOptions = {
+  shelves: Array<{ id: number; label: string; columnCount: number; rowCount: number }>
+  categories: Array<{ id: number; name: string; shelf_location: string | null }>
+  rooms: Array<{ id: string; name: string }>
+  map_revision: number
+}
+
+export type StocktakeDiscrepancy = {
+  stocktake_discrepancy_id: number
+  finding_key: string
+  finding_code: string
+  status: string
+  row_version: number
+  asset_kind: string | null
+  barcode: string | null
+  accession_number: string | null
+  title: string | null
+  home_shelf_label: string | null
+  created_at: string
+}
+
+export type StocktakeScanResult = {
+  stocktake_scan_id: number
+  duplicate_request: boolean
+  classification: string
+  classifications?: string[]
+  entered_barcode: string
+  resolved_asset_kind?: string | null
+  title?: string | null
+  observed_shelf_label?: string
+}

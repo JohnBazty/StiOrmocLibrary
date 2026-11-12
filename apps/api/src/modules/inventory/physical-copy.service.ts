@@ -95,11 +95,23 @@ export async function deletePhysicalCopy(
       WHERE physical_copy_id = ? LIMIT 1 FOR UPDATE`,
     [copy.physical_copy_id],
   )
+  const [stocktakeRows] = await connection.execute(
+    `SELECT stocktake_expected_item_id FROM stocktake_expected_items
+      WHERE asset_kind = 'book' AND source_item_id = ? LIMIT 1`,
+    [copy.physical_copy_id],
+  )
+  const [stocktakeScanRows] = await connection.execute(
+    `SELECT stocktake_scan_id FROM stocktake_scans
+      WHERE resolved_asset_kind = 'book' AND resolved_source_item_id = ? LIMIT 1`,
+    [copy.physical_copy_id],
+  )
 
   if (
     (Array.isArray(historyRows) && historyRows.length > 0)
     || (Array.isArray(reservationRows) && reservationRows.length > 0)
     || (Array.isArray(auditRows) && auditRows.length > 0)
+    || (Array.isArray(stocktakeRows) && stocktakeRows.length > 0)
+    || (Array.isArray(stocktakeScanRows) && stocktakeScanRows.length > 0)
   ) {
     throw new HttpError(
       422,

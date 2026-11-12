@@ -10,5 +10,6 @@ declare module 'express-session' {
     }
     csrfToken?: string
     lastActivity?: number
+    authVersion?: number
   }
 }

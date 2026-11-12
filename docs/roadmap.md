@@ -26,7 +26,7 @@ Live database (2026-11-11): `032` and `036` applied, `033` pending, `034` (job r
 | Item | Where | State |
 | --- | --- | --- |
 | Renewals | PR #13, `feat/renewal-management-v2` | Open; check against the library rule decisions before merge |
-| Stocktake sessions | `feat/stocktake-sessions` | No PR; table `018` already on `main`. Carry over `7a4d478` (Admin → Librarian role) from `integration/2026-10` first |
+| Stocktake sessions | `feat/stocktake-sessions` | PR #2 updated from `main`; table `018` already on `main`. Dev preview role fixed on the branch (no `7a4d478` carry-over); Staff can run counts, resolve and review stay Librarian |
 | Long-overdue and damage case | port commit `6dd0c64` from `feat/long-overdue-and-damage-case` | Table `017_circulation_cases` is on `main` and live, but no code uses it. Port the code, align with "lost = book price". Its job-runner commit is replaced by PR #17 |
 | Dynamic attendance QR | PR #10 (draft), `feat/dynamic-attendance-qr` | Spec only, approval gate 1 |
 | Attendance QR self-heal (rehash) fix | PR #23, `fix/attendance-qr-self-heal` (ported `75f4ed9` plus review fixes) | Waits for John. After merge, bring it into `feat/self-service-kiosk`; then drop `fix/attendance-qr-rehash` (its other kiosk commits are already in the kiosk branch) |
@@ -39,7 +39,7 @@ Their work is already on `main` or replaced. Drop after John agrees.
 
 | Branch | Why |
 | --- | --- |
-| `integration/2026-10` | Only bundles the branches above; its one unique fix (`7a4d478`) moves to stocktake |
+| `integration/2026-10` | Only bundles the branches above; its one unique fix (`7a4d478`) is replaced by the stocktake preview-role fix |
 | `feat/admin-librarian-role-consolidation` | Rename is on `main` as `033`; the login role selector is gone |
 | `feat/circulation-preflight` | Same rename; `main` has a separate staff login page |
 | `fix/critical-security-login-ux` | Dark mode (`ThemeToggle`), password reset (`009_password_reset_otp`) and RLS lockdown (`011`) are on `main` |
