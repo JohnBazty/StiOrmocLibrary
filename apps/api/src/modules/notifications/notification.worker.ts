@@ -104,6 +104,8 @@ export async function generateNotifications(database: Pool = db, now: Date = new
              CASE WHEN pr.job_status='Ready for Pickup' THEN 'Urgent' ELSE 'Normal' END,
              CONCAT('print:',pr.request_id,':',REPLACE(LOWER(pr.job_status),' ','-')),NOW(),NOW()
         FROM print_requests pr
+       -- D5: a status change is noticed within a minute; older rows already have their notice.
+       WHERE COALESCE(pr.updated_at, pr.created_at) >= NOW() - INTERVAL '24 hours'
           ON CONFLICT (user_id, dedupe_key) DO NOTHING`, []],
     [`INSERT INTO notifications
         (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)

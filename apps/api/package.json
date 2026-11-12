@@ -16,6 +16,7 @@
     "db:backfill:attendance-passes": "node scripts/backfill-attendance-passes.js",
     "reports:verify-csv": "node scripts/verify-csv.js",
     "smoke:renewal": "node scripts/smoke-renewal-management.mjs",
+    "db:check-rls": "node scripts/check-rls.ts",
     "start": "node dist/server.js"
   },
   "dependencies": {
@@ -41,6 +42,7 @@
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.3.14",
     "@types/bcrypt": "^6.0.0",
     "@types/cors": "latest",
     "@types/express": "latest",

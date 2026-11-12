@@ -30,8 +30,10 @@
 --   022_revision_phase4_attendance.sql        — attendance policy, events, scan receipts and checkout provenance (applied)
 --   023_revision_phase5_desk_circulation.sql   — in-library use and deduplicated desk confirmations (applied)
 --   024_revision_phase5_reading_materials.sql  — native physical thesis links for in-library use (applied)
--- Latest applied migration: 032_login_devices.sql.
--- 033_rename_system_brand.sql is pending review. Next unused number: 034.
+-- Latest applied migration: 036_sign_in_hardening.sql (on PR #19's branch).
+-- 034_job_runner_hardening.sql (job table RLS in the repo, open-loan cursor index) was applied 2026-11-11.
+-- 033_rename_system_brand.sql is pending review. 035 is reserved by PR #20, not applied.
+-- Next unused number: 037.
 -- 031_semester_enrollment.sql supersedes the removed, unapplied 028 draft.
 -- Preserve the original bytes of applied files. The 003 source still needs checksum reconciliation.
 -- See docs/main-branch-integration.md for the live ledger audit.
