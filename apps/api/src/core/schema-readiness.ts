@@ -68,6 +68,7 @@ export async function checkSchemaReadiness(database: Pool = db as Pool): Promise
   const requiredColumns: Record<string, string[]> = {
     ...REQUIRED_COLUMNS,
     login_attempt_windows: ['identifier_hash', 'failed_count', 'window_started_at', 'locked_until'],
+    rate_limit_hits: ['bucket_key', 'hits', 'reset_at'],
     login_otp_challenges: ['challenge_id', 'account_id', 'auth_version', 'code_hash', 'failed_count', 'expires_at', 'sent_at', 'consumed_at', 'resend_count', ...(enrollmentEnabled() ? ['restoration_semester_id'] : []), ...(loginDevicesEnabled() ? ['remember_device'] : [])],
     library_login_sessions: ['session_id', 'account_id', 'auth_version', 'last_activity_at', 'revoked_at', ...(loginDevicesEnabled() ? ['device_token_hash', 'remembered_until'] : [])],
     ...(loginDevicesEnabled() ? { login_device_switches: ['token_hash', 'account_id', 'auth_version', 'replaced_session_id', 'remember_device', 'expires_at'] } : {}),
