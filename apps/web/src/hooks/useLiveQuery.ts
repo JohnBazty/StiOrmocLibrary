@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react'
 
-export const LIVE_REFRESH_MS = 1_000
+export const LIVE_REFRESH_MS = 30_000
+const RETRY_BASE_MS = 1_000
 type Snapshot<T> = { data: T | undefined; error: Error | null; loading: boolean }
 type Entry<T> = {
   key: string
@@ -27,7 +28,7 @@ function publish<T>(entry: Entry<T>, snapshot: Snapshot<T>) {
 function schedule<T>(entry: Entry<T>) {
   if (entry.timer) clearTimeout(entry.timer)
   if (!entry.poll || !entry.listeners.size || !visible()) return
-  const delay = entry.failures ? Math.min(30_000, LIVE_REFRESH_MS * 2 ** entry.failures) : LIVE_REFRESH_MS
+  const delay = entry.failures ? Math.min(LIVE_REFRESH_MS, RETRY_BASE_MS * 2 ** entry.failures) : LIVE_REFRESH_MS
   entry.timer = setTimeout(() => { entry.timer = null; void run(entry) }, Math.max(0, entry.startedAt + delay - Date.now()))
 }
 function run<T>(entry: Entry<T>): Promise<T | undefined> {
@@ -67,7 +68,7 @@ function stop<T>(entry: Entry<T>) {
   entry.snapshot = { data: undefined, error: null, loading: true }
 }
 
-/** Visible one-second reads, shared by key; never writes or emits activity events. */
+/** Visible reads every LIVE_REFRESH_MS (faster retries after errors), shared by key; never writes or emits activity events. */
 export function useLiveQuery<T>(key: string, read: (signal: AbortSignal) => Promise<T>, options: { enabled?: boolean; poll?: boolean; events?: string[] } = {}) {
   const enabled = options.enabled !== false
   const poll = options.poll !== false
