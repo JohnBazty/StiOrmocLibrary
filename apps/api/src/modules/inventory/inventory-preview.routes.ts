@@ -21,7 +21,7 @@ inventoryPreviewRouter.post('/session', (request, response, next) => {
       id: null,
       fullName: 'admin_authenticated',
       email: '',
-      role: 'System Administrator',
+      role: 'Librarian',
     }
     request.session.csrfToken = createCsrfToken()
     request.session.lastActivity = Date.now()
@@ -30,7 +30,7 @@ inventoryPreviewRouter.post('/session', (request, response, next) => {
       return response.json({
         success: true,
         data: {
-          session: { user_id: null, username: 'admin_authenticated', role: 'Admin', school_id: '' },
+          session: { user_id: null, username: 'admin_authenticated', role: 'Librarian', school_id: '' },
           csrf_token: request.session.csrfToken,
         },
       })
