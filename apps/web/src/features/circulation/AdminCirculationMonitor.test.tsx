@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AdminCirculationMonitor } from './AdminCirculationMonitor'
 
 const reservations=vi.hoisted(()=>({adjustStatus:vi.fn()}))
+vi.mock('./DamageCasesPanel', () => ({ DamageCasesPanel: () => null }))
 vi.mock('../reservations/reservation-api',()=>({reservationApi:reservations}))
 const api = vi.hoisted(() => ({ monitor: vi.fn(), fulfillClaim: vi.fn(), returnBook: vi.fn(), calculatePenalty: vi.fn(), cancelRequest: vi.fn() }))
 vi.mock('./circulation-api', () => ({ circulationApi: api }))

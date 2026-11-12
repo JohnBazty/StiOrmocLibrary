@@ -6,6 +6,8 @@ import { createFinesService } from '../fines/fines.service.ts'
 import { positiveId, validateLostDecision, validateOverride, validateRevocation } from './clearance.validation.ts'
 
 export type ClearanceActor = { accountId?: number; role?: string }
+/** Confirmed lost-book charge resolutions that are owed: a supplier quotation, or the book price (damage cases). */
+const CHARGED_RESOLUTIONS = ['Quoted', 'Book Price']
 
 function actorAccountId(actor: ClearanceActor) {
   return positiveId(actor.accountId, 'Account ID')
@@ -51,7 +53,7 @@ export function createClearanceService(database: Pool = db) {
          ) fines ON fines.user_id=u.user_id
          LEFT JOIN (
            SELECT user_id,SUM(replacement_charge) AS unpaid_replacement FROM lost_book_reports
-            WHERE report_status='Confirmed' AND charge_resolution='Quoted' AND payment_status='Unpaid' GROUP BY user_id
+            WHERE report_status='Confirmed' AND charge_resolution IN ('Quoted','Book Price') AND payment_status='Unpaid' GROUP BY user_id
          ) losses ON losses.user_id=u.user_id
          LEFT JOIN clearance_overrides active_override
            ON active_override.clearance_override_id=(
@@ -151,7 +153,7 @@ export function createClearanceService(database: Pool = db) {
     }
     const unpaidFines = fineRows.reduce((sum, row) => sum + Number(row.fine_amount ?? 0), 0)
     const unpaidReplacement = lostRows
-      .filter((row) => row.report_status === 'Confirmed' && row.charge_resolution === 'Quoted' && row.payment_status === 'Unpaid')
+      .filter((row) => row.report_status === 'Confirmed' && CHARGED_RESOLUTIONS.includes(String(row.charge_resolution)) && row.payment_status === 'Unpaid')
       .reduce((sum, row) => sum + Number(row.replacement_charge ?? 0), 0)
     const activeLoans = loanRows.length
     const computedStatus = activeLoans || unpaidFines > 0 || unpaidReplacement > 0 ? 'Not Cleared' : 'Cleared'
@@ -172,7 +174,7 @@ export function createClearanceService(database: Pool = db) {
     return {
       student: { userId: Number(user.user_id), schoolId: String(user.school_id), name: String(user.full_name), program: user.course_or_strand ?? null, section: user.section ?? null, accountStatus: String(user.account_status) },
       status, computedStatus, reason, checkedAt: new Date(),
-      summary: { activeLoans, unpaidOverdueFines: unpaidFines, unpaidReplacementCharges: unpaidReplacement, totalOutstanding: unpaidFines + unpaidReplacement, blockCount: activeLoans + fineRows.length + lostRows.filter((row) => row.report_status === 'Confirmed' && row.charge_resolution === 'Quoted' && row.payment_status === 'Unpaid').length },
+      summary: { activeLoans, unpaidOverdueFines: unpaidFines, unpaidReplacementCharges: unpaidReplacement, totalOutstanding: unpaidFines + unpaidReplacement, blockCount: activeLoans + fineRows.length + lostRows.filter((row) => row.report_status === 'Confirmed' && CHARGED_RESOLUTIONS.includes(String(row.charge_resolution)) && row.payment_status === 'Unpaid').length },
       loans: loanRows.map((row) => ({ transactionId: Number(row.transaction_id), title: String(row.title), accessionNumber: row.accession_number, status: String(row.transaction_status), borrowedAt: row.borrowed_at, dueAt: row.due_at, overdueHours: Number(row.overdue_hours ?? 0), currentFine: Number(row.current_fine ?? 0) })),
       fines: fineRows.map((row) => ({ fineId: Number(row.fine_id), transactionId: row.transaction_id ? Number(row.transaction_id) : null, title: String(row.title), amount: Number(row.fine_amount), basis: String(row.calculation_basis), overdueUnits: Number(row.overdue_units), rate: Number(row.rate_applied), appliedAt: row.applied_date, notes: row.notes })),
       lostBooks: lostRows.map((row) => ({ lostBookReportId: Number(row.lost_book_report_id), transactionId: Number(row.transaction_id), titleId: row.title_id ? Number(row.title_id) : null, title: String(row.title), status: String(row.report_status), chargeResolution: String(row.charge_resolution), resolutionReason: row.resolution_reason ? String(row.resolution_reason) : null, quotationId: row.current_quotation_id ? Number(row.current_quotation_id) : null, quotedAmount: row.current_quotation_amount === null ? null : Number(row.current_quotation_amount), replacementCharge: Number(row.replacement_charge), paymentStatus: String(row.payment_status), reportedAt: row.reported_at, verifiedAt: row.verified_at })),
@@ -416,7 +418,7 @@ export function createClearanceService(database: Pool = db) {
       requireLibrarian(actor)
       const reportId = positiveId(reportIdValue, 'Lost-book report ID')
       const [rows] = await database.execute<RowDataPacket[]>(
-        "SELECT replacement_charge FROM lost_book_reports WHERE lost_book_report_id=? AND report_status='Confirmed' AND charge_resolution='Quoted' AND payment_status='Unpaid' AND replacement_charge>0 LIMIT 1", [reportId],
+        "SELECT replacement_charge FROM lost_book_reports WHERE lost_book_report_id=? AND report_status='Confirmed' AND charge_resolution IN ('Quoted','Book Price') AND payment_status='Unpaid' AND replacement_charge>0 LIMIT 1", [reportId],
       )
       if (!rows[0]) throw new HttpError(422, 'LOST_BOOK_PAYMENT_INVALID', 'The confirmed unpaid replacement charge was not found.')
       return createFinesService(database).recordCashPayment(actor, {

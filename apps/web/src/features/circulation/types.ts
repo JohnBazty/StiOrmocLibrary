@@ -8,9 +8,25 @@ export type BorrowingHistoryData = {
   items: Array<{
     transactionId: number; titleId: number | null; title: string; author: string; coverImagePath: string | null; accessionNumber: string | null; barcode: string | null
     borrowDate: string | null; dueDate: string | null; returnDate: string | null; status: BorrowStatus; lostReportStatus: string | null
+    caseSummary?: { caseId: number; caseType: 'Damage'; status: string; openedAt: string; instruction: string } | null
   }>
   pagination: { page: number; limit: number; total: number; totalPages: number }
 }
+
+export type DamageCaseListItem = {
+  caseId: number; caseType: 'Damage'; transactionId: number; status: string; openedAt: string; summary: string | null
+  title: string; barcode: string; borrowerName: string; borrowerSchoolId: string; lostBookReportId: number | null
+}
+export type DamageCaseListData = { items: DamageCaseListItem[]; pagination: { page: number; limit: number; total: number; totalPages: number } }
+export type DamageCaseDetail = {
+  case: Pick<DamageCaseListItem, 'caseId' | 'status' | 'summary' | 'lostBookReportId'>
+  loan: {
+    status: string; title: string; titlePrice: number | null; barcode: string; conditionStatus: string; availabilityStatus: string
+    borrowerName: string; borrowerSchoolId: string; replacementCharge: number | null; replacementPaymentStatus: string | null
+  } | null
+  events: Array<{ eventId: number; eventType: string; actorName: string | null; notes: string | null; reason: string | null; createdAt: string }>
+}
+export type DamageDisposition = 'repaired_available' | 'damaged_held' | 'lost'
 
 export type CirculationMonitorData = {
   summary: { pendingClaims: number; activeLoans: number; overdueLoans: number; returnedToday: number; dueToday: number }

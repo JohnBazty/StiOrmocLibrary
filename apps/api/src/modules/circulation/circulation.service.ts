@@ -16,6 +16,7 @@ import { createBorrowingPolicyService } from './borrowing-policy.service.ts'
 import { roleBookLimit } from './borrowing-policy.types.ts'
 import { borrowerEligibility, borrowingPolicy, requireEligible, requireLoanSlot, policyDueDate } from './desk-circulation.policy.ts'
 import { prepareReturnedCopy } from './returned-copy-preparation.ts'
+import { createCirculationCaseService } from './circulation-case.service.ts'
 import { localTimestamp } from '../attendance/attendance-intervals.ts'
 import { positiveCirculationId, validateBorrowCart, validateCancellation, validateCheckout, validateHistoryQuery, validatePreflight, type BorrowCartInput } from './circulation.validation.ts'
 
@@ -191,6 +192,7 @@ async function compactQueue(connection: PoolConnection, titleId: number, removed
 
 export function createCirculationService(database: Pool = db, clock: () => Date = () => new Date()) {
   const policyService = createBorrowingPolicyService(database, clock)
+  const caseService = createCirculationCaseService(database, clock)
   return {
     async cartState(accountIdValue: unknown) {
       const accountId = positiveCirculationId(accountIdValue, 'accountId')
@@ -273,6 +275,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         const [commitments] = await database.execute<RowDataPacket[]>(`SELECT COUNT(*) AS total FROM reservations r WHERE r.user_id=? AND r.reservation_status IN ${ACTIVE_RESERVATIONS} AND NOT EXISTS (SELECT 1 FROM borrow_transactions bt WHERE bt.reservation_id=r.reservation_id AND bt.transaction_status IN ${ACTIVE_LOANS})`, [userId])
         activeStackCount = activeLoans + Number(commitments[0]?.total ?? 0)
       }
+      const caseSummaries = await caseService.publicSummariesForTransactions(userId, rows.map((row) => Number(row.transaction_id)))
       return {
         summary: { role, activeLoans, activeReservations, activeStackCount,
           loanLimit, remainingLoanSlots: loanLimit == null ? null : Math.max(0, loanLimit - activeStackCount),
@@ -280,7 +283,8 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         items: rows.map((row) => ({ transactionId: Number(row.transaction_id), titleId: row.title_id ? Number(row.title_id) : null, title: row.title ?? 'Catalog title unavailable', author: row.author,
           coverImagePath: row.cover_image_path ? String(row.cover_image_path) : null,
           accessionNumber: row.accession_number ?? null, barcode: row.barcode ?? null, borrowDate: row.borrowed_at, dueDate: row.due_at,
-          returnDate: row.returned_at, status: String(row.transaction_status), lostReportStatus: row.lost_report_status ? String(row.lost_report_status) : null })),
+          returnDate: row.returned_at, status: String(row.transaction_status), lostReportStatus: row.lost_report_status ? String(row.lost_report_status) : null,
+          caseSummary: caseSummaries.get(Number(row.transaction_id)) ?? null })),
         pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) },
       }
     },
