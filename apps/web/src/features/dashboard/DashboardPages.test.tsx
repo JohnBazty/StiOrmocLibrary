@@ -5,7 +5,7 @@ import { AdminDashboardPage } from './AdminDashboardPage'
 import { UserDashboardPage } from './UserDashboardPage'
 import { clearBookCartForTests } from '../catalog/book-cart-store'
 
-const api=vi.hoisted(()=>({admin:vi.fn(),user:vi.fn(),downloadAdminSummary:vi.fn(),fetchBookOverview:vi.fn()}))
+const api=vi.hoisted(()=>({admin:vi.fn(),user:vi.fn(),jobs:vi.fn(()=>new Promise(()=>{})),downloadAdminSummary:vi.fn(),fetchBookOverview:vi.fn()}))
 vi.mock('./dashboard-api',()=>({dashboardApi:api}))
 vi.mock('../catalog/book-catalog-api',()=>({fetchBookOverview:api.fetchBookOverview}))
 

@@ -9,7 +9,7 @@ import { createAttendanceOperations, requireOperationalService } from '../src/mo
 import { issueAttendanceCredential, purposeAttendanceQr } from '../src/modules/attendance/attendance-credential.service.ts'
 import { concurrentAttendanceReport } from '../src/modules/attendance/attendance-concurrent-report.ts'
 import { parseAttendanceFilters } from '../src/modules/attendance/attendance.validation.ts'
-import { claimOperationalMinute, jobRunnerStatus } from '../src/modules/jobs/job-runner.ts'
+import { createJobRunnerRepository } from '../src/modules/job-runner/job-runner.repository.ts'
 import { AttendanceRepository } from '../src/modules/attendance/attendance.repository.ts'
 
 
@@ -28,17 +28,15 @@ const id=()=>randomUUID().replaceAll('-','')
 try{
  const before=(await admin.query('SELECT COUNT(*) AS count FROM public.attendance_logs')).rows[0].count
  await admin.query(`CREATE SCHEMA ${schema}`)
- const tables=['users','accounts','attendance_qr_credentials','attendance_logs','attendance_scan_receipts','attendance_operation_settings','library_operational_events','library_profile_settings','library_operating_schedule','library_closed_days','notifications','library_job_runs']
+ const tables=['users','accounts','attendance_qr_credentials','attendance_logs','attendance_scan_receipts','attendance_operation_settings','library_operational_events','library_profile_settings','library_operating_schedule','library_closed_days','notifications','scheduled_job_state','scheduled_job_runs']
  for(const table of tables)await admin.query(`CREATE TABLE ${schema}.${table} (LIKE public.${table} INCLUDING ALL)`)
  await native.query("INSERT INTO library_profile_settings(settings_id,library_name,seat_capacity) VALUES(1,'Phase 4 isolated test',1)")
  await native.query('INSERT INTO library_operating_schedule SELECT * FROM public.library_operating_schedule')
  await native.query('INSERT INTO attendance_operation_settings(settings_id,preclosing_minutes,configured) VALUES(1,5,TRUE)')
- await native.query("INSERT INTO library_job_runs(job_name) VALUES('operational-minute')")
- const actual=new Date();assert.equal((await claimOperationalMinute(actual,pool)).claimed,true)
- assert.equal((await claimOperationalMinute(actual,pool)).claimed,false)
- const lease=await jobRunnerStatus(pool);assert.ok(Math.abs(new Date(lease!.lease_until).getTime()-actual.getTime()-300000)<1000)
- await native.query("UPDATE library_job_runs SET lease_until=NULL,run_token=NULL,last_success_at=NOW() AT TIME ZONE 'UTC'")
- assert.equal((await claimOperationalMinute(actual,pool)).claimed,false)
+ const jobs=createJobRunnerRepository(pool as unknown as Pool)
+ assert.ok(await jobs.claim('attendance-auto-checkout',randomUUID()))
+ assert.equal(await jobs.claim('attendance-auto-checkout',randomUUID()),null)
+ const lease=(await native.query("SELECT EXTRACT(EPOCH FROM lease_expires_at-last_started_at)::int AS seconds FROM scheduled_job_state WHERE job_name='attendance-auto-checkout'")).rows[0];assert.equal(lease.seconds,90)
  for(let n=1;n<=6;n++){
   const role=n===1?'Staff':n===2?'Librarian':'Student'
   await native.query("INSERT INTO users(user_id,role_id,user_role,institutional_id,school_id,full_name,email,password_hash) VALUES($1,1,$2,$3,$3,$4,$5,'integration-only')",[n,role,`PHASE4-${n}`,`Isolated visitor ${n}`,`phase4.${n}@ormoc.sti.edu.ph`])
