@@ -75,6 +75,36 @@ test('decrement and resetKey adjust only that client', async () => {
   await pg.close()
 })
 
+test('simultaneous hits on one client are all counted', async () => {
+  const { pg, pool } = await createDatabase()
+  const store = new PgRateLimitStore('login', pool)
+  store.init({ windowMs: 60_000 } as never)
+  const results = await Promise.all(Array.from({ length: 10 }, () => store.increment('flood')))
+  assert.deepEqual(results.map(r => r.totalHits).sort((a, b) => a - b), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+  await pg.close()
+})
+
+test('the first hit of each sweep period deletes rows that expired over a day ago', async () => {
+  const { pg, pool } = await createDatabase()
+  let now = 1_000_000
+  const store = new PgRateLimitStore('login', pool, () => now)
+  store.init({ windowMs: 60_000 } as never)
+  await pg.exec(`INSERT INTO rate_limit_hits VALUES
+    ('otp:stale', 3, NOW() - INTERVAL '2 days'), ('otp:recent', 3, NOW() - INTERVAL '1 hour')`)
+
+  await store.increment('a')
+  const keys = async () => (await pg.query<{ bucket_key: string }>('SELECT bucket_key FROM rate_limit_hits ORDER BY bucket_key')).rows.map(r => r.bucket_key)
+  assert.deepEqual(await keys(), ['login:a', 'otp:recent'])
+
+  await pg.exec("INSERT INTO rate_limit_hits VALUES ('otp:stale2', 1, NOW() - INTERVAL '2 days')")
+  await store.increment('a')
+  assert.ok((await keys()).includes('otp:stale2'), 'no second sweep inside the same period')
+  now += 60 * 60_000
+  await store.increment('a')
+  assert.ok(!(await keys()).includes('otp:stale2'))
+  await pg.close()
+})
+
 test('037 keeps the table private to the server and can run twice', async () => {
   const { pg } = await createDatabase()
   await pg.exec('GRANT SELECT ON rate_limit_hits TO anon, authenticated')

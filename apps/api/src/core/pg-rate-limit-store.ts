@@ -3,19 +3,32 @@ import type { Pool } from '../config/db.js'
 
 type HitRow = { hits: number; reset_at: Date }
 
-/**
- * express-rate-limit store backed by Postgres, so every API instance shares one budget per client.
- * shortcut: expired rows are overwritten on the client's next hit but never deleted; add a cleanup job if the table grows large.
- */
+const SWEEP_EVERY_MS = 60 * 60_000
+
+/** express-rate-limit store backed by Postgres, so every API instance shares one budget per client. */
 export class PgRateLimitStore implements Store {
   localKeys = false
   private windowMs = 60_000
+  private lastSweep = Number.NEGATIVE_INFINITY
   readonly prefix: string
   private readonly pool: Pool
+  private readonly clock: () => number
 
-  constructor(prefix: string, pool: Pool) {
+  constructor(prefix: string, pool: Pool, clock: () => number = Date.now) {
     this.prefix = prefix
     this.pool = pool
+    this.clock = clock
+  }
+
+  // Clients that never return leave rows behind; each instance clears them at most once an hour.
+  private async sweep() {
+    if (this.clock() - this.lastSweep < SWEEP_EVERY_MS) return
+    this.lastSweep = this.clock()
+    try {
+      await this.pool.execute("DELETE FROM rate_limit_hits WHERE reset_at < NOW() - INTERVAL '1 day'", [])
+    } catch (error) {
+      console.error('[rate-limit] Could not delete expired rate-limit rows.', error)
+    }
   }
 
   init(options: Options) {
@@ -44,6 +57,7 @@ export class PgRateLimitStore implements Store {
        RETURNING hits, reset_at`,
       [this.bucket(key), this.windowMs])
     const row = (result as unknown as { rows: HitRow[] }).rows[0]
+    await this.sweep()
     return { totalHits: Number(row.hits), resetTime: new Date(row.reset_at) }
   }
 
