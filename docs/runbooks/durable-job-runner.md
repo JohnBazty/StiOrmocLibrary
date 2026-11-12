@@ -8,7 +8,7 @@ Never paste the secret into chat, a commit, an issue, a log or this file.
 
 - The Part A PR is merged and the production deployment finished.
 - `https://<production-host>/api/health` answers `200` with `"status":"healthy"`. A `503 DATABASE_MIGRATION_REQUIRED` means the deployed code expects tables the database lacks; stop.
-- Ask John whether the Vercel project sets `TZ=Asia/Manila`. The runner does not depend on it, but some services read stored Manila times through the process zone. Write the answer in the plan's change log.
+- The API normalizes its process time zone to `Asia/Manila` in `apps/api/src/config/env.js`. Vercel rejects `TZ` as a reserved project variable, so do not add it through Vercel settings. The runner uses absolute instants for leases; service calendar reads use Manila time. Verify a fresh production deployment includes this configuration before activating Cron.
 
 ## 0b. Apply migration 034 (go-ahead 0b) — done 2026-11-11
 
