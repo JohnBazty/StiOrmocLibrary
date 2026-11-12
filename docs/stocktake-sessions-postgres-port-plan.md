@@ -75,15 +75,15 @@ Keep it. Update it in place (merge `main`, the port commits above), keep it a dr
 
 - [x] Ethan approves this plan (gate 1), 2026-11-12
 - [x] Ethan approves the spec with the recommended answers, 2026-11-12
-- [ ] Spec Q1: Staff can start, scan, close, cancel, view and export; resolve, dismiss and review stay Librarian only (route guard in `app.js` and `stocktake.routes.ts`)
-- [ ] Spec tests S1 to S8 present (existing PR #2 tests or new ones)
-- [ ] Spec E3 (shared barcode across book and research) checked and reported
-- [ ] `feat/stocktake-sessions` updated from `origin/main`; `package.json` conflict resolved
-- [ ] Baseline `npm run typecheck` and `npm test` on the merged branch recorded
-- [ ] MySQL migration file removed; old plan doc corrected
-- [ ] T1 to T4 written and seen failing (or noted as already passing)
-- [ ] Fixes for T1 to T4 and for any baseline failures
-- [ ] Docs: `schema-context.md`, `api-reference.md`, `roadmap.md`
+- [x] Spec Q1: Staff can start, scan, close, cancel, view and export; resolve, dismiss and review stay Librarian only (route guard `inventory.access.ts` mounted in `app.js`, plus `stocktake.routes.ts`). Web: the Inventory page is not in the Staff nav (`PortalLayout.tsx` `staffNav`), so no Staff navigation was added; StocktakePanel does not know the role, so buttons are unchanged. Follow-up if Ethan wants Staff to open stocktakes in the browser.
+- [x] Spec tests S1 to S8 present (existing PR #2 tests or new ones)
+- [x] Spec E3 (shared barcode across book and research) checked and reported
+- [x] `feat/stocktake-sessions` updated from `origin/main`; `package.json` conflict resolved
+- [x] Baseline `npm run typecheck` and `npm test` on the merged branch recorded
+- [x] MySQL migration file removed; old plan doc corrected
+- [x] T1 to T4 written and seen failing (or noted as already passing)
+- [x] Fixes for T1 to T4 and for any baseline failures
+- [x] Docs: `schema-context.md`, `api-reference.md`, `roadmap.md`
 - [ ] `plan-verifier` clean
 - [ ] `security-reviewer` findings (CRITICAL/HIGH/MEDIUM) fixed
 - [ ] Ethan's go-ahead to push and mark PR #2 ready for John
@@ -92,6 +92,7 @@ Keep it. Update it in place (merge `main`, the port commits above), keep it a dr
 
 | Date | Change |
 | --- | --- |
+| 2026-11-12 | Built: preview role fix, Staff access split, apply_condition/apply_availability for books, spec tests S1-S8/E3/T2. Not done: T4 (counts already `Number()`-cast), research-copy apply_* (still via Inventory). Awaiting verifier and security review. |
 | 2026-11-12 | Spec approved with the recommended answers; Q1 adds Staff access to the scan side. Status `inprogress`. |
 | 2026-11-12 | Ethan approved the plan, then asked for a spec first: `docs/stocktake-sessions-spec.md` added; building waits for the spec's approval. |
 | 2026-11-12 | Plan created from a read of PR #2, tag `archive/integration/2026-10` (`7a4d478`), `main` and the live `stocktake_*` tables. Status `planned`. |

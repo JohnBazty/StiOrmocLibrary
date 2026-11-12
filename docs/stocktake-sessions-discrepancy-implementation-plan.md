@@ -7,15 +7,15 @@ The inventory screen verifies individual barcodes and records condition changes,
 ## Plan metadata
 
 - **Date created:** 2026-10-10
-- **Date last updated:** 2026-10-11
+- **Date last updated:** 2026-11-12
 - **Status:** `built`
 - **Roadmap:** Release 3 in [next-implementation-roadmap.md](next-implementation-roadmap.md)
-- **Active database:** Supabase PostgreSQL; MySQL remains the rollback reference
-- **Migration reservation:** On `feat/stocktake-sessions`: MySQL `048` / Supabase `018`. Hosted ledger already applied renewals as `017_loan_renewals.sql`, so stocktake uses Supabase `018` and MySQL `048` (renewal keeps MySQL `047`).
+- **Active database:** Supabase PostgreSQL only (MySQL retired)
+- **Migration:** Supabase `018_stocktake_sessions.sql` only (applied). No MySQL file.
 
 ## Objective, constraints, and assumptions
 
-- Deliver an Admin-only workflow to start, scan, close, review, and export a stocktake of individually barcoded books and physically bound research/thesis items.
+- Deliver a Librarian workflow (Library Staff can run counts; resolve and review are Librarian-only, see [stocktake-sessions-spec.md](stocktake-sessions-spec.md)) to start, scan, close, review, and export a stocktake of individually barcoded books and physically bound research/thesis items.
 - Use the existing Express inventory module, React inventory area, barcode scanner hook, report renderers, and inventory audit services. Add no separately deployed service, dependency, or alternate inventory ledger.
 - Keep circulation and reservations authoritative for loan/hold state. Closing a session only freezes findings; it never marks an item Lost, changes availability, moves a shelf, or charges a borrower.
 - Treat `physical_copies` and `research_inventory` as separate asset kinds. Do not join them by title or create a shared inventory row. The optional `research_inventory.title_id` permits category filtering only when it points to a catalog title.
@@ -69,7 +69,7 @@ Use ordinary numeric IDs and explicit checks/foreign keys supported by each data
 ### 4. Review and corrections
 
 - `GET /:id/discrepancies` supports code, status, asset kind, and search filters. The detail shows the frozen expectation, observation, current live state, other scans, and previous decisions. Exports use the frozen findings plus resolution history, not live inventory values.
-- `POST /:id/discrepancies/:discrepancyId/resolve` accepts an expected row version, action, and nonblank reason. Admin may `dismiss` with an explanation; `confirm_found_at_home` after physically returning an item; or request an allowed operational correction. A dismissal never changes inventory.
+- `POST /:id/discrepancies/:discrepancyId/resolve` accepts an expected row version, action, and nonblank reason. The Librarian may `dismiss` with an explanation; `confirm_found_at_home` after physically returning an item; or request an allowed operational correction. A dismissal never changes inventory.
 - Re-read and lock the live item, loan/reservation, and discrepancy before any write. If the item or policy state changed since review, return `409` with refreshed state and leave the finding open. Never auto-mark a missing item Lost or a found Lost item Available. Condition and availability changes go through the existing inventory/thesis rules and append their normal audit event in the same transaction as the stocktake resolution event. Preserve the Lost-to-Unavailable rule and active-loan/reservation blocks.
 - For wrong location, the default resolution is physically returning the item to its recorded home. A database correction must use the existing category-managed shelf or floor-plan compartment workflow. If the requested shelf conflicts with the category home, block it and point Admin to Category Management; a stocktake resolution cannot bypass that rule. Record the existing floor-plan/category audit reference and final stocktake decision after a permitted change.
 - Location changes made in Category Management or the floor-plan screen may be separate transactions. On return to stocktake review, verify the resulting live location and audit event before recording the resolution. If that recording fails, leave the finding open for retry; do not claim it was resolved.
@@ -83,7 +83,7 @@ Use ordinary numeric IDs and explicit checks/foreign keys supported by each data
 
 ### API behavior
 
-All new routes require `requireCatalogManager`, so only the canonical `Admin` role can use them through session or JWT authentication. Validate IDs, scope, barcode, shelf, compartment, request key, reason, and pagination server-side. Use `422` for invalid input, `404` for absent resources, `409` for stale/closed/conflicting state, and the existing `403` authorization response. Keep current `/api/inventory/scans` and inventory exports unchanged.
+All new routes require `requireCatalogManager`, so Librarian and Library Staff can use them through session or JWT authentication (resolve and review: Librarian only). Validate IDs, scope, barcode, shelf, compartment, request key, reason, and pagination server-side. Use `422` for invalid input, `404` for absent resources, `409` for stale/closed/conflicting state, and the existing `403` authorization response. Keep current `/api/inventory/scans` and inventory exports unchanged.
 
 | Method | Path under `/api/inventory/stocktakes` | Contract |
 | --- | --- | --- |
@@ -133,3 +133,4 @@ All new routes require `requireCatalogManager`, so only the canonical `Admin` ro
 - **2026-10-10:** Hosted ledger check found `017_loan_renewals.sql` already applied; renumbered stocktake Supabase file to `018_stocktake_sessions.sql`.
 - **2026-10-10:** Applied `018_stocktake_sessions.sql` to hosted Supabase after ledger check. Local MySQL96 service is stopped/disabled, so MySQL rollback was not applied on this machine. Admin API walkthrough passed on hosted data: shelf count → scan → close → dismiss findings → review → CSV/PDF export.
 - **2026-10-11:** Renumbered MySQL rollback to `048` to avoid colliding with renewal `047`. Added stocktake validation/API/service tests and StocktakePanel UI tests. Hosted disposable smoke (`npm run smoke:stocktake`) create → unknown scan → close → dismiss → review → cleanup. Status set to `built`.
+- **2026-11-12:** Corrected for the Postgres-only port: Librarian replaces Admin, Supabase `018` is the only migration (MySQL `048` file removed), Staff access split added. See [stocktake-sessions-postgres-port-plan.md](stocktake-sessions-postgres-port-plan.md).
