@@ -1,5 +1,4 @@
 import { type NextFunction, type Request, type Response, Router } from 'express'
-import { supplies } from '../../data/mock-data.ts'
 import { ok } from '../../core/http.ts'
 import {
   commitPhysicalCopyMutation,
@@ -24,7 +23,6 @@ inventoryRouter.patch('/copies/condition', requireCatalogManager, validateCondit
 inventoryRouter.patch('/copies/availability', requireCatalogManager, validateAvailabilityMutation, changeAvailability)
 inventoryRouter.get('/export.csv', requireCatalogManager, exportCsv)
 inventoryRouter.get('/export.pdf', requireCatalogManager, exportPdf)
-inventoryRouter.get('/supplies', (_request, response) => ok(response, supplies))
 inventoryRouter.use('/thesis', thesisInventoryRouter)
 inventoryRouter.use('/stocktakes', stocktakeRouter)
 
