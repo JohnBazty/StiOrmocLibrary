@@ -9,6 +9,7 @@ import { CancelBorrowRequestDialog } from './CancelBorrowRequestDialog'
 import { ReportLostDialog } from './ReportLostDialog'
 import { StaffRenewLoanDialog } from './StaffRenewLoanDialog'
 import { CirculationDesk } from './CirculationDesk'
+import { DamageCasesPanel } from './DamageCasesPanel'
 
 function formatDate(value: string | null) {
   if (!value) return '—'
@@ -128,6 +129,7 @@ export function AdminCirculationMonitor() {
         </div>
       </article>) : <p className="p-8 text-center text-sm opacity-65">{(filter === 'all' || filter === 'pending') && pickups.length ? 'Borrowed books will appear here after handover.' : query ? 'No loans match your search.' : 'No loans in this view.'}</p>}</div>}
     </SectionCard>
+    <DamageCasesPanel />
     {cancelTarget ? <CancelBorrowRequestDialog title={cancelTarget.title} busy={busyId === cancelTarget.transactionId} error={cancelError} onCancel={() => { if (busyId === null) setCancelTarget(null) }} onConfirm={reason => void cancelPending(reason)} /> : null}
     {renewTarget ? <StaffRenewLoanDialog transactionId={renewTarget.transactionId} title={renewTarget.title} borrowerName={renewTarget.userName} onCancel={() => setRenewTarget(null)} onSuccess={(decision) => { setRenewTarget(null); setSuccess(`${renewTarget.title} was renewed for ${renewTarget.userName} until ${formatDate(decision.newDueAt)}.`); window.dispatchEvent(new Event('smartlib:circulation-updated')); void load() }} /> : null}
     {lostTarget ? <ReportLostDialog title={lostTarget.title} busy={busyId === lostTarget.transactionId} error={lostError} onCancel={() => { if (busyId === null) setLostTarget(null) }} onConfirm={() => void reportLost()} /> : null}

@@ -147,6 +147,17 @@ describe('BorrowingHistory', () => {
     expect(await screen.findByText(/Clean Code was renewed until/)).toBeTruthy()
     expect(api.history.mock.calls.length).toBeGreaterThan(1)
   })
+
+  it('shows the borrower the damage review status and instruction for a returned book', async () => {
+    api.history.mockResolvedValue({
+      summary: { role: 'Student', activeLoans: 0, activeReservations: 0, activeStackCount: 0, loanLimit: 2, remainingLoanSlots: 2, nextDueAt: null, dueCutoffLabel: '8:59 AM' },
+      items: [{ transactionId: 9, titleId: 5, title: 'Clean Code', author: 'R. Martin', coverImagePath: null, accessionNumber: 'ACC-9', barcode: 'BOOK-9', borrowDate: '2026-11-01T10:00:00', dueDate: '2026-11-02T08:59:00', returnDate: '2026-11-02T08:00:00', status: 'Returned', lostReportStatus: null,
+        caseSummary: { caseId: 4, caseType: 'Damage', status: 'Under Investigation', openedAt: '2026-11-02T08:00:00', instruction: 'Library staff are reviewing damage reported on this book.' } }],
+      pagination: { page: 1, limit: 25, total: 1, totalPages: 1 },
+    })
+    render(<BorrowingHistory />)
+    expect((await screen.findAllByText(/Damage review: Under Investigation\. Library staff are reviewing damage/)).length).toBeGreaterThan(0)
+  })
 })
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
