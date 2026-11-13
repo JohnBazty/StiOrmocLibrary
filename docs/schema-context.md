@@ -149,10 +149,10 @@ Category shelf locations are trimmed, non-empty administrator-defined labels up 
 
 The additive Book and Research/Thesis target model is defined by migration `20260816_002_book_research_management.sql`:
 
-- `titles`: one bibliographic title/edition or research work, linked to `categories`.
+- `titles`: one bibliographic title/edition or research work, linked to `categories`. Migration `037_book_register.sql` adds the register fields `classification`, `volumes` and `remarks`; edition and pages stay in `catalog_title_details`.
 - `authors`: ordered, normalized author credits owned by a title.
 - `research_records`: one-to-one thesis metadata including adviser, abstract, program, code, and viewing state.
-- `physical_copies`: accession, barcode, shelf, condition, availability, scan timestamp, and lifecycle per copy.
+- `physical_copies`: accession, barcode, shelf, condition, availability, scan timestamp, and lifecycle per copy. Migration `037_book_register.sql` adds the register fields `fund_source`, `fund_detail` and `cost_php` (cost per copy, backfilled from `titles.purchase_price`); `acquired_at` is the date received.
 - `book_titles`: a read-only compatibility view added by migration `20260823_013_book_catalog_compatibility.sql`. It exposes the requested `id`, `title`, aggregated `author`, `isbn`, `publisher`, `publication_year`, and `category_id` contract while keeping `titles`, `authors`, and `physical_copies` authoritative. Catalog-focused composite indexes are added to the normalized source tables; application writes must never target this view.
 - `inventory_audit_events`: append-only barcode verification, condition-change, manual availability-change, and lost-override history, including before/after condition and availability values, the physical copy, verifier, barcode snapshot, and timestamp. Migration `20260820_006_inventory_audit_events.sql` creates the table; migration `20260820_008_inventory_condition_availability_policy.sql` expands the audited event and condition contracts without changing `physical_copies.material_id` compatibility.
 

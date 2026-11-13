@@ -1,4 +1,4 @@
-import type { AdminBookAsset, BulkBookResult, CatalogFilters, CatalogItem, Category, CategoryAssignmentResult, IsbnMetadata, PhysicalCopy } from './types'
+import type { AdminBookAsset, BulkBookResult, RegisterRow, TitleLookupResult, CatalogFilters, CatalogItem, Category, CategoryAssignmentResult, IsbnMetadata, PhysicalCopy } from './types'
 import { getAccessToken } from '../auth/auth-storage'
 
 export class ApiError extends Error {
@@ -57,6 +57,20 @@ export const catalogApi = {
     if (!response.ok) throw new ApiError('The quotation could not be downloaded.', 'QUOTATION_DOWNLOAD_FAILED')
     const url = URL.createObjectURL(await response.blob()); const link = document.createElement('a'); link.href = url; link.download = filename; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
   },
+  bookRegister: (params: URLSearchParams) => request<{ rows: RegisterRow[]; total: number; page: number; limit: number }>(`/api/v1/admin/catalog/register?${params}`),
+  async downloadBookRegister(params: URLSearchParams) {
+    const accessToken = getAccessToken()
+    const response = await fetch(`/api/v1/admin/catalog/register.csv?${params}`, { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}, credentials: 'include' })
+    if (!response.ok || !(response.headers.get('content-type') ?? '').includes('text/csv')) {
+      const payload = (response.headers.get('content-type') ?? '').includes('application/json') ? await response.json() as { message?: string } : null
+      throw new ApiError(payload?.message ?? 'The book register could not be exported.', 'EXPORT_FAILED')
+    }
+    const url = URL.createObjectURL(await response.blob())
+    const link = document.createElement('a')
+    link.href = url; link.download = 'book-register.csv'
+    document.body.appendChild(link); link.click(); link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
+  },
   archivedBooks: (q = '') => request<Array<{ titleId: number; copyId?: number; title: string; isbn: string | null; authors: string | null; accession?: string; barcode?: string; archivedAt: string; reason: string | null; archivedBy: string | null; copyCount: number; recordKind: string }>>(`/api/v1/admin/catalog/archive?q=${encodeURIComponent(q)}`),
   deletedBookSnapshots: (q = '') => request<Array<{ eventId: number; barcode: string; lastCondition: string | null; lastAvailability: string | null; reason: string | null; staffLabel: string; deletedAt: string }>>(`/api/v1/admin/catalog/archive/deleted-snapshots?q=${encodeURIComponent(q)}`),
   archivedBookDetail: (titleId: number) => request<{ titleId: number; title: string; isbn: string | null; authors: string | null; reason: string | null; archivedAt: string | null; archivedBy: string | null; copies: Array<{ copyId: number; accession: string; barcode: string; shelf: string; condition: string; archivedAt: string; reason: string; borrowingCount: number }>; borrowings: Array<{ transactionId: number; accession: string; borrowerId: string; status: string; borrowedAt: string | null; returnedAt: string | null }>; auditEvents: Array<{ eventId: number; accession: string; eventType: string; reason: string | null; staffLabel: string; createdAt: string }> }>(`/api/v1/admin/catalog/archive/${titleId}`),
@@ -72,6 +86,7 @@ export const catalogApi = {
   ),
   createBook: (body: unknown) => request('/api/catalog/books', { method: 'POST', body: JSON.stringify(body) }),
   createBulkBook: (body: unknown) => request<BulkBookResult>('/api/v1/admin/catalog/bulk-entry', { method: 'POST', body: JSON.stringify(body) }),
+  searchTitles: (title: string, author: string) => request<TitleLookupResult>(`/api/v1/admin/books/title-lookup?${new URLSearchParams({ title, author })}`),
   lookupIsbn: (isbn: string, signal?: AbortSignal) => request<IsbnMetadata>(`/api/v1/admin/books/isbn/${encodeURIComponent(isbn)}`, { signal }),
   asset: (physicalCopyId: number, signal?: AbortSignal) => request<AdminBookAsset>(`/api/v1/admin/books/assets/${physicalCopyId}`, { signal }),
   researchAsset: (researchInventoryId: number, signal?: AbortSignal) => request<AdminBookAsset>(`/api/v1/admin/research/assets/${researchInventoryId}`, { signal }),

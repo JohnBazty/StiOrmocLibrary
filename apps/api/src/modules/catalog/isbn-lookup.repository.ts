@@ -50,6 +50,27 @@ export class IsbnLookupRepository {
       source: 'local_catalog',
     }
   }
+
+  /** Which of these ISBNs an active book title already carries. */
+  async findLocalIsbns(isbns: string[]): Promise<Set<string>> {
+    if (!isbns.length) return new Set()
+    const [rows] = await this.pool.execute<RowDataPacket[]>(
+      `SELECT DISTINCT isbn FROM titles WHERE record_type = 'Book' AND isbn = ANY(?::text[])`, [isbns])
+    return new Set(rows.map((row) => String(row.isbn)))
+  }
+
+  /** Up to 10 active book titles whose title contains this text, so staff see the book may already exist. */
+  async findLocalByTitle(title: string): Promise<Array<{ titleId: number; title: string; author: string; isbn: string | null }>> {
+    const pattern = `%${title.toLocaleLowerCase('en-US').replace(/[\\%_]/g, (match) => `\\${match}`)}%`
+    const [rows] = await this.pool.execute<RowDataPacket[]>(
+      `SELECT t.title_id, t.title, t.isbn, (SELECT ${authorsAgg('a', '; ')} FROM authors a WHERE a.title_id = t.title_id) AS author
+         FROM titles t
+        WHERE t.record_type = 'Book' AND t.lifecycle_status = 'Active' AND t.normalized_title ILIKE ?
+        ORDER BY t.title_id DESC LIMIT 10`,
+      [pattern],
+    )
+    return rows.map((row) => ({ titleId: Number(row.title_id), title: String(row.title), author: String(row.author ?? ''), isbn: row.isbn === null ? null : String(row.isbn) }))
+  }
 }
 
 export const isbnLookupRepository = new IsbnLookupRepository()
