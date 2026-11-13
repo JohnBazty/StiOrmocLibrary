@@ -2,9 +2,9 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HoldingsImportPage } from './HoldingsImportPage'
 import { ImportCleanupSummary } from './ImportCleanupSummary'
-import { blankImportCsv, canReviewTogether, importRowLabel, importSummary, suggestImportReferences } from './holdings-import-helpers'
+import { blankImportCsv, canReviewTogether, importFileReady, importRowLabel, importSummary, rowsToFill, suggestImportReferences } from './holdings-import-helpers'
 import type { Batch, ImportRow, Options, Sheet } from './enhanced-catalog-api'
-const api = vi.hoisted(() => ({ options: vi.fn(), inspect: vi.fn(), stage: vi.fn(), batch: vi.fn(), batches: vi.fn(), review: vi.fn(), commit: vi.fn() }))
+const api = vi.hoisted(() => ({ options: vi.fn(), inspect: vi.fn(), stage: vi.fn(), batch: vi.fn(), batches: vi.fn(), review: vi.fn(), commit: vi.fn(), fillFromLookup: vi.fn() }))
 vi.mock('./enhanced-catalog-api', () => ({ enhancedCatalog: api }))
 const options: Options = { categories: [{ id: 1, name: 'Literature', status: 'Active', version: 1 }], locations: [{ id: 2, name: 'Shelf A', status: 'Active', version: 1 }], programs: [], courses: [], types: [] }
 const sheet: Sheet = { name: 'Books', rowCount: 3, headers: ['Title', 'Author', 'Copies'], mapping: { sheet: 'Books', headerRow: 1, columns: { title: 1, author: 2, copies: 3 } }, preview: [['Title', 'Author', 'Copies'], ['First Book', 'A Writer', '3'], ['Second Book', 'B Writer', '2']] }
@@ -290,5 +290,50 @@ describe('Import grouping safeguards', () => {
  it('offers a blank template without sample books that could be imported by mistake', () => {
   expect(blankImportCsv).toBe('\uFEFFTitle,Author,Copies\r\n')
   expect(blankImportCsv.trim().split(/\r?\n/)).toHaveLength(1)
+ })
+})
+
+describe('Fill missing details from the book lookup', () => {
+ const filled = () => row(1, { data: { ...row(1).data, publisher: 'Prentice Hall', lookupTried: true, lookupFilled: { publisher: { value: 'Prentice Hall', source: 'google_books' } } } })
+
+ it('lets an ISBN column stand in for Title and Author, and counts rows the lookup may fill', () => {
+  expect(importFileReady([{ sheet: 'Books', headerRow: 1, columns: { isbn: 1, copies: 2 }, categoryId: 1, location: 'Shelf A' }])).toBe(true)
+  expect(importFileReady([{ sheet: 'Books', headerRow: 1, columns: { author: 1, copies: 2 }, categoryId: 1, location: 'Shelf A' }])).toBe(false)
+  expect(rowsToFill({ ...initial, rows: [row(1), filled(), row(2, { status: 'Ready' })] }).map(item => item.id)).toEqual([1])
+ })
+
+ it('keeps a filled row out of the shared review until it is checked', () => {
+  expect(canReviewTogether(filled())).toBe(false)
+  expect(importRowLabel(filled())).toBe('Needs a lookup check')
+  const checked = filled(); checked.data.lookupCheckedAt = '2026-11-13T00:00:00Z'
+  expect(canReviewTogether(checked)).toBe(true)
+ })
+
+ it('fills from the lookup on request and reports what happened', async () => {
+  api.fillFromLookup.mockResolvedValue({ filled: 1, notFound: 1, remaining: 0, unavailable: false })
+  await upload()
+  api.batch.mockResolvedValue({ ...initial, rows: [filled(), row(2, { data: { ...row(2).data, lookupTried: true } })] })
+  fireEvent.click(screen.getByRole('button', { name: /Fill missing details from book lookup/ }))
+  await waitFor(() => expect(api.fillFromLookup).toHaveBeenCalledWith(1))
+  expect(await screen.findByText(/1 book filled from the book lookup, 1 not found/)).toBeTruthy()
+  expect(screen.queryByRole('button', { name: /Fill missing details from book lookup/ })).toBeNull()
+ })
+
+ it('a filled row shows its source and saves only after the checked tick', async () => {
+  api.batch.mockResolvedValue({ ...initial, rows: [filled(), row(2)] })
+  await upload()
+  const openRow = screen.getByText('Needs a lookup check').closest('details')!
+  const filledRow = within(openRow).getByRole('region', { name: 'Details filled from the book lookup' })
+  expect(within(filledRow).getByText(/Publisher: “Prentice Hall”/)).toBeTruthy()
+  expect(within(filledRow).getByText('(from Google Books)')).toBeTruthy()
+  const details = openRow
+  const choice = within(details).getByLabelText('Include this book?') as HTMLSelectElement
+  fireEvent.change(choice, { target: { value: 'new' } })
+  const save = within(details).getByRole('button', { name: 'Save this choice' }) as HTMLButtonElement
+  expect(save.disabled).toBe(true)
+  fireEvent.click(within(filledRow).getByRole('checkbox'))
+  expect(save.disabled).toBe(false)
+  fireEvent.click(save)
+  await waitFor(() => expect(api.review).toHaveBeenCalledWith(expect.objectContaining({ decision: 'new', lookupChecked: true })))
  })
 })
