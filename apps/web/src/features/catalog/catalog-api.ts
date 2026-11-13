@@ -86,6 +86,7 @@ export const catalogApi = {
   ),
   createBook: (body: unknown) => request('/api/catalog/books', { method: 'POST', body: JSON.stringify(body) }),
   createBulkBook: (body: unknown) => request<BulkBookResult>('/api/v1/admin/catalog/bulk-entry', { method: 'POST', body: JSON.stringify(body) }),
+  searchSubjects: (q: string) => request<{ subjects: Array<{ name: string; workCount: number }> }>(`/api/v1/admin/books/subject-lookup?${new URLSearchParams({ q })}`),
   searchTitles: (title: string, author: string) => request<TitleLookupResult>(`/api/v1/admin/books/title-lookup?${new URLSearchParams({ title, author })}`),
   /** The lookup's cover for this ISBN as a file the add-book form can attach, or null when there is none. */
   async fetchCover(isbn: string): Promise<File | null> {

@@ -5,15 +5,30 @@ import { COVER_MAX_BYTES, coverSignatureMatches } from './cover-image.storage.ts
 import { isbnLookupRepository, type IsbnLookupRepository, type IsbnMetadata } from './isbn-lookup.repository.ts'
 
 type Fetcher = typeof fetch
-type GoogleVolume = { volumeInfo?: { title?: unknown; authors?: unknown; publisher?: unknown; publishedDate?: unknown; industryIdentifiers?: unknown } }
-type OpenLibraryDocument = { title?: unknown; author_name?: unknown; publisher?: unknown; first_publish_year?: unknown; publish_year?: unknown; isbn?: unknown }
+type GoogleVolume = { volumeInfo?: { title?: unknown; authors?: unknown; publisher?: unknown; publishedDate?: unknown; industryIdentifiers?: unknown; categories?: unknown } }
+type OpenLibraryDocument = { title?: unknown; author_name?: unknown; publisher?: unknown; first_publish_year?: unknown; publish_year?: unknown; isbn?: unknown; subject?: unknown }
 
 const CACHE_TTL_MS = 10 * 60 * 1000
 const TITLE_SEARCH_LIMIT = 10
+const SUBJECT_LIMIT = 5
 
 /** Title lookup (ported from STI ILMS REA): one provider result a staff member can pick to fill the form. */
-export type TitleCandidate = { title: string; author: string; publisher: string | null; publicationYear: number | null; isbn: string | null; inCatalog: boolean }
+export type TitleCandidate = { title: string; author: string; publisher: string | null; publicationYear: number | null; isbn: string | null; subjects: string[]; inCatalog: boolean }
 type RawCandidate = Omit<TitleCandidate, 'inCatalog'>
+
+/** Up to 5 distinct provider subjects, cleaned, for category suggestions. */
+function subjectsOf(value: unknown) {
+  const seen = new Set<string>()
+  const subjects: string[] = []
+  for (const item of Array.isArray(value) ? value : []) {
+    const subject = text(item, 100)
+    const key = subject.toLocaleLowerCase('en-US')
+    if (!subject || seen.has(key)) continue
+    seen.add(key); subjects.push(subject)
+    if (subjects.length === SUBJECT_LIMIT) break
+  }
+  return subjects
+}
 
 /** The first valid ISBN-13 in a provider list, else the first valid ISBN-10, else null. */
 function bestIsbn(values: unknown[]) {
@@ -99,13 +114,13 @@ export function createIsbnLookupService(options: {
     const title = text(info?.title, 255)
     const author = joined(info?.authors, 255)
     if (!title || !author) return null
-    return { isbn, title, author, publisher: text(info?.publisher, 255) || null, publicationYear: year(info?.publishedDate), source: 'google_books' }
+    return { isbn, title, author, publisher: text(info?.publisher, 255) || null, publicationYear: year(info?.publishedDate), subjects: subjectsOf(info?.categories), source: 'google_books' }
   }
 
   async function openLibrary(isbn: string): Promise<IsbnMetadata | null> {
     const url = new URL('https://openlibrary.org/search.json')
     url.searchParams.set('isbn', isbn)
-    url.searchParams.set('fields', 'title,author_name,publisher,first_publish_year,publish_year,isbn')
+    url.searchParams.set('fields', 'title,author_name,publisher,first_publish_year,publish_year,isbn,subject')
     url.searchParams.set('limit', '5')
     const payload = await fetchJson(fetcher, url, timeoutMs) as { docs?: OpenLibraryDocument[] }
     const document = payload.docs?.find((item) => exactIsbn(item.isbn, isbn))
@@ -114,7 +129,7 @@ export function createIsbnLookupService(options: {
     if (!title || !author) return null
     const publisher = Array.isArray(document?.publisher) ? text(document.publisher[0], 255) : text(document?.publisher, 255)
     const publicationYear = year(document?.first_publish_year) ?? (Array.isArray(document?.publish_year) ? year(document.publish_year[0]) : year(document?.publish_year))
-    return { isbn, title, author, publisher: publisher || null, publicationYear, source: 'open_library' }
+    return { isbn, title, author, publisher: publisher || null, publicationYear, subjects: subjectsOf(document?.subject), source: 'open_library' }
   }
 
   async function googleTitles(title: string, author: string): Promise<RawCandidate[]> {
@@ -130,7 +145,7 @@ export function createIsbnLookupService(options: {
       const found = titleWithSubtitle(info?.title, info?.subtitle)
       if (!found) return []
       const ids = Array.isArray(info?.industryIdentifiers) ? info.industryIdentifiers as Array<{ identifier?: unknown } | null> : []
-      return [{ title: found, author: joined(info?.authors, 255), publisher: text(info?.publisher, 255) || null, publicationYear: year(info?.publishedDate), isbn: bestIsbn(ids.map((id) => id?.identifier)) }]
+      return [{ title: found, author: joined(info?.authors, 255), publisher: text(info?.publisher, 255) || null, publicationYear: year(info?.publishedDate), isbn: bestIsbn(ids.map((id) => id?.identifier)), subjects: subjectsOf(info?.categories) }]
     })
   }
 
@@ -138,14 +153,14 @@ export function createIsbnLookupService(options: {
     const url = new URL('https://openlibrary.org/search.json')
     if (title) url.searchParams.set('title', title)
     if (author) url.searchParams.set('author', author)
-    url.searchParams.set('fields', 'title,subtitle,author_name,publisher,first_publish_year,isbn')
+    url.searchParams.set('fields', 'title,subtitle,author_name,publisher,first_publish_year,isbn,subject')
     url.searchParams.set('limit', String(TITLE_SEARCH_LIMIT))
     const payload = await fetchJson(fetcher, url, timeoutMs) as { docs?: Array<OpenLibraryDocument & { subtitle?: unknown }> }
     return (Array.isArray(payload.docs) ? payload.docs : []).flatMap((doc) => {
       const found = titleWithSubtitle(doc?.title, doc?.subtitle)
       if (!found) return []
       const publisher = Array.isArray(doc.publisher) ? text(doc.publisher[0], 255) : text(doc.publisher, 255)
-      return [{ title: found, author: joined(doc.author_name, 255), publisher: publisher || null, publicationYear: year(doc.first_publish_year), isbn: bestIsbn(Array.isArray(doc.isbn) ? doc.isbn : []) }]
+      return [{ title: found, author: joined(doc.author_name, 255), publisher: publisher || null, publicationYear: year(doc.first_publish_year), isbn: bestIsbn(Array.isArray(doc.isbn) ? doc.isbn : []), subjects: subjectsOf(doc.subject) }]
     })
   }
 
@@ -220,6 +235,28 @@ export function createIsbnLookupService(options: {
       }
       if (failures === providers.length) throw new HttpError(503, 'TITLE_LOOKUP_UNAVAILABLE', 'Book search is temporarily unavailable. Enter the details manually or try again.')
       return { source: null, localMatches, candidates: [] as TitleCandidate[] }
+    },
+
+    /** Open Library subjects whose name contains the text, for naming a new category; saves nothing. */
+    async searchSubjects(rawQuery: unknown) {
+      const query = text(rawQuery, 1000)
+      if ([...query].length < 2 || [...query].length > 100) throw new HttpError(422, 'SUBJECT_LOOKUP_INVALID', 'Enter a subject of 2 to 100 characters.', { errors: { q: 'Enter a subject of 2 to 100 characters.' } })
+      const url = new URL('https://openlibrary.org/search/subjects.json')
+      url.searchParams.set('q', query)
+      url.searchParams.set('limit', String(TITLE_SEARCH_LIMIT))
+      let payload: { docs?: Array<{ name?: unknown; work_count?: unknown }> }
+      try { payload = await fetchJson(fetcher, url, timeoutMs) as typeof payload } catch {
+        throw new HttpError(503, 'SUBJECT_LOOKUP_UNAVAILABLE', 'Subject search is temporarily unavailable. Try again later.')
+      }
+      // Open Library lists the same subject in several capitalisations; keep the first (most used) one.
+      const seen = new Set<string>()
+      return (Array.isArray(payload.docs) ? payload.docs : []).flatMap((doc) => {
+        const name = text(doc?.name, 100)
+        const key = name.toLocaleLowerCase('en-US')
+        if (!name || seen.has(key)) return []
+        seen.add(key)
+        return [{ name, workCount: Number.isSafeInteger(doc.work_count) ? Number(doc.work_count) : 0 }]
+      })
     },
 
     async lookup(rawIsbn: unknown): Promise<IsbnMetadata> {

@@ -26,6 +26,7 @@ export function createBulkBookRouter(controller: Controller = bulkBookController
   const covers = lookupLimiter()
   router.get('/isbn/:isbn', lookups, isbn.lookup)
   router.get('/title-lookup', lookups, isbn.searchTitles)
+  router.get('/subject-lookup', lookups, isbn.searchSubjects)
   router.get('/isbn/:isbn/cover', covers, isbn.cover)
   router.post('/add-bulk', controller.addBulk)
   router.get('/assets/:id', assets.adminAsset)

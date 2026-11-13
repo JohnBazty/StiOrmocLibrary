@@ -8,6 +8,8 @@ export type IsbnMetadata = {
   author: string
   publisher: string | null
   publicationYear: number | null
+  /** Provider subjects (Google categories, Open Library subjects), at most 5; used to suggest a category. */
+  subjects: string[]
   source: 'local_catalog' | 'google_books' | 'open_library'
 }
 
@@ -47,6 +49,7 @@ export class IsbnLookupRepository {
       author: row.author ?? '',
       publisher: row.publisher,
       publicationYear: row.publication_year == null ? null : Number(row.publication_year),
+      subjects: [],
       source: 'local_catalog',
     }
   }

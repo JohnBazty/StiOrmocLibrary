@@ -89,11 +89,12 @@ export type IsbnMetadata = {
   author: string
   publisher: string | null
   publicationYear: number | null
+  subjects?: string[]
   source: 'local_catalog' | 'google_books' | 'open_library'
 }
 
 /** GET /api/v1/admin/books/title-lookup: outside matches for a title, plus titles already in the catalog. */
-export type TitleCandidate = { title: string; author: string; publisher: string | null; publicationYear: number | null; isbn: string | null; inCatalog: boolean }
+export type TitleCandidate = { title: string; author: string; publisher: string | null; publicationYear: number | null; isbn: string | null; subjects?: string[]; inCatalog: boolean }
 export type TitleLookupResult = {
   source: 'google_books' | 'open_library' | null
   candidates: TitleCandidate[]

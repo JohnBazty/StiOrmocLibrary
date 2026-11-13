@@ -14,7 +14,7 @@ function appFor(accountId: number, router: express.Router) {
 test('ISBN and title lookups share one per-account limit per minute', async () => {
   const queries: unknown[] = []
   const ok = async (req: express.Request, res: express.Response) => { queries.push(req.query.title ?? req.params.isbn); res.json({ success: true }) }
-  const router = createBulkBookRouter({ addBulk: ok } as never, { adminAsset: ok, barcodePng: ok, qrPng: ok } as never, { lookup: ok, cover: ok, searchTitles: ok })
+  const router = createBulkBookRouter({ addBulk: ok } as never, { adminAsset: ok, barcodePng: ok, qrPng: ok } as never, { lookup: ok, cover: ok, searchTitles: ok, searchSubjects: ok })
   const first = appFor(1, router), second = appFor(2, router)
 
   assert.equal((await request(first).get('/books/title-lookup?title=Clean%20Code&author=Martin')).status, 200)
@@ -28,7 +28,7 @@ test('ISBN and title lookups share one per-account limit per minute', async () =
 
 test('cover requests have their own per-account budget', async () => {
   const ok = async (_req: express.Request, res: express.Response) => { res.json({ success: true }) }
-  const router = createBulkBookRouter({ addBulk: ok } as never, { adminAsset: ok, barcodePng: ok, qrPng: ok } as never, { lookup: ok, cover: ok, searchTitles: ok })
+  const router = createBulkBookRouter({ addBulk: ok } as never, { adminAsset: ok, barcodePng: ok, qrPng: ok } as never, { lookup: ok, cover: ok, searchTitles: ok, searchSubjects: ok })
   const app = appFor(3, router)
   for (let index = 0; index < LOOKUPS_PER_MINUTE; index += 1) await request(app).get('/books/isbn/9780132350884/cover')
   assert.equal((await request(app).get('/books/isbn/9780132350884/cover')).status, 429)

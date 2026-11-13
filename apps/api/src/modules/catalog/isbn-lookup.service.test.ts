@@ -24,7 +24,7 @@ test('maps exact Google Books ISBN metadata into the four autofill fields', asyn
     fetcher: (async () => new Response(JSON.stringify({ items: [{ volumeInfo: { title: 'Clean Code', authors: ['Robert C. Martin'], publisher: 'Prentice Hall', publishedDate: '2008-08-01', industryIdentifiers: [{ type: 'ISBN_13', identifier: validIsbn }] } }] }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch,
   })
   const result = await service.lookup(validIsbn)
-  assert.deepEqual(result, { isbn: validIsbn, title: 'Clean Code', author: 'Robert C. Martin', publisher: 'Prentice Hall', publicationYear: 2008, source: 'google_books' })
+  assert.deepEqual(result, { isbn: validIsbn, title: 'Clean Code', author: 'Robert C. Martin', publisher: 'Prentice Hall', publicationYear: 2008, subjects: [], source: 'google_books' })
 })
 
 test('uses Open Library first when no Google Books API key is configured', async () => {
@@ -78,8 +78,8 @@ test('title lookup returns up to 10 candidates and marks ones already in the cat
   assert.equal(urls[0].searchParams.get('author'), 'Martin')
   assert.equal(result.source, 'open_library')
   assert.deepEqual(result.candidates, [
-    { title: 'Clean Code: A Handbook of Agile Software Craftsmanship', author: 'Robert C. Martin', publisher: 'Prentice Hall', publicationYear: 2008, isbn: validIsbn, inCatalog: true },
-    { title: 'Clean Architecture', author: 'Robert C. Martin', publisher: null, publicationYear: null, isbn: null, inCatalog: false },
+    { title: 'Clean Code: A Handbook of Agile Software Craftsmanship', author: 'Robert C. Martin', publisher: 'Prentice Hall', publicationYear: 2008, isbn: validIsbn, subjects: [], inCatalog: true },
+    { title: 'Clean Architecture', author: 'Robert C. Martin', publisher: null, publicationYear: null, isbn: null, subjects: [], inCatalog: false },
   ])
   assert.equal(result.localMatches.length, 1)
 })
@@ -168,4 +168,29 @@ test('author lookup searches by author alone on both providers', async () => {
   const google = createIsbnLookupService({ repository, googleApiKey: 'k', fetcher: (async (input) => { urls.push(new URL(String(input))); return json({ items: [{ volumeInfo: { title: 'Clean Code' } }] }) }) as typeof fetch })
   await google.searchTitles({ author: 'Robert Martin' })
   assert.equal(urls[1].searchParams.get('q'), 'inauthor:Robert inauthor:Martin')
+})
+
+test('lookups return up to 5 distinct subjects from either provider', async () => {
+  const google = createIsbnLookupService({
+    repository: titleRepository(), googleApiKey: 'k',
+    fetcher: (async () => json({ items: [{ volumeInfo: { title: 'Clean Code', authors: ['Robert C. Martin'], categories: ['Computers', ' computers ', 'Software Engineering'], industryIdentifiers: [{ type: 'ISBN_13', identifier: validIsbn }] } }] })) as typeof fetch,
+  })
+  assert.deepEqual((await google.lookup(validIsbn)).subjects, ['Computers', 'Software Engineering'])
+  assert.deepEqual((await google.searchTitles({ title: 'Clean Code' })).candidates[0].subjects, ['Computers', 'Software Engineering'])
+  const openLibrary = createIsbnLookupService({
+    repository: titleRepository(), googleApiKey: '',
+    fetcher: (async (input) => { assert.match(new URL(String(input)).searchParams.get('fields') ?? '', /subject/); return json({ docs: [{ title: 'Clean Code', author_name: ['Robert C. Martin'], isbn: [validIsbn], subject: ['Agile software development', 'Reliability', 'Computer software', 'Coding theory', 'Testing', 'Sixth'] }] }) }) as typeof fetch,
+  })
+  assert.deepEqual((await openLibrary.lookup(validIsbn)).subjects, ['Agile software development', 'Reliability', 'Computer software', 'Coding theory', 'Testing'])
+})
+
+test('subject search lists Open Library subjects and refuses bad input', async () => {
+  let url: URL | null = null
+  const service = createIsbnLookupService({ repository: titleRepository(), googleApiKey: '', fetcher: (async (input) => { url = new URL(String(input)); return json({ docs: [{ name: 'Computer programming', work_count: 6386 }, { name: '' }, { work_count: 3 }, { name: 'computer programming', work_count: 9 }] }) }) as typeof fetch })
+  assert.deepEqual(await service.searchSubjects(' computer  programming '), [{ name: 'Computer programming', workCount: 6386 }])
+  assert.equal(url!.hostname, 'openlibrary.org')
+  assert.equal(url!.searchParams.get('q'), 'computer programming')
+  for (const bad of ['a', 'x'.repeat(101), undefined]) await assert.rejects(service.searchSubjects(bad), (error: unknown) => error instanceof HttpError && error.status === 422)
+  const down = createIsbnLookupService({ repository: titleRepository(), googleApiKey: '', fetcher: (async () => { throw new Error('offline') }) as typeof fetch })
+  await assert.rejects(down.searchSubjects('history'), (error: unknown) => error instanceof HttpError && error.status === 503)
 })
