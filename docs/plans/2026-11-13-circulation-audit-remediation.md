@@ -29,7 +29,7 @@ Remote inspection: PR 13 is open, mergeable and targets main. PR 27 is open and 
 - [x] Correct signed-out visitor wording
 - [x] Separate claims-returned and found-book refund plans
 - [x] Read-only production scheduler verification and exact remaining activation steps
-- [ ] Tests, typecheck, build, coverage, combined review and local source integration
+- [x] Tests, typecheck, build, coverage, combined review and local source integration
 - [ ] Owner-approved GitHub/production actions, if still required
 
 ## Change log
@@ -62,3 +62,29 @@ Remaining activation steps follow docs/runbooks/durable-job-runner.md: verify th
 ## Pending release actions
 
 The renewals and book-price PRs were merged into the isolated local audit branch only. No remote merge, push, deployment, real email, loan, fine, refund or scheduled-job execution is included. Keep this document inprogress until local integration verification and individually approved release actions finish.
+
+## Local integration completed
+
+- Isolated fix branch: fix/circulation-audit-remediation; implementation commit a95b10d, with local-only reviewed merges of PR 13 and PR 27 (including its damage-case prerequisite).
+- Integrated 67 explicit source/docs paths into C:/Users/JOHN/Documents/SSL/StiOrmocLibrary-main-sync on its existing codex/payment-local-integration branch. Original working checkout and all unrelated payment edits remain intact. Seven initial merge overlaps were reviewed; normalizing existing local theme colors reduced these to two content conflicts, resolved by keeping both payment and circulation changes. Exact file preimages remain under the isolated clone's ignored output/audit/local-integration/before directory.
+- Running local integration: 641 API tests and 413 web tests passed; npm run typecheck, npm run build and npm run coverage passed. API line coverage is 74.09%, web line coverage 66.67%; neither is a repository-wide 80% claim.
+- Local API health and web login return 200; schema readiness reports no missing tables or columns. Local timers and real payment settlement remain disabled by the existing launcher. The unchanged payment projection and sign-in preventScroll code were verified after integration.
+- Chrome connection succeeded. The existing signed-in Student borrowing history loaded correctly with real returned records; no Renew action appeared on returned/cancelled loans. Desktop and a narrow/mobile browser viewport were inspected, with no horizontal document overflow. Browser zoom meant the mobile DOM reported roughly 488 CSS px; this is not a physical-phone check or a 390 CSS-px certification. Temporary viewport override was reset. No checkout, renewal, return or payment was submitted.
+- Live production API health is 200/healthy/ready. Required scheduler remains absent. The current local configuration lacked the public Data API URL/key for a fresh net-schema exposure probe; this prerequisite must be verified before any production job activation. An existing React descendant-route warning appeared in the local server log; it is outside the circulation diff and did not prevent the checked history route from loading.
+- Production remains unchanged. No branch was pushed and no PR was opened or merged remotely. Claims-returned, recovered-lost-book charges/refunds and email/day-level notices remain separate planned work.
+
+### Audit outcome
+
+| Item | Outcome |
+| --- | --- |
+| Pickup deadline | Fixed locally: one open library day at the same Manila clock; Saturday/holiday regressions pass. |
+| Renewals | PR 13 integrated locally with role, exact-clock and damaged/repair-copy repairs; borrower and staff UI/API included. |
+| Long overdue | Existing durable runner opens deduplicated follow-up reviews at the saved threshold; physical return resolves the case, fines remain. |
+| Lost charge | PR 27 integrated locally; recorded book price wins, no automatic historical repricing. |
+| Visitor message | Neutral sign-in message fixed; prior scroll/focus repair preserved. |
+| Claims returned | Approved rule recorded in separate implementation plan; not built. |
+| Recovered lost book/refund | Separate plan prepared; charge-cancellation policy still needs review. |
+| Email and day-level notices | Separate plan prepared; levels and rollout not yet approved. |
+| Production jobs | Confirmed inactive. Vault, isolation verification and Cron activation still need individually approved release steps. |
+
+- 2026-11-13: Finished local source integration, required checks and limited read-only Chrome verification. Retained inprogress because remote release, activation and separate policy plans are outstanding.
