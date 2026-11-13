@@ -6,7 +6,7 @@
 | **Date last updated** | 2026-11-13 |
 | **Status** | `inprogress` |
 | **Branch** | `feat/book-register` (from `main`) |
-| **Supabase migration** | `037_book_register.sql` (draft, not applied) |
+| **Supabase migration** | `037_book_register.sql` (applied live 2026-11-13) |
 | **Source** | STI ILMS REA (Ethan's repo): bibliographic records, items, books received, ISBN lookup and title lookup. Code is ported and adapted to this repo's tables; nothing comes from Koha. |
 
 ## Why
@@ -108,3 +108,4 @@ Text columns, as in REA: "xii, 340 p." and "2 vols." are not numbers. `schema-re
 - 2026-11-13: Ethan approved with the recommended answers; building started. Edition and pages reuse `catalog_title_details` (021) instead of new `titles` columns, so `037` adds only class, volumes and remarks to `titles`. The add-book form's real path is `bulk-entry`, which already generates accession numbers. Lost charge needs no change on `main`. `037` drafted; next unused `038`.
 - 2026-11-13: Reviews done, no CRITICAL or HIGH. Fixed: `037` lock timeout and a notice for prices it cannot copy; CSV guard also covers a leading tab or carriage return; title results clear when the title or author changes; register loading state; distinct "Use" button names. Open: confirm `purchase_price` is per copy; CSV export stops at 20,000 rows.
 - 2026-11-13: Ethan confirmed `titles.purchase_price` is a per-copy price, and renamed the fund source "School fund" to "Purchase" (list: Purchase, Donation, Government grant, Other).
+- 2026-11-13: Ethan chose to test against live; `037` applied with `npm run db:supabase` (the file's own BEGIN/COMMIT removed first, since the runner owns the transaction). Live check: 6 new columns, 16 of 37 copies got their title's price, no mismatches.
