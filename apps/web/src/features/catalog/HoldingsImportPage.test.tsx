@@ -352,4 +352,3 @@ describe('Unsaved book edits in the import', () => {
   link.remove()
  })
 })
-
