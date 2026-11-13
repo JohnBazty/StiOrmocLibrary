@@ -2,6 +2,7 @@ import { type FormEvent, useState } from 'react'
 import { Search } from 'lucide-react'
 import { SectionCard } from '../../components/ui'
 import { catalogApi } from '../catalog/catalog-api'
+import { PredictionList, usePredictions } from '../catalog/usePredictions'
 
 /** Searches Open Library subjects so a new category can take a standard subject name. Creating still needs a shelf. */
 export function SubjectFinder({ existing, onCreate }: { existing: string[]; onCreate: (name: string) => void }) {
@@ -9,6 +10,7 @@ export function SubjectFinder({ existing, onCreate }: { existing: string[]; onCr
   const [subjects, setSubjects] = useState<Array<{ name: string; workCount: number }> | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const predictions = usePredictions('subject', query)
   const taken = new Set(existing.map((name) => name.trim().toLocaleLowerCase('en-US')))
 
   async function search(event: FormEvent) {
@@ -21,8 +23,9 @@ export function SubjectFinder({ existing, onCreate }: { existing: string[]; onCr
     <h2 className="font-bold text-[#003399]">Find a subject</h2>
     <p className="mt-1 text-sm text-[#003399]/70">Search Open Library's subjects to name a new category the way catalogs do. You still choose its shelf.</p>
     <form onSubmit={search} className="mt-3 flex flex-wrap gap-2">
-      <label className="min-w-0 flex-1"><span className="sr-only">Subject to search</span><input value={query} onChange={(event) => setQuery(event.target.value)} maxLength={100} placeholder="For example: computer programming" className="h-11 w-full rounded-xl border border-[#003399]/20 bg-[#FFFFFF] px-3 text-sm text-[#003399]" /></label>
+      <label className="min-w-0 flex-1"><span className="sr-only">Subject to search</span><input value={query} list="subject-predictions" autoComplete="off" onChange={(event) => setQuery(event.target.value)} maxLength={100} placeholder="For example: computer programming" className="h-11 w-full rounded-xl border border-[#003399]/20 bg-[#FFFFFF] px-3 text-sm text-[#003399]" /></label>
       <button type="submit" disabled={busy || query.trim().length < 2} className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#003399] px-4 text-sm font-bold text-[#FFFFFF] disabled:opacity-50"><Search size={16} />{busy ? 'Searching…' : 'Search subjects'}</button>
+      <PredictionList id="subject-predictions" suggestions={predictions} />
     </form>
     {error ? <p role="alert" className="mt-2 rounded-lg bg-[#FFF200] p-2 text-sm font-bold text-[#003399]">{error}</p> : null}
     {subjects && !subjects.length ? <p role="status" className="mt-2 text-sm text-[#003399]">No subjects found.</p> : null}

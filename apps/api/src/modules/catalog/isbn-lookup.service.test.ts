@@ -194,3 +194,37 @@ test('subject search lists Open Library subjects and refuses bad input', async (
   const down = createIsbnLookupService({ repository: titleRepository(), googleApiKey: '', fetcher: (async () => { throw new Error('offline') }) as typeof fetch })
   await assert.rejects(down.searchSubjects('history'), (error: unknown) => error instanceof HttpError && error.status === 503)
 })
+
+test('predictions complete the last word on Open Library for titles, authors and subjects', async () => {
+  const urls: URL[] = []
+  const service = createIsbnLookupService({
+    repository: titleRepository(), googleApiKey: '',
+    fetcher: (async (input) => {
+      const url = new URL(String(input)); urls.push(url)
+      if (url.pathname === '/search.json') return json({ docs: [{ title: 'Clean Code' }, { title: 'clean code' }, { title: 'Clean Coaching' }, { title: 'Commission on Clean Elections' }, {}] })
+      if (url.pathname === '/search/authors.json') return json({ docs: [{ name: 'Robert Martin' }, { name: 'Robert Marteau' }] })
+      return json({ docs: [{ name: 'Computers' }, { name: 'Computer science' }] })
+    }) as typeof fetch,
+  })
+  assert.deepEqual(await service.predict('title', 'Clean  co'), ['Clean Code', 'Clean Coaching'])
+  assert.equal(urls[0].searchParams.get('q'), 'title_suggest:(clean AND co*)')
+  assert.deepEqual(await service.predict('author', 'robert mart'), ['Robert Martin', 'Robert Marteau'])
+  assert.equal(urls[1].searchParams.get('q'), 'name:(robert AND mart*)')
+  assert.deepEqual(await service.predict('subject', 'compu'), ['Computers', 'Computer science'])
+  assert.equal(urls[2].searchParams.get('q'), 'compu*')
+  assert.deepEqual(await service.predict('title', 'clean '), ['Clean Code', 'Clean Coaching', 'Commission on Clean Elections'], 'a finished word matches a whole title word anywhere')
+  assert.equal(urls[3].searchParams.get('q'), 'title_suggest:(clean)', 'a finished word is not a prefix')
+})
+
+test('predictions strip search syntax, cache answers, and stay quiet on short text or provider failure', async () => {
+  let calls = 0
+  const service = createIsbnLookupService({ repository: titleRepository(), googleApiKey: '', fetcher: (async (input) => { calls += 1; assert.equal(new URL(String(input)).searchParams.get('q'), 'title_suggest:(c AND code AND x*)'); return json({ docs: [{ title: 'C++ Code X' }] }) }) as typeof fetch })
+  assert.deepEqual(await service.predict('title', 'C++ (code) AND: x'), ['C++ Code X'])
+  await service.predict('title', 'c++ (CODE) and: X')
+  assert.equal(calls, 1, 'the same words are answered from the cache')
+  assert.deepEqual(await service.predict('title', 'ab'), [])
+  assert.equal(calls, 1)
+  await assert.rejects(service.predict('isbn' as never, 'clean'), (error: unknown) => error instanceof HttpError && error.status === 422)
+  const down = createIsbnLookupService({ repository: titleRepository(), googleApiKey: '', fetcher: (async () => { throw new Error('offline') }) as typeof fetch })
+  assert.deepEqual(await down.predict('author', 'robert'), [])
+})

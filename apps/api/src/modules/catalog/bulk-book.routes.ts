@@ -10,8 +10,10 @@ type IsbnController = ReturnType<typeof createIsbnLookupController>
 
 /** Outside book lookups share one per-account budget so a stuck scanner cannot use up the providers' quota. */
 export const LOOKUPS_PER_MINUTE = 30
-const lookupLimiter = () => rateLimit({
-  windowMs: 60_000, limit: LOOKUPS_PER_MINUTE, standardHeaders: true, legacyHeaders: false,
+/** Predictions fire while staff type (after a pause), so they get a larger budget of their own. */
+export const PREDICTIONS_PER_MINUTE = 90
+const lookupLimiter = (limit = LOOKUPS_PER_MINUTE) => rateLimit({
+  windowMs: 60_000, limit, standardHeaders: true, legacyHeaders: false,
   keyGenerator: (request: Request, response: Response) => {
     const accountId = (response.locals.authenticatedUser as { accountId?: number } | undefined)?.accountId
     return accountId ? `account:${accountId}` : ipKeyGenerator(request.ip ?? '')
@@ -27,6 +29,7 @@ export function createBulkBookRouter(controller: Controller = bulkBookController
   router.get('/isbn/:isbn', lookups, isbn.lookup)
   router.get('/title-lookup', lookups, isbn.searchTitles)
   router.get('/subject-lookup', lookups, isbn.searchSubjects)
+  router.get('/predict', lookupLimiter(PREDICTIONS_PER_MINUTE), isbn.predict)
   router.get('/isbn/:isbn/cover', covers, isbn.cover)
   router.post('/add-bulk', controller.addBulk)
   router.get('/assets/:id', assets.adminAsset)

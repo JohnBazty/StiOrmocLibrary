@@ -7,14 +7,15 @@ import { isbnInputError, normalizeIsbnInput } from './isbn'
 import { SelectedFilePreview } from '../../components/SelectedFilePreview'
 import { TitleLookup } from './TitleLookup'
 import { CategorySuggestion } from './CategorySuggestion'
+import { PredictionList, usePredictions } from './usePredictions'
 
 const fieldClass = 'h-11 w-full rounded-xl border border-[#003399]/20 bg-[#FFFFFF] px-3 text-sm text-[#003399] outline-none focus:border-[#003399] focus:ring-4 focus:ring-[#003399]/10'
 const labelClass = 'mb-1.5 block text-xs font-bold uppercase tracking-wide text-[#003399]'
 /** Same list as the API's FUND_SOURCES (bulk-book.validation.ts). */
 const FUND_SOURCES = ['Purchase', 'Donation', 'Government grant', 'Other']
 
-function Field({ label, name, required, value, onChange }: { label: string; name: string; required?: boolean; value?: string; onChange?: (value: string) => void }) {
-  return <label><span className={labelClass}>{label}{required ? ' *' : ''}</span><input name={name} required={required} value={value} onChange={onChange ? (event) => onChange(event.target.value) : undefined} className={fieldClass} /></label>
+function Field({ label, name, required, value, onChange, list }: { label: string; name: string; required?: boolean; value?: string; onChange?: (value: string) => void; list?: string }) {
+  return <label><span className={labelClass}>{label}{required ? ' *' : ''}</span><input name={name} required={required} value={value} list={list} autoComplete={list ? 'off' : undefined} onChange={onChange ? (event) => onChange(event.target.value) : undefined} className={fieldClass} /></label>
 }
 
 export function AddMultipleCopiesModal({ categories, locations, onCreated, onClose }: {
@@ -52,6 +53,8 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
   }, [])
   const [isbn, setIsbn] = useState('')
   const [metadata, setMetadata] = useState({ title: '', author: '', publisher: '', publicationYear: '' })
+  const titlePredictions = usePredictions('title', metadata.title)
+  const authorPredictions = usePredictions('author', metadata.author)
   const [lookupStatus, setLookupStatus] = useState<{ state: 'idle' | 'loading' | 'found' | 'error'; message: string }>({ state: 'idle', message: '' })
   const lookupAbort = useRef<AbortController | null>(null)
   const lastLookup = useRef('')
@@ -159,7 +162,8 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
       <form onSubmit={submit} className="grid gap-4 p-5 sm:grid-cols-2">
         {message ? <div role={batch ? 'status' : 'alert'} className={`rounded-xl p-3 text-sm font-semibold text-[#003399] sm:col-span-2 ${batch ? 'border border-[#003399] bg-[#FFFFFF]' : 'bg-[#FFF200]'}`}>{message}</div> : null}
         {Object.keys(errors).length ? <div role="alert" className="rounded-xl bg-[#FFF200] p-3 text-sm text-[#003399] sm:col-span-2"><ul className="list-inside list-disc">{Object.entries(errors).map(([field, error]) => <li key={field}><strong>{field}:</strong> {error}</li>)}</ul></div> : null}
-        <Field label="Title" name="title" required value={metadata.title} onChange={(title) => setMetadata((current) => ({ ...current, title }))} /><Field label="Author" name="author" required value={metadata.author} onChange={(author) => setMetadata((current) => ({ ...current, author }))} />
+        <PredictionList id="title-predictions" suggestions={titlePredictions} /><PredictionList id="author-predictions" suggestions={authorPredictions} />
+        <Field label="Title" name="title" required list="title-predictions" value={metadata.title} onChange={(title) => setMetadata((current) => ({ ...current, title }))} /><Field label="Author" name="author" required list="author-predictions" value={metadata.author} onChange={(author) => setMetadata((current) => ({ ...current, author }))} />
         <TitleLookup title={metadata.title} author={metadata.author} disabled={saving || Boolean(batch)} onPick={(candidate) => {
           setMetadata((current) => ({ ...current, title: candidate.title, author: candidate.author || current.author, publisher: candidate.publisher ?? current.publisher, publicationYear: candidate.publicationYear ? String(candidate.publicationYear) : current.publicationYear }))
           // The pick already filled the form, so the ISBN field must not look it up again and overwrite it.

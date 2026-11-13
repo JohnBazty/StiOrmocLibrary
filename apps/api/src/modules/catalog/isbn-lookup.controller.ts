@@ -17,6 +17,12 @@ export function createIsbnLookupController(service: Service = isbnLookupService)
         response.set({ 'Content-Type': found.contentType, 'Cache-Control': 'private, max-age=600', 'X-Content-Type-Options': 'nosniff' }).send(found.bytes)
       } catch (error) { next(error) }
     },
+    predict: async (request: Request, response: Response, next: NextFunction) => {
+      try {
+        response.set('Cache-Control', 'private, max-age=600')
+        response.json({ success: true, data: { suggestions: await service.predict(String(request.query.field ?? '') as never, request.query.q) } })
+      } catch (error) { next(error) }
+    },
     searchSubjects: async (request: Request, response: Response, next: NextFunction) => {
       try {
         response.set('Cache-Control', 'private, max-age=600')

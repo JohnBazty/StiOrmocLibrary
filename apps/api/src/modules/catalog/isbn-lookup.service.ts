@@ -11,10 +11,23 @@ type OpenLibraryDocument = { title?: unknown; author_name?: unknown; publisher?:
 const CACHE_TTL_MS = 10 * 60 * 1000
 const TITLE_SEARCH_LIMIT = 10
 const SUBJECT_LIMIT = 5
+const PREDICTION_LIMIT = 8
+const PREDICTION_CACHE_SIZE = 1000
+export const PREDICTION_FIELDS = ['title', 'author', 'subject'] as const
+export type PredictionField = (typeof PREDICTION_FIELDS)[number]
 
 /** Title lookup (ported from STI ILMS REA): one provider result a staff member can pick to fill the form. */
 export type TitleCandidate = { title: string; author: string; publisher: string | null; publicationYear: number | null; isbn: string | null; subjects: string[]; inCatalog: boolean }
 type RawCandidate = Omit<TitleCandidate, 'inCatalog'>
+
+/** True when the title has the typed words one after another; the last may be unfinished (a prefix). */
+function wordsInOrder(title: string, typed: string[], finished: boolean) {
+  const titleWords = title.match(/[\p{L}\p{N}]+/gu) ?? []
+  return titleWords.some((_, start) => typed.every((word, index) => {
+    const titleWord = titleWords[start + index] ?? ''
+    return index === typed.length - 1 && !finished ? titleWord.startsWith(word) : titleWord === word
+  }))
+}
 
 /** Up to 5 distinct provider subjects, cleaned, for category suggestions. */
 function subjectsOf(value: unknown) {
@@ -101,6 +114,7 @@ export function createIsbnLookupService(options: {
   const timeoutMs = options.timeoutMs ?? env.isbnLookup.timeoutMs
   const googleApiKey = options.googleApiKey ?? env.isbnLookup.googleBooksApiKey
   const cache = new Map<string, { expiresAt: number; data: IsbnMetadata }>()
+  const predictionCache = new Map<string, { expiresAt: number; data: string[] }>()
 
   async function google(isbn: string): Promise<IsbnMetadata | null> {
     const url = new URL('https://www.googleapis.com/books/v1/volumes')
@@ -235,6 +249,43 @@ export function createIsbnLookupService(options: {
       }
       if (failures === providers.length) throw new HttpError(503, 'TITLE_LOOKUP_UNAVAILABLE', 'Book search is temporarily unavailable. Enter the details manually or try again.')
       return { source: null, localMatches, candidates: [] as TitleCandidate[] }
+    },
+
+    /**
+     * Search predictions while staff type: Open Library titles, authors or subjects that start like the text.
+     * Silent on failure (an empty list), because predictions only help; the full lookup still reports errors.
+     */
+    async predict(field: PredictionField, rawText: unknown) {
+      if (!(PREDICTION_FIELDS as readonly string[]).includes(field)) throw new HttpError(422, 'PREDICTION_INVALID', 'Predictions cover title, author or subject.', { errors: { field: 'Use title, author or subject.' } })
+      const typed = typeof rawText === 'string' ? rawText.slice(0, 200) : ''
+      // Letters and digits only, so nothing typed can act as Open Library search syntax.
+      const words = (typed.toLocaleLowerCase('en-US').match(/[\p{L}\p{N}]+/gu) ?? []).filter((word) => !['and', 'or', 'not'].includes(word)).slice(0, 6).map((word) => word.slice(0, 40))
+      if (words.join('').length < 3) return []
+      const finished = /\s$/.test(typed)
+      const terms = words.map((word, index) => (index === words.length - 1 && !finished ? `${word}*` : word)).join(' AND ')
+      const key = `${field}:${terms}`
+      const cached = predictionCache.get(key)
+      if (cached && cached.expiresAt > Date.now()) return cached.data
+      const url = new URL(field === 'title' ? 'https://openlibrary.org/search.json' : field === 'author' ? 'https://openlibrary.org/search/authors.json' : 'https://openlibrary.org/search/subjects.json')
+      url.searchParams.set('q', field === 'title' ? `title_suggest:(${terms})` : field === 'author' ? `name:(${terms})` : terms.replaceAll(' AND ', ' '))
+      url.searchParams.set('limit', String(field === 'title' ? PREDICTION_LIMIT * 4 : PREDICTION_LIMIT * 2))
+      if (field === 'title') { url.searchParams.set('fields', 'title'); url.searchParams.set('sort', 'editions') }
+      if (field === 'author') url.searchParams.set('sort', 'work_count desc')
+      let docs: Array<{ title?: unknown; name?: unknown }>
+      try { docs = ((await fetchJson(fetcher, url, timeoutMs)) as { docs?: typeof docs }).docs ?? [] } catch { return [] }
+      const seen = new Set<string>()
+      const data = (Array.isArray(docs) ? docs : []).flatMap((doc) => {
+        const value = text(field === 'title' ? doc?.title : doc?.name, 255)
+        const dedupe = value.toLocaleLowerCase('en-US')
+        if (!value || seen.has(dedupe)) return []
+        // Open Library matches the words anywhere in a title; keep titles where they follow each other as typed.
+        if (field === 'title' && !wordsInOrder(dedupe, words, finished)) return []
+        seen.add(dedupe)
+        return [value]
+      }).slice(0, PREDICTION_LIMIT)
+      if (predictionCache.size >= PREDICTION_CACHE_SIZE) predictionCache.delete(predictionCache.keys().next().value!)
+      predictionCache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, data })
+      return data
     },
 
     /** Open Library subjects whose name contains the text, for naming a new category; saves nothing. */
