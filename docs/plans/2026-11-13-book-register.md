@@ -112,3 +112,4 @@ Text columns, as in REA: "xii, 340 p." and "2 vols." are not numbers. `schema-re
 - 2026-11-13: Ethan confirmed `titles.purchase_price` is a per-copy price, and renamed the fund source "School fund" to "Purchase" (list: Purchase, Donation, Government grant, Other).
 - 2026-11-13: Ethan chose to test against live; `037` applied with `npm run db:supabase` (the file's own BEGIN/COMMIT removed first, since the runner owns the transaction). Live check: 6 new columns, 16 of 37 copies got their title's price, no mismatches.
 - 2026-11-13: Ethan added automatic covers from the lookup, keeping manual upload. Covers are fetched by ISBN only (fixed hosts), never from a URL the browser sends.
+- 2026-11-13: Ethan added author lookup: the title search now also runs with only an author (button "Search by title or author"); local matches filter on title, author or both.

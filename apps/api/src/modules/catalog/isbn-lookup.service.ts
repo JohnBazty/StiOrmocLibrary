@@ -30,8 +30,10 @@ function titleWithSubtitle(title: unknown, subtitle: unknown) {
 function titleQueryOf(query: { title?: unknown; author?: unknown }) {
   const title = text(query.title, 1000), author = text(query.author, 1000)
   const errors: Record<string, string> = {}
-  if ([...title].length < 2 || [...title].length > 200) errors.title = 'Enter a title of 2 to 200 characters.'
-  if ([...author].length > 200) errors.author = 'Author must not exceed 200 characters.'
+  // Title, author or both: either one alone is enough to search (author lookup).
+  if (!title && !author) errors.title = 'Enter a title or an author to search.'
+  if (title && ([...title].length < 2 || [...title].length > 200)) errors.title = 'Enter a title of 2 to 200 characters.'
+  if (author && ([...author].length < 2 || [...author].length > 200)) errors.author = 'Enter an author of 2 to 200 characters.'
   if (Object.keys(errors).length) throw new HttpError(422, 'TITLE_LOOKUP_INVALID', Object.values(errors)[0], { errors })
   return { title, author }
 }
@@ -134,7 +136,7 @@ export function createIsbnLookupService(options: {
 
   async function openLibraryTitles(title: string, author: string): Promise<RawCandidate[]> {
     const url = new URL('https://openlibrary.org/search.json')
-    url.searchParams.set('title', title)
+    if (title) url.searchParams.set('title', title)
     if (author) url.searchParams.set('author', author)
     url.searchParams.set('fields', 'title,subtitle,author_name,publisher,first_publish_year,isbn')
     url.searchParams.set('limit', String(TITLE_SEARCH_LIMIT))
@@ -204,7 +206,7 @@ export function createIsbnLookupService(options: {
     /** Searches outside catalogs by title (and author); saves nothing. */
     async searchTitles(query: { title?: unknown; author?: unknown }) {
       const { title, author } = titleQueryOf(query)
-      const localMatches = await repository.findLocalByTitle(title)
+      const localMatches = await repository.findLocalByTitle(title, author)
       const providers: Array<[(t: string, a: string) => Promise<RawCandidate[]>, IsbnMetadata['source']]> = googleApiKey
         ? [[googleTitles, 'google_books'], [openLibraryTitles, 'open_library']]
         : [[openLibraryTitles, 'open_library'], [googleTitles, 'google_books']]

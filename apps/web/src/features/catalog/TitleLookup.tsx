@@ -5,12 +5,12 @@ import type { TitleCandidate, TitleLookupResult } from './types'
 
 const SOURCE_NAMES = { google_books: 'Google Books', open_library: 'Open Library' } as const
 
-/** Title lookup (ported from STI ILMS REA): search outside catalogs by the typed title and author, then pick a result to fill the form. */
+/** Title and author lookup (ported from STI ILMS REA): search outside catalogs by the typed title, author or both, then pick a result to fill the form. */
 export function TitleLookup({ title, author, disabled, onPick }: { title: string; author: string; disabled?: boolean; onPick: (candidate: TitleCandidate) => void }) {
   const [result, setResult] = useState<TitleLookupResult | null>(null)
   const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [message, setMessage] = useState('')
-  const tooShort = title.trim().length < 2
+  const tooShort = title.trim().length < 2 && author.trim().length < 2
   const latest = useRef(0)
 
   // Results belong to the words searched; once the title or author changes they could fill the form with the wrong book.
@@ -32,9 +32,9 @@ export function TitleLookup({ title, author, disabled, onPick }: { title: string
 
   return <div className="sm:col-span-2">
     <button type="button" disabled={disabled || tooShort || state === 'loading'} onClick={() => void search()} className="inline-flex h-11 items-center gap-2 rounded-xl border border-[#003399] bg-[#FFFFFF] px-4 text-sm font-bold text-[#003399] disabled:opacity-50">
-      <Search size={16} />{state === 'loading' ? 'Searching…' : 'Search by title and author'}
+      <Search size={16} />{state === 'loading' ? 'Searching…' : 'Search by title or author'}
     </button>
-    {tooShort ? <span className="ml-3 text-xs text-[#003399]/65">Type at least 2 letters of the title first.</span> : null}
+    {tooShort ? <span className="ml-3 text-xs text-[#003399]/65">Type at least 2 letters of the title or the author first.</span> : null}
     {message ? <p role={state === 'error' ? 'alert' : 'status'} className="mt-2 rounded-lg bg-[#FFF200] p-2 text-xs font-bold text-[#003399]">{message}</p> : null}
     {result?.localMatches.length ? <p role="status" className="mt-2 text-xs font-semibold text-[#003399]">Already in the catalog: {result.localMatches.map((match) => match.title).join('; ')}. Add copies to that title instead of creating a new one.</p> : null}
     {result?.candidates.length ? <section aria-label="Title search results" className="mt-2 rounded-xl border border-[#003399]/20 p-3">

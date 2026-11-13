@@ -17,8 +17,10 @@ test('title lookup queries find local ISBNs and titles, treating % and _ as plai
   const repository = new IsbnLookupRepository({ execute } as unknown as Pool)
 
   assert.deepEqual([...await repository.findLocalIsbns(['9780132350884', '9780000000002', '0000000000'])], ['9780132350884'])
-  assert.deepEqual(await repository.findLocalByTitle('CLEAN'), [{ titleId: 1, title: 'Clean Code', author: 'Robert C. Martin', isbn: '9780132350884' }])
-  assert.equal((await repository.findLocalByTitle('0% m')).length, 1)
-  assert.equal((await repository.findLocalByTitle('_lean')).length, 0)
+  assert.deepEqual(await repository.findLocalByTitle('', 'martin'), [{ titleId: 1, title: 'Clean Code', author: 'Robert C. Martin', isbn: '9780132350884' }])
+  assert.equal((await repository.findLocalByTitle('math', 'martin')).length, 0, 'title and author must both match')
+  assert.deepEqual(await repository.findLocalByTitle('CLEAN', ''), [{ titleId: 1, title: 'Clean Code', author: 'Robert C. Martin', isbn: '9780132350884' }])
+  assert.equal((await repository.findLocalByTitle('0% m', '')).length, 1)
+  assert.equal((await repository.findLocalByTitle('_lean', '')).length, 0)
   await pg.close()
 })

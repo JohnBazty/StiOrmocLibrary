@@ -13,7 +13,7 @@ describe('title lookup in the add-book form', () => {
   it('searches by the typed title and author and fills the form from the picked result without an ISBN re-lookup', async () => {
     api.searchTitles.mockResolvedValue({ source: 'open_library', localMatches: [{ titleId: 4, title: 'Clean Code', author: 'Robert C. Martin', isbn: null }], candidates: [candidate] })
     render(<AddMultipleCopiesModal categories={categories} onCreated={() => undefined} onClose={() => undefined} />)
-    const search = screen.getByRole('button', { name: /Search by title and author/i })
+    const search = screen.getByRole('button', { name: /Search by title or author/i })
     expect((search as HTMLButtonElement).disabled).toBe(true)
     fireEvent.change(screen.getByLabelText(/Title \*/i), { target: { value: 'Clean Code' } })
     fireEvent.change(screen.getByLabelText(/Author \*/i), { target: { value: 'Martin' } })
@@ -34,7 +34,7 @@ describe('title lookup in the add-book form', () => {
     api.searchTitles.mockResolvedValue({ source: 'open_library', localMatches: [], candidates: [candidate] })
     render(<AddMultipleCopiesModal categories={categories} onCreated={() => undefined} onClose={() => undefined} />)
     fireEvent.change(screen.getByLabelText(/Title \*/i), { target: { value: 'Clean Code' } })
-    fireEvent.click(screen.getByRole('button', { name: /Search by title and author/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Search by title or author/i }))
     expect(await screen.findByRole('button', { name: 'Use Clean Code: A Handbook' })).toBeTruthy()
     fireEvent.change(screen.getByLabelText(/Title \*/i), { target: { value: 'Refactoring' } })
     expect(screen.queryByRole('button', { name: 'Use Clean Code: A Handbook' })).toBeNull()
@@ -44,8 +44,18 @@ describe('title lookup in the add-book form', () => {
     api.searchTitles.mockRejectedValue(new Error('Book search is temporarily unavailable.'))
     render(<AddMultipleCopiesModal categories={categories} onCreated={() => undefined} onClose={() => undefined} />)
     fireEvent.change(screen.getByLabelText(/Title \*/i), { target: { value: 'Clean Code' } })
-    fireEvent.click(screen.getByRole('button', { name: /Search by title and author/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Search by title or author/i }))
     expect((await screen.findByText('Book search is temporarily unavailable.')).getAttribute('role')).toBe('alert')
+  })
+
+  it('searches by author alone', async () => {
+    api.searchTitles.mockResolvedValue({ source: 'google_books', localMatches: [], candidates: [candidate] })
+    render(<AddMultipleCopiesModal categories={categories} onCreated={() => undefined} onClose={() => undefined} />)
+    fireEvent.change(screen.getByLabelText(/Author \*/i), { target: { value: 'Robert Martin' } })
+    fireEvent.click(screen.getByRole('button', { name: /Search by title or author/i }))
+    await waitFor(() => expect(api.searchTitles).toHaveBeenCalledWith('', 'Robert Martin'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Use Clean Code: A Handbook' }))
+    expect((screen.getByLabelText(/Title \*/i) as HTMLInputElement).value).toBe('Clean Code: A Handbook')
   })
 })
 
