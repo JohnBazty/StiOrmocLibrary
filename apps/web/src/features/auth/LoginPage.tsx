@@ -54,7 +54,7 @@ export function LoginPage({ popup = false }: { popup?: boolean }) {
     } else if (state?.rememberedExpired) { setMessage('Your remembered sign-in has expired. Sign in again to continue.')
     } else if (state?.sessionExpired) { setMessage('Your sign-in has ended. Sign in to continue.')
     } else if (state?.deniedPath) {
-      setMessage('Your account cannot open that page. Please sign in with an authorized account.')
+      setMessage('Sign in to continue to that page.')
     }
     if (claims || state?.sessionExpired || state?.rememberedExpired) return
     let active = true
