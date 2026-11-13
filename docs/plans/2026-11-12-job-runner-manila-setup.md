@@ -4,8 +4,8 @@
 | --- | --- |
 | Why | Complete John's production handoff from the groupmate's November 12 note and make business calendar reads use Manila time |
 | Date created | 2026-11-12 |
-| Date last updated | 2026-11-12 |
-| Status | `inprogress` |
+| Date last updated | 2026-11-13 |
+| Status | `built` |
 | Scope | Production runner setup, a minimal timezone correction, and a private-key handoff; no school jobs or migrations run |
 
 ## Findings and implementation
@@ -41,10 +41,10 @@
 - [x] Save the owner-provided runner key for Production only.
 - [x] Reproduce the host-zone problem and implement the minimal Manila fix.
 - [x] Final tests (429 API + 272 web = 701), typecheck/build and scope/security review passed.
-- [ ] Push only this review branch; no main commit or merge without authorization.
-- [ ] Merge the reviewed timezone fix and redeploy Production so both key and timezone take effect.
-- [ ] Verify key acceptance using an unknown job name (404), never by executing a school job.
-- [ ] Hand back the ready production URL to the groupmate for their Vault/Cron step.
+- [x] Push only this review branch; no main commit or merge without authorization.
+- [x] Merge the reviewed timezone fix and redeploy Production so both key and timezone take effect.
+- [x] Verify key acceptance using an unknown job name (404), never by executing a school job.
+- [x] Hand back the ready production URL to the groupmate for their Vault/Cron step.
 
 ## Safety and remaining responsibilities
 
@@ -65,3 +65,5 @@ configuration are preserved. They are not part of this main-based deployment.
 clean main, saved the Production key, and discovered Vercel's reserved TZ setting.
 Prepared the minimal Node timezone fix with isolated regression checks; production
 schedule remains off pending the group's Vault/Cron activation.
+
+2026-11-13 — Completed the handoff: main contains the reviewed Manila-time fix 2dacbde. The owner subsequently asked us to finish the groupmate’s Vault/Cron setup and approved each live step separately. The existing key was verified with an unknown job name (404, no job execution), encrypted Vault settings saved, then one minute schedule activated. All nine deployed jobs passed two natural cycles at 13:40 and 13:41 Manila time. Earlier no-job/pending scope notes describe the November 12 handoff only; this dated authorization extended that scope. No school schema migration, duplicate scheduler or local payment rollout was performed.

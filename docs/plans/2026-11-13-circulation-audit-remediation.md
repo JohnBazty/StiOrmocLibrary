@@ -6,7 +6,7 @@ Date created: 2026-11-13
 
 Date last updated: 2026-11-13
 
-Status: inprogress
+Status: built
 
 ## How
 
@@ -30,7 +30,7 @@ Remote inspection: PR 13 is open, mergeable and targets main. PR 27 is open and 
 - [x] Separate claims-returned and found-book refund plans
 - [x] Read-only production scheduler verification and exact remaining activation steps
 - [x] Tests, typecheck, build, coverage, combined review and local source integration
-- [ ] Owner-approved GitHub/production actions, if still required
+- [x] Owner-approved branch push, production deployment, Vault setup and scheduler activation
 
 ## Change log
 
@@ -88,3 +88,35 @@ The renewals and book-price PRs were merged into the isolated local audit branch
 | Production jobs | Confirmed inactive. Vault, isolation verification and Cron activation still need individually approved release steps. |
 
 - 2026-11-13: Finished local source integration, required checks and limited read-only Chrome verification. Retained inprogress because remote release, activation and separate policy plans are outstanding.
+
+## Production release — 2026-11-13 (Asia/Manila)
+
+The owner explicitly approved deployment after approving the fix-branch push. Published the exact reviewed 08da5c95e38df515fff84f48a64b30e87b5930cc source from a clean tracked-file archive, with no environment files, local ledgers or QA output copied. Vercel staged production deployment dpl_8kRe8iq2oj9sWxpES8CTY8d9DMEe built successfully in icn1 and passed authenticated staged health, login, public catalog and unauthenticated case-access checks before promotion.
+
+Promoted to https://sti-ormoc-smart-library.vercel.app. Project metadata confirms READY and the expected commit. Homepage, login, public catalog and API health return 200; schema readiness is healthy with no missing tables/columns. Unauthenticated case access returns 401 JWT_REQUIRED. Published assets contain the open-day pickup wording, renewal interface, book follow-ups and neutral sign-in message. No live circulation/payment mutations or migrations were performed for verification.
+
+Previous production for rollback: dpl_3D2npKmoNPjTe9BxMZbNVo47PM2i (commit 2dacbde). GitHub main was not merged or changed by this deployment. No new test run was needed for deployment-only work; source is the previously verified commit.
+
+Automatic jobs are still inactive: fresh read-only checks show no smartlib-jobs-all Cron and neither required Vault setting. The Vercel production JOB_RUNNER_SECRET is configured. The runbook's next separately approved action is to store the runner URL and existing secret in Vault, followed by isolation verification and a separately approved Cron activation. This release record supersedes earlier pre-deployment notes above.
+
+## Scheduler settings prepared — 2026-11-13 (Asia/Manila)
+
+Owner approved saving the scheduler address and existing credential, explicitly without starting jobs. Verified the production deployment is still dpl_8kRe8iq2oj9sWxpES8CTY8d9DMEe and the database project matches its Supabase destination. Vercel's sensitive credential is not readable after creation, so reused only the job-runner credential previously supplied by the owner in this same chat. It stayed in memory; no plaintext credential copy was written or printed.
+
+Verified that credential through an intentionally unknown internal job name: authenticated 404 JOB_NOT_FOUND confirms the key while the router returns before any runner execution. Saved smartlib_job_runner_url and smartlib_job_runner_secret atomically using vault.create_secret with bound parameters. Verified both are encrypted at rest, equal the expected values and remain saved after commit. Existing differing values would have stopped the operation instead of being overwritten. No application data or migration ledger was changed.
+
+Security verification passed: anon/authenticated cannot log in directly or use cron/vault schemas. Fresh Data API requests with the existing backend key and limit=0 return 406 PGRST106 for net, vault and cron, verifying the global schema allow-list without reading rows. A public/publishable key was unavailable, so the API probe used the backend key; the browser-role privilege checks were separate.
+
+No Cron was created; no jobs ran. The next exact action requiring approval is runbook step 5: create the single smartlib-jobs-all schedule every minute, then read-only verification of its first results. The deployed runner includes nine existing jobs: enrollment closure, attendance checkout, in-library overdue flagging, reservation expiry, book queue advancement, overdue processing, notifications, request emails and collection-review refresh. Activation can process existing due work and queued emails.
+
+## Automatic jobs activated and verified — 2026-11-13 (Asia/Manila)
+
+The owner explicitly approved starting the scheduler after the separate deployment and Vault-preparation approvals. Created exactly one active cron.job, smartlib-jobs-all (job ID 1), with schedule * * * * *. The command resolves its address and credential from the existing encrypted Vault entries; no plaintext credential is stored in the Cron command or documentation. No migration or direct manual job invocation was used.
+
+Observed two natural minute cycles at 13:40 and 13:41 Manila time. Both Cron calls succeeded and received HTTP 200 without timeout/transport errors. All nine job handlers recorded succeeded and recent success instants in both cycles: enrollment-close, attendance-auto-checkout, in-library-unreturned, reservation-expiration, book-request-advance, circulation-overdue, notifications, book-request-emails and collection-review-refresh. There were no job error codes.
+
+The first cycle inserted seven in-app notices and the second inserted none, consistent with notice deduplication. There were no queued request emails to deliver (sent=0, failed=0); this does not certify a real email delivery. No overdue loans or expired pickups were eligible in those observed cycles, so their business transitions remain covered by the automated tests rather than a new live mutation fixture. Collection review refreshed 17 titles; neither a semester nor an attendance visit was closed. These were authorized scheduled actions, not disposable QA fixtures, so their legitimate events were retained.
+
+The public live API remained healthy with a ready schema after activation. The single minute schedule is interval-based; the deployed API applies Asia/Manila business-calendar rules. Stored lease/run instants remain UTC by design. The hosted database session's UTC setting was not changed globally. The local payment checkout keeps its timer off, avoiding a second scheduler.
+
+This completion record supersedes earlier inactive/pending scheduler notes. Claims returned, found-book refunds and email/day-level notice extensions remain separate planned features, not part of the completed audit repairs. GitHub main and existing open PR status were not changed by the operational activation.
