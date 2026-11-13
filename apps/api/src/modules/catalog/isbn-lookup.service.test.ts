@@ -105,3 +105,52 @@ test('title lookup refuses short or long input before any call, and reports both
   assert.equal(calls, 0)
   await assert.rejects(down.searchTitles({ title: 'Clean Code' }), (error: unknown) => error instanceof HttpError && error.status === 503)
 })
+
+const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4])
+const image = (bytes: Uint8Array, type = 'image/jpeg', status = 200) => new Response(Buffer.from(bytes), { status, headers: { 'content-type': type } })
+
+test('cover lookup returns the Open Library cover for a valid ISBN', async () => {
+  const urls: string[] = []
+  const service = createIsbnLookupService({ repository: titleRepository(), googleApiKey: '', fetcher: (async (input) => { urls.push(String(input)); return image(JPEG) }) as typeof fetch })
+  const cover = await service.cover('978-0-13-235088-4')
+  assert.equal(cover.contentType, 'image/jpeg')
+  assert.deepEqual([...cover.bytes], [...JPEG])
+  assert.equal(urls[0], `https://covers.openlibrary.org/b/isbn/${validIsbn}-L.jpg?default=false`)
+})
+
+test('cover lookup falls back to the Google Books thumbnail on a Google host only', async () => {
+  const urls: string[] = []
+  const service = createIsbnLookupService({
+    repository: titleRepository(), googleApiKey: '',
+    fetcher: (async (input) => {
+      const url = String(input); urls.push(url)
+      if (url.startsWith('https://covers.openlibrary.org/')) return new Response('', { status: 404 })
+      if (url.startsWith('https://www.googleapis.com/')) return json({ items: [{ volumeInfo: { industryIdentifiers: [{ identifier: validIsbn }], imageLinks: { thumbnail: 'http://books.google.com/books/content?id=x&printsec=frontcover&img=1&zoom=1&edge=curl' } } }] })
+      return image(JPEG)
+    }) as typeof fetch,
+  })
+  await service.cover(validIsbn)
+  assert.equal(urls[2], 'https://books.google.com/books/content?id=x&printsec=frontcover&img=1&zoom=1')
+  const evil = createIsbnLookupService({
+    repository: titleRepository(), googleApiKey: '',
+    fetcher: (async (input) => String(input).startsWith('https://www.googleapis.com/')
+      ? json({ items: [{ volumeInfo: { industryIdentifiers: [{ identifier: validIsbn }], imageLinks: { thumbnail: 'http://169.254.169.254/latest' } } }] })
+      : new Response('', { status: 404 })) as typeof fetch,
+  })
+  await assert.rejects(evil.cover(validIsbn), (error: unknown) => error instanceof HttpError && error.status === 404)
+})
+
+test('cover lookup refuses an invalid ISBN, non-images, wrong bytes and oversize files', async () => {
+  let calls = 0
+  const none = createIsbnLookupService({ repository: titleRepository(), googleApiKey: '', fetcher: (async () => { calls += 1; return image(JPEG) }) as typeof fetch })
+  await assert.rejects(none.cover('123'), (error: unknown) => error instanceof HttpError && error.status === 422)
+  assert.equal(calls, 0)
+  for (const response of [
+    () => image(JPEG, 'text/html'),
+    () => image(new Uint8Array([0x3c, 0x68, 0x74, 0x6d])),
+    () => image(new Uint8Array(2 * 1024 * 1024 + 1).fill(0xff)),
+  ]) {
+    const service = createIsbnLookupService({ repository: titleRepository(), googleApiKey: '', fetcher: (async (input) => String(input).startsWith('https://www.googleapis.com/') ? json({}) : response()) as typeof fetch })
+    await assert.rejects(service.cover(validIsbn), (error: unknown) => error instanceof HttpError && error.status === 404)
+  }
+})

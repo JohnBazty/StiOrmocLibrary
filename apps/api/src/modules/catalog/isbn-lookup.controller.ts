@@ -11,6 +11,12 @@ export function createIsbnLookupController(service: Service = isbnLookupService)
         response.json({ success: true, data: await service.lookup(request.params.isbn) })
       } catch (error) { next(error) }
     },
+    cover: async (request: Request, response: Response, next: NextFunction) => {
+      try {
+        const found = await service.cover(request.params.isbn)
+        response.set({ 'Content-Type': found.contentType, 'Cache-Control': 'private, max-age=600', 'X-Content-Type-Options': 'nosniff' }).send(found.bytes)
+      } catch (error) { next(error) }
+    },
     searchTitles: async (request: Request, response: Response, next: NextFunction) => {
       try {
         response.set('Cache-Control', 'no-store')

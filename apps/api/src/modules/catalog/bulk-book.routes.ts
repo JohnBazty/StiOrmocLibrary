@@ -22,8 +22,11 @@ const lookupLimiter = () => rateLimit({
 export function createBulkBookRouter(controller: Controller = bulkBookController, assets: AssetController = assetCodeController, isbn: IsbnController = isbnLookupController) {
   const router = Router()
   const lookups = lookupLimiter()
+  // Covers follow a found lookup, so they get their own budget instead of halving the lookups'.
+  const covers = lookupLimiter()
   router.get('/isbn/:isbn', lookups, isbn.lookup)
   router.get('/title-lookup', lookups, isbn.searchTitles)
+  router.get('/isbn/:isbn/cover', covers, isbn.cover)
   router.post('/add-bulk', controller.addBulk)
   router.get('/assets/:id', assets.adminAsset)
   router.get('/assets/:id/barcode.png', assets.barcodePng)

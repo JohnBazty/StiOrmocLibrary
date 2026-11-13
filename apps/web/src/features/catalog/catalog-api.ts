@@ -87,6 +87,14 @@ export const catalogApi = {
   createBook: (body: unknown) => request('/api/catalog/books', { method: 'POST', body: JSON.stringify(body) }),
   createBulkBook: (body: unknown) => request<BulkBookResult>('/api/v1/admin/catalog/bulk-entry', { method: 'POST', body: JSON.stringify(body) }),
   searchTitles: (title: string, author: string) => request<TitleLookupResult>(`/api/v1/admin/books/title-lookup?${new URLSearchParams({ title, author })}`),
+  /** The lookup's cover for this ISBN as a file the add-book form can attach, or null when there is none. */
+  async fetchCover(isbn: string): Promise<File | null> {
+    const accessToken = getAccessToken()
+    const response = await fetch(`/api/v1/admin/books/isbn/${encodeURIComponent(isbn)}/cover`, { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}, credentials: 'include' })
+    const type = (response.headers.get('content-type') ?? '').split(';')[0]
+    if (!response.ok || !['image/jpeg', 'image/png', 'image/webp'].includes(type)) return null
+    return new File([await response.blob()], `cover-${isbn}.${type === 'image/jpeg' ? 'jpg' : type.slice(6)}`, { type })
+  },
   lookupIsbn: (isbn: string, signal?: AbortSignal) => request<IsbnMetadata>(`/api/v1/admin/books/isbn/${encodeURIComponent(isbn)}`, { signal }),
   asset: (physicalCopyId: number, signal?: AbortSignal) => request<AdminBookAsset>(`/api/v1/admin/books/assets/${physicalCopyId}`, { signal }),
   researchAsset: (researchInventoryId: number, signal?: AbortSignal) => request<AdminBookAsset>(`/api/v1/admin/research/assets/${researchInventoryId}`, { signal }),

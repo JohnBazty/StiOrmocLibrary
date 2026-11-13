@@ -1,6 +1,7 @@
 import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
 import { isbnValidationMessage, isValidIsbn, normalizeIsbn } from './catalog.validation.ts'
+import { COVER_MAX_BYTES, coverSignatureMatches } from './cover-image.storage.ts'
 import { isbnLookupRepository, type IsbnLookupRepository, type IsbnMetadata } from './isbn-lookup.repository.ts'
 
 type Fetcher = typeof fetch
@@ -146,7 +147,60 @@ export function createIsbnLookupService(options: {
     })
   }
 
+  /** Reads one cover image; null unless it is a real JPEG, PNG or WebP within the cover size limit. */
+  async function readCover(url: URL) {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const response = await fetcher(url, { headers: { Accept: 'image/jpeg,image/png,image/webp', 'User-Agent': 'STI-Ormoc-SmartLib/0.1' }, signal: controller.signal })
+      const contentType = (response.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase()
+      if (response.status !== 200 || !['image/jpeg', 'image/png', 'image/webp'].includes(contentType) || Number(response.headers.get('content-length') ?? 0) > COVER_MAX_BYTES) {
+        void response.body?.cancel().catch(() => undefined)
+        return null
+      }
+      const bytes = Buffer.from(await response.arrayBuffer())
+      return bytes.length && bytes.length <= COVER_MAX_BYTES && coverSignatureMatches(contentType, bytes) ? { contentType, bytes } : null
+    } finally { clearTimeout(timeout) }
+  }
+
+  async function openLibraryCover(isbn: string) {
+    return readCover(new URL(`https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg?default=false`))
+  }
+
+  async function googleCover(isbn: string) {
+    const url = new URL('https://www.googleapis.com/books/v1/volumes')
+    url.searchParams.set('q', `isbn:${isbn}`)
+    url.searchParams.set('maxResults', '5')
+    if (googleApiKey) url.searchParams.set('key', googleApiKey)
+    const payload = await fetchJson(fetcher, url, timeoutMs) as { items?: Array<GoogleVolume & { volumeInfo?: { imageLinks?: { thumbnail?: unknown } } }> }
+    const volume = (Array.isArray(payload.items) ? payload.items : []).find((item) => exactIsbn(item?.volumeInfo?.industryIdentifiers, isbn))
+    const thumbnail = volume?.volumeInfo?.imageLinks?.thumbnail
+    if (typeof thumbnail !== 'string') return null
+    let image: URL
+    try { image = new URL(thumbnail) } catch { return null }
+    // Only Google's own cover host; never a URL that points anywhere else.
+    if (image.hostname !== 'books.google.com' || image.username || image.password) return null
+    image.protocol = 'https:'
+    image.port = ''
+    image.searchParams.delete('edge')
+    return readCover(image)
+  }
+
   return {
+    /** The cover for an ISBN from Open Library or Google Books, for the add-book form to attach; saves nothing. */
+    async cover(rawIsbn: unknown) {
+      const validation = isbnValidationMessage(rawIsbn)
+      if (validation) throw new HttpError(422, 'ISBN_INVALID', validation, { errors: { isbn: validation } })
+      const isbn = normalizeIsbn(rawIsbn)
+      for (const provider of googleApiKey ? [googleCover, openLibraryCover] : [openLibraryCover, googleCover]) {
+        try {
+          const found = await provider(isbn)
+          if (found) return found
+        } catch { /* try the next provider; a missing cover is never an error the form must show */ }
+      }
+      throw new HttpError(404, 'COVER_NOT_FOUND', 'No cover image was found for this ISBN.')
+    },
+
     /** Searches outside catalogs by title (and author); saves nothing. */
     async searchTitles(query: { title?: unknown; author?: unknown }) {
       const { title, author } = titleQueryOf(query)

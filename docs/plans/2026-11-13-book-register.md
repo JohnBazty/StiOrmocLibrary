@@ -77,6 +77,7 @@ Text columns, as in REA: "xii, 340 p." and "2 vols." are not numbers. `schema-re
 
 - **ISBN lookup:** keep this repo's service; it already answers from the local catalog first. Added: a per-account limit of 30 lookups a minute, shared with title lookup.
 - **Title lookup:** `GET /api/v1/admin/books/title-lookup?title=&author=` (same guard as the ISBN route): validate input (title 2 to 200 characters), search Open Library and Google Books (at most 10 candidates, same provider order as the ISBN lookup), mark candidates whose ISBN is already in `titles`, and list up to 10 local titles containing the text. Saves nothing. Tests inject `fetch` and never touch the network.
+- **Cover from the lookup (Ethan, 2026-11-13):** `GET /api/v1/admin/books/isbn/:isbn/cover` returns the cover image for an ISBN from Open Library (`covers.openlibrary.org`) or the Google Books thumbnail (only `books.google.com`), checked as a real JPEG, PNG or WebP of at most 2 MB; its own 30-per-minute per-account limit. When the ISBN lookup or a picked title result finds a book that is not yet in the catalog, the form attaches that cover in the existing cover slot. A cover staff chose is never replaced; changing the ISBN drops a looked-up cover; manual upload, replace and remove work as before. Saving uses the existing cover upload and checks.
 - Web: `TitleLookup.tsx` in the add-book form; "Use this" fills title, author, publisher, year and ISBN, without a second ISBN lookup overwriting them.
 
 ## Open questions
@@ -97,6 +98,7 @@ Text columns, as in REA: "xii, 340 p." and "2 vols." are not numbers. `schema-re
 - [ ] Lost charge reads copy cost (nothing on `main`; carry into PR #27 or this PR, whichever merges second)
 - [x] ISBN lookup rate limit
 - [x] Title lookup API and UI
+- [x] Cover from the lookup (added 2026-11-13)
 - [x] `security-reviewer`, `database-reviewer` (no CRITICAL or HIGH); MEDIUM fixes applied
 - [ ] `plan-verifier` (project agent; run from a StiOrmocLibrary session)
 - [x] `titles.purchase_price` is the price of one copy (Ethan, 2026-11-13), so the `037` backfill is correct
@@ -109,3 +111,4 @@ Text columns, as in REA: "xii, 340 p." and "2 vols." are not numbers. `schema-re
 - 2026-11-13: Reviews done, no CRITICAL or HIGH. Fixed: `037` lock timeout and a notice for prices it cannot copy; CSV guard also covers a leading tab or carriage return; title results clear when the title or author changes; register loading state; distinct "Use" button names. Open: confirm `purchase_price` is per copy; CSV export stops at 20,000 rows.
 - 2026-11-13: Ethan confirmed `titles.purchase_price` is a per-copy price, and renamed the fund source "School fund" to "Purchase" (list: Purchase, Donation, Government grant, Other).
 - 2026-11-13: Ethan chose to test against live; `037` applied with `npm run db:supabase` (the file's own BEGIN/COMMIT removed first, since the runner owns the transaction). Live check: 6 new columns, 16 of 37 copies got their title's price, no mismatches.
+- 2026-11-13: Ethan added automatic covers from the lookup, keeping manual upload. Covers are fetched by ISBN only (fixed hosts), never from a URL the browser sends.
