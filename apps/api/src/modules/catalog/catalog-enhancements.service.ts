@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { lookupReviewFacts } from './import-lookup-fill.ts'
 import { createClient } from '@supabase/supabase-js'
 import type { PoolConnection, RowDataPacket, ResultSetHeader } from '../../config/db.js'
 import { db } from '../../config/db.js'
@@ -155,6 +156,8 @@ export async function reviewImport(value:unknown,body:Record<string,unknown>,act
   const row=(await rows(c,'SELECT * FROM catalog_import_rows WHERE import_row_id=? FOR UPDATE',[rowId]))[0];if(!row||row.status==='Imported')throw fail('An imported row cannot be changed.',409)
   if(Number(row.row_version)!==Number(body.version))throw fail('This row changed. Reload before reviewing.',409)
   data.autoCorrections=retainImportCorrections(row.data_json?.autoCorrections)
+  // Lookup facts come from the stored row; a row the lookup filled needs the librarian's checked tick (LOOKUP_NOT_CHECKED).
+  Object.assign(data,lookupReviewFacts(row.data_json,decision,body.lookupChecked,actor,new Date()))
   if(decision!=='skip')await validateImportReferences(c,data,needsCopies)
   let target:number|null=null,reuse:number|null=null
   if(decision==='link'||decision==='add'){target=id(body.targetTitleId);if(!(await rows(c,"SELECT 1 FROM titles WHERE title_id=? AND record_type='Book' AND lifecycle_status='Active'",[target])).length)throw fail('Choose an active existing book.')}
@@ -178,7 +181,7 @@ export async function commitImport(value:unknown,actor:number){
    if(row.decision==='new'){
     if((await matchTitles(c,data)).length)throw fail('A matching title was added since review. Choose the existing holding before retrying.')
     titleId=Number(await insertTitle(c,{title:data.title,recordType:'Book',categoryId:data.categoryId,isbn:data.isbn||null,publisher:data.publisher||null,publicationYear:data.publicationYear?Number(data.publicationYear):null,callNumber:data.callNumber||null,searchText:[data.title,data.author,data.isbn].join(' ')}));await insertAuthors(c,titleId,[data.author])
-    await c.execute('INSERT INTO catalog_title_details(title_id,copyright_year,edition,page_count,type_id,updated_by) VALUES (?,?,?,?,(SELECT type_id FROM catalog_resource_types WHERE name=?),?)',[titleId,data.copyrightYear?Number(data.copyrightYear):null,data.edition||null,data.pages?Number(data.pages):null,'Book',actor])
+    await c.execute('INSERT INTO catalog_title_details(title_id,copyright_year,edition,page_count,synopsis,type_id,updated_by) VALUES (?,?,?,?,?,(SELECT type_id FROM catalog_resource_types WHERE name=?),?)',[titleId,data.copyrightYear?Number(data.copyrightYear):null,data.edition||null,data.pages?Number(data.pages):null,data.summary??'','Book',actor])
    }else if(!(await rows(c,"SELECT title_id FROM titles WHERE title_id=? AND record_type='Book' AND lifecycle_status='Active' FOR UPDATE",[titleId])).length)throw fail('The selected holding is no longer active.')
    if(needsCopies){
     const count=Number(data.copies),missing=Number(data.missingCopies||0),year=new Date().getFullYear(),start=await reserveBarcodeSequence(c,year,count),accessions=data.generateAccessions?[]:identityList(data.accessions),barcodes=identityList(data.barcodes)

@@ -1,6 +1,8 @@
 import { normalizeIsbn } from './catalog.validation.ts'
 
-export type ImportCorrection = { field: string; before: string; after: string; reason: 'spaces' | 'isbn' | 'number' | 'category' | 'shelf' }
+export type ImportCorrection = { field: string; before: string; after: string; reason: 'spaces' | 'isbn' | 'number' | 'category' | 'shelf' | 'placeholder' }
+/** Whole-cell words spreadsheets use for "unknown"; they are blanks, so the book lookup may fill them. */
+const PLACEHOLDER = /^(not verified|not located online|n\/a|none|-|—|–)$/i
 export type ImportReference = { id: number; name: string; status: string }
 export type ImportReferences = { categories: ImportReference[]; locations: ImportReference[] }
 const numberFields = new Set(['copies', 'missingCopies', 'pages', 'publicationYear', 'copyrightYear'])
@@ -8,6 +10,7 @@ const numberFields = new Set(['copies', 'missingCopies', 'pages', 'publicationYe
 /** Formatting only: do not infer facts, recalculate ISBN check digits or coerce identifiers to numbers. */
 export function cleanImportValue(field: string, raw: unknown): { value: string; correction?: ImportCorrection } {
   const before = String(raw ?? '')
+  if (PLACEHOLDER.test(before.trim())) return { value: '', correction: { field, before, after: '', reason: 'placeholder' } }
   let value = field === 'accessions' || field === 'barcodes' ? before.trim() : before.trim().replace(/\s+/g, ' ')
   let reason: ImportCorrection['reason'] = 'spaces'
   if (field === 'isbn') { value = normalizeIsbn(value); reason = 'isbn' }

@@ -1,13 +1,70 @@
 import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
-import { isbnValidationMessage, normalizeIsbn } from './catalog.validation.ts'
+import { isbnValidationMessage, isValidIsbn, normalizeIsbn } from './catalog.validation.ts'
+import { COVER_MAX_BYTES, coverSignatureMatches } from './cover-image.storage.ts'
 import { isbnLookupRepository, type IsbnLookupRepository, type IsbnMetadata } from './isbn-lookup.repository.ts'
 
 type Fetcher = typeof fetch
-type GoogleVolume = { volumeInfo?: { title?: unknown; authors?: unknown; publisher?: unknown; publishedDate?: unknown; industryIdentifiers?: unknown } }
-type OpenLibraryDocument = { title?: unknown; author_name?: unknown; publisher?: unknown; first_publish_year?: unknown; publish_year?: unknown; isbn?: unknown }
+type GoogleVolume = { volumeInfo?: { title?: unknown; authors?: unknown; publisher?: unknown; publishedDate?: unknown; industryIdentifiers?: unknown; categories?: unknown } }
+type OpenLibraryDocument = { title?: unknown; author_name?: unknown; publisher?: unknown; first_publish_year?: unknown; publish_year?: unknown; isbn?: unknown; subject?: unknown }
 
 const CACHE_TTL_MS = 10 * 60 * 1000
+const TITLE_SEARCH_LIMIT = 10
+const SUBJECT_LIMIT = 5
+const PREDICTION_LIMIT = 8
+const PREDICTION_CACHE_SIZE = 1000
+export const PREDICTION_FIELDS = ['title', 'author', 'subject'] as const
+export type PredictionField = (typeof PREDICTION_FIELDS)[number]
+
+/** Title lookup (ported from STI ILMS REA): one provider result a staff member can pick to fill the form. */
+export type TitleCandidate = { title: string; author: string; publisher: string | null; publicationYear: number | null; isbn: string | null; subjects: string[]; inCatalog: boolean }
+type RawCandidate = Omit<TitleCandidate, 'inCatalog'>
+
+/** True when the title has the typed words one after another; the last may be unfinished (a prefix). */
+function wordsInOrder(title: string, typed: string[], finished: boolean) {
+  const titleWords = title.match(/[\p{L}\p{N}]+/gu) ?? []
+  return titleWords.some((_, start) => typed.every((word, index) => {
+    const titleWord = titleWords[start + index] ?? ''
+    return index === typed.length - 1 && !finished ? titleWord.startsWith(word) : titleWord === word
+  }))
+}
+
+/** Up to 5 distinct provider subjects, cleaned, for category suggestions. */
+function subjectsOf(value: unknown) {
+  const seen = new Set<string>()
+  const subjects: string[] = []
+  for (const item of Array.isArray(value) ? value : []) {
+    const subject = text(item, 100)
+    const key = subject.toLocaleLowerCase('en-US')
+    if (!subject || seen.has(key)) continue
+    seen.add(key); subjects.push(subject)
+    if (subjects.length === SUBJECT_LIMIT) break
+  }
+  return subjects
+}
+
+/** The first valid ISBN-13 in a provider list, else the first valid ISBN-10, else null. */
+function bestIsbn(values: unknown[]) {
+  const valid = values.map((value) => normalizeIsbn(value)).filter((isbn) => isbn && isValidIsbn(isbn))
+  return valid.find((isbn) => isbn.length === 13) ?? valid[0] ?? null
+}
+
+function titleWithSubtitle(title: unknown, subtitle: unknown) {
+  const main = text(title, 255), sub = text(subtitle, 255)
+  if (!main) return ''
+  return (sub ? `${main}${/\p{P}$/u.test(main) ? ' ' : ': '}${sub}` : main).slice(0, 255)
+}
+
+function titleQueryOf(query: { title?: unknown; author?: unknown }) {
+  const title = text(query.title, 1000), author = text(query.author, 1000)
+  const errors: Record<string, string> = {}
+  // Title, author or both: either one alone is enough to search (author lookup).
+  if (!title && !author) errors.title = 'Enter a title or an author to search.'
+  if (title && ([...title].length < 2 || [...title].length > 200)) errors.title = 'Enter a title of 2 to 200 characters.'
+  if (author && ([...author].length < 2 || [...author].length > 200)) errors.author = 'Enter an author of 2 to 200 characters.'
+  if (Object.keys(errors).length) throw new HttpError(422, 'TITLE_LOOKUP_INVALID', Object.values(errors)[0], { errors })
+  return { title, author }
+}
 
 function text(value: unknown, maximum: number) {
   return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ').slice(0, maximum) : ''
@@ -57,6 +114,7 @@ export function createIsbnLookupService(options: {
   const timeoutMs = options.timeoutMs ?? env.isbnLookup.timeoutMs
   const googleApiKey = options.googleApiKey ?? env.isbnLookup.googleBooksApiKey
   const cache = new Map<string, { expiresAt: number; data: IsbnMetadata }>()
+  const predictionCache = new Map<string, { expiresAt: number; data: string[] }>()
 
   async function google(isbn: string): Promise<IsbnMetadata | null> {
     const url = new URL('https://www.googleapis.com/books/v1/volumes')
@@ -70,13 +128,13 @@ export function createIsbnLookupService(options: {
     const title = text(info?.title, 255)
     const author = joined(info?.authors, 255)
     if (!title || !author) return null
-    return { isbn, title, author, publisher: text(info?.publisher, 255) || null, publicationYear: year(info?.publishedDate), source: 'google_books' }
+    return { isbn, title, author, publisher: text(info?.publisher, 255) || null, publicationYear: year(info?.publishedDate), subjects: subjectsOf(info?.categories), source: 'google_books' }
   }
 
   async function openLibrary(isbn: string): Promise<IsbnMetadata | null> {
     const url = new URL('https://openlibrary.org/search.json')
     url.searchParams.set('isbn', isbn)
-    url.searchParams.set('fields', 'title,author_name,publisher,first_publish_year,publish_year,isbn')
+    url.searchParams.set('fields', 'title,author_name,publisher,first_publish_year,publish_year,isbn,subject')
     url.searchParams.set('limit', '5')
     const payload = await fetchJson(fetcher, url, timeoutMs) as { docs?: OpenLibraryDocument[] }
     const document = payload.docs?.find((item) => exactIsbn(item.isbn, isbn))
@@ -85,10 +143,173 @@ export function createIsbnLookupService(options: {
     if (!title || !author) return null
     const publisher = Array.isArray(document?.publisher) ? text(document.publisher[0], 255) : text(document?.publisher, 255)
     const publicationYear = year(document?.first_publish_year) ?? (Array.isArray(document?.publish_year) ? year(document.publish_year[0]) : year(document?.publish_year))
-    return { isbn, title, author, publisher: publisher || null, publicationYear, source: 'open_library' }
+    return { isbn, title, author, publisher: publisher || null, publicationYear, subjects: subjectsOf(document?.subject), source: 'open_library' }
+  }
+
+  async function googleTitles(title: string, author: string): Promise<RawCandidate[]> {
+    const url = new URL('https://www.googleapis.com/books/v1/volumes')
+    const words = (value: string, prefix: string) => value.split(' ').filter(Boolean).map((word) => `${prefix}:${word}`)
+    url.searchParams.set('q', [...words(title, 'intitle'), ...words(author, 'inauthor')].join(' '))
+    url.searchParams.set('maxResults', String(TITLE_SEARCH_LIMIT))
+    url.searchParams.set('printType', 'books')
+    if (googleApiKey) url.searchParams.set('key', googleApiKey)
+    const payload = await fetchJson(fetcher, url, timeoutMs) as { items?: Array<{ volumeInfo?: GoogleVolume['volumeInfo'] & { subtitle?: unknown } }> }
+    return (Array.isArray(payload.items) ? payload.items : []).flatMap((item) => {
+      const info = item?.volumeInfo
+      const found = titleWithSubtitle(info?.title, info?.subtitle)
+      if (!found) return []
+      const ids = Array.isArray(info?.industryIdentifiers) ? info.industryIdentifiers as Array<{ identifier?: unknown } | null> : []
+      return [{ title: found, author: joined(info?.authors, 255), publisher: text(info?.publisher, 255) || null, publicationYear: year(info?.publishedDate), isbn: bestIsbn(ids.map((id) => id?.identifier)), subjects: subjectsOf(info?.categories) }]
+    })
+  }
+
+  async function openLibraryTitles(title: string, author: string): Promise<RawCandidate[]> {
+    const url = new URL('https://openlibrary.org/search.json')
+    if (title) url.searchParams.set('title', title)
+    if (author) url.searchParams.set('author', author)
+    url.searchParams.set('fields', 'title,subtitle,author_name,publisher,first_publish_year,isbn,subject')
+    url.searchParams.set('limit', String(TITLE_SEARCH_LIMIT))
+    const payload = await fetchJson(fetcher, url, timeoutMs) as { docs?: Array<OpenLibraryDocument & { subtitle?: unknown }> }
+    return (Array.isArray(payload.docs) ? payload.docs : []).flatMap((doc) => {
+      const found = titleWithSubtitle(doc?.title, doc?.subtitle)
+      if (!found) return []
+      const publisher = Array.isArray(doc.publisher) ? text(doc.publisher[0], 255) : text(doc.publisher, 255)
+      return [{ title: found, author: joined(doc.author_name, 255), publisher: publisher || null, publicationYear: year(doc.first_publish_year), isbn: bestIsbn(Array.isArray(doc.isbn) ? doc.isbn : []), subjects: subjectsOf(doc.subject) }]
+    })
+  }
+
+  /** Reads one cover image; null unless it is a real JPEG, PNG or WebP within the cover size limit. */
+  async function readCover(url: URL) {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const response = await fetcher(url, { headers: { Accept: 'image/jpeg,image/png,image/webp', 'User-Agent': 'STI-Ormoc-SmartLib/0.1' }, signal: controller.signal })
+      const contentType = (response.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase()
+      if (response.status !== 200 || !['image/jpeg', 'image/png', 'image/webp'].includes(contentType) || Number(response.headers.get('content-length') ?? 0) > COVER_MAX_BYTES) {
+        void response.body?.cancel().catch(() => undefined)
+        return null
+      }
+      const bytes = Buffer.from(await response.arrayBuffer())
+      return bytes.length && bytes.length <= COVER_MAX_BYTES && coverSignatureMatches(contentType, bytes) ? { contentType, bytes } : null
+    } finally { clearTimeout(timeout) }
+  }
+
+  async function openLibraryCover(isbn: string) {
+    return readCover(new URL(`https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg?default=false`))
+  }
+
+  async function googleCover(isbn: string) {
+    const url = new URL('https://www.googleapis.com/books/v1/volumes')
+    url.searchParams.set('q', `isbn:${isbn}`)
+    url.searchParams.set('maxResults', '5')
+    if (googleApiKey) url.searchParams.set('key', googleApiKey)
+    const payload = await fetchJson(fetcher, url, timeoutMs) as { items?: Array<GoogleVolume & { volumeInfo?: { imageLinks?: { thumbnail?: unknown } } }> }
+    const volume = (Array.isArray(payload.items) ? payload.items : []).find((item) => exactIsbn(item?.volumeInfo?.industryIdentifiers, isbn))
+    const thumbnail = volume?.volumeInfo?.imageLinks?.thumbnail
+    if (typeof thumbnail !== 'string') return null
+    let image: URL
+    try { image = new URL(thumbnail) } catch { return null }
+    // Only Google's own cover host; never a URL that points anywhere else.
+    if (image.hostname !== 'books.google.com' || image.username || image.password) return null
+    image.protocol = 'https:'
+    image.port = ''
+    image.searchParams.delete('edge')
+    return readCover(image)
   }
 
   return {
+    /** The cover for an ISBN from Open Library or Google Books, for the add-book form to attach; saves nothing. */
+    async cover(rawIsbn: unknown) {
+      const validation = isbnValidationMessage(rawIsbn)
+      if (validation) throw new HttpError(422, 'ISBN_INVALID', validation, { errors: { isbn: validation } })
+      const isbn = normalizeIsbn(rawIsbn)
+      for (const provider of googleApiKey ? [googleCover, openLibraryCover] : [openLibraryCover, googleCover]) {
+        try {
+          const found = await provider(isbn)
+          if (found) return found
+        } catch { /* try the next provider; a missing cover is never an error the form must show */ }
+      }
+      throw new HttpError(404, 'COVER_NOT_FOUND', 'No cover image was found for this ISBN.')
+    },
+
+    /** Searches outside catalogs by title (and author); saves nothing. */
+    async searchTitles(query: { title?: unknown; author?: unknown }) {
+      const { title, author } = titleQueryOf(query)
+      const localMatches = await repository.findLocalByTitle(title, author)
+      const providers: Array<[(t: string, a: string) => Promise<RawCandidate[]>, IsbnMetadata['source']]> = googleApiKey
+        ? [[googleTitles, 'google_books'], [openLibraryTitles, 'open_library']]
+        : [[openLibraryTitles, 'open_library'], [googleTitles, 'google_books']]
+      let failures = 0
+      for (const [provider, source] of providers) {
+        let found: RawCandidate[]
+        try { found = (await provider(title, author)).slice(0, TITLE_SEARCH_LIMIT) } catch { failures += 1; continue }
+        if (!found.length) continue
+        const inCatalog = await repository.findLocalIsbns(found.flatMap((candidate) => (candidate.isbn ? [candidate.isbn] : [])))
+        return { source, localMatches, candidates: found.map((candidate) => ({ ...candidate, inCatalog: candidate.isbn !== null && inCatalog.has(candidate.isbn) })) }
+      }
+      if (failures === providers.length) throw new HttpError(503, 'TITLE_LOOKUP_UNAVAILABLE', 'Book search is temporarily unavailable. Enter the details manually or try again.')
+      return { source: null, localMatches, candidates: [] as TitleCandidate[] }
+    },
+
+    /**
+     * Search predictions while staff type: Open Library titles, authors or subjects that start like the text.
+     * Silent on failure (an empty list), because predictions only help; the full lookup still reports errors.
+     */
+    async predict(field: PredictionField, rawText: unknown) {
+      if (!(PREDICTION_FIELDS as readonly string[]).includes(field)) throw new HttpError(422, 'PREDICTION_INVALID', 'Predictions cover title, author or subject.', { errors: { field: 'Use title, author or subject.' } })
+      const typed = typeof rawText === 'string' ? rawText.slice(0, 200) : ''
+      // Letters and digits only, so nothing typed can act as Open Library search syntax.
+      const words = (typed.toLocaleLowerCase('en-US').match(/[\p{L}\p{N}]+/gu) ?? []).filter((word) => !['and', 'or', 'not'].includes(word)).slice(0, 6).map((word) => word.slice(0, 40))
+      if (words.join('').length < 3) return []
+      const finished = /\s$/.test(typed)
+      const terms = words.map((word, index) => (index === words.length - 1 && !finished ? `${word}*` : word)).join(' AND ')
+      const key = `${field}:${terms}`
+      const cached = predictionCache.get(key)
+      if (cached && cached.expiresAt > Date.now()) return cached.data
+      const url = new URL(field === 'title' ? 'https://openlibrary.org/search.json' : field === 'author' ? 'https://openlibrary.org/search/authors.json' : 'https://openlibrary.org/search/subjects.json')
+      url.searchParams.set('q', field === 'title' ? `title_suggest:(${terms})` : field === 'author' ? `name:(${terms})` : terms.replaceAll(' AND ', ' '))
+      url.searchParams.set('limit', String(field === 'title' ? PREDICTION_LIMIT * 4 : PREDICTION_LIMIT * 2))
+      if (field === 'title') { url.searchParams.set('fields', 'title'); url.searchParams.set('sort', 'editions') }
+      if (field === 'author') url.searchParams.set('sort', 'work_count desc')
+      let docs: Array<{ title?: unknown; name?: unknown }>
+      try { docs = ((await fetchJson(fetcher, url, timeoutMs)) as { docs?: typeof docs }).docs ?? [] } catch { return [] }
+      const seen = new Set<string>()
+      const data = (Array.isArray(docs) ? docs : []).flatMap((doc) => {
+        const value = text(field === 'title' ? doc?.title : doc?.name, 255)
+        const dedupe = value.toLocaleLowerCase('en-US')
+        if (!value || seen.has(dedupe)) return []
+        // Open Library matches the words anywhere in a title; keep titles where they follow each other as typed.
+        if (field === 'title' && !wordsInOrder(dedupe, words, finished)) return []
+        seen.add(dedupe)
+        return [value]
+      }).slice(0, PREDICTION_LIMIT)
+      if (predictionCache.size >= PREDICTION_CACHE_SIZE) predictionCache.delete(predictionCache.keys().next().value!)
+      predictionCache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, data })
+      return data
+    },
+
+    /** Open Library subjects whose name contains the text, for naming a new category; saves nothing. */
+    async searchSubjects(rawQuery: unknown) {
+      const query = text(rawQuery, 1000)
+      if ([...query].length < 2 || [...query].length > 100) throw new HttpError(422, 'SUBJECT_LOOKUP_INVALID', 'Enter a subject of 2 to 100 characters.', { errors: { q: 'Enter a subject of 2 to 100 characters.' } })
+      const url = new URL('https://openlibrary.org/search/subjects.json')
+      url.searchParams.set('q', query)
+      url.searchParams.set('limit', String(TITLE_SEARCH_LIMIT))
+      let payload: { docs?: Array<{ name?: unknown; work_count?: unknown }> }
+      try { payload = await fetchJson(fetcher, url, timeoutMs) as typeof payload } catch {
+        throw new HttpError(503, 'SUBJECT_LOOKUP_UNAVAILABLE', 'Subject search is temporarily unavailable. Try again later.')
+      }
+      // Open Library lists the same subject in several capitalisations; keep the first (most used) one.
+      const seen = new Set<string>()
+      return (Array.isArray(payload.docs) ? payload.docs : []).flatMap((doc) => {
+        const name = text(doc?.name, 100)
+        const key = name.toLocaleLowerCase('en-US')
+        if (!name || seen.has(key)) return []
+        seen.add(key)
+        return [{ name, workCount: Number.isSafeInteger(doc.work_count) ? Number(doc.work_count) : 0 }]
+      })
+    },
+
     async lookup(rawIsbn: unknown): Promise<IsbnMetadata> {
       const isbn = normalizeIsbn(rawIsbn)
       const validation = isbnValidationMessage(rawIsbn)

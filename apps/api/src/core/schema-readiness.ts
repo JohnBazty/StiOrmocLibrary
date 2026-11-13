@@ -5,10 +5,10 @@ import { loginDevicesEnabled } from '../modules/auth/login-device-policy.ts'
 
 const REQUIRED_COLUMNS: Record<string, string[]> = {
   categories: ['category_id', 'category_name', 'shelf_location', 'created_at', 'updated_at'],
-  titles: ['title_id', 'category_id', 'record_type', 'title', 'cover_image_path', 'purchase_price', 'lifecycle_status'],
+  titles: ['title_id', 'category_id', 'record_type', 'title', 'cover_image_path', 'purchase_price', 'classification', 'volumes', 'remarks', 'lifecycle_status'],
   authors: ['author_id', 'title_id', 'author_name'],
   research_records: ['research_record_id', 'title_id', 'research_code', 'adviser_name'],
-  physical_copies: ['physical_copy_id', 'title_id', 'barcode', 'qr_code_data', 'accession_number', 'availability_status'],
+  physical_copies: ['physical_copy_id', 'title_id', 'barcode', 'qr_code_data', 'accession_number', 'availability_status', 'fund_source', 'fund_detail', 'cost_php'],
   barcode_sequences: ['sequence_year', 'last_value', 'updated_at'],
   inventory_audit_events: ['inventory_audit_event_id', 'physical_copy_id', 'barcode_snapshot', 'event_type', 'action_reason', 'created_at'],
   research_inventory: ['research_inventory_id', 'title_id', 'title', 'authors', 'adviser', 'publication_year', 'accession_number', 'barcode', 'qr_code_data', 'condition_state', 'availability_status', 'lifecycle_status', 'shelf_location', 'archived_at', 'archive_reason'],
