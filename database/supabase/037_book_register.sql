@@ -3,7 +3,7 @@
 -- Edition and pages already live in catalog_title_details (021); date received is physical_copies.acquired_at.
 -- Safe to run more than once. Volumes is text on purpose: "2 vols." is not a number.
 
-BEGIN;
+-- The runner (npm run db:supabase) wraps this file in one transaction, so SET LOCAL lasts until its commit.
 -- titles and physical_copies serve circulation: give up instead of queueing every loan behind a long transaction. Rerun if it times out.
 SET LOCAL lock_timeout = '5s';
 
@@ -33,5 +33,3 @@ UPDATE public.physical_copies pc
    AND pc.cost_php IS NULL
    AND t.purchase_price IS NOT NULL
    AND t.purchase_price BETWEEN 0 AND 999999.99;
-
-COMMIT;
