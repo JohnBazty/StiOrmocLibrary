@@ -6,6 +6,7 @@ import type { BulkBookResult, Category } from './types'
 import { isbnInputError, normalizeIsbnInput } from './isbn'
 import { SelectedFilePreview } from '../../components/SelectedFilePreview'
 import { TitleLookup } from './TitleLookup'
+import { confirmLeave, UnsavedGuard } from '../../components/UnsavedChanges'
 import { CategorySuggestion } from './CategorySuggestion'
 import { PredictionList, usePredictions } from './usePredictions'
 
@@ -156,9 +157,11 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
     setBookLocation(selected?.shelfLocation ?? '')
   }
 
-  return <div className="fixed inset-0 z-50 overflow-y-auto bg-[#003399]/80 p-4">
+  // Values a lookup filled count as changes too; after saving, the copies exist and nothing is left to lose.
+  const filledSomething = !batch && Boolean(metadata.title || metadata.author || isbn || coverFile)
+  return <UnsavedGuard dirty={filledSomething} resetKey={batch?.titleId}><div className="fixed inset-0 z-50 overflow-y-auto bg-[#003399]/80 p-4">
     <div role="dialog" aria-modal="true" aria-labelledby="multiple-copies-title" className="mx-auto my-4 w-full max-w-6xl rounded-2xl bg-[#FFFFFF] shadow-2xl">
-      <header className="flex items-start justify-between border-b border-[#003399]/15 p-5"><div><p className="text-xs font-bold uppercase text-[#003399]">Catalog entry</p><h2 id="multiple-copies-title" className="text-xl font-black text-[#003399]">Add multiple book copies</h2></div><button aria-label="Close" disabled={saving} onClick={onClose} className="p-2 text-[#003399] disabled:opacity-40"><X /></button></header>
+      <header className="flex items-start justify-between border-b border-[#003399]/15 p-5"><div><p className="text-xs font-bold uppercase text-[#003399]">Catalog entry</p><h2 id="multiple-copies-title" className="text-xl font-black text-[#003399]">Add multiple book copies</h2></div><button aria-label="Close" disabled={saving} onClick={() => confirmLeave(onClose)} className="p-2 text-[#003399] disabled:opacity-40"><X /></button></header>
       <form onSubmit={submit} className="grid gap-4 p-5 sm:grid-cols-2">
         {message ? <div role={batch ? 'status' : 'alert'} className={`rounded-xl p-3 text-sm font-semibold text-[#003399] sm:col-span-2 ${batch ? 'border border-[#003399] bg-[#FFFFFF]' : 'bg-[#FFF200]'}`}>{message}</div> : null}
         {Object.keys(errors).length ? <div role="alert" className="rounded-xl bg-[#FFF200] p-3 text-sm text-[#003399] sm:col-span-2"><ul className="list-inside list-disc">{Object.entries(errors).map(([field, error]) => <li key={field}><strong>{field}:</strong> {error}</li>)}</ul></div> : null}
@@ -191,10 +194,10 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
         </fieldset>
         {!allCategories.length ? <p role="alert" className="text-sm font-semibold text-[#003399] sm:col-span-2">Create a category and book location before adding physical copies.</p> : null}
         <div className="flex flex-wrap items-center justify-end gap-2 pt-2 sm:col-span-2">
-          {!batch ? <><button type="button" disabled={saving} onClick={onClose} className="h-11 rounded-xl border border-[#003399] bg-[#FFFFFF] px-5 font-bold text-[#003399] disabled:opacity-40">Cancel</button><button type="submit" disabled={saving || !allCategories.length || Boolean(liveIsbnError)} className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#003399] px-5 font-bold text-[#FFFFFF] disabled:opacity-50"><QrCode size={17} />{saving ? 'Saving copy and generating codes…' : 'Create copy and generate codes'}</button></> : <button type="button" onClick={onClose} className="h-11 rounded-xl bg-[#003399] px-5 font-bold text-[#FFFFFF]">Close and view inventory</button>}
+          {!batch ? <><button type="button" disabled={saving} onClick={() => confirmLeave(onClose)} className="h-11 rounded-xl border border-[#003399] bg-[#FFFFFF] px-5 font-bold text-[#003399] disabled:opacity-40">Cancel</button><button type="submit" disabled={saving || !allCategories.length || Boolean(liveIsbnError)} className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#003399] px-5 font-bold text-[#FFFFFF] disabled:opacity-50"><QrCode size={17} />{saving ? 'Saving copy and generating codes…' : 'Create copy and generate codes'}</button></> : <button type="button" onClick={onClose} className="h-11 rounded-xl bg-[#003399] px-5 font-bold text-[#FFFFFF]">Close and view inventory</button>}
         </div>
       </form>
       {batch ? <div className="border-t border-[#003399]/15 p-5"><BookLabelSheet batch={batch} /></div> : null}
     </div>
-  </div>
+  </div></UnsavedGuard>
 }

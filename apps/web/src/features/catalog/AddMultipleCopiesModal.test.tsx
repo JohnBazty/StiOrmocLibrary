@@ -92,6 +92,22 @@ describe('AddMultipleCopiesModal', () => {
       fund_source: 'Donation', fund_detail: 'Alumni', cost_php: '450', received_on: '2026-11-02',
     })))
   })
+
+  it('asks before closing once details were typed, and closes at once when empty', () => {
+    const closed = vi.fn()
+    const { unmount } = render(<AddMultipleCopiesModal categories={categories} onCreated={() => undefined} onClose={closed} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(closed).toHaveBeenCalledTimes(1)
+    fireEvent.change(screen.getByLabelText(/Title \*/i), { target: { value: 'Clean Code' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.getByRole('alertdialog', { name: 'You have unsaved changes' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }))
+    expect(closed).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }))
+    expect(closed).toHaveBeenCalledTimes(2)
+    unmount()
+  })
 })
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })

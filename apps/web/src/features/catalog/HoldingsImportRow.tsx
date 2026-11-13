@@ -4,6 +4,7 @@ import { catalogInput } from './CatalogDetailsPanel'
 import { enhancedCatalog, type Batch, type ImportRow, type Options } from './enhanced-catalog-api'
 import { importFieldNames, importRowLabel, lookupSourceName, needsLookupCheck } from './holdings-import-helpers'
 import { ImportReferenceSuggestions } from './ImportReferenceSuggestions'
+import { UnsavedGuard } from '../../components/UnsavedChanges'
 
 export function HoldingsImportRow({ row, options, batch, disabled, onSaved, onWorking, onClearError, expanded = false }: {
   row: ImportRow; options: Options; batch: Batch; disabled: boolean
@@ -20,17 +21,19 @@ export function HoldingsImportRow({ row, options, batch, disabled, onSaved, onWo
   const imported = row.status === 'Imported'
   const label = importRowLabel(row)
   const choice = edit.decision ?? (row.matches.length || row.overlaps.length ? '' : 'new')
-  async function save() {
-    if (busy || disabled) return
+  async function save(): Promise<boolean> {
+    if (busy || disabled) return false
     setBusy(true); setError(''); onClearError(); onWorking(true)
-    try { await enhancedCatalog.review({ ...edit, decision: choice, lookupChecked: checked }); await onSaved() }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'These changes could not be saved. Please try again.') }
+    try { await enhancedCatalog.review({ ...edit, decision: choice, lookupChecked: checked }); await onSaved(); return true }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'These changes could not be saved. Please try again.'); return false }
     finally { setBusy(false); onWorking(false) }
   }
   const choose = (decision: string) => setEdit(current => ({ ...current, decision,
     targetTitleId: ['add', 'link'].includes(decision) && row.matches.filter(match => match.status === 'Active').length === 1 ? Number(row.matches.find(match => match.status === 'Active')!.id) : current.targetTitleId,
   }))
-  return <details className="rounded-2xl border border-[#003399]/15 bg-white dark:border-white/15 dark:bg-[#001a4d]" open={expanded || Boolean(row.error) || undefined}>
+  // Unsaved edits in this book: leaving asks Save changes (this book's own save, with its checks) or Discard changes.
+  const changed = !imported && (checked || JSON.stringify(edit.data) !== JSON.stringify(row.data) || (edit.decision ?? null) !== (row.decision ?? null))
+  return <UnsavedGuard dirty={changed} resetKey={row.version} onSave={() => (choice ? save() : Promise.resolve(false))}><details className="rounded-2xl border border-[#003399]/15 bg-white dark:border-white/15 dark:bg-[#001a4d]" open={expanded || Boolean(row.error) || undefined}>
     <summary className="cursor-pointer p-4"><span className="flex flex-wrap items-center justify-between gap-2"><span className="min-w-0"><strong className="break-words">{row.data.title || 'Book title is missing'}</strong><span className="mt-1 block text-xs opacity-65">{row.data.author || 'Author is missing'} · {row.data.copies || '?'} {Number(row.data.copies) === 1 ? 'copy' : 'copies'}{Number(row.data.missingCopies) > 0 ? ` · ${row.data.missingCopies} missing` : ''}</span></span><span className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${label.startsWith('Needs') ? 'bg-[#FFF200] text-[#003399]' : 'bg-[#003399]/5 dark:bg-white/10'}`}>{label}</span></span><span className="mt-2 block text-xs opacity-55">{imported ? 'View what was added' : label.startsWith('Needs') ? 'Open to answer or correct this book' : 'Open to edit book details'}</span></summary>
     <div className="space-y-4 border-t border-[#003399]/10 p-4 dark:border-white/15">
       <p className="text-xs opacity-65">From {row.sheet}, line {row.sourceRow}</p>
@@ -59,5 +62,5 @@ export function HoldingsImportRow({ row, options, batch, disabled, onSaved, onWo
         </fieldset>
       </>}
     </div>
-  </details>
+  </details></UnsavedGuard>
 }

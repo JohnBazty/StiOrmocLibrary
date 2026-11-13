@@ -337,3 +337,19 @@ describe('Fill missing details from the book lookup', () => {
   await waitFor(() => expect(api.review).toHaveBeenCalledWith(expect.objectContaining({ decision: 'new', lookupChecked: true })))
  })
 })
+
+describe('Unsaved book edits in the import', () => {
+ it('asks before leaving with an edited book, and Save changes runs that book save', async () => {
+  api.batch.mockResolvedValue({ ...initial, rows: [row(1, { errors: ['Check this book.'] }), row(2)] })
+  await upload()
+  const link = document.createElement('a'); link.href = '/librarian/dashboard'; link.textContent = 'Dashboard'; link.addEventListener('click', event => event.preventDefault()); document.body.appendChild(link)
+  const entry = screen.getByText('Needs correction').closest('details')!
+  fireEvent.change(within(entry).getByLabelText('Include this book?'), { target: { value: 'new' } })
+  fireEvent.change(within(entry).getByDisplayValue('First Book'), { target: { value: 'First Book, revised' } })
+  fireEvent.click(link)
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+  await waitFor(() => expect(api.review).toHaveBeenCalledWith(expect.objectContaining({ decision: 'new', data: expect.objectContaining({ title: 'First Book, revised' }) })))
+  link.remove()
+ })
+})
+

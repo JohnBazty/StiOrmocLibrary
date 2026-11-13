@@ -116,7 +116,8 @@ function recordReferenceCorrection(changes: ImportCorrection[], field: string, b
   if (existing) { existing.after = after; existing.reason = reason }
   else changes.push({ field, before, after, reason })
 }
-export function mappedRows(sheets:HoldingsSheet[],mappings:SheetMapping[],references:ImportReferences={categories:[],locations:[]}){
+/** `requireCopies: false` is for Find book details, which lists books without adding copies. */
+export function mappedRows(sheets:HoldingsSheet[],mappings:SheetMapping[],references:ImportReferences={categories:[],locations:[]},{requireCopies=true}:{requireCopies?:boolean}={}){
   const seen=new Set<string>()
   const items:Array<{sheet:string;sourceRow:number;source:string[];data:HoldingsData}>=[]
   let ignored=0
@@ -127,7 +128,7 @@ export function mappedRows(sheets:HoldingsSheet[],mappings:SheetMapping[],refere
     seen.add(mapping.sheet)
     if(!Number.isInteger(mapping.headerRow)||mapping.headerRow<1||mapping.headerRow>sheet.rows.length)throw bad('Choose a valid header row.')
     // An ISBN can stand in for Title and Author: the book lookup or the librarian fills them before a row is saved.
-    if(!mapping.columns.copies||(!mapping.columns.title&&!mapping.columns.isbn))throw bad('Map Copies, and Title or ISBN, for every selected sheet.')
+    if((requireCopies&&!mapping.columns.copies)||(!mapping.columns.title&&!mapping.columns.isbn))throw bad(requireCopies?'Map Copies, and Title or ISBN, for every selected sheet.':'Map Title or ISBN for every selected sheet.')
     for(const column of Object.values(mapping.columns))if(!Number.isInteger(column)||Number(column)<1||Number(column)>40)throw bad('Choose valid column numbers.')
     for(let i=mapping.headerRow;i<sheet.rows.length;i++){
       const source=sheet.rows[i]
@@ -141,7 +142,7 @@ export function mappedRows(sheets:HoldingsSheet[],mappings:SheetMapping[],refere
       // Numeric copy rows are retained even if a genuine title contains these words.
       if(!/^\d+$/.test(values.copies)&&source.some(cell=>/^(prepared by|noted by|checked by|certified true(?: and)?(?: correct)?|certified by)\b/i.test(clean(cell)))){ignored+=sheet.rows.length-i;break}
       if(!values.title&&!values.author&&/^(copies|date|year|published)$/i.test(values.copies)){ignored++;continue}
-      if(!values.title && !values.copies){ignored++;continue}
+      if(!values.title && (requireCopies ? !values.copies : !values.isbn)){ignored++;continue}
       if(/^(book title|title|total|grand total)$/i.test(values.title) || /^(prepared by|noted by|checked by|certified by)\s*:/i.test(values.title) || (!values.title && /total/i.test(source.join(' ')))){ignored++;continue}
       let categoryId = positiveId(mapping.categoryId), location = clean(mapping.location)
       if (values.categoryName) {

@@ -14,7 +14,7 @@ type Fillable = typeof FILLABLE[number]
 type Source = 'local_catalog' | 'google_books' | 'open_library'
 type Found = Partial<Record<Fillable, string>> & { source: Source }
 
-type Lookups = {
+export type Lookups = {
   lookup: (isbn: unknown) => Promise<{ title: string; author: string; isbn: string; publisher: string | null; publicationYear: number | null; source: Source }>
   searchTitles: (query: { title?: unknown; author?: unknown }) => Promise<{ source: Source | null; candidates: Array<{ title: string; author: string; publisher: string | null; publicationYear: number | null; isbn: string | null }> }>
 }
@@ -45,6 +45,27 @@ async function findFor(data: Record<string, string>, lookups: Lookups): Promise<
   return { isbn: matchIsbn && isValidIsbn(matchIsbn) ? matchIsbn : '', author: match.author, publisher: match.publisher ?? '', publicationYear: year(match.publicationYear), source: result.source }
 }
 
+export type FilledValues = Record<string, { value: string; source: Source }>
+
+/**
+ * The blanks of one book row the lookups can fill, and where each value came from; values already present are never
+ * replaced. Used by the import fill and by Find book details. Throws only when the providers are unavailable.
+ */
+export async function lookupBlanks(data: Record<string, string>, lookups: Lookups) {
+  let found: Found | null
+  try { found = await findFor(data, lookups) } catch (error) {
+    if (error instanceof HttpError && error.status === 404) found = null
+    else throw error
+  }
+  const additions: Partial<Record<Fillable, string>> = {}
+  const record: FilledValues = {}
+  for (const field of FILLABLE) {
+    const value = found?.[field]?.trim()
+    if (value && !String(data[field] ?? '').trim()) { additions[field] = value.slice(0, 255); record[field] = { value: additions[field]!, source: found!.source } }
+  }
+  return { additions, record }
+}
+
 /**
  * Fills blank title, author, ISBN, publisher and year in staged import rows from the book lookups, 50 rows per call.
  * Spreadsheet values are never replaced. Each filled value is recorded in `lookupFilled` for the librarian to check.
@@ -58,18 +79,9 @@ export function createImportLookupFill(database: Pool = db, lookups: Lookups = i
     for (const row of rows) {
       // Answer before a proxy gives up on the request; the rest stays waiting for the next click.
       if (clock() - startedAt > FILL_DEADLINE_MS) break
-      const data = row.data_json as Record<string, string>
-      let found: Found | null
-      try { found = await findFor(data, lookups) } catch (error) {
-        if (error instanceof HttpError && error.status === 404) found = null
-        else { unavailable = true; break }
-      }
-      const additions: Partial<Record<Fillable, string>> = {}
-      const record: Record<string, { value: string; source: Source }> = {}
-      for (const field of FILLABLE) {
-        const value = found?.[field]?.trim()
-        if (value && !String(data[field] ?? '').trim()) { additions[field] = value.slice(0, 255); record[field] = { value: additions[field]!, source: found!.source } }
-      }
+      let result: Awaited<ReturnType<typeof lookupBlanks>>
+      try { result = await lookupBlanks(row.data_json as Record<string, string>, lookups) } catch { unavailable = true; break }
+      const { additions, record } = result
       const patch = { ...additions, lookupTried: true, ...(Object.keys(record).length ? { lookupFilled: record } : {}) }
       // The version check keeps an edit the librarian saved while this lookup was running.
       const [update] = await database.execute<RowDataPacket[]>(

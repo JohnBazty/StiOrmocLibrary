@@ -7,6 +7,7 @@ import { getAccessToken } from '../auth/auth-storage'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import { clearanceApi } from './clearance-api'
 import type { ClearanceList, ClearanceRecord } from './types'
+import { UnsavedGuard } from '../../components/UnsavedChanges'
 
 const field = 'h-11 w-full rounded-xl border border-[#003399]/20 bg-white px-3 text-sm text-[#003399] outline-none focus:ring-4 focus:ring-[#003399]/10'
 function lostResolution(item: ClearanceRecord['lostBooks'][number]) { return item['chargeResolution'] || (item.status === 'Confirmed' ? item.replacementCharge > 0 ? 'Quoted' : 'Awaiting Quotation' : 'Awaiting Review') }
@@ -108,18 +109,18 @@ export function AdminClearancePage() {
             </div>
             {!revocationFormOpen ? <Button variant="secondary" disabled={busy} onClick={() => setRevocationFormOpen(true)}>Remove exception</Button> : null}
           </div>
-          {revocationFormOpen ? <form onSubmit={revoke} className="mt-4 space-y-3 border-t border-[#003399]/15 pt-4">
+          {revocationFormOpen ? <UnsavedGuard className="contents" cleanOnSubmit><form onSubmit={revoke} className="mt-4 space-y-3 border-t border-[#003399]/15 pt-4">
             <label htmlFor="revocation-reason" className="block text-sm font-bold text-[#003399]">Reason for removing the exception</label>
             <textarea id="revocation-reason" name="reason" required minLength={10} placeholder="Example: The approved exception is no longer needed." className={`${field} h-20 py-3`} />
             <div className="flex flex-wrap gap-2"><Button type="submit" disabled={busy}>{busy ? 'Removing…' : 'Confirm removal'}</Button><Button type="button" variant="secondary" disabled={busy} onClick={() => setRevocationFormOpen(false)}>Cancel</Button></div>
-          </form> : null}
+          </form></UnsavedGuard> : null}
         </div> : selected.computedStatus === 'Not Cleared' ? <div className="mt-4">
           <p className="text-sm text-[#003399]/75">This student has library obligations. An exception changes only the clearance status; books, lost-item charges, and fines remain recorded.</p>
-          {!overrideFormOpen ? <Button className="mt-4" onClick={() => setOverrideFormOpen(true)}>Clear student as an exception</Button> : <form onSubmit={override} className="mt-4 space-y-3 rounded-xl border border-[#003399]/15 p-4">
+          {!overrideFormOpen ? <Button className="mt-4" onClick={() => setOverrideFormOpen(true)}>Clear student as an exception</Button> : <UnsavedGuard className="contents" cleanOnSubmit><form onSubmit={override} className="mt-4 space-y-3 rounded-xl border border-[#003399]/15 p-4">
             <label htmlFor="override-reason" className="block text-sm font-bold text-[#003399]">Reason for exception</label>
             <textarea id="override-reason" name="reason" required minLength={10} placeholder="Example: Approved by the Head Librarian while payment is being verified." className={`${field} h-20 py-3`} />
             <div className="flex flex-wrap gap-2"><Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Confirm exception'}</Button><Button type="button" variant="secondary" disabled={busy} onClick={() => setOverrideFormOpen(false)}>Cancel</Button></div>
-          </form>}
+          </form></UnsavedGuard>}
         </div> : <div className="mt-4 rounded-xl bg-[#003399]/5 p-4 text-sm text-[#003399]">
           No exception is needed because the student is already cleared by the system.
         </div>}
