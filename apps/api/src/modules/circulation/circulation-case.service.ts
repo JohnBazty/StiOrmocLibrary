@@ -24,7 +24,7 @@ function nullableId(value: unknown) { return value === null || value === undefin
 
 function mapCase(row: CaseRow) {
   return {
-    caseId: Number(row.case_id), caseType: 'Damage' as const, transactionId: Number(row.transaction_id),
+    caseId: Number(row.case_id), caseType: (row.case_type ?? 'Damage') as 'Damage' | 'Long Overdue', transactionId: Number(row.transaction_id),
     physicalCopyId: Number(row.physical_copy_id), borrowerUserId: Number(row.borrower_user_id), status: row.status,
     summary: row.summary, openedAt: row.opened_at, updatedAt: row.updated_at, resolvedAt: row.resolved_at,
     baselineConditionStatus: row.baseline_condition_status, observedConditionStatus: row.observed_condition_status,
@@ -32,7 +32,8 @@ function mapCase(row: CaseRow) {
   }
 }
 
-function publicInstruction(status: CaseStatus) {
+function publicInstruction(status: CaseStatus, caseType='Damage') {
+  if(caseType==='Long Overdue') return TERMINAL_CASE_STATUSES.includes(status) ? 'This book follow-up is closed. Check your borrowing history and clearance for outstanding requirements.' : 'This book is long overdue. Return it to the library or contact library staff.'
   return TERMINAL_CASE_STATUSES.includes(status)
     ? 'This damage review is closed. Check Clearance for any charge, or ask at the library desk.'
     : 'Library staff are reviewing damage reported on this book. Please follow any desk instructions.'
@@ -51,8 +52,10 @@ async function appendEvent(connection: PoolConnection, caseId: number, eventType
 async function notifyBorrower(connection: PoolConnection, userId: number, title: string, body: string, caseId: number, dedupeKey: string) {
   await connection.execute(
     `INSERT INTO notifications (user_id, message_title, message_body, trigger_type, source_type, source_id, action_path, priority, dedupe_key, scheduled_for, delivered_at)
-     VALUES (?, ?, ?, 'Circulation Case', 'Circulation Case', ?, '/student/borrowing', 'Important', ?, NOW(), NOW())
-     ON CONFLICT (user_id, dedupe_key) DO NOTHING`, [userId, title, body, caseId, dedupeKey],
+     SELECT ?, ?, ?, 'Circulation Case', 'Circulation Case', ?,
+       CASE WHEN EXISTS (SELECT 1 FROM accounts WHERE user_id = ? AND role = 'Faculty') THEN '/faculty/borrowing' ELSE '/student/borrowing' END,
+       'Important', ?, NOW(), NOW()
+     ON CONFLICT (user_id, dedupe_key) DO NOTHING`, [userId, title, body, caseId, userId, dedupeKey],
   )
 }
 
@@ -66,15 +69,60 @@ async function staffUserId(connection: PoolConnection, accountIdValue: unknown, 
 
 async function lockCase(connection: PoolConnection, caseId: number) {
   const [rows] = await connection.execute<CaseRow[]>(
-    "SELECT * FROM circulation_cases WHERE case_id = ? AND case_type = 'Damage' LIMIT 1 FOR UPDATE", [caseId],
+    "SELECT * FROM circulation_cases WHERE case_id = ? AND case_type IN ('Damage','Long Overdue') LIMIT 1 FOR UPDATE", [caseId],
   )
-  if (!rows[0]) throw new HttpError(404, 'CASE_NOT_FOUND', 'The damage case was not found.')
+  if (!rows[0]) throw new HttpError(404, 'CASE_NOT_FOUND', 'The book review was not found.')
   return rows[0]
 }
 
 function requireOpen(row: CaseRow) {
   if (TERMINAL_CASE_STATUSES.includes(row.status)) {
     throw new HttpError(422, 'CASE_TERMINAL', 'Reopen this case before taking a new action.')
+  }
+}
+
+/** Ported from 6dd0c64: create a review, never an automatic lost-book declaration. Caller holds the loan lock. */
+export async function openLongOverdueCaseInTransaction(connection:PoolConnection,input:{
+  transactionId:number;physicalCopyId:number;borrowerUserId:number;policyVersionId:number|null;
+  thresholdDays:number;thresholdReachedAt:Date;title:string
+}) {
+  if(!Number.isInteger(input.thresholdDays)||input.thresholdDays<1)throw new HttpError(422,'CASE_THRESHOLD_INVALID','The long-overdue threshold must be a positive number of open days.')
+  const description=`${input.title} is at least ${input.thresholdDays} open library days overdue.`
+  const [insert]=await connection.execute<ResultSetHeader>(
+    `INSERT INTO circulation_cases (case_type,transaction_id,physical_copy_id,borrower_user_id,status,summary,
+      opened_at,policy_version_id,threshold_days_snapshot,threshold_reached_at)
+     VALUES ('Long Overdue',?,?,?,'Open',?,${MANILA_TIMESTAMP},?,?,${MANILA_TIMESTAMP})
+     ON CONFLICT (transaction_id,case_type) DO NOTHING`,
+    [input.transactionId,input.physicalCopyId,input.borrowerUserId,description,input.thresholdReachedAt.toISOString(),input.policyVersionId,input.thresholdDays,input.thresholdReachedAt.toISOString()])
+  if(!insert.insertId)return {caseId:null,created:false}
+  const caseId=Number(insert.insertId)
+  await appendEvent(connection,caseId,'Opened',null,null,'Open',null,description,input.thresholdReachedAt)
+  await connection.execute(`INSERT INTO admin_notifications(event_type,actor_user_id,borrow_transaction_id,message_title,message_body)
+    VALUES ('long_overdue_case_opened',NULL,?,'Long-overdue book needs follow-up',?)`,[input.transactionId,description])
+  await notifyBorrower(connection,input.borrowerUserId,'Overdue book follow-up',publicInstruction('Open','Long Overdue'),caseId,`case:${caseId}:opened`)
+  return {caseId,created:true}
+}
+
+/** Called only inside the physical-return transaction, after the caller has locked and returned the loan. */
+export async function resolveLongOverdueCaseAtReturn(connection: PoolConnection, transactionId: number, actorUserId: number | null, returnedAt: Date) {
+  const [cases] = await connection.execute<CaseRow[]>(
+    `SELECT cc.* FROM circulation_cases cc
+       JOIN borrow_transactions bt ON bt.transaction_id = cc.transaction_id
+      WHERE cc.transaction_id = ? AND cc.case_type = 'Long Overdue'
+        AND cc.status NOT IN ('Resolved','Dismissed')
+        AND bt.transaction_status = 'Returned' AND bt.returned_at IS NOT NULL
+      FOR UPDATE OF cc`, [transactionId],
+  )
+  for (const row of cases) {
+    await connection.execute(
+      `UPDATE circulation_cases SET status = 'Resolved', resolved_at = ${MANILA_TIMESTAMP},
+        resolved_by_user_id = ?, updated_at = ${MANILA_TIMESTAMP} WHERE case_id = ?`,
+      [returnedAt.toISOString(), actorUserId, returnedAt.toISOString(), row.case_id],
+    )
+    await appendEvent(connection, Number(row.case_id), 'Resolved', actorUserId, row.status, 'Resolved',
+      'Library staff confirmed the physical return. Outstanding fines remain payable.', null, returnedAt)
+    await notifyBorrower(connection, Number(row.borrower_user_id), 'Overdue follow-up closed',
+      publicInstruction('Resolved', 'Long Overdue'), Number(row.case_id), `case:${row.case_id}:physical-return`)
   }
 }
 
@@ -197,7 +245,7 @@ export function createCirculationCaseService(database: Pool = db, clock: () => D
   const service = {
     async listCases(query: Record<string, unknown>) {
       const filters = validateCaseListQuery(query)
-      const where = ["cc.case_type = 'Damage'"]
+      const where = ["cc.case_type IN ('Damage','Long Overdue')"]
       const params: unknown[] = []
       if (filters.status) { where.push('cc.status = ?'); params.push(filters.status) }
       if (filters.search) {
@@ -226,9 +274,9 @@ export function createCirculationCaseService(database: Pool = db, clock: () => D
 
     async getCaseDetail(caseIdValue: unknown) {
       const caseId = positiveCaseId(caseIdValue)
-      const [caseRows] = await database.execute<CaseRow[]>("SELECT * FROM circulation_cases WHERE case_id = ? AND case_type = 'Damage' LIMIT 1", [caseId])
+      const [caseRows] = await database.execute<CaseRow[]>("SELECT * FROM circulation_cases WHERE case_id = ? AND case_type IN ('Damage','Long Overdue') LIMIT 1", [caseId])
       const row = caseRows[0]
-      if (!row) throw new HttpError(404, 'CASE_NOT_FOUND', 'The damage case was not found.')
+      if (!row) throw new HttpError(404, 'CASE_NOT_FOUND', 'The book review was not found.')
       const [[loanRows], [eventRows]] = await Promise.all([
         database.execute<RowDataPacket[]>(
           `SELECT bt.transaction_status, bt.due_at, bt.returned_at, t.title, t.purchase_price, pc.barcode, pc.accession_number,
@@ -286,6 +334,7 @@ export function createCirculationCaseService(database: Pool = db, clock: () => D
         const actorUserId = await staffUserId(connection, accountId, 'library.manage')
         const row = await lockCase(connection, caseId)
         requireOpen(row)
+        if (row.case_type !== 'Damage') throw new HttpError(422, 'CASE_DISPOSITION_TYPE_INVALID', 'Damage decisions apply only to damaged-book reviews. Report a lost book through Clearance.')
         if (row.lost_book_report_id) throw new HttpError(409, 'CASE_LOST_ALREADY_CHARGED', 'This copy was already written off and charged. Review it in Clearance.')
         await applyDisposition(connection, row, input.disposition, input.reason, input.replacementCharge, actorUserId, clock())
         await appendEvent(connection, caseId, 'Disposition Recorded', actorUserId, row.status, row.status, input.reason, input.disposition, clock())
@@ -309,8 +358,8 @@ export function createCirculationCaseService(database: Pool = db, clock: () => D
         )
         const eventId = await appendEvent(connection, caseId, status, actorUserId, row.status, status, input.reason, null, clock())
         // Keyed by event so a re-close after reopen notifies again.
-        await notifyBorrower(connection, Number(row.borrower_user_id), status === 'Resolved' ? 'Damage review closed' : 'Damage review dismissed',
-          publicInstruction(status), caseId, `case:${caseId}:${status.toLowerCase()}:${eventId}`)
+        await notifyBorrower(connection, Number(row.borrower_user_id), row.case_type==='Long Overdue' ? (status==='Resolved'?'Overdue follow-up closed':'Overdue follow-up dismissed') : (status==='Resolved'?'Damage review closed':'Damage review dismissed'),
+          publicInstruction(status,row.case_type), caseId, `case:${caseId}:${status.toLowerCase()}:${eventId}`)
       })
       return service.getCaseDetail(caseId)
     },
@@ -335,13 +384,14 @@ export function createCirculationCaseService(database: Pool = db, clock: () => D
       const map = new Map<number, PublicCaseSummary>()
       if (transactionIds.length === 0) return map
       const [rows] = await database.execute<CaseRow[]>(
-        `SELECT case_id, transaction_id, status, opened_at FROM circulation_cases
-          WHERE case_type = 'Damage' AND borrower_user_id = ? AND transaction_id = ANY(?::bigint[])`,
+        `SELECT case_id, transaction_id, case_type, status, opened_at FROM circulation_cases
+          WHERE case_type IN ('Damage','Long Overdue') AND borrower_user_id = ? AND transaction_id = ANY(?::bigint[])
+          ORDER BY (status IN ('Resolved','Dismissed')) DESC, opened_at ASC, case_id ASC`,
         [userId, transactionIds],
       )
       for (const row of rows) {
         map.set(Number(row.transaction_id), {
-          caseId: Number(row.case_id), caseType: 'Damage', status: row.status, openedAt: row.opened_at, instruction: publicInstruction(row.status),
+          caseId: Number(row.case_id), caseType: (row.case_type ?? 'Damage') as 'Damage'|'Long Overdue', status: row.status, openedAt: row.opened_at, instruction: publicInstruction(row.status,row.case_type),
         })
       }
       return map

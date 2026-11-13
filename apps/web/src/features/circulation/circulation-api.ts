@@ -64,7 +64,7 @@ export const circulationApi = {
   }),
   returnBook: (transactionId: number) => request(`/api/v1/admin/borrowing/${transactionId}/return`, { method: 'PUT' }),
   calculatePenalty: (transactionId: number) => request<{ amount: number; currency: string }>(`/api/v1/admin/borrowing/${transactionId}/calculate-penalty`, { method: 'POST' }),
-  listCases: (status = 'all') => request<DamageCaseListData>(`/api/v1/admin/circulation/cases?${new URLSearchParams({ status, limit: '50' })}`),
+  listCases: (status = 'all', page = 1) => request<DamageCaseListData>(`/api/v1/admin/circulation/cases?${new URLSearchParams({ status, page: String(page), limit: '50' })}`),
   getCase: (caseId: number) => request<DamageCaseDetail>(`/api/v1/admin/circulation/cases/${caseId}`),
   addCaseNote: (caseId: number, notes: string) => request<DamageCaseDetail>(`/api/v1/admin/circulation/cases/${caseId}/notes`, { method: 'POST', body: JSON.stringify({ notes }) }),
   recordCaseDisposition: (caseId: number, input: { disposition: DamageDisposition; reason: string; replacementCharge?: number }) => request<DamageCaseDetail>(`/api/v1/admin/circulation/cases/${caseId}/dispositions`, { method: 'POST', body: JSON.stringify(input) }),

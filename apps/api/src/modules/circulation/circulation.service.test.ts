@@ -33,6 +33,7 @@ function checkoutPool(role: 'Student' | 'Faculty', activeCount = 0, readyClaim: 
   const connection = {
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() {},
     async execute(sql: string) {
+      if (sql.includes('SELECT cc.* FROM circulation_cases cc')) return [[]]
       const eligible = borrowerEligibilityRows(sql, role, 7)
       if (eligible) return [eligible]
       if (sql.includes('AS commitments')) return [[{ commitments: activeCount }]]
@@ -119,6 +120,7 @@ test('return assigns the copy to the first waiting reservation atomically', asyn
   const connection = {
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() {},
     async execute(sql: string) {
+      if (sql.includes('SELECT cc.* FROM circulation_cases cc')) return [[]]
       if (sql.includes('SELECT user_id FROM accounts')) return [[{ user_id: 2 }]]
       const eligible = borrowerEligibilityRows(sql, 'Faculty', 11)
       if (eligible) return [eligible]

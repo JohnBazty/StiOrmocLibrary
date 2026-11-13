@@ -9,6 +9,7 @@ function deskDatabase(failCaseInsert = false) {
   const connection = {
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() {},
     async execute(sql: string, values: unknown[] = []) {
+      if (sql.includes('SELECT cc.* FROM circulation_cases cc')) return [[]]
       if (sql.includes('library_profile_settings')) return [[{ settings_id: 1 }]]
       if (sql.includes('SELECT account_id FROM accounts')) return [[{ account_id: 3 }]]
       if (sql.includes('SELECT user_id FROM accounts')) return [[{ user_id: 2 }]]

@@ -15,7 +15,7 @@ export const BOOK_PRICE_RESOLUTION = 'Book Price'
 
 export type PublicCaseSummary = {
   caseId: number
-  caseType: 'Damage'
+  caseType: 'Damage' | 'Long Overdue'
   status: CaseStatus
   openedAt: string | Date
   instruction: string

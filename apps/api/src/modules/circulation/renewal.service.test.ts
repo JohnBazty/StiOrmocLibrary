@@ -72,6 +72,7 @@ function renewalPool(options: FixtureOptions = {}) {
     release() {},
     async execute(sql: string, values: unknown[] = []) {
       state.sqlLog.push(sql)
+      if(sql.includes('FROM library_profile_settings'))return [[{settings_id:1}]]
       if (sql.includes('FROM accounts WHERE account_id')) {
         return [[{
           account_id: 2,
@@ -464,3 +465,19 @@ test('submit locks the title copies before the loan row, matching checkout lock 
   assert.ok(loanLock >= 0, 'loan row is locked')
   assert.ok(copyLock < loanLock, 'copies are locked before the loan row')
 })
+
+for(const role of ['Librarian','Staff'])test(role+' can renew for another borrower with the same eligibility rules',async()=>{
+ const {database}=renewalPool({accountRole:role,actorUserId:9,loanUserId:7})
+ const result=await createRenewalService(database,clock).submit(31,{accountId:2,role},{requestKey:'qa-role-'+role,staffNote:'Borrower asked at desk'})
+ assert.equal(result.status,'Approved');assert.equal(result.decisionSource,'Staff')
+})
+test('renewal preserves the recorded Manila due time rather than replacing it with the old cutoff',async()=>{
+ const {database}=renewalPool({dueAt:new Date('2026-11-14T15:17:00+08:00')})
+ const result=await createRenewalService(database,()=>new Date('2026-11-13T10:00:00+08:00')).submit(31,borrowerActor,{requestKey:'qa-clock-31'})
+ assert.equal(result.newDueAt?.toISOString(),'2026-11-16T07:17:00.000Z')
+})
+for (const conditionStatus of ['Damaged', 'For Repair']) {
+  test(`${conditionStatus} copy cannot be renewed`, async () => {
+    await assertRejected({ conditionStatus }, 'RENEWAL_COPY_BLOCKED')
+  })
+}

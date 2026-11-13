@@ -41,7 +41,7 @@ describe('DamageCasesPanel', () => {
     render(<DamageCasesPanel />)
     await screen.findByText('Clean Code')
     fireEvent.change(screen.getByLabelText('Case status'), { target: { value: 'Resolved' } })
-    await waitFor(() => expect(api.listCases).toHaveBeenLastCalledWith('Resolved'))
+    await waitFor(() => expect(api.listCases).toHaveBeenLastCalledWith('Resolved', 1))
   })
 
   it('lets a librarian write the copy off and charge the book price', async () => {
@@ -125,4 +125,36 @@ describe('DamageCasesPanel', () => {
     await waitFor(() => expect(api.closeCase).toHaveBeenCalledWith(4, 'resolve', 'Charged and settled.'))
     expect(await within(region).findByRole('button', { name: 'Reopen' })).toBeTruthy()
   })
+})
+
+it('shows long-overdue follow-ups without offering damaged-book write-off controls',async()=>{
+ api.listCases.mockResolvedValue({items:[{...listItem,caseType:'Long Overdue'}],pagination:{page:1,limit:25,total:1,totalPages:1}})
+ api.getCase.mockResolvedValue({...detail(),case:{...detail().case,caseType:'Long Overdue'}})
+ render(<DamageCasesPanel/>)
+ fireEvent.click(await screen.findByRole('button',{name:'Review Clean Code'}))
+ expect(await screen.findByRole('button',{name:'Add note'})).toBeTruthy()
+ expect(screen.queryByLabelText('Decision')).toBeNull()
+})
+
+it('refreshes an open review after a return event and preserves an unsaved note', async () => {
+ const region=await openReview()
+ fireEvent.change(within(region).getByLabelText('Note'),{target:{value:'Unsaved investigation note'}})
+ api.getCase.mockResolvedValue(detail({status:'Under Investigation'}))
+ fireEvent(window,new Event('smartlib:circulation-updated'))
+ await waitFor(()=>expect(api.getCase).toHaveBeenCalledTimes(2))
+ expect((within(region).getByLabelText('Note') as HTMLTextAreaElement).value).toBe('Unsaved investigation note')
+ api.listCases.mockResolvedValue({items:[{...listItem,status:'Resolved'}],pagination:{page:1,limit:50,total:1,totalPages:1}})
+ api.getCase.mockResolvedValue(detail({status:'Resolved'}))
+ fireEvent(window,new Event('smartlib:circulation-updated'))
+ expect(await within(region).findByRole('button',{name:'Reopen'})).toBeTruthy()
+ expect(within(region).queryByRole('button',{name:'Record decision'})).toBeNull()
+})
+
+it('opens subsequent pages and refreshes the selected page', async () => {
+ api.listCases.mockResolvedValue({items:[listItem],pagination:{page:1,limit:50,total:51,totalPages:2}})
+ render(<DamageCasesPanel/>)
+ fireEvent.click(await screen.findByRole('button',{name:'Next follow-ups'}))
+ await waitFor(()=>expect(api.listCases).toHaveBeenLastCalledWith('all',2))
+ fireEvent.click(screen.getByRole('button',{name:'Refresh follow-ups'}))
+ await waitFor(()=>expect(api.listCases).toHaveBeenLastCalledWith('all',2))
 })

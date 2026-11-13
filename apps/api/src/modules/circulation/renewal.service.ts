@@ -4,7 +4,7 @@ import { HttpError } from '../../core/http-error.ts'
 import { createBorrowingPolicyRepository } from './borrowing-policy.repository.ts'
 import { createBorrowingPolicyService } from './borrowing-policy.service.ts'
 import { isMaterialBorrowable, type BorrowingPolicyVersion } from './borrowing-policy.types.ts'
-import { extendOperatingDueDate } from './due-date.ts'
+import { extendRecordedLoanDeadline } from './exact-loan-deadline.ts'
 import {
   createRenewalRepository,
   type RenewalAccount,
@@ -49,7 +49,7 @@ function accountId(actor: RenewalActor): number {
 }
 
 function isStaffActor(actor: RenewalActor): boolean {
-  return String(actor.role ?? '') === 'Admin'
+  return ['Admin','Librarian','Staff'].includes(String(actor.role ?? ''))
 }
 
 function blocker(code: string): RenewalBlocker {
@@ -77,7 +77,7 @@ function evaluateBlockers(
     if (loan.renewalCount >= policy.maxRenewals) blockers.push(blocker('RENEWAL_LIMIT_REACHED'))
     if (!isMaterialBorrowable(policy, loan.materialType)) blockers.push(blocker('RENEWAL_MATERIAL_NOT_ELIGIBLE'))
   }
-  if (loan.copyCondition === 'Lost' || loan.copyLifecycleStatus === 'Archived') {
+  if (['Lost', 'Damaged', 'For Repair'].includes(loan.copyCondition ?? '') || loan.copyLifecycleStatus === 'Archived') {
     blockers.push(blocker('RENEWAL_COPY_BLOCKED'))
   }
   if (loan.titleLifecycleStatus === 'Archived') blockers.push(blocker('RENEWAL_TITLE_ARCHIVED'))
@@ -136,8 +136,8 @@ async function resolvePolicy(
 
 function assertActorCanAccessLoan(account: RenewalAccount, loan: RenewalLoan, staff: boolean): void {
   if (staff) {
-    if (account.role !== 'Admin') {
-      throw new HttpError(403, 'RENEWAL_FORBIDDEN', 'Only an Admin may renew a loan on behalf of a borrower.')
+    if (!['Admin','Librarian','Staff'].includes(account.role)) {
+      throw new HttpError(403, 'RENEWAL_FORBIDDEN', 'Only library personnel may renew a loan on behalf of a borrower.')
     }
     return
   }
@@ -200,11 +200,11 @@ export function createRenewalService(database: Pool = db, clock: () => Date = ()
     let proposedDueAt: Date | null = null
     if (policy) {
       try {
-        const closedDates = await repository.loadCalendarClosedDates(loan.dueAt, executor)
-        proposedDueAt = extendOperatingDueDate(
+        const {openDays,closedDates} = await repository.loadOperatingCalendar(loan.dueAt, executor)
+        proposedDueAt = extendRecordedLoanDeadline(
           loan.dueAt,
           policy.renewalExtensionDays,
-          policy.dueTimeCutoff,
+          openDays,
           closedDates,
         )
       } catch (error) {
@@ -241,6 +241,7 @@ export function createRenewalService(database: Pool = db, clock: () => Date = ()
       const connection = await database.getConnection()
       try {
         await connection.beginTransaction()
+        await connection.execute('SELECT settings_id FROM library_profile_settings WHERE settings_id=1 FOR UPDATE')
         await repository.findAccount(requesterAccountId, connection, true)
         const existing = await repository.findDecisionByRequestKey(input.requestKey, connection, true)
         if (existing) {

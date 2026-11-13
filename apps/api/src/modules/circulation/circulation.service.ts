@@ -17,7 +17,7 @@ import { isMaterialBorrowable, roleBookLimit } from './borrowing-policy.types.ts
 import { createRenewalService, type RenewalActor } from './renewal.service.ts'
 import { borrowerEligibility, borrowingPolicy, requireEligible, requireLoanSlot, policyDueDate } from './desk-circulation.policy.ts'
 import { prepareReturnedCopy } from './returned-copy-preparation.ts'
-import { createCirculationCaseService } from './circulation-case.service.ts'
+import { createCirculationCaseService, resolveLongOverdueCaseAtReturn } from './circulation-case.service.ts'
 import { localTimestamp } from '../attendance/attendance-intervals.ts'
 import { positiveCirculationId, validateBorrowCart, validateCancellation, validateCheckout, validateHistoryQuery, validatePreflight, type BorrowCartInput } from './circulation.validation.ts'
 
@@ -726,7 +726,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
       try {
         await connection.beginTransaction();
         await connection.execute('SELECT settings_id FROM library_profile_settings WHERE settings_id=1 FOR UPDATE')
-        await actorUserId(connection, actorAccountId)
+        const returningStaffUserId = await actorUserId(connection, actorAccountId)
         const [rows] = await connection.execute<RowDataPacket[]>(
           `SELECT bt.transaction_id, bt.user_id, bt.material_id, bt.physical_copy_id, ${loanTimestamp('bt.due_at')}, bt.transaction_status,
                   pc.title_id, pc.accession_number, pc.condition_status, t.title FROM borrow_transactions bt
@@ -738,6 +738,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         if (!['Borrowed', 'Overdue'].includes(String(loan.transaction_status))) throw new HttpError(422, 'CIRCULATION_RETURN_INVALID', 'Only active or overdue transactions can be returned.')
         const returnedAt = clock()
         await connection.execute(`UPDATE borrow_transactions SET transaction_status = 'Returned', returned_at = ${"(?::timestamptz AT TIME ZONE 'Asia/Manila')"}, updated_at = NOW() WHERE transaction_id = ?`, [returnedAt, transactionId])
+        await resolveLongOverdueCaseAtReturn(connection, transactionId, returningStaffUserId, returnedAt)
         if(loan.due_at&&(loan.transaction_status==='Overdue'||localTimestamp(loan.due_at)<returnedAt.getTime())){
           const due=new Date(localTimestamp(loan.due_at));const context=await loadFineContext(connection,due,returnedAt);const charge=calculateOperatingFine(due,returnedAt,context.policy,context.calendar)
           await connection.execute(

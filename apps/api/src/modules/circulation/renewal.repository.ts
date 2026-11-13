@@ -264,7 +264,7 @@ export function createRenewalRepository(database: Pool = db) {
       return Number(rows[0]?.approved_count ?? 0)
     },
 
-    async loadCalendarClosedDates(start: Date, executor: RenewalExecutor = database): Promise<Set<string>> {
+    async loadOperatingCalendar(start: Date, executor: RenewalExecutor = database) {
       const horizon = new Date(start)
       horizon.setDate(horizon.getDate() + 366)
       const [closedRows] = await executor.execute<RowDataPacket[]>(
@@ -283,14 +283,7 @@ export function createRenewalRepository(database: Pool = db) {
           ? localDateKey(row.closed_date)
           : String(row.closed_date).slice(0, 10)
       }))
-      const date = new Date(start)
-      date.setHours(12, 0, 0, 0)
-      while (date <= horizon) {
-        const campusDay = date.getDay() === 0 ? 7 : date.getDay()
-        if (!openDays.has(campusDay)) closedDates.add(localDateKey(date))
-        date.setDate(date.getDate() + 1)
-      }
-      return closedDates
+      return {openDays,closedDates}
     },
 
     async insertDecision(input: InsertRenewalDecision, executor: PoolConnection): Promise<number> {
