@@ -73,5 +73,6 @@ test('single-record lookup falls back cleanly for a pre-bridge inventory schema'
   const record = await queryResearchOverview(database, 12)
   assert.equal(calls, 2)
   assert.equal(record?.department, 'Department not recorded')
-  assert.match(record?.abstract ?? '', /No abstract has been recorded/)
+  assert.equal(record?.abstract, null)
+  assert.equal(record?.adviser, 'Dr. Adviser')
 })

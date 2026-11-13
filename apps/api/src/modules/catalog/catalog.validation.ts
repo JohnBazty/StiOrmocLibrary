@@ -31,14 +31,27 @@ export type BookMetadataInput = Omit<BookEntryInput, 'copy'>
 export type ThesisMetadataInput = {
   title: string
   authors: string[]
-  adviser: string
+  adviser: string | null
   year: number
-  abstract: string
+  abstract: string | null
   categoryId: number | null
   researchCode: string
   departmentOrProgram: string
   keywords: string | null
   copy: PhysicalCopyInput | null
+}
+
+export type ResearchImportRowInput = {
+  copyNumbers: number[]
+  authors: string[]
+  year: number
+  title: string
+  program: string
+  adviser: string | null
+  abstract: string | null
+  keywords: string | null
+  researchCode: string
+  shelf: string
 }
 
 export type ThesisEntryInput = Omit<ThesisMetadataInput, 'copy'> & { copy: PhysicalCopyInput }
@@ -232,8 +245,9 @@ export function validateBookMetadata(body: unknown): ValidationResult<BookMetada
 }
 
 /**
- * Validates the required thesis metadata contract: Title, Author, Adviser,
- * Year, and Abstract. Database-required indexing fields are validated too.
+ * Validates the thesis metadata contract: Title, Author and Year are required;
+ * Adviser and Abstract are optional (bulk lists lack them) but checked when given.
+ * Database-required indexing fields are validated too.
  */
 export function validateThesisMetadata(body: unknown): ValidationResult<ThesisMetadataInput> {
   const input = body && typeof body === 'object' ? body as Record<string, unknown> : {}
@@ -256,11 +270,9 @@ export function validateThesisMetadata(body: unknown): ValidationResult<ThesisMe
     errors.author = `Each author must not exceed ${PERSON_NAME_MAX_LENGTH} characters.`
   }
 
-  if (!adviser) errors.adviser = 'Adviser is required.'
-  else if (adviser.length > PERSON_NAME_MAX_LENGTH) errors.adviser = `Adviser must not exceed ${PERSON_NAME_MAX_LENGTH} characters.`
+  if (adviser.length > PERSON_NAME_MAX_LENGTH) errors.adviser = `Adviser must not exceed ${PERSON_NAME_MAX_LENGTH} characters.`
 
-  if (!abstract) errors.abstract = 'Abstract is required.'
-  else if (abstract.length < 20) errors.abstract = 'Abstract must contain at least 20 characters.'
+  if (abstract && abstract.length < 20) errors.abstract = 'Abstract must contain at least 20 characters.'
   else if (abstract.length > ABSTRACT_MAX_LENGTH) errors.abstract = `Abstract must not exceed ${ABSTRACT_MAX_LENGTH} characters.`
 
   if (!researchCode) errors.researchCode = 'Research code is required for indexing.'
@@ -276,9 +288,9 @@ export function validateThesisMetadata(body: unknown): ValidationResult<ThesisMe
     data: {
       title,
       authors,
-      adviser,
+      adviser: adviser || null,
       year: year ?? 0,
-      abstract,
+      abstract: abstract || null,
       categoryId,
       researchCode,
       departmentOrProgram,
@@ -306,5 +318,66 @@ export function validateThesisEntry(body: unknown): ValidationResult<ThesisEntry
     isValid: Object.keys(errors).length === 0,
     errors,
     data: { ...result.data, categoryId: null, copy: { barcode: '', accessionNumber: '', shelfLocation, conditionStatus: 'Good', legacyMaterialId: null } },
+  }
+}
+
+/** At most this many copies per research title in one import row. */
+export const IMPORT_COPIES_PER_ROW = 50
+
+/**
+ * Reads copy numbers: `25`, `1, 2`, `1-2` or `81-83` (two numbers joined by a dash are a range) and
+ * `81 - 82 - 83` (three or more joined numbers are a list). Throws a short message when it cannot read them.
+ */
+export function parseCopyNumbers(text: string): number[] {
+  const normalized = String(text ?? '').replace(/[‐-―−]/g, '-').trim()
+  if (!normalized) throw new Error('Copy numbers are required.')
+  const numbers: number[] = []
+  for (const part of normalized.split(/[,;]/)) {
+    const chain = part.trim()
+    if (!/^\d+(\s*-\s*\d+)*$/.test(chain)) throw new Error(`Copy numbers "${chain}" cannot be read. Use forms like 25, 1-2 or 1, 2.`)
+    const values = chain.split('-').map((value) => Number(value.trim()))
+    if (values.some((value) => !Number.isSafeInteger(value) || value < 1)) throw new Error('Copy numbers must be whole numbers from 1.')
+    if (values.length === 2) {
+      if (values[1] < values[0]) throw new Error(`Copy numbers "${chain}" run backwards.`)
+      if (values[1] - values[0] + 1 > IMPORT_COPIES_PER_ROW) throw new Error(`Use at most ${IMPORT_COPIES_PER_ROW} copies per title.`)
+      for (let copy = values[0]; copy <= values[1]; copy += 1) numbers.push(copy)
+    } else numbers.push(...values)
+    if (numbers.length > IMPORT_COPIES_PER_ROW) throw new Error(`Use at most ${IMPORT_COPIES_PER_ROW} copies per title.`)
+  }
+  if (new Set(numbers).size !== numbers.length) throw new Error('A copy number is listed twice.')
+  return numbers
+}
+
+/** One row of the research import file: title, authors, year, program and copy numbers are required. */
+export function validateResearchImportRow(body: unknown): ValidationResult<ResearchImportRowInput> {
+  const input = body && typeof body === 'object' ? body as Record<string, unknown> : {}
+  const errors: ValidationErrors = {}
+  const title = compactText(input.title)
+  const authors = normalizeAuthors({ authors: compactText(input.authors).split(';') })
+  const program = compactText(input.program)
+  const adviser = compactText(input.adviser)
+  const abstract = multilineText(input.abstract)
+  const researchCode = compactText(input.researchCode).toUpperCase()
+  const keywords = optionalText(input.keywords, 5_000)
+  const shelf = compactText(input.shelf)
+  const year = validateYear(input.year, 'year', errors, true)
+  let copyNumbers: number[] = []
+  try { copyNumbers = parseCopyNumbers(String(input.copyNumbers ?? '')) } catch (error) { errors.copyNumbers = (error as Error).message }
+
+  if (!title) errors.title = 'Title is required.'
+  else if (title.length > TITLE_MAX_LENGTH) errors.title = `Title must not exceed ${TITLE_MAX_LENGTH} characters.`
+  if (authors.length === 0) errors.authors = 'At least one author is required.'
+  else if (authors.some((author) => author.length > PERSON_NAME_MAX_LENGTH)) errors.authors = `Each author must not exceed ${PERSON_NAME_MAX_LENGTH} characters.`
+  if (!program) errors.program = 'Program is required.'
+  if (adviser.length > PERSON_NAME_MAX_LENGTH) errors.adviser = `Adviser must not exceed ${PERSON_NAME_MAX_LENGTH} characters.`
+  if (abstract && abstract.length < 20) errors.abstract = 'Abstract must contain at least 20 characters.'
+  else if (abstract.length > ABSTRACT_MAX_LENGTH) errors.abstract = `Abstract must not exceed ${ABSTRACT_MAX_LENGTH} characters.`
+  if (researchCode.length > 100) errors.researchCode = 'Research code must not exceed 100 characters.'
+  if (shelf.length > 100) errors.shelf = 'Shelf location must not exceed 100 characters.'
+
+  return {
+    isValid: Object.keys(errors).length === 0,
+    errors,
+    data: { copyNumbers, authors, year: year ?? 0, title, program, adviser: adviser || null, abstract: abstract || null, keywords, researchCode, shelf },
   }
 }

@@ -29,6 +29,8 @@ function catalogPool(options: { recordType?: 'Book' | 'Research/Thesis'; rowVers
         { research_inventory_id: 51, shelf_location: 'Shelf A' },
       ]]
       if (sql.startsWith('UPDATE') || sql.includes('UPDATE ')) return [{ affectedRows: 1 }]
+      if (sql.includes('FROM research_records')) return [[]]
+      if (sql.includes('DELETE FROM authors') || sql.includes('INSERT INTO authors')) return [{ affectedRows: 1, insertId: 1 }]
       if (sql.includes('INSERT INTO floor_plan_events')) return [{ insertId: 1 }]
       throw new Error(`Unexpected SQL: ${sql}`)
     },
@@ -69,4 +71,16 @@ test('rolls back a stale category change without updating inventory', async () =
   assert.equal(state.commits, 0)
   assert.equal(state.rollbacks, 1)
   assert.equal(state.statements.some(({ sql }) => sql.includes('UPDATE physical_copies')), false)
+})
+
+test('editing research metadata keeps the title category set by Change category', async () => {
+  const { state, database } = catalogPool({ recordType: 'Research/Thesis' })
+  await createCatalogManagementService(database).updateThesis(14, {
+    title: 'Edited thesis', authors: ['Ana Cruz'], adviser: 'Dr. Reyes', year: 2024, abstract: 'A new abstract that is long enough.',
+    categoryId: 2, researchCode: 'RES-14', departmentOrProgram: 'BSIT', keywords: null, copy: null,
+  })
+  const titleUpdate = state.statements.find(({ sql }) => sql.includes('UPDATE titles SET'))
+  assert.ok(titleUpdate)
+  assert.equal(titleUpdate.sql.includes('category_id'), false)
+  assert.equal(state.commits, 1)
 })

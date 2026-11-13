@@ -118,6 +118,8 @@ export const catalogApi = {
     document.body.appendChild(link); link.click(); link.remove()
     window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
   },
+  updateThesis: (titleId: number, body: unknown) => request(`/api/catalog/research/${titleId}`, { method: 'PUT', body: JSON.stringify(body) }),
+  archiveThesis: (titleId: number, reason: string) => request(`/api/catalog/research/${titleId}/archive`, { method: 'POST', body: JSON.stringify({ reason }) }),
   createThesis: (body: unknown) => request<BulkBookResult>('/api/catalog/research', { method: 'POST', body: JSON.stringify(body) }),
   parseRegistry: (value: string) => request<{ kind: string; normalizedValue: string; match: null | Record<string, unknown> }>('/api/catalog/registry/parse', {
     method: 'POST', body: JSON.stringify({ value, mode: 'auto' }),

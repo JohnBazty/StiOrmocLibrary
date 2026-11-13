@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, expect, it, vi } from 'vitest'
 import { PublicCatalogPage } from './PublicCatalogPage'
@@ -25,6 +25,17 @@ it('allows anonymous browsing and details while borrowing leads to login',async(
  expect(screen.getAllByRole('link',{name:'Borrow book'}).every(link=>link.getAttribute('href')==='/login?catalogTitleId=42')).toBe(true)
 })
 
+it('shows Not recorded for a research record without an abstract',async()=>{
+ const paper={...book,id:43,title:'Bare research',kind:'Research/Thesis',abstract:'',copies:[],copyCount:0,available:0}
+ vi.mocked(enhancedCatalog.options).mockResolvedValue({categories:[],programs:[],courses:[],types:[],locations:[]} as never)
+ vi.mocked(enhancedCatalog.search).mockResolvedValue({items:[paper],pagination:{total:1,page:1,limit:24}} as never)
+ vi.mocked(enhancedCatalog.detail).mockResolvedValue(paper as never)
+ render(<MemoryRouter><ThemeProvider><PublicCatalogPage/></ThemeProvider></MemoryRouter>)
+ fireEvent.click(await screen.findByRole('button',{name:'View details'}))
+ const dialog=await screen.findByRole('dialog')
+ expect(within(dialog).getByText('Abstract')).toBeTruthy()
+ expect(within(dialog).getByText('Abstract').nextElementSibling?.textContent).toBe('Not recorded')
+})
 it('filters from the main search, preserves other filters and resets pagination when typing or clearing',async()=>{
  vi.mocked(enhancedCatalog.options).mockResolvedValue({categories:[],programs:[],courses:[],types:[],locations:[]} as never)
  vi.mocked(enhancedCatalog.search).mockResolvedValue({items:[book],pagination:{total:1,page:1,limit:24}} as never)

@@ -37,3 +37,4 @@ tasks/*.log
 # Python bytecode generated while producing documentation
 __pycache__/
 *.pyc
+.devswarm-temp/

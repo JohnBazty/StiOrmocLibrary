@@ -7,11 +7,11 @@ export type ResearchCatalogItem = {
   researchCode: string
   title: string
   authors: string
-  adviser: string
+  adviser: string | null
   department: string
   publicationYear: number | null
   shelfLocation: string
-  abstract: string
+  abstract: string | null
   keywords: string | null
   accessStatus: ResearchAccessStatus
   viewOnly: true

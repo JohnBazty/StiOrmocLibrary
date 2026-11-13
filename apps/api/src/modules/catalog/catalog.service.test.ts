@@ -64,6 +64,8 @@ test('publishes catalog metadata and the independent thesis inventory row transa
   assert.equal(state.committed, 1)
   assert.equal(state.rolledBack, 0)
   assert.ok(state.statements.some((sql) => sql.includes('INSERT INTO research_inventory')))
+  // Shares the import's lock so a manual add cannot race its duplicate-title check.
+  assert.ok(state.statements.some((sql) => sql.includes('pg_advisory_xact_lock')))
 })
 
 test('returns the module 422 error before opening a transaction when mandatory fields are missing', async () => {

@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-11-11 (Supabase `032`, `034` and `036` applied, `033` pending, `035` reserved by PR #20, next unused `038`; `037` applied 2026-11-13) |
+| **Date last updated** | 2026-11-11 (Supabase `032`, `034` and `036` applied, `033` pending, `035` reserved by PR #20, next unused `039`; `037` applied 2026-11-13; `038` written, not applied) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---
@@ -101,8 +101,8 @@ Always know and document:
 | --- | --- |
 | Migrations directory | `database/supabase/` (Postgres only; MySQL was retired 2026-11-10) |
 | Latest applied migration | `037_book_register.sql` (2026-11-13, from feat/book-register; also applied: `034_job_runner_hardening.sql`, 2026-11-11; `036` lives on PR #19's branch) |
-| Latest file pending review | `033_rename_system_brand.sql`; `035` reserved by PR #20 (circulation RLS), not applied |
-| **Next available number** | **`038`** |
+| Latest file pending review | `033_rename_system_brand.sql`; `035` reserved by PR #20 (circulation RLS), not applied; `038_research_optional_details.sql` written 2026-11-13 on feat/research-maintenance, not applied |
+| **Next available number** | **`039`** |
 
 Applied enrollment 031 supersedes the removed 028 draft. Keep applied filenames and source bytes, including line endings. The 003 source still needs checksum reconciliation. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set.
 

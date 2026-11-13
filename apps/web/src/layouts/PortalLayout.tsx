@@ -79,6 +79,7 @@ const librarianNav: NavItem[] = [
   { label: 'Book queue', to: '/librarian/reservations', icon: BookMarked },
   { label: 'Fines', to: '/librarian/fines', icon: CircleDollarSign },
   { label: 'Inventory', to: '/librarian/inventory', icon: Archive, section: 'Resources' },
+  { label: 'Research maintenance', to: '/librarian/research-maintenance', icon: FileText },
   { label: 'Collection review', to: '/librarian/collection-review', icon: ClipboardCheck },
   { label: 'Floor plan', to: '/librarian/floor-plan', icon: Map },
   { label: 'Printing queue', to: '/librarian/printing', icon: Printer },

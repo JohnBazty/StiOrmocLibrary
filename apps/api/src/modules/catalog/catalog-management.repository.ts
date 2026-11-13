@@ -204,10 +204,11 @@ export async function updateBookMetadata(connection: PoolConnection, titleId: nu
 
 export async function updateThesisMetadata(connection: PoolConnection, titleId: number, input: ThesisMetadataInput) {
   await connection.execute<ResultSetHeader>(
-    `UPDATE titles SET category_id = ?, title = ?, normalized_title = ?, publication_year = ?,
+    // Category is left alone: "Change category" owns it and keeps shelf copies in sync.
+    `UPDATE titles SET title = ?, normalized_title = ?, publication_year = ?,
        search_text = ?, row_version = row_version + 1, updated_at = NOW()
      WHERE title_id = ?`,
-    [input.categoryId, input.title, input.title.toLocaleLowerCase('en-US'), input.year, buildThesisSearchText(input), titleId],
+    [input.title, input.title.toLocaleLowerCase('en-US'), input.year, buildThesisSearchText(input), titleId],
   )
   await connection.execute<ResultSetHeader>(
     `UPDATE research_records SET research_code = ?, adviser_name = ?, department_or_program = ?,

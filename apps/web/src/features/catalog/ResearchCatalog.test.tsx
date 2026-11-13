@@ -32,6 +32,15 @@ describe('ResearchCatalog view-only UI', () => {
     expect(screen.getByRole('button', { name: 'Generate APA reference' })).toBeTruthy()
   })
 
+  it('shows Not recorded for an empty adviser and abstract', async () => {
+    const bare = { ...paper, adviser: null, abstract: null }
+    api.fetchResearchCatalog.mockResolvedValue({ items: [bare], pagination: { page: 1, limit: 25, total: 1, totalPages: 1 } })
+    api.fetchResearchOverview.mockResolvedValue(bare)
+    render(<ResearchCatalog />)
+    fireEvent.click(await screen.findByRole('button', { name: 'View' }))
+    expect(await screen.findAllByText('Not recorded')).toHaveLength(2)
+  })
+
   it('keeps the drawer mounted and shows a localized error when detail loading fails', async () => {
     api.fetchResearchCatalog.mockResolvedValue({ items: [paper], pagination: { page: 1, limit: 25, total: 1, totalPages: 1 } })
     api.fetchResearchOverview.mockRejectedValue(new Error('Research details could not be loaded.'))

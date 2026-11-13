@@ -16,7 +16,7 @@ export type CatalogItem = {
   availability: string
   totalCopies: number
   availableCopies: number
-  research: null | { researchInventoryId: number | null; researchCode: string; adviser: string; departmentOrProgram: string }
+  research: null | { researchInventoryId: number | null; researchCode: string; adviser: string | null; departmentOrProgram: string }
 }
 
 export type PhysicalCopy = {

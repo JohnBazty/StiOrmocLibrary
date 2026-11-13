@@ -34,12 +34,12 @@ export function validateXlsxArchive(bytes: Buffer) {
     offset+=46+nameLength+extra+comment
   }
 }
-function cellText(value: ExcelJS.CellValue): string {
+function cellText(value: ExcelJS.CellValue, dateText?: (date: Date) => string): string {
   if(value===null || value===undefined) return ''
-  if(value instanceof Date) return String(value.getFullYear())
+  if(value instanceof Date) return dateText ? dateText(value) : String(value.getFullYear())
   if(typeof value==='object'){
     if('richText' in value) return value.richText.map(x=>x.text).join('')
-    if('formula' in value || 'sharedFormula' in value) return 'result' in value ? cellText(value.result as ExcelJS.CellValue) : ''
+    if('formula' in value || 'sharedFormula' in value) return 'result' in value ? cellText(value.result as ExcelJS.CellValue, dateText) : ''
     if('text' in value) return value.text
     return ''
   }
@@ -77,7 +77,8 @@ export function detectMapping(name:string, rows:string[][]): SheetMapping {
   }
   return {sheet:name,headerRow,columns}
 }
-export async function readHoldings(file: {buffer:Buffer;originalname:string}) {
+/** `dateText` lets a caller see Date cells (the default keeps only the year). */
+export async function readHoldings(file: {buffer:Buffer;originalname:string}, dateText?: (date: Date) => string) {
   if(!file.buffer.length || file.buffer.length>4*1024*1024) throw bad('Choose a workbook or CSV up to 4 MB.')
   const workbook=new ExcelJS.Workbook()
   try {
@@ -97,7 +98,7 @@ export async function readHoldings(file: {buffer:Buffer;originalname:string}) {
     const rows:string[][]=[]
     for(let i=1;i<=sheet.rowCount;i++){
       const row=sheet.getRow(i)
-      rows.push(Array.from({length:sheet.columnCount},(_,j)=>cellText(row.getCell(j+1).value).slice(0,2000)))
+      rows.push(Array.from({length:sheet.columnCount},(_,j)=>cellText(row.getCell(j+1).value,dateText).slice(0,2000)))
     }
     total+=rows.length
     if(total>20000) throw bad('Import at most 20,000 source rows at a time.')

@@ -45,6 +45,7 @@ import { profileAvatarRouter } from './modules/users/profile-avatar.routes.ts'
 import { adminNotificationsRouter } from './modules/users/admin-notifications.routes.ts'
 import { archivedBorrowingPolicyRouter } from './modules/circulation/borrowing-policy-archive.routes.ts'
 import { publicCatalogRouter, catalogMaintenanceRouter } from './modules/catalog/catalog-enhancements.routes.ts'
+import { researchImportRouter } from './modules/catalog/research-import.routes.ts'
 import { collectionReviewRouter } from './modules/catalog/collection-review.routes.ts'
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
@@ -121,6 +122,7 @@ export function createApp() {
   app.use('/api/v1/catalog', authenticateJwt, requireJwtRoles('Student', 'Faculty', 'Librarian'), researchCatalogRouter)
   app.use('/api/v1/admin/books', authenticateJwt, requireLibraryPermission('library.manage'), bulkBookRouter)
   app.use('/api/v1/admin/research', authenticateJwt, requireLibraryPermission('library.manage'), researchAssetRouter)
+  app.use('/api/v1/admin/research', authenticateJwt, requireLibraryPermission('library.manage'), researchImportRouter)
   app.use('/api/v1/admin/catalog', authenticateJwt, requireLibraryPermission('library.manage'), bulkCatalogEntryRouter)
   app.use('/api/v1/admin/catalog', authenticateJwt, requireLibraryPermission('library.manage'), catalogAdminRouter)
   app.use('/api/v1/admin/invoices', authenticateJwt, requireLibraryPermission('library.manage'), archivedInvoiceRouter)

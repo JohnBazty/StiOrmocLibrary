@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { isbnValidationMessage, isValidIsbn, normalizeIsbn, validateBookEntry, validateThesisEntry, validateThesisMetadata } from './catalog.validation.ts'
+import { isbnValidationMessage, isValidIsbn, normalizeIsbn, validateBookEntry, parseCopyNumbers, validateResearchImportRow, validateThesisEntry, validateThesisMetadata } from './catalog.validation.ts'
 
 test('validates and normalizes a complete thesis metadata entry', () => {
   const result = validateThesisMetadata({
@@ -25,7 +25,7 @@ test('returns field-specific thesis errors for Title, Author, Adviser, Year, and
   const result = validateThesisMetadata({
     title: '',
     author: '',
-    adviser: '',
+    adviser: 'x'.repeat(256),
     year: 'not-a-year',
     abstract: 'Too short',
     researchCode: '',
@@ -38,6 +38,15 @@ test('returns field-specific thesis errors for Title, Author, Adviser, Year, and
   assert.ok(result.errors.adviser)
   assert.ok(result.errors.year)
   assert.ok(result.errors.abstract)
+})
+
+test('adviser and abstract are optional, but a given abstract needs 20 characters', () => {
+  const blank = validateThesisMetadata({ title: 'T', author: 'A', year: 2024, researchCode: 'X-1', department: 'BSHM', adviser: '  ', abstract: '' })
+  assert.equal(blank.isValid, true)
+  assert.equal(blank.data.adviser, null)
+  assert.equal(blank.data.abstract, null)
+  const short = validateThesisMetadata({ title: 'T', author: 'A', year: 2024, researchCode: 'X-1', department: 'BSHM', abstract: 'Too short' })
+  assert.ok(short.errors.abstract)
 })
 
 test('requires only a shelf and defaults generated thesis identity fields', () => {
@@ -95,4 +104,39 @@ test('reports the expected ISBN check digit instead of a generic validation erro
   assert.equal(isbnValidationMessage('0132350881'), 'ISBN-10 check digit is incorrect. For these first 9 digits, the final character must be 2.')
   assert.equal(isbnValidationMessage('9780132350884'), null)
   assert.equal(isbnValidationMessage('0132350882'), null)
+})
+
+test('parses copy numbers written as ranges, dash lists and comma lists', () => {
+  assert.deepEqual(parseCopyNumbers('1-2'), [1, 2])
+  assert.deepEqual(parseCopyNumbers('1 – 2'), [1, 2])
+  assert.deepEqual(parseCopyNumbers('81 – 82 – 83'), [81, 82, 83])
+  assert.deepEqual(parseCopyNumbers('81-83'), [81, 82, 83])
+  assert.deepEqual(parseCopyNumbers('25'), [25])
+  assert.deepEqual(parseCopyNumbers('1, 2'), [1, 2])
+  assert.deepEqual(parseCopyNumbers('1-2, 7'), [1, 2, 7])
+})
+
+test('rejects unreadable, repeated, backwards and oversized copy numbers', () => {
+  for (const bad of ['', 'abc', '0', '3-1', '1,1', '1-2,2', '1-', '1--3', '1-60', '1.5']) {
+    assert.throws(() => parseCopyNumbers(bad), Error, bad)
+  }
+})
+
+const importRow = { copyNumbers: '1-2', authors: 'Alamil, B.B.; Cruz, A.', year: '2022', title: 'Impact of COVID-19', program: 'Hospitality Management' }
+
+test('validates a research import row and allows empty adviser, abstract, keywords and code', () => {
+  const result = validateResearchImportRow(importRow)
+  assert.equal(result.isValid, true)
+  assert.deepEqual(result.data.copyNumbers, [1, 2])
+  assert.deepEqual(result.data.authors, ['Alamil, B.B.', 'Cruz, A.'])
+  assert.equal(result.data.year, 2022)
+  assert.equal(result.data.adviser, null)
+  assert.equal(result.data.abstract, null)
+  assert.equal(result.data.researchCode, '')
+})
+
+test('reports missing title, authors, year, program and copy numbers, and a short abstract, per field', () => {
+  const result = validateResearchImportRow({ abstract: 'Too short' })
+  assert.equal(result.isValid, false)
+  for (const field of ['title', 'authors', 'year', 'program', 'copyNumbers', 'abstract']) assert.ok(result.errors[field], field)
 })

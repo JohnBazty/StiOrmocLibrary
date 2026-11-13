@@ -9,6 +9,7 @@ import { UserDashboardPage } from './features/dashboard/UserDashboardPage'
 import { FloorPlanImagePage } from './features/floor-plan/FloorPlanImagePage'
 import { BookArchivePage } from './features/catalog/BookArchivePage'
 import { BookRegisterPage } from './features/catalog/BookRegisterPage'
+import { ResearchMaintenancePage } from './features/catalog/ResearchMaintenancePage'
 import { AdminAttendancePage } from './features/attendance/AdminAttendancePage'
 import { StaffAttendancePage } from './features/attendance/StaffAttendancePage'
 import { AdminUsersPage } from './features/users/AdminUsersPage'
@@ -115,6 +116,7 @@ export default function App() {
           <Route path="/librarian/collection-review" element={<CollectionReviewPage />} />
           <Route path="/librarian/book-archive" element={<BookArchivePage />} />
           <Route path="/librarian/book-register" element={<BookRegisterPage />} />
+          <Route path="/librarian/research-maintenance" element={<ResearchMaintenancePage />} />
           <Route path="/librarian/categories" element={<CategoryManagementPage />} />
           <Route path="/librarian/circulation" element={<AdminCirculationMonitor />} />
           <Route path="/librarian/reservations" element={<AdminReservationQueuePage />} />

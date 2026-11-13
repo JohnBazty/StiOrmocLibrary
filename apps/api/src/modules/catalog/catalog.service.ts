@@ -19,6 +19,7 @@ import {
 import { validateBookEntry, validateThesisEntry } from './catalog.validation.ts'
 import { ensureBookLocationExists, reserveBarcodeSequence } from './bulk-book.repository.ts'
 import { renderBookLabel } from './book-label.renderer.ts'
+import { RESEARCH_LOCK_KEY } from './research-import.ts'
 
 function validationError(errors: Record<string, string>) {
   return new HttpError(422, 'CATALOG_VALIDATION_FAILED', 'The catalog entry contains invalid fields.', { errors })
@@ -96,6 +97,7 @@ export function createCatalogService(database: Pool = db) {
 
       try {
         await connection.beginTransaction()
+        await connection.execute('SELECT pg_advisory_xact_lock(?)', [RESEARCH_LOCK_KEY])
 
         if (!await ensureBookLocationExists(connection, input.copy.shelfLocation)) {
           throw new HttpError(422, 'RESEARCH_LOCATION_NOT_FOUND', 'Shelf location must match an existing managed location.', {

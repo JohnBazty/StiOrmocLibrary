@@ -8,6 +8,7 @@ import type { SheetMapping } from './holdings-parser.ts'
 import { HttpError } from '../../core/http-error.ts'
 
 const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:4194304,files:1,fields:4,fieldSize:32768}})
+export const catalogUpload=upload
 const run=(fn:(request:Request,response:Response)=>Promise<unknown>)=>(request:Request,response:Response,next:NextFunction)=>{response.set('Cache-Control','no-store');void fn(request,response).then(data=>response.json({success:true,data})).catch(next)}
 const mappings=(value:unknown):SheetMapping[]=>{try{return JSON.parse(String(value))}catch{throw new HttpError(422,'HOLDINGS_MAPPING_INVALID','Confirm the sheet mappings.')}}
 export const publicCatalogRouter=Router()
