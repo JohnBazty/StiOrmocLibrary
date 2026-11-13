@@ -10,7 +10,7 @@ import { TitleLookup } from './TitleLookup'
 const fieldClass = 'h-11 w-full rounded-xl border border-[#003399]/20 bg-[#FFFFFF] px-3 text-sm text-[#003399] outline-none focus:border-[#003399] focus:ring-4 focus:ring-[#003399]/10'
 const labelClass = 'mb-1.5 block text-xs font-bold uppercase tracking-wide text-[#003399]'
 /** Same list as the API's FUND_SOURCES (bulk-book.validation.ts). */
-const FUND_SOURCES = ['School fund', 'Donation', 'Government grant', 'Other']
+const FUND_SOURCES = ['Purchase', 'Donation', 'Government grant', 'Other']
 
 function Field({ label, name, required, value, onChange }: { label: string; name: string; required?: boolean; value?: string; onChange?: (value: string) => void }) {
   return <label><span className={labelClass}>{label}{required ? ' *' : ''}</span><input name={name} required={required} value={value} onChange={onChange ? (event) => onChange(event.target.value) : undefined} className={fieldClass} /></label>

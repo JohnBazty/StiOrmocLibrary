@@ -25,8 +25,8 @@ export type BulkBookInput = {
   receivedOn: string | null
 }
 
-/** Fixed list until the Librarian confirms it (plan open question 1). */
-export const FUND_SOURCES = ['School fund', 'Donation', 'Government grant', 'Other'] as const
+/** Fixed list approved by Ethan on 2026-11-13. */
+export const FUND_SOURCES = ['Purchase', 'Donation', 'Government grant', 'Other'] as const
 
 function clean(value: unknown, maximum: number) {
   if (typeof value !== 'string') return ''

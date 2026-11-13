@@ -81,7 +81,7 @@ Text columns, as in REA: "xii, 340 p." and "2 vols." are not numbers. `schema-re
 
 ## Open questions
 
-1. **Source of fund values.** REA picks from an editable lookup list; this repo has none. Recommended: a fixed list in code (for example School fund, Donation, Government grant, Other) plus the free-text `fund_detail`. Ethan to confirm the list with the Librarian.
+1. **Source of fund values.** REA picks from an editable lookup list; this repo has none. Recommended: a fixed list in code (for example Purchase, Donation, Government grant, Other) plus the free-text `fund_detail`. Answered (Ethan, 2026-11-13): Purchase, Donation, Government grant, Other.
 2. **"Date unknown".** REA stores an explicit "date received unknown" flag. Recommended: skip it; an empty `acquired_at` means unknown.
 3. **Accession number.** Answered by the code: the add-book form already generates `STI-ACC-YYYY-NNNNNN` numbers; kept as they are.
 
@@ -99,7 +99,7 @@ Text columns, as in REA: "xii, 340 p." and "2 vols." are not numbers. `schema-re
 - [x] Title lookup API and UI
 - [x] `security-reviewer`, `database-reviewer` (no CRITICAL or HIGH); MEDIUM fixes applied
 - [ ] `plan-verifier` (project agent; run from a StiOrmocLibrary session)
-- [ ] Librarian confirms `titles.purchase_price` is a per-copy price before `037` is applied (the backfill copies it to every copy)
+- [x] `titles.purchase_price` is the price of one copy (Ethan, 2026-11-13), so the `037` backfill is correct
 - [ ] Status `built`
 
 ## Change log
@@ -107,3 +107,4 @@ Text columns, as in REA: "xii, 340 p." and "2 vols." are not numbers. `schema-re
 - 2026-11-13: Plan created. Ethan chose per-copy cost price and date received.
 - 2026-11-13: Ethan approved with the recommended answers; building started. Edition and pages reuse `catalog_title_details` (021) instead of new `titles` columns, so `037` adds only class, volumes and remarks to `titles`. The add-book form's real path is `bulk-entry`, which already generates accession numbers. Lost charge needs no change on `main`. `037` drafted; next unused `038`.
 - 2026-11-13: Reviews done, no CRITICAL or HIGH. Fixed: `037` lock timeout and a notice for prices it cannot copy; CSV guard also covers a leading tab or carriage return; title results clear when the title or author changes; register loading state; distinct "Use" button names. Open: confirm `purchase_price` is per copy; CSV export stops at 20,000 rows.
+- 2026-11-13: Ethan confirmed `titles.purchase_price` is a per-copy price, and renamed the fund source "School fund" to "Purchase" (list: Purchase, Donation, Government grant, Other).

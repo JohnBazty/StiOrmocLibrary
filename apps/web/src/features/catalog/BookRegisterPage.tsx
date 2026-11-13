@@ -6,7 +6,7 @@ import { catalogApi } from './catalog-api'
 import type { RegisterRow } from './types'
 
 /** Same list as the API's FUND_SOURCES (bulk-book.validation.ts). */
-const FUND_SOURCES = ['School fund', 'Donation', 'Government grant', 'Other']
+const FUND_SOURCES = ['Purchase', 'Donation', 'Government grant', 'Other']
 const SORTS = [['accession', 'No.'], ['received', 'Date received'], ['title', 'Title'], ['cost', 'Cost price']] as const
 const COLUMNS = ['No.', 'Date received', 'Class', 'Author', 'Title', 'Edition', 'Volumes', 'Pages', 'Source of fund', 'Cost price', 'Publisher', 'Year', 'Remarks']
 const PAGE_SIZE = 50

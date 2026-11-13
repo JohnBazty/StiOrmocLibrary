@@ -23,7 +23,7 @@ async function database() {
     INSERT INTO catalog_title_details VALUES (1, '1st ed.', 464);
     INSERT INTO physical_copies (title_id, accession_number, acquired_at, fund_source, fund_detail, cost_php, lifecycle_status) VALUES
       (1, 'STI-ACC-2026-000001', '2026-11-02', 'Donation', 'Alumni', 450, 'Active'),
-      (1, 'STI-ACC-2026-000002', '2026-10-01', 'School fund', NULL, 500, 'Active'),
+      (1, 'STI-ACC-2026-000002', '2026-10-01', 'Purchase', NULL, 500, 'Active'),
       (2, 'STI-ACC-2026-000003', NULL, NULL, NULL, NULL, 'Active'),
       (2, 'STI-ACC-2026-000004', '2026-01-01', 'Donation', NULL, 1, 'Archived');`)
   const execute = async (sql: string, values: unknown[] = []) => { const result = await pg.query(toPgPlaceholders(sql), values); return [result.rows, result] }
