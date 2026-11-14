@@ -100,7 +100,7 @@ test('the clearance detail exposes the book price for a pending lost-book report
     async execute(sql: string) {
       if (sql.includes('FROM users u WHERE u.user_id = ?')) return [[{ user_id: 7, school_id: 'STI-7', full_name: 'Borrower', account_status: 'Active' }]]
       if (sql.includes('FROM lost_book_reports l INNER JOIN borrow_transactions')) {
-        assert.match(sql, /t\.purchase_price AS title_price/)
+        assert.match(sql, /COALESCE\(pc\.cost_php,\s*t\.purchase_price\) AS title_price/)
         return [[{ lost_book_report_id: 3, transaction_id: 900, report_status: 'Pending', replacement_charge: '0.00', charge_resolution: 'Awaiting Review', payment_status: 'Unpaid', title: 'Clean Code', title_price: '450.00' }]]
       }
       return [[]]

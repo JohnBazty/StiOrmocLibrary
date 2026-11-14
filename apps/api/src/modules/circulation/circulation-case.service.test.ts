@@ -180,3 +180,25 @@ test('borrower summaries include only the borrower own cases and no staff notes'
   assert.equal((await service.publicSummariesForTransactions(8, [900])).size, 0)
   assert.equal((await service.publicSummariesForTransactions(7, [])).size, 0)
 })
+
+
+test('damage review and write-off use the selected copy cost before the title price', async () => {
+ const {pg,service,caseId}=await seededCase()
+ try {
+  await pg.exec('UPDATE physical_copies SET cost_php=275 WHERE physical_copy_id=50')
+  assert.equal((await service.getCaseDetail(caseId)).loan?.titlePrice,275)
+  await service.recordDisposition(LIBRARIAN_ACCOUNT,caseId,{disposition:'lost',reason:'Copy damaged beyond repair.'})
+  const report=await one<{replacement_charge:string;purchase_price_snapshot:string}>(pg,'SELECT replacement_charge,purchase_price_snapshot FROM lost_book_reports')
+  assert.equal(report.replacement_charge,'275.00');assert.equal(report.purchase_price_snapshot,'275.00')
+ }finally{await pg.close()}
+})
+
+test('zero copy cost does not silently fall back to a positive title price', async () => {
+ const {pg,service,caseId}=await seededCase()
+ try {
+  await pg.exec('UPDATE physical_copies SET cost_php=0 WHERE physical_copy_id=50')
+  assert.equal((await service.getCaseDetail(caseId)).loan?.titlePrice,null)
+  await assert.rejects(()=>service.recordDisposition(LIBRARIAN_ACCOUNT,caseId,{disposition:'lost',reason:'No usable replacement price on record.'}),{code:'CASE_LOST_CHARGE_REQUIRED'})
+  assert.equal((await pg.query('SELECT 1 FROM lost_book_reports')).rows.length,0)
+ }finally{await pg.close()}
+})

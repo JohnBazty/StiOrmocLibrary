@@ -39,6 +39,7 @@ export async function createCaseTestDatabase() {
       verified_by_user_id BIGINT NULL, verified_by_label TEXT NULL, action_reason TEXT NULL);
   `)
   await pg.exec(readFileSync(new URL('../../../../../database/supabase/017_circulation_cases.sql', import.meta.url), 'utf8'))
+  await pg.exec(readFileSync(new URL('../../../../../database/supabase/037_book_register.sql', import.meta.url), 'utf8'))
   await pg.exec(`
     INSERT INTO users VALUES (7,'STI-7','Borrower Seven','Active'),(8,'STI-8','Borrower Eight','Active'),(2,'LIB-2','Librarian Two','Active'),(3,'STF-3','Staff Three','Active');
     INSERT INTO accounts VALUES (20,2,'Librarian','Active'),(30,3,'Staff','Active');
