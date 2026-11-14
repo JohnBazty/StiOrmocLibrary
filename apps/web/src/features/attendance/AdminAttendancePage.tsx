@@ -1,3 +1,4 @@
+import { useAttendanceRefresh } from './attendance-updates'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { Activity, Camera, Clock3, Download, RefreshCw, Search, Settings2, UserCheck, Users } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -19,6 +20,7 @@ export function AdminAttendancePage(){
   useEffect(()=>{void attendanceApi.terms().then(setTerms).catch(()=>setTerms([]))},[])
   useEffect(()=>{void load()},[load])
   useEffect(()=>{const timer=window.setInterval(()=>void attendanceApi.capacity().then(setCapacity).catch(()=>undefined),10000);return()=>window.clearInterval(timer)},[])
+  useAttendanceRefresh(load)
   const update=(patch:Partial<AttendanceFilters>)=>setF(v=>({...v,...patch,page:patch.page??1}))
   const exportPdf=async()=>{setExporting(true);setError('');try{await attendanceApi.downloadPdf(f)}catch(e){setError(e instanceof Error?e.message:'Unable to export report.')}finally{setExporting(false)}}
   const saveCapacity=async()=>{setSavingCapacity(true);setError('');try{const result=await attendanceApi.updateCapacity(Number(capacityInput),capacityReason);setCapacity(result);setCapacityOpen(false);setCapacityReason('')}catch(e){setError(e instanceof Error?e.message:'Unable to update capacity.')}finally{setSavingCapacity(false)}}

@@ -1,3 +1,4 @@
+import { createAttendanceConfirmationRouters } from './modules/attendance/attendance-confirmation.routes.ts'
 import cors from 'cors'
 import express from 'express'
 import session from 'express-session'
@@ -104,6 +105,9 @@ export function createApp() {
   app.use('/api/v1/auth', jwtAuthRouter)
   app.use('/api/public/catalog', publicCatalogRouter)
   app.use('/api/v1', authenticateJwt, ensureActiveJwtAccount, requireCsrfForStateChanges)
+  const attendanceConfirmations = createAttendanceConfirmationRouters()
+  app.use('/api/v1/admin/attendance/confirmations', attendanceConfirmations.scanner)
+  app.use('/api/v1/attendance/confirmations', attendanceConfirmations.user)
   app.use('/api/v1/user/payments', paymentRouters.user)
   app.use('/api/v1/admin/payments', paymentRouters.admin)
   app.use('/api/v1/admin/enrollment', enrollmentRouter)

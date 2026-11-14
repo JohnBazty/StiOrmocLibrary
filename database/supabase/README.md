@@ -67,3 +67,6 @@ The main branch was reconciled with the current revision permission model and ph
 ## Hosted payment release - 2026-11-15
 
 Applied `044_hosted_payment_preview.sql`: API-only durable practice ledger, RLS enabled, browser-role grants revoked, fenced leases. Latest live migration 044; next available 045. Applied 033-037 source checksums matched the live ledger. External applied 038/039 are preserved; unapplied payment gateway drafts 040-043 remain reserved and are not replayed. School bills/receipts are unchanged. See `docs/plans/2026-11-15-vercel-payment-release.md`.
+
+-- 2026-11-15: 045_attendance_user_confirmation.sql is a reviewed-in-tests draft, not applied.
+-- Private API-only attendance scan handoff; live remains 044, next unused 046.

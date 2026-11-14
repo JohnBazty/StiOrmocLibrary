@@ -1,3 +1,4 @@
+import { AttendanceConfirmationPrompt } from '../features/attendance/AttendanceConfirmationPrompt'
 import {
   Archive,
   BadgeCheck,
@@ -208,6 +209,7 @@ export function PortalLayout({ role }: { role: Role }) {
         </header>
         {signOutError && <p role="alert" className="m-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">{signOutError}</p>}
         <SessionActivity /><main className="portal-content mx-auto min-w-0 max-w-[1500px] p-4 sm:p-6 lg:p-8"><Outlet /></main>
+        {role !== 'admin' ? <AttendanceConfirmationPrompt /> : null}
         {role !== 'admin' ? <AttendanceFab role={role} /> : null}
       </div>
     </div>

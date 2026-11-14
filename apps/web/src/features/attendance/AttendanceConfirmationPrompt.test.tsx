@@ -1,0 +1,68 @@
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { AttendanceConfirmationPrompt } from './AttendanceConfirmationPrompt'
+
+const api=vi.hoisted(()=>({pendingConfirmation:vi.fn(),confirmAttendance:vi.fn(),cancelAttendance:vi.fn()}))
+vi.mock('./attendance-api',()=>({attendanceApi:api}))
+const scan={confirmationId:'00000000-0000-4000-8000-000000000001',action:'Entry',state:'Pending',purpose:'',expiresAt:'2099-11-15T01:00:00Z',visitor:{name:'A Visitor',schoolId:'QA-1',role:'Student'},result:null,occupancy:{current:0,capacity:80,available:80,entryOpen:true,allowWalkIns:true,allowBorrowing:true,allowPrinting:true,policy:{servicePurposes:['Printing']}}}
+beforeEach(()=>{vi.resetAllMocks();api.pendingConfirmation.mockResolvedValue({enabled:true,request:scan});api.confirmAttendance.mockResolvedValue({...scan,state:'Confirmed',result:{message:'Library entry recorded.'}});api.cancelAttendance.mockResolvedValue({...scan,state:'Cancelled'})})
+afterEach(()=>{cleanup();vi.useRealTimers()})
+
+it('shows the owner purpose prompt and records entry only after explicit confirmation',async()=>{
+  render(<AttendanceConfirmationPrompt/>)
+  await screen.findByRole('heading',{name:'Welcome to the library'})
+  expect(screen.getByRole('button',{name:'Confirm entry'})).toHaveProperty('disabled',true)
+  fireEvent.click(screen.getByRole('radio',{name:'Research'}))
+  expect(api.confirmAttendance).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button',{name:'Confirm entry'}))
+  await screen.findByRole('heading',{name:'You’re checked in'})
+  expect(api.confirmAttendance).toHaveBeenCalledWith(scan.confirmationId,'Research')
+  expect(screen.queryByRole('button',{name:'Confirm entry'})).toBeNull()
+})
+it('preserves selected purpose on polling/focus and updates to an exit prompt for a later scan',async()=>{
+  vi.useFakeTimers()
+  await act(async()=>{render(<AttendanceConfirmationPrompt/>)})
+  fireEvent.click(screen.getByRole('radio',{name:'Study'}))
+  await act(async()=>{await vi.advanceTimersByTimeAsync(3000);window.dispatchEvent(new Event('focus'))})
+  expect(screen.getByRole('radio',{name:'Study'})).toHaveProperty('checked',true)
+  api.pendingConfirmation.mockResolvedValue({enabled:true,request:{...scan,confirmationId:'00000000-0000-4000-8000-000000000002',action:'Exit'}})
+  await act(async()=>{await vi.advanceTimersByTimeAsync(3000)})
+  expect(screen.getByRole('heading',{name:'Ready to leave?'})).toBeTruthy()
+  expect(screen.queryByRole('radio')).toBeNull()
+  api.confirmAttendance.mockResolvedValue({...scan,action:'Exit',state:'Confirmed'})
+  await act(async()=>fireEvent.click(screen.getByRole('button',{name:'Confirm exit'})))
+  expect(api.confirmAttendance).toHaveBeenLastCalledWith('00000000-0000-4000-8000-000000000002','')
+})
+it('keeps the form and selection on failure and prevents duplicate confirmation',async()=>{
+  api.confirmAttendance.mockRejectedValueOnce(new Error('Connection interrupted'))
+  render(<AttendanceConfirmationPrompt/>)
+  fireEvent.click(await screen.findByRole('radio',{name:'Study'}))
+  fireEvent.click(screen.getByRole('button',{name:'Confirm entry'}))
+  await screen.findByText('Connection interrupted')
+  await act(async()=>window.dispatchEvent(new Event('focus')))
+  expect(screen.getByText('Connection interrupted')).toBeTruthy()
+  expect(screen.getByRole('radio',{name:'Study'})).toHaveProperty('checked',true)
+  let finish!:(value:unknown)=>void
+  api.confirmAttendance.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve}))
+  const button=screen.getByRole('button',{name:'Confirm entry'})
+  fireEvent.click(button);fireEvent.click(button)
+  expect(api.confirmAttendance).toHaveBeenCalledTimes(2)
+  await act(async()=>finish({...scan,state:'Confirmed'}))
+  expect(screen.queryByRole('button',{name:'Confirm entry'})).toBeNull()
+})
+it('cancelling does not mark entry and a closed library cannot accept entry',async()=>{
+  api.pendingConfirmation.mockResolvedValue({enabled:true,request:{...scan,occupancy:{...scan.occupancy,entryOpen:false}}})
+  render(<AttendanceConfirmationPrompt/>)
+  fireEvent.click(await screen.findByRole('radio',{name:'Study'}))
+  expect(screen.getByRole('button',{name:'Confirm entry'})).toHaveProperty('disabled',true)
+  fireEvent.click(screen.getByRole('button',{name:'Cancel'}))
+  await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull())
+  expect(api.confirmAttendance).not.toHaveBeenCalled()
+  expect(api.cancelAttendance).toHaveBeenCalledWith(scan.confirmationId)
+})
+it('shows nothing without an owner request and does not expose a setup failure as an empty modal',async()=>{
+  api.pendingConfirmation.mockResolvedValue({enabled:false,request:null})
+  render(<AttendanceConfirmationPrompt/>)
+  await waitFor(()=>expect(api.pendingConfirmation).toHaveBeenCalled())
+  expect(screen.queryByRole('dialog')).toBeNull()
+})

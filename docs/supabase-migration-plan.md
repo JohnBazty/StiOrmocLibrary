@@ -1,5 +1,7 @@
 # Title
 
+> 2026-11-15 attendance confirmation: draft `045_attendance_user_confirmation.sql` is unapplied. Live remains 044; next unused 046. The private request table preserves existing visits and credentials. Local app integration requires this additive migration in its configured database; no live application is authorized by the implementation request.
+
 > Current publication, 2026-11-14: live migration ledger is through 039. Payment drafts are now 040–043 and remain unapplied; next available number is 044. Earlier numbered summaries below are historical. No production deployment or database migration is authorized by publishing this branch.
 
 

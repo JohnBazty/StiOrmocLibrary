@@ -9,6 +9,7 @@ export type OperationalState=Capacity&{state:string;entryOpen:boolean;serviceVis
 export type AttendancePass={profile:{userId:number;schoolId:string;name:string;role:string;program:string|null;section:string|null};credential:{credentialId:number;publicId:string;issuedAt:string};summary:{visitsThisMonth:number;todayCheckIn:string|null;commonPurpose:string|null};history:Array<{log_id:number;attendance_date:string;time_in:string;time_out:string|null;checkout_source?:string|null;purpose:string;presence:'Inside'|'Exited'}>}
 export type ScanResult={visitor:{userId:number;schoolId:string;name:string;role:string;program:string|null;section:string|null;purpose?:string|null};openVisit:null|{log_id:number;attendance_date:string;time_in:string;reason_for_visit:string};occupancy:Capacity}
 export type ScanConfirmation={duplicate?:boolean;message:string;visitor:ScanResult['visitor'];attendance:{logId:number;checkedInAt?:string;checkedOutAt?:string;purpose?:string};occupancy:Capacity}
+export type AttendanceConfirmationRequest={confirmationId:string;action:'Entry'|'Exit';state:'Pending'|'Confirmed'|'Cancelled'|'Expired'|'Stale';expiresAt:string;purpose:string;visitor:{name:string;schoolId:string;role:string};occupancy:OperationalState;result:ScanConfirmation|null}
 export type AcademicTerm={academic_term_id:number;academic_year:string;term_name:string;starts_on:string;ends_on:string;is_active:number}
 export type Pagination={page:number;limit:number;total:number;total_pages:number}
 function params(f:AttendanceFilters){const q=new URLSearchParams({period:f.period,page:String(f.page),limit:String(f.limit)});if(f.q)q.set('q',f.q);if(f.role)q.set('role',f.role);if(f.purpose)q.set('purpose',f.purpose);if(f.presence)q.set('presence',f.presence);if(f.period==='daily'&&f.date)q.set('date',f.date);if(f.period==='weekly'&&f.weekStart)q.set('week_start',f.weekStart);if(f.period==='monthly'){q.set('year',String(f.year));q.set('month',String(f.month))}if(f.period==='semester'&&f.academicTermId)q.set('academic_term_id',f.academicTermId);return q}
@@ -17,6 +18,12 @@ async function json<T>(url:string){const r=await fetch(url,{credentials:'include
 async function mutate<T>(url:string,method:string,body:unknown){const r=await fetch(url,{method,credentials:'include',headers:new Headers({...Object.fromEntries(headers()),'Content-Type':'application/json'}),body:JSON.stringify(body)});const p=await r.json() as {data?:T;message?:string};if(!r.ok)throw new Error(p.message??'Unable to update attendance.');return p.data as T}
 async function qrBlob(download=false){const r=await fetch(`/api/v1/attendance/pass.png?${new URLSearchParams({...download?{download:'1'}:{}})}`,{credentials:'include',headers:headers('image/png')});if(!r.ok){const p=await r.json().catch(()=>({})) as {message?:string};throw new Error(p.message??'Unable to load the attendance QR code.')}return r.blob()}
 export const attendanceApi={
+sendConfirmation:(qrPayload:string,requestId:string)=>mutate<AttendanceConfirmationRequest>('/api/v1/admin/attendance/confirmations','POST',{qr_payload:qrPayload,request_id:requestId}),
+scanConfirmation:async(id:string)=>(await json<AttendanceConfirmationRequest>('/api/v1/admin/attendance/confirmations/'+encodeURIComponent(id))).data,
+cancelScanConfirmation:(id:string)=>mutate<AttendanceConfirmationRequest>('/api/v1/admin/attendance/confirmations/'+encodeURIComponent(id)+'/cancel','POST',{}),
+pendingConfirmation:async()=>(await json<{enabled:boolean;request:AttendanceConfirmationRequest|null}>('/api/v1/attendance/confirmations/pending')).data,
+confirmAttendance:(id:string,purpose:string)=>mutate<AttendanceConfirmationRequest>('/api/v1/attendance/confirmations/'+encodeURIComponent(id)+'/confirm','POST',{purpose}),
+cancelAttendance:(id:string)=>mutate<AttendanceConfirmationRequest>('/api/v1/attendance/confirmations/'+encodeURIComponent(id)+'/cancel','POST',{}),
 state:async()=>(await json<OperationalState>('/api/v1/admin/attendance/state')).data,
 events:async()=>(await json<LibraryEvent[]>('/api/v1/admin/attendance/events')).data,
 updatePolicy:(body:unknown)=>mutate<OperationalState>('/api/v1/admin/attendance/policy','PATCH',body),

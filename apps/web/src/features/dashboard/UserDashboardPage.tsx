@@ -1,3 +1,4 @@
+import { useAttendanceRefresh } from '../attendance/attendance-updates'
 import { usePaymentUpdates } from '../payments/payment-updates'
 import { ArrowRight, Bell, BookMarked, BookOpen, CalendarClock, CheckCircle2, Clock3, Eye, MapPin, PhilippinePeso, Printer, RotateCcw, Search, ShoppingBag, Sparkles } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -24,6 +25,7 @@ export function UserDashboardPage(){
   const{items:cart,addItem}=useBookCart();const cartIds=useMemo(()=>new Set(cart.map(item=>item.titleId)),[cart])
   const fetching=useRef(false)
   const load=useCallback(async()=>{if(fetching.current)return;fetching.current=true;setError('');try{setData(await dashboardApi.user())}catch(value){setError(value instanceof Error?value.message:'The dashboard could not be loaded.')}finally{setLoading(false);fetching.current=false}},[])
+  useAttendanceRefresh(load)
   useEffect(()=>{void load()},[load])
   usePaymentUpdates(load,5000)
   if(!data&&loading)return <div className="space-y-4"><div className="h-10 w-72 animate-pulse rounded-xl bg-[#0b5ea2]/10"/><div className="h-48 animate-pulse rounded-3xl bg-[#0b5ea2]/10"/></div>

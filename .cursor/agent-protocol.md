@@ -102,7 +102,7 @@ Always know and document:
 | Migrations directory | `database/supabase/` (Postgres only; MySQL was retired 2026-11-10) |
 | Latest applied migration | `039_category_record_kind.sql` (live ledger checked 2026-11-14; catalog source remains on its feature branch) |
 | Files pending review | Payment drafts `040`–`043`; none applied by this publication |
-| **Next available number** | **`044`** |
+| **Next available number** | **`046`** (045 attendance user confirmation reserved; live remains 044) |
 
 Applied enrollment 031 supersedes the removed 028 draft. Keep applied filenames and source bytes, including line endings. The 003 source still needs checksum reconciliation. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set.
 
@@ -171,3 +171,5 @@ Prefer simple, readable scripts under a clear folder (for example `tools/` or `s
 ## Hosted payment release - 2026-11-15
 
 Applied `044_hosted_payment_preview.sql`: API-only durable practice ledger, RLS enabled, browser-role grants revoked, fenced leases. Latest live migration 044; next available 045. Applied 033-037 source checksums matched the live ledger. External applied 038/039 are preserved; unapplied payment gateway drafts 040-043 remain reserved and are not replayed. School bills/receipts are unchanged. See `docs/plans/2026-11-15-vercel-payment-release.md`.
+
+2026-11-15 attendance user confirmation: draft `045_attendance_user_confirmation.sql` adds private owner-scoped, expiring scan requests. It is unapplied. Live remains 044; next unused 046. Existing applied migrations are unchanged. See `docs/plans/2026-11-15-attendance-user-confirmation.md`.
