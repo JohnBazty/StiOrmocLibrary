@@ -5,7 +5,7 @@ import request from 'supertest'
 import { normalizeVercelRequest } from './vercel-request.js'
 import { parseTarget } from '../modules/payments/payments.validation.ts'
 
-function app() {
+function app(lazy = false) {
   const api = express()
   api.get('/api/v1/user/payments/options', (req, res) => {
     try { res.json(parseTarget(req.query)) }
@@ -14,8 +14,8 @@ function app() {
   return (req, res) => {
     // Vercel supplies its own pre-parsed query object before Express runs.
     const values = Object.fromEntries(new URL(req.url, 'http://localhost').searchParams)
-    Object.defineProperty(req, 'query', { configurable: true, writable: true,
-      value: { ...values, __api_route: 'v1/user/payments/options' } })
+    const parsed = () => ({ ...values, __api_route: 'v1/user/payments/options' })
+    Object.defineProperty(req, 'query', lazy ? { configurable: true, get: parsed } : { configurable: true, writable: true, value: parsed() })
     normalizeVercelRequest(req)
     api(req, res)
   }
@@ -42,4 +42,10 @@ test('normalization preserves ordinary query strings and works without Vercel he
   const direct = { url: '/api/health' }
   normalizeVercelRequest(direct)
   assert.equal(direct.url, '/api/health')
+})
+
+test('payment options also work when the hosting query helper returns a fresh object', async () => {
+  const response = await request(app(true)).get('/api/index?__api_route=v1%2Fuser%2Fpayments%2Foptions&kind=Fine&targetId=12')
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body, {kind: 'Fine', targetId: 12})
 })

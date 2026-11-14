@@ -3,7 +3,7 @@
 Why: owner reported disabled Pay buttons and "Review the payment details and try again" on the hosted fine screen.
 Date created: 2026-11-15
 Date last updated: 2026-11-15
-Status: built
+Status: inprogress
 
 ## Cause and how
 
@@ -29,3 +29,7 @@ No credentials, dependency, migration, bill, fine, payment-history or school-dat
 - 2026-11-15: reproduce and repair Vercel-only payment options failure.
 
 - 2026-11-15: deployed the verified adapter correction. Same scoped repair copied locally after confirming the local entry had no independent edits. No financial record or payment status was manually altered.
+
+## Follow-up: signed-in failure after the first repair
+
+Owner screenshots and an actual authenticated browser capture confirmed both fine option requests still returned 422. The first regression modeled only a stable pre-parsed object. Added a fresh-object hosting query getter regression; it fails with the first correction. Remove the configurable own hosting query property entirely so Express uses its parser on the normalized URL. Keep unexpected client fields rejected. Targeted adapter/payment checks: 25 passed. Full checks and signed-in hosted verification are required before marking this follow-up complete. No payment is submitted during review.

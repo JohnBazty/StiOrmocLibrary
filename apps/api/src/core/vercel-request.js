@@ -6,9 +6,10 @@ export function normalizeVercelRequest(request) {
     url.searchParams.delete('__api_route')
     request.url = `/api/${route}${url.search}`
   }
-  // Vercel also provides a pre-parsed own `query` property. Updating the URL
-  // alone leaves its rewrite key visible to strict application validators.
-  if (request.query && typeof request.query === 'object' && !Array.isArray(request.query)) {
-    delete request.query.__api_route
+  // Remove the hosting helper itself, rather than mutating a value returned
+  // by its getter. Express must parse the normalized URL with its own parser.
+  const query = Object.getOwnPropertyDescriptor(request, 'query')
+  if (query?.configurable) {
+    delete request.query
   }
 }
