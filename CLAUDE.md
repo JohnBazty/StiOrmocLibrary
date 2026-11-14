@@ -4,6 +4,7 @@ STI College Ormoc's live library system (npm workspaces: `apps/api` Express + Ty
 
 ## Read these first (do not duplicate them here)
 - [AGENTS.md](AGENTS.md): first stop for every AI tool; also holds "Automation and memory", "How to write code" and "How to reply to Ethan".
+- [Owner engineering and collaboration rules](AGENTS.md#owner-engineering-and-collaboration-rules): all 15 owner rules apply to this library project, including focused clarification before implementation, independent judgment, proportionate verification, data protection and the `ans`, `simp`, `ans simp` response shortcuts. Added 2026-11-14; explicit user instructions take precedence over older project defaults. Keep the complete rules in AGENTS.md as the shared source rather than duplicating them here.
 - [.cursor/agent-protocol.md](.cursor/agent-protocol.md): `start session` protocol, plan doc shape and status values, migration tracker (current and next number).
 - [agent.md](agent.md): architecture, module boundaries, database, security, roles, business rules, UI colors.
 - [docs/source-of-truth.md](docs/source-of-truth.md): the product PDFs. [docs/schema-context.md](docs/schema-context.md): current schema.

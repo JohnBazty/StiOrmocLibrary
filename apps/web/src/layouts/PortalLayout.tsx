@@ -11,7 +11,6 @@ import {
   FileText,
   LayoutDashboard,
   LibraryBig,
-  LogOut,
   Menu,
   Map,
   Megaphone,
@@ -33,10 +32,9 @@ import { getCurrentIdentity } from '../features/auth/auth-storage'
 import { logout } from '../features/auth/auth-api'
 import { AttendanceFab } from '../features/attendance/AttendanceFab'
 import { useMockAuth } from '../features/inventory/MockAuthContext'
-import { ThemeToggle } from '../features/theme/ThemeToggle'
 import { SessionActivity } from '../features/auth/SessionActivity'
 import { NotificationShortcut } from '../features/notifications/NotificationShortcut'
-import { SidebarAccountCard } from './SidebarAccountCard'
+import { AccountMenu } from './AccountMenu'
 
 type Role = 'student' | 'faculty' | 'admin' | 'librarian' | 'staff'
 type NavItem = { label: string; to: string; icon: LucideIcon; section?: string }
@@ -72,6 +70,7 @@ const librarianNav: NavItem[] = [
   { label: 'Dashboard', to: '/librarian/dashboard', icon: LayoutDashboard, section: 'Operations' },
   { label: 'Maintenance', to: '/librarian/maintenance', icon: Settings },
   { label: 'Reports', to: '/librarian/reports', icon: FileBarChart },
+  { label: 'Book register', to: '/librarian/book-register', icon: BookOpen },
   { label: 'Book archive', to: '/librarian/book-archive', icon: Archive },
   { label: 'Categories', to: '/librarian/categories', icon: Tags },
   { label: 'Borrow & return', to: '/librarian/circulation', icon: CalendarClock },
@@ -103,13 +102,11 @@ const staffNav: NavItem[] = [
 ]
 const navigation = (role: Role) => role === 'admin' ? adminNav : role === 'librarian' ? librarianNav : role === 'staff' ? staffNav : userNav(role)
 
-function Brand({ compact = false }: { compact?: boolean }) {
-  return (
-    <div className="flex items-center gap-3">
-      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#FFF200] text-[#003399] shadow-sm"><LibraryBig size={22} strokeWidth={2.5} /><span className="absolute bottom-0 h-1 w-full bg-[#003399]" /></div>
-      {!compact ? <div><p className="font-display text-sm font-black leading-tight tracking-tight text-white">STI COLLEGE ORMOC</p><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/70">ILMS</p></div> : null}
-    </div>
-  )
+function Brand() {
+  return <div className="flex min-w-0 items-center gap-2">
+    <img src="/reference-logo.jpg" alt="STI College Ormoc Logo" className="h-11 w-11 shrink-0 rounded-xl object-contain" />
+    <div className="min-w-0"><p className="font-display text-[13px] font-black leading-tight tracking-tight text-white">STI COLLEGE ORMOC</p><p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#FFF200]">Online Library</p></div>
+  </div>
 }
 
 function Sidebar({ role, open, onClose }: { role: Role; open: boolean; onClose: () => void }) {
@@ -122,28 +119,25 @@ function Sidebar({ role, open, onClose }: { role: Role; open: boolean; onClose: 
     return () => media.removeEventListener('change', update)
   }, [])
   const nav = navigation(role)
-  const location = useLocation()
-  const preview = useMockAuth()
-  const claims = preview.identity ?? getCurrentIdentity()
   return (
     <>
-      {open ? <button aria-label="Close navigation" onClick={onClose} className="fixed inset-0 z-40 bg-[#003399]/45 backdrop-blur-sm lg:hidden" /> : null}
-      <aside id="portal-navigation" aria-label="Portal navigation" inert={!open && mobile ? true : undefined} className={cn('portal-sidebar fixed inset-y-0 left-0 z-50 flex w-64 max-w-[calc(100vw-2rem)] flex-col bg-[#003399] text-white transition-transform duration-300 lg:max-w-none lg:translate-x-0', open ? 'translate-x-0' : '-translate-x-full')}>
+      {open ? <button aria-label="Close navigation" onClick={onClose} className="fixed inset-0 z-40 bg-[#0b5ea2]/45 backdrop-blur-sm lg:hidden" /> : null}
+      <aside id="portal-navigation" aria-label="Portal navigation" inert={!open && mobile ? true : undefined} className={cn('portal-sidebar fixed inset-y-0 left-0 z-50 flex w-64 max-w-[calc(100vw-2rem)] flex-col bg-[#0b5ea2] text-white transition-transform duration-300 lg:max-w-none lg:translate-x-0', open ? 'translate-x-0' : '-translate-x-full')}>
         <div className="flex h-20 items-center justify-between border-b border-white/10 px-5"><Brand /><button onClick={onClose} aria-label="Close navigation menu" className="min-h-11 min-w-11 shrink-0 rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white lg:hidden"><X size={18} /></button></div>
         <nav className="flex-1 overflow-y-auto px-3 py-5">
-          {nav.map((item) => {
+          {nav.filter(item => item.label !== 'My profile').map((item) => {
             const Icon = item.icon
-            if (item.label === 'My profile' && (role === 'student' || role === 'faculty')) return <details key={item.to} className="mb-1 rounded-xl bg-white/5" open={location.pathname === item.to || undefined}><summary className="flex min-h-11 cursor-pointer items-center gap-3 px-3 py-3 text-sm"><Icon size={17} />My profile</summary><div className="pb-2 pl-6">{[['personal','Personal details'],['school','School details'],['photo','Profile photo']].map(([section,label]) => <NavLink key={section} to={`${item.to}?section=${section}`} onClick={onClose} className="block min-h-11 rounded-lg px-3 py-3 text-sm text-white hover:bg-white/10">{label}</NavLink>)}</div></details>
-            return <div key={item.to}>{item.section ? <p className="mb-2 mt-4 px-3 text-[9px] font-bold uppercase tracking-[0.2em] text-white/40 first:mt-0">{item.section}</p> : null}<NavLink onClick={onClose} to={item.to} className={({ isActive }) => cn('mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition lg:py-2.5', isActive ? 'bg-white text-[#003399] shadow-sm dark:bg-[#FFF200]' : 'text-white/70 hover:bg-white/10 hover:text-white')}><Icon size={17} /><span>{item.label}</span></NavLink></div>
+            return <div key={item.to}>{item.section ? <p className="mb-2 mt-4 px-3 text-[9px] font-bold uppercase tracking-[0.2em] text-white/40 first:mt-0">{item.section}</p> : null}<NavLink onClick={onClose} to={item.to} className={({ isActive }) => cn('mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition lg:py-2.5', isActive ? 'bg-white text-[#0b5ea2] shadow-sm dark:bg-[#FFF200]' : 'text-white/70 hover:bg-white/10 hover:text-white')}><Icon size={17} /><span>{item.label}</span></NavLink></div>
           })}
         </nav>
-        <div className="border-t border-white/10 p-3"><SidebarAccountCard key={`${claims?.source}:${claims?.userId}`} identity={claims} preview={preview.enabled} /></div>
       </aside>
     </>
   )
 }
 
 export function PortalLayout({ role }: { role: Role }) {
+  const preview = useMockAuth()
+  const claims = preview.identity ?? getCurrentIdentity()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
   const [signOutError, setSignOutError] = useState('')
@@ -189,20 +183,19 @@ export function PortalLayout({ role }: { role: Role }) {
   }
 
   return (
-    <div className="portal-layout min-h-screen bg-[#FFFFFF] text-[#003399] transition-colors dark:bg-[#000d2b] dark:text-[#f2f6ff]">
+    <div className="portal-layout portal-reference min-h-screen bg-[#FFFFFF] text-[#0b5ea2] transition-colors dark:bg-[#14151b] dark:text-[#f2f6ff]">
       <Sidebar role={role} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="lg:pl-64" inert={sidebarOpen ? true : undefined}>
-        <header className="sticky top-0 z-30 flex h-20 items-center border-b border-[#003399]/10 bg-white/90 px-4 backdrop-blur-xl transition-colors sm:px-6 lg:px-8 dark:border-white/10 dark:bg-[#001a4d]/92">
-          <button onClick={() => setSidebarOpen(true)} aria-label="Open navigation" aria-controls="portal-navigation" aria-expanded={sidebarOpen} className="mr-3 shrink-0 rounded-xl border border-[#003399]/15 p-2.5 text-[#003399]/65 lg:hidden dark:border-white/15 dark:text-white/70"><Menu size={19} /></button>
-          <div className="hidden sm:block"><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#003399]/45 dark:text-white/45">{role === 'admin' ? 'Admin workspace' : role === 'librarian' ? 'Library Admin workspace' : role === 'staff' ? 'Staff workspace' : role === 'faculty' ? 'Faculty portal' : 'Student portal'}</p><p className="mt-0.5 font-display text-sm font-bold text-[#003399] dark:text-white">{current?.label ?? 'STI College Ormoc ILMS'}</p></div>
+        <header className="portal-reference-header sticky top-0 z-30 flex h-20 items-center border-b border-[#0b5ea2]/10 bg-white/90 px-4 backdrop-blur-xl transition-colors sm:px-6 lg:px-8 dark:border-white/10 dark:bg-[#22232e]/92">
+          <button onClick={() => setSidebarOpen(true)} aria-label="Open navigation" aria-controls="portal-navigation" aria-expanded={sidebarOpen} className="mr-3 shrink-0 rounded-xl border border-[#0b5ea2]/15 p-2.5 text-[#0b5ea2]/65 lg:hidden dark:border-white/15 dark:text-white/70"><Menu size={19} /></button>
+          <div className="hidden sm:block"><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#0b5ea2]/45 dark:text-white/45">{role === 'admin' ? 'Admin workspace' : role === 'librarian' ? 'Library Admin workspace' : role === 'staff' ? 'Staff workspace' : role === 'faculty' ? 'Faculty portal' : 'Student portal'}</p><p className="mt-0.5 font-display text-sm font-bold text-[#0b5ea2] dark:text-white">{current?.label ?? 'STI College Ormoc ILMS'}</p></div>
           <div className="ml-auto flex items-center gap-2">
-            <ThemeToggle />
-            {role === 'admin' ? <button onClick={() => navigate('/admin/notifications')} aria-label="Notifications" className="rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 transition hover:bg-[#003399]/5 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><Bell size={18} /></button> : <NotificationShortcut path={`/${role}/notifications`} />}
-            <button onClick={signOut} disabled={signingOut} aria-label="Sign out" title="Sign out" className="rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 transition hover:bg-[#003399]/5 disabled:opacity-50 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><LogOut size={18} /></button>
+            {role === 'admin' ? <button onClick={() => navigate('/admin/notifications')} aria-label="Notifications" className="rounded-xl border border-[#0b5ea2]/15 bg-white p-2.5 text-[#0b5ea2]/65 transition hover:bg-[#0b5ea2]/5 dark:border-white/15 dark:bg-[#22232e] dark:text-white/80 dark:hover:bg-white/10"><Bell size={18} /></button> : <NotificationShortcut path={`/${role}/notifications`} />}
+            <AccountMenu key={`${role}:${claims?.source}:${claims?.userId}`} identity={claims} preview={preview.enabled} profilePath={role === 'admin' ? undefined : `/${role}/profile`} signingOut={signingOut} onSignOut={() => void signOut()} />
           </div>
         </header>
         {signOutError && <p role="alert" className="m-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">{signOutError}</p>}
-        <SessionActivity /><main className="portal-content mx-auto min-w-0 max-w-[1500px] p-4 sm:p-6 lg:p-8"><Outlet /></main>
+        <SessionActivity /><main className={cn("portal-content mx-auto min-w-0 max-w-[1500px] p-4 sm:p-6 lg:p-8", /^\/(student|faculty|staff|librarian|admin)\/(dashboard|accounts)\/?$/.test(location.pathname) && "dashboard-reference")}><Outlet /></main>
         {role !== 'admin' ? <AttendanceFab role={role} /> : null}
       </div>
     </div>

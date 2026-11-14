@@ -7,7 +7,7 @@ function titleInitials(title: string) {
 
 /** Shared local fallback: never downloads or creates a replacement cover image. */
 export function BookInitialsCover({ title }: { title: string }) {
-  return <div role="img" aria-label={`${title || 'Book'} — title initials cover`} className="flex h-full w-full items-center justify-center bg-[#003399] text-[#FFF200]" style={{ containerType: 'inline-size' }}>
+  return <div role="img" aria-label={`${title || 'Book'} — title initials cover`} className="flex h-full w-full items-center justify-center bg-[#0b5ea2] text-[#FFF200]" style={{ containerType: 'inline-size' }}>
     <span aria-hidden="true" className="max-w-full px-1 text-center font-bold leading-none" style={{ fontSize: 'clamp(0.75rem, 26cqw, 4rem)' }}>{titleInitials(title)}</span>
   </div>
 }

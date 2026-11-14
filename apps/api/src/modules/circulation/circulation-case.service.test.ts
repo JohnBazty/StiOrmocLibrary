@@ -55,6 +55,16 @@ test('lost disposition charges the book price once, links the report, and writes
   assert.equal((await pg.query('SELECT 1 FROM lost_book_reports')).rows.length, 1)
 })
 
+test('lost disposition and case review use the copy cost before the legacy title price', async () => {
+  const { pg, service, caseId } = await seededCase()
+  await pg.exec('UPDATE physical_copies SET cost_php=625.00 WHERE physical_copy_id=50')
+  assert.equal((await service.getCaseDetail(caseId)).loan?.titlePrice, 625)
+  await service.recordDisposition(LIBRARIAN_ACCOUNT, caseId, { disposition: 'lost', reason: 'Damaged beyond repair during the loan.' })
+  const report = await one<{ replacement_charge: string; purchase_price_snapshot: string }>(pg,
+    'SELECT replacement_charge, purchase_price_snapshot FROM lost_book_reports')
+  assert.deepEqual(report, { replacement_charge: '625.00', purchase_price_snapshot: '625.00' })
+})
+
 test('lost disposition for a title without a price needs a staff-entered charge, and a priced title rejects a different charge', async () => {
   const unpriced = await seededCase(901)
   await assert.rejects(

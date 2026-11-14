@@ -10,7 +10,7 @@ const DECISIONS: Array<[DamageDisposition, string]> = [
   ['repaired_available', 'Repaired: return to the shelf'],
   ['lost', 'Damaged beyond use: write off and charge the borrower'],
 ]
-const fieldClass = 'mt-1 w-full rounded-xl border border-[#003399]/20 bg-white px-3 py-2 text-sm text-[#003399] outline-none focus:border-[#003399] dark:border-white/20 dark:bg-white/5 dark:text-white'
+const fieldClass = 'mt-1 w-full rounded-xl border border-[#0b5ea2]/20 bg-white px-3 py-2 text-sm text-[#0b5ea2] outline-none focus:border-[#0b5ea2] dark:border-white/20 dark:bg-white/5 dark:text-white'
 const peso = (value: number) => `PHP ${value.toFixed(2)}`
 
 function formatDate(value: string) {
@@ -66,15 +66,15 @@ function CaseReview({ caseId, canDecide, onChanged, revision }: { caseId: number
     void run(() => circulationApi.reopenCase(caseId, closingReason.trim()), 'Case reopened.', () => setClosingReason(''))
   }
 
-  return <section aria-label={`${detail.case.caseType === 'Long Overdue' ? 'Overdue' : 'Damage'} case ${caseId}`} className="space-y-4 border-t border-[#003399]/10 bg-[#003399]/[0.03] p-5 text-sm text-[#003399] dark:border-white/10 dark:bg-white/5 dark:text-white">
+  return <section aria-label={`${detail.case.caseType === 'Long Overdue' ? 'Overdue' : 'Damage'} case ${caseId}`} className="space-y-4 border-t border-[#0b5ea2]/10 bg-[#0b5ea2]/[0.03] p-5 text-sm text-[#0b5ea2] dark:border-white/10 dark:bg-white/5 dark:text-white">
     {error ? <p role="alert" className="auth-error rounded-xl px-3 py-2">{error}</p> : null}
-    {notice ? <p role="status" className="rounded-xl bg-[#FFF200] px-3 py-2 font-semibold text-[#003399]">{notice}</p> : null}
+    {notice ? <p role="status" className="rounded-xl bg-[#FFF200] px-3 py-2 font-semibold text-[#0b5ea2]">{notice}</p> : null}
     {detail.loan ? <div className="grid gap-1 sm:grid-cols-2">
       <p>Copy: <span className="font-mono">{detail.loan.barcode}</span> · {detail.loan.conditionStatus} · {detail.loan.availabilityStatus}</p>
       <p>{price === null ? 'No book price on record' : `Book price: ${peso(price)}`}</p>
       {detail.loan.replacementCharge !== null ? <p>Replacement charge: {peso(detail.loan.replacementCharge)} ({detail.loan.replacementPaymentStatus}). Collect it in Clearance.</p> : null}
     </div> : null}
-    <ol className="space-y-2">{detail.events.map((event) => <li key={event.eventId} className="rounded-lg border border-[#003399]/10 bg-white p-3 dark:border-white/10 dark:bg-white/5">
+    <ol className="space-y-2">{detail.events.map((event) => <li key={event.eventId} className="rounded-lg border border-[#0b5ea2]/10 bg-white p-3 dark:border-white/10 dark:bg-white/5">
       <p className="font-semibold">{event.eventType} · {formatDate(event.createdAt)}{event.actorName ? ` · ${event.actorName}` : ''}</p>
       {event.reason || event.notes ? <p className="mt-1 opacity-80">{[event.reason, event.notes].filter(Boolean).join(' — ')}</p> : null}
     </li>)}</ol>
@@ -82,13 +82,13 @@ function CaseReview({ caseId, canDecide, onChanged, revision }: { caseId: number
       <label className="block font-semibold">Note<textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} maxLength={1000} className={fieldClass} /></label>
       <Button variant="secondary" className="mt-2" disabled={busy || !note.trim()} onClick={() => void run(() => circulationApi.addCaseNote(caseId, note.trim()), 'Note added.', () => setNote(''))}>Add note</Button>
     </div> : null}
-    {canDecide && !closed && !charged && detail.case.caseType !== 'Long Overdue' ? <div className="space-y-2 rounded-xl border border-[#003399]/15 p-4 dark:border-white/15">
+    {canDecide && !closed && !charged && detail.case.caseType !== 'Long Overdue' ? <div className="space-y-2 rounded-xl border border-[#0b5ea2]/15 p-4 dark:border-white/15">
       <label className="block font-semibold">Decision<select value={decision} onChange={(event) => { setDecision(event.target.value as DamageDisposition); setConfirmWriteOff(false) }} className={fieldClass}>{DECISIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       {decision === 'lost' ? (price === null
         ? <label className="block font-semibold">Replacement charge (PHP)<input type="number" min="0.01" step="0.01" value={charge} onChange={(event) => setCharge(event.target.value)} className={fieldClass} /></label>
         : <p>The borrower will be charged the book price, {peso(price)}. No extra fee is added.</p>) : null}
       <label className="block font-semibold">Decision reason<input value={decisionReason} onChange={(event) => setDecisionReason(event.target.value)} maxLength={500} className={fieldClass} /></label>
-      {confirmWriteOff && decision === 'lost' && detail.loan ? <div role="group" aria-label="Confirm write-off" className="rounded-xl bg-[#FFF200] p-3 font-semibold text-[#003399]">
+      {confirmWriteOff && decision === 'lost' && detail.loan ? <div role="group" aria-label="Confirm write-off" className="rounded-xl bg-[#FFF200] p-3 font-semibold text-[#0b5ea2]">
         <p>Write off {detail.loan.barcode} and charge {detail.loan.borrowerName} {peso(price ?? Number(charge))}?</p>
         <div className="mt-2 flex flex-wrap gap-2"><Button disabled={busy} onClick={submitDecision}>Confirm write-off</Button><Button variant="secondary" disabled={busy} onClick={() => setConfirmWriteOff(false)}>Back</Button></div>
       </div> : <Button disabled={busy} onClick={submitDecision}>Record decision</Button>}
@@ -126,12 +126,12 @@ export function DamageCasesPanel() {
   }, [load])
 
   return <SectionCard className="mt-5 overflow-hidden">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#003399]/10 p-5 dark:border-white/10">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#0b5ea2]/10 p-5 dark:border-white/10">
       <h2 className="text-lg font-bold">Book follow-ups</h2>
-      <div className="flex flex-wrap items-center gap-3"><label className="text-xs font-semibold">Case status<select value={status} onChange={(event) => { setStatus(event.target.value as typeof status); setPage(1); setOpenId(null) }} className="ml-2 min-h-10 rounded-xl border border-[#003399]/15 bg-white px-2 text-sm text-[#003399] dark:border-white/20 dark:bg-white/5 dark:text-white">{STATUSES.map((value) => <option key={value} value={value}>{value === 'all' ? 'All cases' : value}</option>)}</select></label><Button variant="secondary" onClick={() => void load()}>Refresh follow-ups</Button></div>
+      <div className="flex flex-wrap items-center gap-3"><label className="text-xs font-semibold">Case status<select value={status} onChange={(event) => { setStatus(event.target.value as typeof status); setPage(1); setOpenId(null) }} className="ml-2 min-h-10 rounded-xl border border-[#0b5ea2]/15 bg-white px-2 text-sm text-[#0b5ea2] dark:border-white/20 dark:bg-white/5 dark:text-white">{STATUSES.map((value) => <option key={value} value={value}>{value === 'all' ? 'All cases' : value}</option>)}</select></label><Button variant="secondary" onClick={() => void load()}>Refresh follow-ups</Button></div>
     </div>
     {error ? <p role="alert" className="auth-error m-5 rounded-xl px-3 py-2 text-sm">{error}</p> : null}
-    {!items ? (error ? null : <p role="status" className="p-8 text-center text-sm opacity-65">Loading book follow-ups…</p>) : items.length ? <div className="divide-y divide-[#003399]/10 dark:divide-white/10">{items.map((item) => <article key={item.caseId}>
+    {!items ? (error ? null : <p role="status" className="p-8 text-center text-sm opacity-65">Loading book follow-ups…</p>) : items.length ? <div className="divide-y divide-[#0b5ea2]/10 dark:divide-white/10">{items.map((item) => <article key={item.caseId}>
       <div className="flex flex-col justify-between gap-3 p-5 sm:flex-row sm:items-center">
         <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="break-words font-bold">{item.title}</h3><span className="text-xs font-semibold">{item.caseType==='Long Overdue'?'Long overdue':'Damaged book'}</span><StatusBadge status={item.status} /></div>
           <p className="mt-1 text-sm opacity-75">{item.borrowerName} · {item.borrowerSchoolId} · <span className="font-mono">{item.barcode}</span></p>

@@ -22,6 +22,7 @@ function setup() {
 it('keeps the selected book across forms and restores the prior catalog filters when closed', () => {
   setup()
   expect(screen.getByRole('dialog', { name: 'Log In' })).toBeTruthy()
+  expect(screen.getByRole('img', { name: 'STI College Ormoc Logo' }).getAttribute('src')).toBe('/reference-logo.jpg')
   expect(document.body.style.overflow).toBe('hidden')
   fireEvent.click(screen.getByRole('link', { name: 'Sign Up' }))
   expect(screen.getByRole('dialog', { name: 'Account Registration' })).toBeTruthy()
@@ -46,5 +47,6 @@ it('cannot dismiss or switch forms while a login request is pending', () => {
   fireEvent.click(screen.getByRole('link', { name: 'Sign Up' }))
   fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true, bubbles: true }))
   expect(screen.getByRole('dialog', { name: 'Log In' })).toBeTruthy()
+  expect(screen.getByRole('img', { name: 'STI College Ormoc Logo' }).getAttribute('src')).toBe('/reference-logo.jpg')
   expect(screen.getByTestId('location').textContent).toBe('/login?catalogTitleId=42')
 })

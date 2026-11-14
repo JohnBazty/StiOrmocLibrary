@@ -65,6 +65,12 @@ describe('authentication pages', () => {
   it('provides a shared personnel login without a selectable role', () => {
     render(<MemoryRouter><ThemeProvider><AdminLoginPage /></ThemeProvider></MemoryRouter>)
     expect(screen.getByRole('heading', { name: 'Library Personnel Login' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Set or reset Staff password' }).getAttribute('href')).toBe('/forgot-password?portal=staff')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Show password' }))
+    expect(screen.getByPlaceholderText('Enter your password').getAttribute('type')).toBe('text')
+    fireEvent.click(screen.getByRole('button', { name: 'Hide password' }))
+    expect(screen.getByPlaceholderText('Enter your password').getAttribute('type')).toBe('password')
+    expect(screen.getAllByRole('img', { name: 'STI College Ormoc Logo' }).every(image => image.getAttribute('src') === '/reference-logo.jpg')).toBe(true)
     expect(screen.getByLabelText('School ID')).toBeTruthy()
     expect(screen.queryByLabelText('Login as')).toBeNull()
     expect(screen.getByRole('button', { name: 'Log In' })).toBeTruthy()
@@ -97,3 +103,10 @@ describe('authentication pages', () => {
 })
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+
+it.each([['login', LoginPage], ['registration', RegistrationPage]] as const)('uses the reference logo on the full-page %s form', (_name, Page) => {
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({success:true,data:{enabled:false,open:false}}), {status:200,headers:{'Content-Type':'application/json'}})))
+  const {container}=render(<MemoryRouter><ThemeProvider><Page /></ThemeProvider></MemoryRouter>)
+  expect(screen.getAllByRole('img',{name:'STI College Ormoc Logo'}).every(image=>image.getAttribute('src')==='/reference-logo.jpg')).toBe(true)
+  expect(container.querySelector('.public-library-reference')).toBeTruthy()
+})

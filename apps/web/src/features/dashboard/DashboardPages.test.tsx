@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AdminDashboardPage } from './AdminDashboardPage'
@@ -8,12 +8,26 @@ import { clearBookCartForTests } from '../catalog/book-cart-store'
 const api=vi.hoisted(()=>({admin:vi.fn(),user:vi.fn(),jobs:vi.fn(()=>new Promise(()=>{})),downloadAdminSummary:vi.fn(),fetchBookOverview:vi.fn()}))
 vi.mock('./dashboard-api',()=>({dashboardApi:api}))
 vi.mock('../catalog/book-catalog-api',()=>({fetchBookOverview:api.fetchBookOverview}))
+vi.mock('../attendance/attendance-api',()=>({attendanceApi:{passImage:()=>new Promise(()=>{})}}))
 
 const profile={name:'STI Ormoc Smart Library',seatCapacity:80,information:'Library information',mapPath:null,schedule:[{day:1,isOpen:true,opensAt:'07:00 AM',closesAt:'05:00 PM'}],nextClosure:null}
 const admin={generatedAt:'2026-09-04T08:00:00.000Z',staff:{name:'Judelyn Admin',schoolId:'ADMIN-1'},profile,kpis:{totalBooks:2486,activeBorrowed:184,availableBooks:2241,overdueBooks:24,activeUsers:1348,dailyAttendance:216,activeReservations:31,outstandingFines:2840,returnedToday:12},weeklyAttendance:[{label:'Mon',value:20},{label:'Tue',value:30}],purposeBreakdown:[{label:'Research',value:10}],popularCategories:[{label:'Programming',value:84}],recentCirculation:[{id:1,userName:'John',schoolId:'0200',title:'Clean Code',barcode:'BC-1',status:'Borrowed',eventAt:'2026-09-04'}],recentActivity:[{id:1,type:'checkout',title:'Checkout confirmed',message:'Book checked out.',createdAt:'2026-09-04'}],occupancy:{current:42,capacity:80,peakHour:'10:00 AM',averageMinutes:84}}
 const user={generatedAt:'2026-09-04T08:00:00.000Z',user:{name:'John Student',schoolId:'0200',program:'BSIT',role:'Student'},profile,summary:{activeLoans:1,activeBookCount:1,borrowingLimit:2,activeReservations:1,unreadNotifications:2,outstandingFines:0,clearanceStatus:'Cleared'},occupancy:{current:42,capacity:80},currentLoan:{id:1,title:'Clean Code',author:'Robert C. Martin',barcode:'BC-1',shelfLocation:'A-1',status:'Borrowed',dueAt:'2026-09-05 08:59 AM',coverPath:'/api/assets/covers/clean-code.png'},reservation:{id:7,title:'Database System Concepts',coverPath:'/api/assets/covers/database-systems.png',queuePosition:1,status:'ready_for_pickup',pickupDeadline:'2026-09-06 05:00 PM'},printRequest:null,latestNotification:null,announcement:{id:1,title:'Library schedule',message:'Open on Saturday.',priority:'Normal',publishedAt:'2026-09-04'},recentHistory:[{id:8,title:'Harry Potter',coverPath:'/api/assets/covers/harry-potter.png',status:'Returned',eventAt:'2026-08-25 10:02 PM'}],recommendations:[{id:2,title:'Computer Networks',author:'Andrew Tanenbaum',availableCopies:2,coverPath:'/api/assets/covers/networks.png'}]}
 
 describe('live dashboards',()=>{
+  it.each(['Student','Faculty'])('places the %s QR and clearance inside the hero and occupancy in library information',async(role)=>{
+    api.user.mockResolvedValue({...user,user:{...user.user,role}})
+    render(<MemoryRouter><UserDashboardPage/></MemoryRouter>)
+    const hero=await screen.findByRole('region',{name:'Your library overview'})
+    expect(within(hero).getByRole('button',{name:'Open your library QR'})).toBeTruthy()
+    expect(within(hero).getByRole('link',{name:/Clearance status/}).getAttribute('href')).toBe(`/${role.toLowerCase()}/clearance`)
+    expect(within(hero).queryByText('Library occupancy')).toBeNull()
+    expect(screen.queryByText('Your library, made smarter')).toBeNull()
+    const information=screen.getByRole('region',{name:'Library information'})
+    expect(within(information).getByText('Library occupancy')).toBeTruthy()
+    expect(within(information).getByRole('progressbar',{name:'Library occupancy'}).getAttribute('aria-valuenow')).toBe('42')
+    expect(within(hero).getByRole('link',{name:'Explore catalog'}).getAttribute('href')).toBe(`/${role.toLowerCase()}/library`)
+  })
   it('refreshes at five seconds while preserving visible content during the request',async()=>{
     vi.useFakeTimers()
     let finish!: (value:typeof user)=>void
@@ -29,7 +43,28 @@ describe('live dashboards',()=>{
     expect(screen.getByText('0 slots remaining')).toBeTruthy()
   })
   it('loads the admin operational overview from the dashboard API',async()=>{api.admin.mockResolvedValue(admin);render(<MemoryRouter><AdminDashboardPage/></MemoryRouter>);expect(await screen.findByText('Good day, Judelyn')).toBeTruthy();expect(screen.getByText('2,486')).toBeTruthy();expect(screen.getByText('Programming')).toBeTruthy();expect(api.admin).toHaveBeenCalledTimes(1)})
-  it('places recommendations after the summary cards and adds a recommended book to the shared borrow cart',async()=>{api.user.mockResolvedValue(user);api.fetchBookOverview.mockResolvedValue({titleId:2,title:'Computer Networks',author:'Andrew Tanenbaum',isbn:'9780132126953',publisher:'Pearson',publicationYear:2010,categoryId:1,categoryName:'Networking',callNumber:'TK5105',coverImagePath:'/api/assets/covers/networks.png',shelfLocation:'Shelf N-1',currentAvailabilityStatus:'Available',currentConditionStatus:'Good',totalCopiesCount:2,availableCopiesCount:2,reservableMaterialId:4,previewBarcode:'STIORMOC2026000002'});render(<MemoryRouter><UserDashboardPage/></MemoryRouter>);expect(await screen.findByText('Good day, John!')).toBeTruthy();expect(screen.getByText('Clean Code')).toBeTruthy();expect(screen.getByAltText('Clean Code cover')).toBeTruthy();expect(screen.getByAltText('Database System Concepts cover')).toBeTruthy();expect(screen.getByAltText('Harry Potter cover')).toBeTruthy();expect(screen.getByText('Library schedule')).toBeTruthy();expect(screen.getByAltText('Computer Networks cover')).toBeTruthy();const recommendations=screen.getByText('Available to borrow');const loan=screen.getByText('Return reminder');expect(recommendations.compareDocumentPosition(loan)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(screen.getByRole('button',{name:'View details'})).toBeTruthy();fireEvent.click(screen.getByRole('button',{name:'Borrow'}));await waitFor(()=>expect(api.fetchBookOverview).toHaveBeenCalledWith(2));expect(await screen.findByText('Computer Networks was added to your borrow cart.')).toBeTruthy();expect(screen.getByRole('button',{name:'In cart'})).toBeTruthy()})
+  it('places recommendations after the summary cards and adds a recommended book to the shared borrow cart',async()=>{api.user.mockResolvedValue(user);api.fetchBookOverview.mockResolvedValue({titleId:2,title:'Computer Networks',author:'Andrew Tanenbaum',isbn:'9780132126953',publisher:'Pearson',publicationYear:2010,categoryId:1,categoryName:'Networking',callNumber:'TK5105',coverImagePath:'/api/assets/covers/networks.png',shelfLocation:'Shelf N-1',currentAvailabilityStatus:'Available',currentConditionStatus:'Good',totalCopiesCount:2,availableCopiesCount:2,reservableMaterialId:4,previewBarcode:'STIORMOC2026000002'});render(<MemoryRouter><UserDashboardPage/></MemoryRouter>);expect(await screen.findByText('Good day, John!')).toBeTruthy();expect(screen.getByText('Clean Code')).toBeTruthy();expect(screen.getByAltText('Clean Code book cover')).toBeTruthy();expect(screen.getByAltText('Database System Concepts book cover')).toBeTruthy();expect(screen.getByAltText('Harry Potter book cover')).toBeTruthy();expect(screen.getByText('Library schedule')).toBeTruthy();expect(screen.getByAltText('Computer Networks book cover')).toBeTruthy();const recommendations=screen.getByText('Available to borrow');const loan=screen.getByText('Return reminder');expect(recommendations.compareDocumentPosition(loan)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(screen.getByRole('button',{name:'View details'})).toBeTruthy();fireEvent.click(screen.getByRole('button',{name:'Borrow'}));await waitFor(()=>expect(api.fetchBookOverview).toHaveBeenCalledWith(2));expect(await screen.findByText('Computer Networks was added to your borrow cart.')).toBeTruthy();expect(screen.getByRole('button',{name:'In cart'})).toBeTruthy()})
+})
+
+it('keeps Faculty destinations and all empty-data guidance', async () => {
+  api.user.mockResolvedValue({ ...user, user: { ...user.user, role: 'Faculty' }, summary: { ...user.summary, borrowingLimit: null }, currentLoan: null, reservation: null, recentHistory: [], recommendations: [], announcement: null })
+  render(<MemoryRouter><UserDashboardPage /></MemoryRouter>)
+  expect(await screen.findByText('No fixed borrowing limit')).toBeTruthy()
+  for (const text of ['You have no active borrowed books.', 'No active book request.', 'No borrowing history yet.', 'No available recommendations right now.', 'No active print request.', 'You are all caught up.']) expect(screen.getByText(text)).toBeTruthy()
+  expect(screen.getByRole('link', { name: 'View full history' }).getAttribute('href')).toBe('/faculty/borrowing')
+  expect(screen.getByRole('link', { name: 'Borrow cart (0)' }).getAttribute('href')).toBe('/faculty/cart')
+})
+
+it('retries a failed initial dashboard request and retains the last data after refresh failure', async () => {
+  api.user.mockRejectedValueOnce(new Error('Dashboard connection unavailable')).mockResolvedValueOnce(user).mockRejectedValueOnce(new Error('Refresh connection unavailable'))
+  render(<MemoryRouter><UserDashboardPage /></MemoryRouter>)
+  expect(await screen.findByText('Dashboard unavailable')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+  expect(await screen.findByText('Clean Code')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh dashboard' }))
+  expect(await screen.findByText('Refresh connection unavailable')).toBeTruthy()
+  expect(screen.getByText('Clean Code')).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Borrow' })).toBeTruthy()
 })
 
 afterEach(()=>{cleanup();clearBookCartForTests();vi.clearAllMocks();vi.useRealTimers()})

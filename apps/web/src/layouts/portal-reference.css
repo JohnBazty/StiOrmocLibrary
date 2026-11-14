@@ -1,0 +1,99 @@
+/* Reference appearance only: navigation chrome and dashboard route content. */
+.user-dashboard-hero-overlay { background: #0b5ea2d9; }
+html.dark .user-dashboard-hero-overlay { background: #14151be6; }
+.library-qr-image { background: white !important; object-fit: contain; flex-shrink: 0; }
+.library-qr-dialog { max-height: calc(100dvh - 2rem); overflow-y: auto; }
+.library-qr-dialog:not([open]) { display: none; }
+.portal-reference {
+  --font-sans: 'Poppins', 'Segoe UI', sans-serif;
+  --font-display: 'Poppins', 'Segoe UI', sans-serif;
+  font-family: var(--font-sans);
+  color: #0b5ea2;
+}
+.portal-reference .font-display { font-family: var(--font-display); }
+.portal-reference .portal-sidebar { background-color: #132a3f !important; }
+.portal-reference .portal-sidebar > div:first-child { flex-shrink: 0; padding-inline: 1rem; }
+.portal-reference .portal-sidebar nav { min-height: 0; }
+.portal-reference .portal-sidebar nav a svg { flex-shrink: 0; }
+.portal-reference .portal-sidebar nav p { color: #ffffffa6; }
+.portal-reference .portal-sidebar nav a:not([aria-current]) { color: #ffffffcc; }
+.portal-reference .portal-sidebar nav a:hover { background-color: #ffffff18; color: white; }
+.portal-reference .portal-sidebar a[aria-current="page"] { background: white; color: #0b5ea2; }
+.portal-reference .portal-reference-header { background: #fffffff2; }
+html.dark .portal-layout.portal-reference { background: #14151b !important; color: #f7f9ff; }
+html.dark .portal-reference .portal-reference-header { background: #14151bf2 !important; }
+html.dark .portal-reference .portal-sidebar a[aria-current="page"] { background: #FFF200 !important; color: #0b5ea2 !important; }
+:is(.dashboard-reference, .attendance-reference) {
+  --catalog-brand: #0b5ea2;
+  --catalog-dark: #22232e;
+  --sl-text: #0b5ea2;
+  --sl-text-muted: #41657f;
+  --sl-text-subtle: #41657f;
+  --sl-border: #0b5ea21f;
+  --sl-bg-elevated: white;
+}
+html.dark :is(.dashboard-reference, .attendance-reference),
+html.dark .portal-reference-header {
+  --sl-bg: #14151b;
+  --sl-bg-elevated: #22232e;
+  --sl-bg-muted: #ffffff0d;
+  --sl-text: #f7f9ff;
+  --sl-text-muted: #c4c5ce;
+  --sl-text-subtle: #b6b7c2;
+  --sl-border: #ffffff26;
+}
+:is(.dashboard-reference, .attendance-reference) .section-card { border-color: #0b5ea21a; box-shadow: 0 1px 3px #0b5ea214; }
+html.dark :is(.dashboard-reference, .attendance-reference) .section-card { background-color: #22232e !important; border-color: #ffffff1a !important; }
+:is(.dashboard-reference, .attendance-reference) img[alt="Your permanent library QR code"] { background: white !important; object-fit: contain; flex-shrink: 0; }
+:is(.dashboard-reference, .attendance-reference) .page-header-actions { max-width: 100%; }
+:is(.dashboard-reference, .attendance-reference) :is(a, button):focus-visible,
+.portal-reference :is(.portal-sidebar, .portal-reference-header) :is(a, button, summary):focus-visible { outline: 2px solid #0b5ea2; outline-offset: 3px; }
+.portal-reference .portal-sidebar :is(a, button, summary):focus-visible,
+html.dark .portal-reference :is(a, button, summary):focus-visible { outline-color: #FFF200; }
+:is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="text-[#0b5ea2]"] { color: #0b5ea2; }
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="text-[#0b5ea2]"] { color: #f7f9ff !important; }
+:is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="text-[#0b5ea2]/45"] { color: #41657f; }
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="text-[#0b5ea2]/45"] { color: var(--sl-text-muted, #f7f9ff) !important; }
+:is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="text-[#0b5ea2]/55"] { color: #41657f; }
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="text-[#0b5ea2]/55"] { color: var(--sl-text-muted, #f7f9ff) !important; }
+:is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="text-[#0b5ea2]/60"] { color: #41657f; }
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="text-[#0b5ea2]/60"] { color: var(--sl-text-muted, #f7f9ff) !important; }
+:is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="text-[#0b5ea2]/65"] { color: #41657f; }
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="text-[#0b5ea2]/65"] { color: var(--sl-text-muted, #f7f9ff) !important; }
+:is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="text-[#0b5ea2]/70"] { color: #41657f; }
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="text-[#0b5ea2]/70"] { color: var(--sl-text-muted, #f7f9ff) !important; }
+:is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="text-[#0b5ea2]/75"] { color: #41657f; }
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="text-[#0b5ea2]/75"] { color: var(--sl-text-muted, #f7f9ff) !important; }
+:is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="bg-[#0b5ea2]/5"] { background-color: #0b5ea20d; }
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="bg-[#0b5ea2]/5"] { background-color: #ffffff0d !important; }
+:is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="bg-[#0b5ea2]/10"] { background-color: #0b5ea21a; }
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="bg-[#0b5ea2]/10"] { background-color: #ffffff0d !important; }
+:is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="bg-[#0b5ea2]/15"] { background-color: #0b5ea226; }
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="bg-[#0b5ea2]/15"] { background-color: #ffffff0d !important; }
+:is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="bg-[#0b5ea2]/20"] { background-color: #0b5ea233; }
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="bg-[#0b5ea2]/20"] { background-color: #ffffff0d !important; }
+:is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="bg-[#0b5ea2]"] { background-color: #0b5ea2; }
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="bg-[#0b5ea2]"] { background-color: #0b5ea2 !important; color: white !important; }
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="bg-[#0b5ea2]"] [class*="text-white"],
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="bg-[#0b5ea2]"] [class*="text-[#FFFFFF]"] { color: white !important; }
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="bg-white"],
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="bg-[#FFFFFF]"],
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="dark:bg-[#22232e]"] { background-color: #22232e !important; }
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="bg-[#FFF200]"]:not([role="alert"]) { background-color: #FFF200 !important; color: #0b5ea2 !important; }
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="bg-[#FFF200]"] [class*="text-[#0b5ea2]"],
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="bg-[#FFF200]/35"] [class*="text-[#0b5ea2]"],
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="bg-[#FFF200]/40"] [class*="text-[#0b5ea2]"],
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="bg-[#FFF200]/35"][class*="text-[#0b5ea2]"],
+html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.dashboard-reference, .attendance-reference)) [class~="bg-[#FFF200]/40"][class*="text-[#0b5ea2]"] { color: #0b5ea2 !important; }
+html.dark :is(.dashboard-reference, .attendance-reference) thead[class*="bg-[#0b5ea2]"] { background-color: #ffffff0d !important; }
+html.dark :is(.dashboard-reference, .attendance-reference) input:not([type="checkbox"]):not([type="radio"]),
+html.dark :is(.dashboard-reference, .attendance-reference) select { background-color: #22232e !important; }
+@media (prefers-reduced-motion: reduce) { .portal-reference .portal-sidebar { transition: none; } }
+
+html.dark .portal-reference .portal-sidebar { background-color: #132a3f !important; }
+
+/* Readable helper text without fading the whole element. */
+:is(.dashboard-reference, .attendance-reference) :is([class~="opacity-60"], [class~="opacity-65"]) { opacity: 1; color: var(--sl-text-muted); }
+
+/* The reference scanner action stays yellow even with shared primary-button styles. */
+.attendance-reference .attendance-door-scanner { background-color: #FFF200 !important; color: #0b5ea2 !important; }

@@ -6,7 +6,7 @@ export function CatalogCover({ title, src, className = '', flush = false }: { ti
   const available = Boolean(src && src !== failedSource)
 
   return (
-    <div className={`flex items-center justify-center overflow-hidden ${flush ? 'bg-white dark:bg-[#001a4d]' : 'rounded-xl bg-[#edf2ff] dark:bg-[#00225e]'} ${className}`}>
+    <div className={`flex items-center justify-center overflow-hidden ${flush ? 'bg-white dark:bg-[#22232e]' : 'rounded-xl bg-[#edf2ff] dark:bg-[#22232e]'} ${className}`}>
       {available ? (
         <img src={src!} alt={`${title} book cover`} loading="lazy" className={`h-full w-full object-contain ${flush ? '' : 'p-3'}`} onError={() => setFailedSource(src!)} />
       ) : (

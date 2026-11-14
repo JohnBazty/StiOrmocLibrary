@@ -17,7 +17,7 @@ export async function createCaseTestDatabase() {
     CREATE TABLE physical_copies (physical_copy_id BIGINT PRIMARY KEY, title_id BIGINT NOT NULL REFERENCES titles(title_id), material_id BIGINT NULL,
       barcode TEXT NOT NULL UNIQUE, accession_number TEXT NULL, condition_status TEXT NOT NULL DEFAULT 'Good',
       availability_status TEXT NOT NULL DEFAULT 'Available', lifecycle_status TEXT NOT NULL DEFAULT 'Active',
-      row_version INT NOT NULL DEFAULT 0, updated_at TIMESTAMP NULL);
+      row_version INT NOT NULL DEFAULT 0, updated_at TIMESTAMP NULL, cost_php NUMERIC(9,2) NULL);
     CREATE TABLE borrowing_policy_versions (borrowing_policy_version_id BIGINT PRIMARY KEY);
     CREATE TABLE borrow_transactions (transaction_id BIGINT PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(user_id),
       material_id BIGINT NULL, physical_copy_id BIGINT NOT NULL REFERENCES physical_copies(physical_copy_id),

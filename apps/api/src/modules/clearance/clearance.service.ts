@@ -120,7 +120,7 @@ export function createClearanceService(database: Pool = db) {
       database.execute<RowDataPacket[]>(
         `SELECT l.lost_book_report_id, l.transaction_id, l.report_status, l.purchase_price_snapshot,
                 l.replacement_charge, l.charge_resolution, l.resolution_reason, l.payment_status, l.reported_at, l.verified_at,
-                t.title_id, t.purchase_price AS title_price, q.quotation_id AS current_quotation_id, q.quoted_amount AS current_quotation_amount,
+                t.title_id, COALESCE(pc.cost_php, t.purchase_price) AS title_price, q.quotation_id AS current_quotation_id, q.quoted_amount AS current_quotation_amount,
                 COALESCE(t.title,m.title) AS title
            FROM lost_book_reports l INNER JOIN borrow_transactions bt ON bt.transaction_id=l.transaction_id
            INNER JOIN materials m ON m.material_id=bt.material_id
@@ -322,7 +322,7 @@ export function createClearanceService(database: Pool = db) {
         await connection.beginTransaction()
         const staffUserId = await linkedUserId(connection, actorAccountId(actor))
         const [rows] = await connection.execute<RowDataPacket[]>(
-          `SELECT l.*,bt.material_id,bt.physical_copy_id,COALESCE(t.title,m.title) AS title,t.purchase_price AS title_price,
+          `SELECT l.*,bt.material_id,bt.physical_copy_id,COALESCE(t.title,m.title) AS title,COALESCE(pc.cost_php, t.purchase_price) AS title_price,
                   q.quotation_id AS current_quotation_id,q.quoted_amount AS current_quotation_amount
              FROM lost_book_reports l INNER JOIN borrow_transactions bt ON bt.transaction_id=l.transaction_id
              INNER JOIN materials m ON m.material_id=bt.material_id

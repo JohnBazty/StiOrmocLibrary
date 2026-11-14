@@ -1,0 +1,81 @@
+@theme inline {
+  --color-catalog-brand: var(--catalog-brand, #0b5ea2);
+  --color-catalog-dark: var(--catalog-dark, #22232e);
+}
+
+.public-library-reference {
+  --catalog-brand: #0b5ea2;
+  --catalog-dark: #22232e;
+  --font-sans: 'Poppins', 'Segoe UI', sans-serif;
+  --font-display: 'Poppins', 'Segoe UI', sans-serif;
+  font-family: var(--font-sans);
+  background: white;
+  color: #0b5ea2;
+}
+html.dark .public-library-reference { background: #14151b; color: #f7f9ff; }
+.public-library-reference .font-display { font-family: var(--font-display); }
+
+/* Existing shared dark-mode rules read these inherited surface tokens. */
+html.dark .public-library-reference {
+  --sl-bg: #14151b;
+  --sl-bg-elevated: #22232e;
+  --sl-bg-muted: rgba(255,255,255,.08);
+  --sl-text: #f7f9ff;
+  --sl-text-muted: rgba(247,249,255,.88);
+  --sl-text-subtle: rgba(247,249,255,.72);
+}
+html.dark .public-library-reference :is(input, select, textarea) {
+  background-color: #22232e !important;
+  color: #f7f9ff !important;
+}
+/* Reference hero search: white in light mode, charcoal in dark mode. */
+.public-library-reference #home .public-welcome-form,
+.public-library-reference #home input.public-welcome-search {
+  background-color: white !important;
+  color: #0b5ea2 !important;
+}
+.public-library-reference #home input.public-welcome-search::placeholder {
+  color: rgba(11,94,162,.55) !important;
+}
+.public-library-reference #home .public-welcome-form svg { color: #0b5ea2; }
+
+html.dark .public-library-reference #home .public-welcome-form,
+html.dark .public-library-reference #home input.public-welcome-search {
+  background-color: #22232e !important;
+  color: #f7f9ff !important;
+}
+html.dark .public-library-reference #home input.public-welcome-search::placeholder { color: #ffffffb3 !important; }
+html.dark .public-library-reference #home .public-welcome-form svg { color: #f7f9ff; }
+
+/* The native auth dialog is a sibling of the catalog, so it owns its theme scope. */
+dialog.public-library-reference {
+  color: #0b5ea2;
+  background: white;
+  border-color: #0b5ea218;
+  box-shadow: 0 24px 100px #0b5ea240;
+  scrollbar-color: #0b5ea240 transparent;
+}
+dialog.public-library-reference::backdrop { background: #0b5ea270; }
+.public-reference-auth .public-auth-tabs { background: #0b5ea208; }
+.public-reference-auth .public-auth-tabs .public-auth-tab-active {
+  background: #0b5ea2;
+  color: white;
+  box-shadow: 0 3px 10px #0b5ea220;
+}
+.public-reference-auth .public-auth-tabs a:focus-visible { outline-color: #0b5ea2; }
+html.dark dialog.public-library-reference { background: #22232e; color: #f7f9ff; }
+html.dark .public-reference-auth .public-auth-tabs { background: #ffffff0a; }
+html.dark .public-reference-auth .public-auth-tabs .public-auth-tab-active { background: #FFF200; color: #0b5ea2; }
+.public-library-reference.reference-registration-page { background: #0b5ea2; }
+.public-library-reference .reference-auth-hero {
+  background-image: linear-gradient(rgba(11,94,162,.88),rgba(11,94,162,.78)),url('/reference-library-hero.webp');
+  background-size: cover;
+  background-position: center;
+}
+
+/* Staff reference: form first, photographic branding panel second. */
+.public-library-reference.staff-reference-page { background: #fafafa; color: #18181b; }
+html.dark .public-library-reference.staff-reference-page { background: #14151b; }
+html.dark .public-library-reference.staff-reference-page input:not([type="checkbox"]):not([type="radio"]) {
+  background-color: #22232e !important;
+}

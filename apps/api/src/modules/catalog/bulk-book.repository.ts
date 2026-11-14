@@ -52,11 +52,20 @@ export async function createBulkBookTitle(connection: PoolConnection, input: Bul
   const [result] = await connection.execute<ResultSetHeader>(
     `INSERT INTO titles
        (category_id, record_type, title, normalized_title, isbn, publication_year, publisher, purchase_price,
-        call_number, cover_image_path, search_text, lifecycle_status, created_at)
-     VALUES (?, 'Book', ?, ?, ?, ?, ?, NULL, ?, ?, ?, 'Active', NOW())`,
+        call_number, cover_image_path, search_text, lifecycle_status, created_at, classification, volumes, remarks)
+     VALUES (?, 'Book', ?, ?, ?, ?, ?, NULL, ?, ?, ?, 'Active', NOW(), ?, ?, ?)`,
     [input.categoryId, input.title, input.title.toLocaleLowerCase('en-US'), input.isbn, input.publicationYear,
-      input.publisher, input.callNumber, coverImagePath, `${input.title} ${input.author} ${input.isbn}`.toLocaleLowerCase('en-US')],
+      input.publisher, input.callNumber, coverImagePath, `${input.title} ${input.author} ${input.isbn}`.toLocaleLowerCase('en-US'),
+      input.classification, input.volumes, input.remarks],
   )
+  if (input.edition !== null || input.pages !== null) {
+    // Edition and pages live in catalog_title_details (021), as the holdings import writes them.
+    await connection.execute(
+      `INSERT INTO catalog_title_details (title_id, edition, page_count, type_id)
+       VALUES (?, ?, ?, (SELECT type_id FROM catalog_resource_types WHERE name = ?))`,
+      [result.insertId, input.edition, input.pages, 'Book'],
+    )
+  }
   await connection.execute(
     `INSERT INTO authors (title_id, author_name, normalized_name, author_order, created_at)
      VALUES (?, ?, ?, 1, NOW())`,
@@ -100,9 +109,10 @@ export async function insertGeneratedBookCopy(connection: PoolConnection, input:
   const [physicalCopy] = await connection.execute<ResultSetHeader>(
     `INSERT INTO physical_copies
        (title_id, material_id, barcode, qr_code_data, accession_number, shelf_location, shelf_column, shelf_row,
-        condition_status, availability_status, lifecycle_status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Good', 'Available', 'Active', NOW())`,
-    [titleId, material.insertId, copy.barcode, copy.qrCodeData, copy.accessionNumber, input.shelfLocation, Number((input as BulkBookInput & { shelfColumn?: number }).shelfColumn ?? 1), Number((input as BulkBookInput & { shelfRow?: number }).shelfRow ?? 1)],
+        condition_status, availability_status, lifecycle_status, created_at, fund_source, fund_detail, cost_php, acquired_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Good', 'Available', 'Active', NOW(), ?, ?, ?, ?)`,
+    [titleId, material.insertId, copy.barcode, copy.qrCodeData, copy.accessionNumber, input.shelfLocation, Number((input as BulkBookInput & { shelfColumn?: number }).shelfColumn ?? 1), Number((input as BulkBookInput & { shelfRow?: number }).shelfRow ?? 1),
+      input.fundSource, input.fundDetail, input.costPhp, input.receivedOn],
   )
   return { materialId: Number(material.insertId), physicalCopyId: Number(physicalCopy.insertId) }
 }

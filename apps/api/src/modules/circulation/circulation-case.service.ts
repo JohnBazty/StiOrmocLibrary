@@ -179,7 +179,11 @@ async function chargeBookPrice(connection: PoolConnection, row: CaseRow, copy: L
     'SELECT lost_book_report_id FROM lost_book_reports WHERE transaction_id = ? LIMIT 1 FOR UPDATE', [row.transaction_id],
   )
   if (existing[0]) throw new HttpError(409, 'CASE_LOST_ALREADY_CHARGED', 'A lost-book charge already exists for this loan. Review it in Clearance.')
-  const [priceRows] = await connection.execute<RowDataPacket[]>('SELECT title, purchase_price FROM titles WHERE title_id = ? LIMIT 1', [copy.title_id])
+  const [priceRows] = await connection.execute<RowDataPacket[]>(
+    `SELECT t.title, COALESCE(pc.cost_php, t.purchase_price) AS purchase_price
+       FROM physical_copies pc JOIN titles t ON t.title_id = pc.title_id
+      WHERE pc.physical_copy_id = ? LIMIT 1`, [copy.physical_copy_id],
+  )
   const price = priceRows[0]?.purchase_price === null || priceRows[0]?.purchase_price === undefined ? null : Number(priceRows[0].purchase_price)
   const bookPrice = price !== null && price > 0 ? price : null
   if (bookPrice !== null && staffCharge !== null && staffCharge !== bookPrice) {
@@ -279,7 +283,7 @@ export function createCirculationCaseService(database: Pool = db, clock: () => D
       if (!row) throw new HttpError(404, 'CASE_NOT_FOUND', 'The book review was not found.')
       const [[loanRows], [eventRows]] = await Promise.all([
         database.execute<RowDataPacket[]>(
-          `SELECT bt.transaction_status, bt.due_at, bt.returned_at, t.title, t.purchase_price, pc.barcode, pc.accession_number,
+          `SELECT bt.transaction_status, bt.due_at, bt.returned_at, t.title, COALESCE(pc.cost_php, t.purchase_price) AS purchase_price, pc.barcode, pc.accession_number,
                   pc.condition_status, pc.availability_status, u.full_name, u.school_id,
                   f.fine_amount, f.payment_status AS fine_payment_status,
                   l.replacement_charge, l.payment_status AS lost_payment_status

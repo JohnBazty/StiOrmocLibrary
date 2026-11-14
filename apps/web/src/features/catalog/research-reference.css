@@ -1,0 +1,13 @@
+.research-reference { color: #0b5ea2; }
+.research-reference button:focus-visible, .research-reference a:focus-visible { outline: 2px solid #0b5ea2; outline-offset: 3px; }
+.research-reference [class*="text-[#0b5ea2]/"] { color: #41657f; }
+html.dark .research-reference { color: #f7f9ff; }
+html.dark .research-reference :is(section, article)[class*="bg-white"],
+html.dark .research-reference :is(section, article)[class*="bg-[#f8fafc]"] { background-color: #22232e; }
+html.dark .research-reference :is(button,a):focus-visible { outline-color: #FFF200; }
+.research-reference [role="img"] p { color: inherit; }
+.research-reference > header.flex { flex-wrap: nowrap; }
+.research-reference > header > div { flex: 1; min-width: 0; }
+.research-reference > header > button { flex-shrink: 0; min-height: 44px; min-width: 44px; }
+.research-reference[role="dialog"] { max-height: 92dvh; overflow: hidden; }
+.fixed[role="dialog"] > section.research-reference { max-height: 92dvh; }

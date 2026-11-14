@@ -5,11 +5,11 @@ import { isValidIsbn, normalizeIsbn } from './catalog.validation.ts'
 import { cleanImportValue, matchImportReference, type ImportCorrection, type ImportReferences } from './holdings-cleanup.ts'
 
 const legacyHoldingsFields = ['title','author','isbn','edition','publisher','publicationYear','copyrightYear','pages','copies','missingCopies','accessions','barcodes','callNumber'] as const
-export const holdingsFields = [...legacyHoldingsFields, 'categoryName', 'shelfLocation'] as const
+export const holdingsFields = [...legacyHoldingsFields, 'categoryName', 'shelfLocation', 'summary'] as const
 export type HoldingsField = typeof holdingsFields[number]
 export type SheetMapping = { sheet: string; headerRow: number; columns: Partial<Record<HoldingsField, number>>; categoryId?: number; location?: string; programId?: number }
 export type HoldingsSheet = { name: string; rows: string[][]; mapping: SheetMapping; headers: string[] }
-export type HoldingsData = { title: string; author: string; isbn: string; edition: string; publisher: string; publicationYear: string; copyrightYear: string; pages: string; copies: string; missingCopies: string; accessions: string; barcodes: string; callNumber: string; categoryId: number | null; location: string; programId: number | null; generateAccessions: boolean; categoryName?: string; shelfLocation?: string; autoCorrections?: ImportCorrection[] }
+export type HoldingsData = { summary?: string; title: string; author: string; isbn: string; edition: string; publisher: string; publicationYear: string; copyrightYear: string; pages: string; copies: string; missingCopies: string; accessions: string; barcodes: string; callNumber: string; categoryId: number | null; location: string; programId: number | null; generateAccessions: boolean; categoryName?: string; shelfLocation?: string; autoCorrections?: ImportCorrection[] }
 const bad = (message: string) => new HttpError(422,'HOLDINGS_FILE_INVALID',message)
 export const clean = (value: unknown) => String(value ?? '').trim().replace(/\s+/g,' ')
 export const key = (value: unknown) => clean(value).normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim()
@@ -61,6 +61,7 @@ const aliases: Record<HoldingsField, RegExp> = {
  callNumber:/^call number$/,
  categoryName:/^(category|category name|classification)$/,
  shelfLocation:/^(shelf|shelf location|shelf label|location)$/,
+ summary:/^(abstract|summary|abstract summary|synopsis|book summary)$/,
 }
 export function detectMapping(name:string, rows:string[][]): SheetMapping {
   let headerRow=1,best=0
@@ -115,7 +116,8 @@ function recordReferenceCorrection(changes: ImportCorrection[], field: string, b
   if (existing) { existing.after = after; existing.reason = reason }
   else changes.push({ field, before, after, reason })
 }
-export function mappedRows(sheets:HoldingsSheet[],mappings:SheetMapping[],references:ImportReferences={categories:[],locations:[]}){
+/** `requireCopies: false` is for Find book details, which lists books without adding copies. */
+export function mappedRows(sheets:HoldingsSheet[],mappings:SheetMapping[],references:ImportReferences={categories:[],locations:[]},{requireCopies=true}:{requireCopies?:boolean}={}){
   const seen=new Set<string>()
   const items:Array<{sheet:string;sourceRow:number;source:string[];data:HoldingsData}>=[]
   let ignored=0
@@ -125,7 +127,8 @@ export function mappedRows(sheets:HoldingsSheet[],mappings:SheetMapping[],refere
     if(!sheet || seen.has(mapping.sheet)) throw bad('Select each existing sheet once.')
     seen.add(mapping.sheet)
     if(!Number.isInteger(mapping.headerRow)||mapping.headerRow<1||mapping.headerRow>sheet.rows.length)throw bad('Choose a valid header row.')
-    if(!mapping.columns.title||!mapping.columns.author||!mapping.columns.copies)throw bad('Map Title, Author and Copies for every selected sheet.')
+    // An ISBN can stand in for Title and Author: the book lookup or the librarian fills them before a row is saved.
+    if((requireCopies&&!mapping.columns.copies)||(!mapping.columns.title&&!mapping.columns.isbn))throw bad(requireCopies?'Map Copies, and Title or ISBN, for every selected sheet.':'Map Title or ISBN for every selected sheet.')
     for(const column of Object.values(mapping.columns))if(!Number.isInteger(column)||Number(column)<1||Number(column)>40)throw bad('Choose valid column numbers.')
     for(let i=mapping.headerRow;i<sheet.rows.length;i++){
       const source=sheet.rows[i]
@@ -139,7 +142,7 @@ export function mappedRows(sheets:HoldingsSheet[],mappings:SheetMapping[],refere
       // Numeric copy rows are retained even if a genuine title contains these words.
       if(!/^\d+$/.test(values.copies)&&source.some(cell=>/^(prepared by|noted by|checked by|certified true(?: and)?(?: correct)?|certified by)\b/i.test(clean(cell)))){ignored+=sheet.rows.length-i;break}
       if(!values.title&&!values.author&&/^(copies|date|year|published)$/i.test(values.copies)){ignored++;continue}
-      if(!values.title && !values.copies){ignored++;continue}
+      if(!values.title && (requireCopies ? !values.copies : !values.isbn)){ignored++;continue}
       if(/^(book title|title|total|grand total)$/i.test(values.title) || /^(prepared by|noted by|checked by|certified by)\s*:/i.test(values.title) || (!values.title && /total/i.test(source.join(' ')))){ignored++;continue}
       let categoryId = positiveId(mapping.categoryId), location = clean(mapping.location)
       if (values.categoryName) {
@@ -166,6 +169,7 @@ export function validateHoldingsData(data:HoldingsData, needsCopies=true){
   if(!data.author || data.author.length>255)errors.push('Author is required, up to 255 characters.')
   if(data.isbn && !isValidIsbn(normalizeIsbn(data.isbn)))errors.push('ISBN checksum is invalid. Correct it or clear an unknown ISBN.')
   if(data.edition.length>100||data.publisher.length>255||data.callNumber.length>100)errors.push('Edition, publisher or call number is too long.')
+  if((data.summary??'').length>5000)errors.push('Summary is too long; keep it to 5,000 characters.')
   for(const field of ['publicationYear','copyrightYear'] as const){
     const n=Number(data[field]);if(data[field]&&(!/^\d+$/.test(data[field])||!Number.isInteger(n)||n<1000||n>new Date().getFullYear()))errors.push(`${field==='copyrightYear'?'Copyright':'Publication'} year must be a valid year; leave unknown years blank.`)
   }

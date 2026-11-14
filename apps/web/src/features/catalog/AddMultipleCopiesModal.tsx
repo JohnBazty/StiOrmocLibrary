@@ -5,12 +5,18 @@ import { BookLabelSheet } from './BookLabelSheet'
 import type { BulkBookResult, Category } from './types'
 import { isbnInputError, normalizeIsbnInput } from './isbn'
 import { SelectedFilePreview } from '../../components/SelectedFilePreview'
+import { TitleLookup } from './TitleLookup'
+import { confirmLeave, UnsavedGuard } from '../../components/UnsavedChanges'
+import { CategorySuggestion } from './CategorySuggestion'
+import { PredictionList, usePredictions } from './usePredictions'
 
-const fieldClass = 'h-11 w-full rounded-xl border border-[#003399]/20 bg-[#FFFFFF] px-3 text-sm text-[#003399] outline-none focus:border-[#003399] focus:ring-4 focus:ring-[#003399]/10'
-const labelClass = 'mb-1.5 block text-xs font-bold uppercase tracking-wide text-[#003399]'
+const fieldClass = 'h-11 w-full rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] px-3 text-sm text-[#0b5ea2] outline-none focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/10'
+const labelClass = 'mb-1.5 block text-xs font-bold uppercase tracking-wide text-[#0b5ea2]'
+/** Same list as the API's FUND_SOURCES (bulk-book.validation.ts). */
+const FUND_SOURCES = ['Purchase', 'Donation', 'Government grant', 'Other']
 
-function Field({ label, name, required, value, onChange }: { label: string; name: string; required?: boolean; value?: string; onChange?: (value: string) => void }) {
-  return <label><span className={labelClass}>{label}{required ? ' *' : ''}</span><input name={name} required={required} value={value} onChange={onChange ? (event) => onChange(event.target.value) : undefined} className={fieldClass} /></label>
+function Field({ label, name, required, value, onChange, list }: { label: string; name: string; required?: boolean; value?: string; onChange?: (value: string) => void; list?: string }) {
+  return <label><span className={labelClass}>{label}{required ? ' *' : ''}</span><input name={name} required={required} value={value} list={list} autoComplete={list ? 'off' : undefined} onChange={onChange ? (event) => onChange(event.target.value) : undefined} className={fieldClass} /></label>
 }
 
 export function AddMultipleCopiesModal({ categories, locations, onCreated, onClose }: {
@@ -20,6 +26,9 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
   onClose: () => void
 }) {
   const [categoryId, setCategoryId] = useState('')
+  const [subjects, setSubjects] = useState<string[]>([])
+  const [createdCategories, setCreatedCategories] = useState<Category[]>([])
+  const allCategories = useMemo(() => [...categories, ...createdCategories.filter((made) => !categories.some((known) => known.categoryId === made.categoryId))], [categories, createdCategories])
   const [bookLocation, setBookLocation] = useState('')
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -27,9 +36,26 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
   const [batch, setBatch] = useState<BulkBookResult | null>(null)
   const [coverFile, setCoverFile] = useState<File | null>(null)
   const coverInput = useRef<HTMLInputElement>(null)
-  const clearCover = () => { setCoverFile(null); if (coverInput.current) coverInput.current.value = '' }
+  // 'auto' covers came from a lookup; a cover staff chose ('manual') is never replaced by one.
+  const coverSource = useRef<'none' | 'auto' | 'manual'>('none')
+  const coverRequest = useRef(0)
+  const [autoCover, setAutoCover] = useState(false)
+  const clearCover = () => { coverRequest.current += 1; coverSource.current = 'none'; setAutoCover(false); setCoverFile(null); if (coverInput.current) coverInput.current.value = '' }
+  const attachLookupCover = useCallback(async (isbnForCover: string) => {
+    if (coverSource.current === 'manual') return
+    const request = ++coverRequest.current
+    let file: File | null = null
+    try { file = await catalogApi.fetchCover(isbnForCover) } catch { file = null }
+    // Re-read the ref after the wait: staff may have picked their own cover meanwhile.
+    const chosenMeanwhile = (coverSource.current as string) === 'manual'
+    if (request !== coverRequest.current || chosenMeanwhile) return
+    if (!file) { if (coverSource.current === 'auto') { coverSource.current = 'none'; setAutoCover(false); setCoverFile(null) } return }
+    coverSource.current = 'auto'; setAutoCover(true); setCoverFile(file)
+  }, [])
   const [isbn, setIsbn] = useState('')
   const [metadata, setMetadata] = useState({ title: '', author: '', publisher: '', publicationYear: '' })
+  const titlePredictions = usePredictions('title', metadata.title)
+  const authorPredictions = usePredictions('author', metadata.author)
   const [lookupStatus, setLookupStatus] = useState<{ state: 'idle' | 'loading' | 'found' | 'error'; message: string }>({ state: 'idle', message: '' })
   const lookupAbort = useRef<AbortController | null>(null)
   const lastLookup = useRef('')
@@ -53,13 +79,16 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
       }))
       const source = result.source === 'local_catalog' ? 'local library catalog' : result.source === 'google_books' ? 'Google Books' : 'Open Library'
       setLookupStatus({ state: 'found', message: `Book information found from ${source}. Review the details before saving.` })
+      // A title already in the catalog keeps its own cover; saving copies would otherwise replace it.
+      setSubjects(result.subjects ?? [])
+      if (result.source !== 'local_catalog') void attachLookupCover(normalized)
     } catch (reason) {
       if (controller.signal.aborted) return
       lastLookup.current = normalized
       const error = reason as ApiError
       setLookupStatus({ state: 'error', message: error.message || 'Book metadata could not be found. Enter the details manually.' })
     }
-  }, [])
+  }, [attachLookupCover])
 
   useEffect(() => {
     if (!isbn || liveIsbnError) {
@@ -96,6 +125,8 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
         publisher: data.publisher, call_number: data.callNumber,
         category_id: data.categoryId, shelf_location: data.bookLocation,
         cover_image_data: coverImageData,
+        classification: data.classification, edition: data.edition, volumes: data.volumes, pages: data.pages, remarks: data.remarks,
+        fund_source: data.fundSource, fund_detail: data.fundDetail, cost_php: data.costPhp, received_on: data.receivedOn,
       })
       setBatch(result)
       setMessage(`Saved to inventory: ${result.numberOfCopies} physical ${result.numberOfCopies === 1 ? 'copy' : 'copies'} with unique QR and barcode labels.`)
@@ -115,36 +146,58 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
       setErrors((current) => ({ ...current, cover_image: 'Choose a JPEG, PNG, or WebP image no larger than 2 MB.' }))
       event.target.value = ''; return
     }
+    coverSource.current = 'manual'
     setCoverFile(file)
     setErrors((current) => { const next = { ...current }; delete next.cover_image; return next })
   }
 
   function changeCategory(value: string) {
     setCategoryId(value)
-    const selected = categories.find((category) => String(category.categoryId) === value)
+    const selected = allCategories.find((category) => String(category.categoryId) === value)
     setBookLocation(selected?.shelfLocation ?? '')
   }
 
-  return <div className="fixed inset-0 z-50 overflow-y-auto bg-[#003399]/80 p-4">
+  // Values a lookup filled count as changes too; after saving, the copies exist and nothing is left to lose.
+  const filledSomething = !batch && Boolean(metadata.title || metadata.author || isbn || coverFile)
+  return <UnsavedGuard dirty={filledSomething} resetKey={batch?.titleId}><div className="fixed inset-0 z-50 overflow-y-auto bg-[#0b5ea2]/80 p-4">
     <div role="dialog" aria-modal="true" aria-labelledby="multiple-copies-title" className="mx-auto my-4 w-full max-w-6xl rounded-2xl bg-[#FFFFFF] shadow-2xl">
-      <header className="flex items-start justify-between border-b border-[#003399]/15 p-5"><div><p className="text-xs font-bold uppercase text-[#003399]">Catalog entry</p><h2 id="multiple-copies-title" className="text-xl font-black text-[#003399]">Add multiple book copies</h2></div><button aria-label="Close" disabled={saving} onClick={onClose} className="p-2 text-[#003399] disabled:opacity-40"><X /></button></header>
+      <header className="flex items-start justify-between border-b border-[#0b5ea2]/15 p-5"><div><p className="text-xs font-bold uppercase text-[#0b5ea2]">Catalog entry</p><h2 id="multiple-copies-title" className="text-xl font-black text-[#0b5ea2]">Add multiple book copies</h2></div><button aria-label="Close" disabled={saving} onClick={() => confirmLeave(onClose)} className="p-2 text-[#0b5ea2] disabled:opacity-40"><X /></button></header>
       <form onSubmit={submit} className="grid gap-4 p-5 sm:grid-cols-2">
-        {message ? <div role={batch ? 'status' : 'alert'} className={`rounded-xl p-3 text-sm font-semibold text-[#003399] sm:col-span-2 ${batch ? 'border border-[#003399] bg-[#FFFFFF]' : 'bg-[#FFF200]'}`}>{message}</div> : null}
-        {Object.keys(errors).length ? <div role="alert" className="rounded-xl bg-[#FFF200] p-3 text-sm text-[#003399] sm:col-span-2"><ul className="list-inside list-disc">{Object.entries(errors).map(([field, error]) => <li key={field}><strong>{field}:</strong> {error}</li>)}</ul></div> : null}
-        <Field label="Title" name="title" required value={metadata.title} onChange={(title) => setMetadata((current) => ({ ...current, title }))} /><Field label="Author" name="author" required value={metadata.author} onChange={(author) => setMetadata((current) => ({ ...current, author }))} />
-        <label><span className={labelClass}>ISBN *</span><input name="isbn" required value={isbn} inputMode="text" autoComplete="off" aria-invalid={Boolean(liveIsbnError || errors.isbn)} aria-describedby="isbn-feedback isbn-lookup-feedback" onChange={(event) => { setIsbn(event.target.value); if (normalizeIsbnInput(event.target.value) !== lastLookup.current) lastLookup.current = ''; setErrors((current) => { const next = { ...current }; delete next.isbn; return next }) }} onBlur={() => { const normalized = normalizeIsbnInput(isbn); setIsbn(normalized); if (!isbnInputError(normalized)) void lookupIsbn(normalized, true) }} onKeyDown={(event) => { if (event.key === 'Enter' && !liveIsbnError) { event.preventDefault(); const normalized = normalizeIsbnInput(isbn); setIsbn(normalized); void lookupIsbn(normalized, true) } }} placeholder="ISBN-10 or ISBN-13" className={fieldClass} /><span id="isbn-feedback" className={`mt-1.5 block text-xs font-semibold ${liveIsbnError || errors.isbn ? 'text-[#003399]' : 'text-[#003399]/65'}`}>{liveIsbnError ?? errors.isbn ?? (isbn ? `Valid ${normalizeIsbnInput(isbn).length === 10 ? 'ISBN-10' : 'ISBN-13'} checksum` : 'Hyphens and spaces are accepted.')}</span>{lookupStatus.message ? <span id="isbn-lookup-feedback" role={lookupStatus.state === 'error' ? 'alert' : 'status'} className={`mt-1 block text-xs font-bold ${lookupStatus.state === 'error' ? 'rounded-lg bg-[#FFF200] p-2 text-[#003399]' : 'text-[#003399]'}`}>{lookupStatus.message}</span> : null}</label><label><span className={labelClass}>Number of copies *</span><input name="numberOfCopies" required type="number" min="1" max="100" defaultValue="2" className={fieldClass} /></label>
+        {message ? <div role={batch ? 'status' : 'alert'} className={`rounded-xl p-3 text-sm font-semibold text-[#0b5ea2] sm:col-span-2 ${batch ? 'border border-[#0b5ea2] bg-[#FFFFFF]' : 'bg-[#FFF200]'}`}>{message}</div> : null}
+        {Object.keys(errors).length ? <div role="alert" className="rounded-xl bg-[#FFF200] p-3 text-sm text-[#0b5ea2] sm:col-span-2"><ul className="list-inside list-disc">{Object.entries(errors).map(([field, error]) => <li key={field}><strong>{field}:</strong> {error}</li>)}</ul></div> : null}
+        <PredictionList id="title-predictions" suggestions={titlePredictions} /><PredictionList id="author-predictions" suggestions={authorPredictions} />
+        <Field label="Title" name="title" required list="title-predictions" value={metadata.title} onChange={(title) => setMetadata((current) => ({ ...current, title }))} /><Field label="Author" name="author" required list="author-predictions" value={metadata.author} onChange={(author) => setMetadata((current) => ({ ...current, author }))} />
+        <TitleLookup title={metadata.title} author={metadata.author} disabled={saving || Boolean(batch)} onPick={(candidate) => {
+          setMetadata((current) => ({ ...current, title: candidate.title, author: candidate.author || current.author, publisher: candidate.publisher ?? current.publisher, publicationYear: candidate.publicationYear ? String(candidate.publicationYear) : current.publicationYear }))
+          // The pick already filled the form, so the ISBN field must not look it up again and overwrite it.
+          setSubjects(candidate.subjects ?? [])
+          if (candidate.isbn) { lastLookup.current = candidate.isbn; setIsbn(candidate.isbn); if (!candidate.inCatalog) void attachLookupCover(candidate.isbn) }
+        }} />
+        <label><span className={labelClass}>ISBN *</span><input name="isbn" required value={isbn} inputMode="text" autoComplete="off" aria-invalid={Boolean(liveIsbnError || errors.isbn)} aria-describedby="isbn-feedback isbn-lookup-feedback" onChange={(event) => { setIsbn(event.target.value); if (coverSource.current === 'auto') clearCover(); if (normalizeIsbnInput(event.target.value) !== lastLookup.current) lastLookup.current = ''; setErrors((current) => { const next = { ...current }; delete next.isbn; return next }) }} onBlur={() => { const normalized = normalizeIsbnInput(isbn); setIsbn(normalized); if (!isbnInputError(normalized)) void lookupIsbn(normalized, true) }} onKeyDown={(event) => { if (event.key === 'Enter' && !liveIsbnError) { event.preventDefault(); const normalized = normalizeIsbnInput(isbn); setIsbn(normalized); void lookupIsbn(normalized, true) } }} placeholder="ISBN-10 or ISBN-13" className={fieldClass} /><span id="isbn-feedback" className={`mt-1.5 block text-xs font-semibold ${liveIsbnError || errors.isbn ? 'text-[#0b5ea2]' : 'text-[#0b5ea2]/65'}`}>{liveIsbnError ?? errors.isbn ?? (isbn ? `Valid ${normalizeIsbnInput(isbn).length === 10 ? 'ISBN-10' : 'ISBN-13'} checksum` : 'Hyphens and spaces are accepted.')}</span>{lookupStatus.message ? <span id="isbn-lookup-feedback" role={lookupStatus.state === 'error' ? 'alert' : 'status'} className={`mt-1 block text-xs font-bold ${lookupStatus.state === 'error' ? 'rounded-lg bg-[#FFF200] p-2 text-[#0b5ea2]' : 'text-[#0b5ea2]'}`}>{lookupStatus.message}</span> : null}</label><label><span className={labelClass}>Number of copies *</span><input name="numberOfCopies" required type="number" min="1" max="100" defaultValue="2" className={fieldClass} /></label>
         <Field label="Publication year" name="publicationYear" value={metadata.publicationYear} onChange={(publicationYear) => setMetadata((current) => ({ ...current, publicationYear }))} /><Field label="Publisher" name="publisher" value={metadata.publisher} onChange={(publisher) => setMetadata((current) => ({ ...current, publisher }))} />
-        <p className="self-center text-sm text-[#003399]/70">Supplier quotation optional. You can attach one from the catalog after saving this book.</p>
+        <p className="self-center text-sm text-[#0b5ea2]/70">Supplier quotation optional. You can attach one from the catalog after saving this book.</p>
         <Field label="Call number" name="callNumber" />
-        <div className="space-y-3"><label><span className={labelClass}>Cover page</span><span className="flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-[#003399]/20 bg-[#FFFFFF] px-3 text-sm font-bold text-[#003399]"><ImagePlus size={17} />{coverFile ? 'Choose a different cover' : 'Upload cover image'}<input ref={coverInput} disabled={saving || Boolean(batch)} aria-label="Upload cover page" type="file" accept="image/jpeg,image/png,image/webp" onChange={selectCover} className="sr-only" /></span></label><SelectedFilePreview file={coverFile} onRemove={clearCover} disabled={saving || Boolean(batch)} /></div>
-        <label><span className={labelClass}>Category *</span><select name="categoryId" required value={categoryId} onChange={(event) => changeCategory(event.target.value)} className={fieldClass}><option value="">Select category</option>{categories.map((category) => <option key={category.categoryId} value={category.categoryId}>{category.categoryName}</option>)}</select></label>
-        <label><span className={labelClass}>Book location *</span><select name="bookLocation" required value={bookLocation} onChange={e=>setBookLocation(e.target.value)} className={fieldClass}><option value="">Choose managed location</option>{(locations??[...new Set(categories.map(c=>c.shelfLocation))]).map(location=><option key={location}>{location}</option>)}</select><span className="mt-1.5 block text-xs text-[#003399]/65">Defaults to the category shelf; choose another active managed location if needed.</span></label>
-        {!categories.length ? <p role="alert" className="text-sm font-semibold text-[#003399] sm:col-span-2">Create a category and book location before adding physical copies.</p> : null}
+        <div className="space-y-3"><label><span className={labelClass}>Cover page</span><span className="flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] px-3 text-sm font-bold text-[#0b5ea2]"><ImagePlus size={17} />{coverFile ? 'Choose a different cover' : 'Upload cover image'}<input ref={coverInput} disabled={saving || Boolean(batch)} aria-label="Upload cover page" type="file" accept="image/jpeg,image/png,image/webp" onChange={selectCover} className="sr-only" /></span></label><SelectedFilePreview file={coverFile} onRemove={clearCover} disabled={saving || Boolean(batch)} />{autoCover ? <p role="status" className="text-xs font-semibold text-[#0b5ea2]">Cover added from the book lookup. Choose a different cover or remove it if it is wrong.</p> : null}</div>
+        <label><span className={labelClass}>Category *</span><select name="categoryId" required value={categoryId} onChange={(event) => changeCategory(event.target.value)} className={fieldClass}><option value="">Select category</option>{allCategories.map((category) => <option key={category.categoryId} value={category.categoryId}>{category.categoryName}</option>)}</select></label>
+        <CategorySuggestion subjects={subjects} categories={allCategories} categoryId={categoryId} onSelect={(category, created) => {
+          if (created) setCreatedCategories((current) => [...current, category])
+          setCategoryId(String(category.categoryId)); setBookLocation(category.shelfLocation)
+        }} />
+        <label><span className={labelClass}>Book location *</span><select name="bookLocation" required value={bookLocation} onChange={e=>setBookLocation(e.target.value)} className={fieldClass}><option value="">Choose managed location</option>{(locations??[...new Set(allCategories.map(c=>c.shelfLocation))]).map(location=><option key={location}>{location}</option>)}</select><span className="mt-1.5 block text-xs text-[#0b5ea2]/65">Defaults to the category shelf; choose another active managed location if needed.</span></label>
+        <fieldset className="grid gap-4 rounded-xl border border-[#0b5ea2]/15 p-4 sm:col-span-2 sm:grid-cols-2"><legend className="px-1 text-sm font-black text-[#0b5ea2]">Book register</legend>
+          <Field label="Class" name="classification" /><Field label="Edition" name="edition" />
+          <Field label="Volumes" name="volumes" /><label><span className={labelClass}>Pages</span><input name="pages" type="number" min="1" max="100000" className={fieldClass} /></label>
+          <label><span className={labelClass}>Source of fund</span><select name="fundSource" defaultValue="" className={fieldClass}><option value="">Not recorded</option>{FUND_SOURCES.map((source) => <option key={source}>{source}</option>)}</select></label><Field label="Fund details" name="fundDetail" />
+          <label><span className={labelClass}>Cost price (PHP, each copy)</span><input name="costPhp" type="number" min="0" max="999999.99" step="0.01" inputMode="decimal" className={fieldClass} /></label><label><span className={labelClass}>Date received</span><input name="receivedOn" type="date" className={fieldClass} /></label>
+          <label className="sm:col-span-2"><span className={labelClass}>Remarks</span><textarea name="remarks" maxLength={2000} rows={2} className="w-full rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] p-3 text-sm text-[#0b5ea2] outline-none focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/10" /></label>
+          <p className="text-xs text-[#0b5ea2]/70 sm:col-span-2">Class, edition, volumes, pages and remarks are saved when this entry creates a new title. Fund, cost and date received are saved on every copy.</p>
+        </fieldset>
+        {!allCategories.length ? <p role="alert" className="text-sm font-semibold text-[#0b5ea2] sm:col-span-2">Create a category and book location before adding physical copies.</p> : null}
         <div className="flex flex-wrap items-center justify-end gap-2 pt-2 sm:col-span-2">
-          {!batch ? <><button type="button" disabled={saving} onClick={onClose} className="h-11 rounded-xl border border-[#003399] bg-[#FFFFFF] px-5 font-bold text-[#003399] disabled:opacity-40">Cancel</button><button type="submit" disabled={saving || !categories.length || Boolean(liveIsbnError)} className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#003399] px-5 font-bold text-[#FFFFFF] disabled:opacity-50"><QrCode size={17} />{saving ? 'Saving copy and generating codes…' : 'Create copy and generate codes'}</button></> : <button type="button" onClick={onClose} className="h-11 rounded-xl bg-[#003399] px-5 font-bold text-[#FFFFFF]">Close and view inventory</button>}
+          {!batch ? <><button type="button" disabled={saving} onClick={() => confirmLeave(onClose)} className="h-11 rounded-xl border border-[#0b5ea2] bg-[#FFFFFF] px-5 font-bold text-[#0b5ea2] disabled:opacity-40">Cancel</button><button type="submit" disabled={saving || !allCategories.length || Boolean(liveIsbnError)} className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#0b5ea2] px-5 font-bold text-[#FFFFFF] disabled:opacity-50"><QrCode size={17} />{saving ? 'Saving copy and generating codes…' : 'Create copy and generate codes'}</button></> : <button type="button" onClick={onClose} className="h-11 rounded-xl bg-[#0b5ea2] px-5 font-bold text-[#FFFFFF]">Close and view inventory</button>}
         </div>
       </form>
-      {batch ? <div className="border-t border-[#003399]/15 p-5"><BookLabelSheet batch={batch} /></div> : null}
+      {batch ? <div className="border-t border-[#0b5ea2]/15 p-5"><BookLabelSheet batch={batch} /></div> : null}
     </div>
-  </div>
+  </div></UnsavedGuard>
 }

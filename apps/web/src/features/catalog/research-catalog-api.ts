@@ -14,9 +14,13 @@ async function json<T>(response: Response) {
   return payload.data as T
 }
 
-export async function fetchResearchCatalog(input: { query?: string; page?: number; signal?: AbortSignal } = {}) {
+export async function fetchResearchCatalog(input: { query?: string; department?: string; publicationYear?: number | null; author?: string; adviser?: string; page?: number; signal?: AbortSignal } = {}) {
   const parameters = new URLSearchParams({ page: String(input.page ?? 1), limit: '25' })
   if (input.query) parameters.set('q', input.query)
+  if (input.department) parameters.set('department',input.department)
+  if (input.publicationYear) parameters.set('publication_year',String(input.publicationYear))
+  if (input.author) parameters.set('author',input.author)
+  if (input.adviser) parameters.set('adviser',input.adviser)
   const response = await fetch(`${BASE_URL}?${parameters}`, { headers: headers(), credentials: 'include', signal: input.signal })
   const payload = await response.json().catch(() => null) as {
     success?: boolean; data?: ResearchCatalogItem[]; message?: string
