@@ -5,6 +5,7 @@
 1. Read the **AI agents — read this first** section at the top of [README.MD](README.MD) when present, otherwise continue below.
 2. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) for session start, plan status values, and the Supabase migration tracker.
 3. When Ethan says **`start session`**, run that Start session protocol before building.
+4. **Working for JohnBazty, or without access to Ethan's Obsidian wiki?** Start from [docs/johnbazty-handoff.md](docs/johnbazty-handoff.md) ("Where work stands" replaces the wiki's hot cache) and [docs/reference-features-roadmap.md](docs/reference-features-roadmap.md). Skip the wiki steps below and update the handoff's "Where work stands" at session end instead.
 
 ## Owner-installed skills
 
@@ -64,6 +65,7 @@ These skills are committed in both `.claude/skills/` (Claude Code) and `.agents/
 | `design-system` | Design-token structure and component specs. |
 | `ui-styling` | Tailwind styling patterns and accessible components. |
 | `start-session` | The `start session` briefing: greet as Agent Alpha, catch up wiki-first, report migration numbers and open plans, then wait. Project-specific (this repo only). |
+| `reverse-feature` | Reverse engineering a feature from GitHub repos or a shipped app: map (`docs/maps/`), clean-room spec (`docs/specs/`), Ethan approves, build plan, build, verify, log in `docs/FEATURES.md`. Project-specific. |
 
 Project rules win over skill advice. Use only the STI colors in `agent.md` "Frontend Visual Rules" (blue `#003399`, yellow `#FFF200`, white and their opacity variants), never a palette a skill suggests. Add no new UI library without Ethan's approval. When a skill changes, update both copies; the `.agents/skills/` copy uses `.agents/skills/...` paths. Other skills Ethan has installed (banner-design, brand, design, slides, stageshow) stay local and are not committed.
 
@@ -94,11 +96,12 @@ Pages read as dated facts (`YYYY-MM-DD`), short summaries and links, not copies 
 ### Standing decisions (from Claude's private memory, which other tools cannot read)
 - **No destructive commands (incident in STI ILMS REA, 2026-11-04):** a `git worktree remove --force` followed junctions and deleted `apps/api/.env`. See "Safety rules".
 - **MySQL retired (Ethan, 2026-11-10):** Supabase Postgres is the only database; the MySQL migration tree and rollback path are deleted (last commit with them: `a767d88`). See `docs/mysql-removal-plan.md`.
+- **JohnBazty reviews printing, attendance QR and floor-plan branches (Ethan, 2026-11-10):** for every branch that improves or implements printing (queue, ink and paper stock, printing service), attendance QR or the floor plan from the GitHub reference work: when the branch is ready, push it and open a draft PR with JohnBazty (the repo owner) as reviewer, then stop. Continue to the next step only after his approval on that PR (`reviewDecision` `APPROVED`, or his "approved" comment), applying any changes he asks for first. Never merge for him. See `CLAUDE.md` "Working rules".
 - **Lean sessions (Ethan, 2026-11-06):** one feature per session; at most 3 review agents (one combined security, correctness and React review, plus a database review for migrations or concurrent SQL); fix LOW findings directly instead of re-running reviews.
 
 ### Automation Claude Code has that you replace by hand
 - **Destructive-command hook** (`.claude/hooks/guard-destructive.mjs`, wired in `.claude/settings.json`): read its `RULES` list and refuse those commands yourself. Its `ASK_RULES` list (database migration, schema, backfill and user-creation scripts, `tools/ai` smoke, migration and audit scripts, the Vercel CLI) touches the live database or production: run those only after Ethan approves that exact step. Keep command approval on.
-- **Subagents** (`.claude/agents/*.md`): run each role as a separate step or prompt. Per feature, after Ethan approves the plan doc: `library-builder.md` (build, tests first, one Supabase migration per schema change), then `plan-verifier.md` (read-only check of tracking items, migrations, trackers and status), then one combined security review of `git diff main...HEAD` (plus a database review when there is a migration), fixes, then ask Ethan before push or PR.
+- **Subagents** (`.claude/agents/*.md`): run each role as a separate step or prompt. For a reverse-engineered feature, first `feature-cartographer.md` (writes `docs/maps/<feature>.md`), then `spec-extractor.md` (writes `docs/specs/<feature>.md`), then stop for Ethan's spec approval and write the build plan doc. Per feature, after Ethan approves the plan doc: `library-builder.md` (build, tests first, one Supabase migration per schema change), then `plan-verifier.md` (read-only check of tracking items, migrations, trackers and status), then one combined security review of `git diff main...HEAD` (plus a database review when there is a migration), fixes, then ask Ethan before push or PR.
 - **Start session** (`.claude/skills/start-session/SKILL.md`, mirrored in `.agents/skills/start-session/`): follow it when Ethan says `start session`.
 - **User-level skills (Ethan, 2026-11-12):** use these when the task matches; they live at `C:\Users\Ethan\.claude\skills\<name>\SKILL.md`, so read that file yourself. Project rules in this file win over their advice.
   - `supabase`, `supabase-postgres-best-practices`: Supabase and SQL work, migrations under `database/supabase/`, RLS policies and their tests, indexes, locking. Never act on `sti_ilms_rea`; ignore the skill's advice to create `.mcp.json`.
