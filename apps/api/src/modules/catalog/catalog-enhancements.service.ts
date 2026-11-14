@@ -52,6 +52,7 @@ export async function saveFoundation(kindValue:string,recordId:unknown,body:Reco
  return catalogOptions()
 }
 const publicSelect=`SELECT t.title_id AS id,t.title,t.record_type AS kind,t.cover_image_path AS "coverImagePath",t.isbn,t.publisher,t.publication_year AS "publicationYear",t.call_number AS "callNumber",c.category_name AS category,
+ (SELECT department_or_program FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived' ORDER BY rr.research_record_id LIMIT 1) AS department,
  COALESCE((SELECT string_agg(a.author_name,', ' ORDER BY a.author_order) FROM authors a WHERE a.title_id=t.title_id),'') AS author,
  d.copyright_year AS "copyrightYear",d.edition,d.page_count AS pages,d.synopsis,d.glossary_text AS glossary,d.row_version AS version,d.type_id AS "typeId",rt.name AS "resourceType",
  COALESCE((SELECT jsonb_agg(jsonb_build_object('id',p.program_id,'name',p.name,'code',p.code)) FROM catalog_title_programs tp JOIN catalog_programs p ON p.program_id=tp.program_id WHERE tp.title_id=t.title_id),'[]') AS programs,

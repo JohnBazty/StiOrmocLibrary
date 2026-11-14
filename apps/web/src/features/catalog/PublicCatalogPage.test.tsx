@@ -9,6 +9,21 @@ vi.mock('./enhanced-catalog-api',()=>({enhancedCatalog:{options:vi.fn(),search:v
 vi.mock('./CatalogDetailsPanel',()=>({catalogInput:'field',CatalogDetailsPanel:()=> <p>Public book information</p>}))
 const book={id:42,title:'Example library book',coverImagePath:'/api/assets/covers/example.jpg',kind:'Book',author:'Author',category:'Science',programs:[],courses:[],files:[],copies:[{id:1,accession:'ACC-1',availability:'Available',condition:'Good',shelf:'Shelf A'}],available:1,copyCount:1}
 afterEach(()=>{cleanup();vi.clearAllMocks();vi.restoreAllMocks()})
+it('uses the research jacket with department and title in combined cards and details',async()=>{
+ const paper={...book,id:43,title:'Coastal Tourism Study',kind:'Research/Thesis',coverImagePath:null,department:'BSTM',publicationYear:2026,author:'Sample Author',copyCount:0,copies:[]}
+ vi.mocked(enhancedCatalog.options).mockResolvedValue({categories:[],programs:[],courses:[],types:[],locations:[]} as never)
+ vi.mocked(enhancedCatalog.search).mockResolvedValue({items:[paper],pagination:{total:1,page:1,limit:24}} as never)
+ vi.mocked(enhancedCatalog.detail).mockResolvedValue(paper as never)
+ render(<MemoryRouter><ThemeProvider><PublicCatalogPage embedded/></ThemeProvider></MemoryRouter>)
+ const cover=await screen.findByRole('img',{name:'Coastal Tourism Study research cover'})
+ expect(cover.textContent).toContain('BSTM')
+ expect(cover.textContent).toContain(paper.title)
+ expect(screen.queryByRole('img',{name:/title initials cover/})).toBeNull()
+ expect(screen.queryByRole('link',{name:'Borrow book'})).toBeNull()
+ fireEvent.click(screen.getByRole('button',{name:'View details'}))
+ await waitFor(()=>expect(screen.getAllByRole('img',{name:'Coastal Tourism Study research cover'})).toHaveLength(2))
+ expect(screen.getAllByRole('img',{name:'Coastal Tourism Study research cover'}).every(image=>image.textContent?.includes('BSTM'))).toBe(true)
+})
 it('does not move the page when the catalog loads behind an account dialog',async()=>{
  vi.mocked(enhancedCatalog.options).mockResolvedValue({categories:[],programs:[],courses:[],types:[],locations:[]} as never)
  let finish:(value:unknown)=>void=()=>{}
