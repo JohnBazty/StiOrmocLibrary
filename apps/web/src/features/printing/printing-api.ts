@@ -1,4 +1,5 @@
 import { getCsrfToken } from '../auth/auth-storage'
+import { notifyPaymentUpdate } from '../payments/payment-updates'
 
 export type ServiceStatus={accepting_requests:number|boolean;unavailable_reason:string|null;updated_at?:string|null;docx_auto_count_available?:boolean}
 export type PricingRule={pricing_rule_id:number;print_type:'Colored'|'Monochrome';paper_size:'Short'|'A4'|'Long';price_per_page:number|string}
@@ -33,6 +34,7 @@ async function request<T>(url:string,options:RequestInit={}){
   const p=await r.json().catch(()=>null) as {data?:T;message?:string;meta?:{pagination?:{page:number;limit:number;total:number;total_pages:number}}}|null
   if(!r.ok)throw new Error(p?.message??'The printing service is temporarily unavailable. Please try again.')
   if(!p||p.data==null)throw new Error('The printing service returned an incomplete response. Please try again.')
+  if(mutating && /\/(?:payments|cash-payment)(?:\/|$)/.test(url))notifyPaymentUpdate()
   return{data:p.data as T,meta:p.meta}
 }
 async function download(url:string,name:string,accept:string,expected?:string){const r=await fetch(url,{credentials:'include',headers:headers(accept)});if(!r.ok){const p=await r.json().catch(()=>({})) as {message?:string};throw new Error(p.message??'Unable to download the file.')}const contentType=r.headers.get('content-type')??'';if(expected&&!contentType.includes(expected))throw new Error('The server returned an invalid download.');const blob=await r.blob(),objectUrl=URL.createObjectURL(blob),link=document.createElement('a');link.href=objectUrl;link.download=name;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(objectUrl),1000)}

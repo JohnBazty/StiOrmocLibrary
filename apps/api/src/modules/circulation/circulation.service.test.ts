@@ -17,15 +17,19 @@ const legacyPolicyRow = {
 test('cart reconciliation reads only the owner active loans and queue titles without writing',async()=>{
   let calls=0
   const database={execute:async(sql:string,args:unknown[])=>{
-    calls++;assert.deepEqual(args,[7]);assert.match(sql,/WHERE a.account_id=\?/)
+    calls++;assert.deepEqual(args,[7]);assert.doesNotMatch(sql,/\b(INSERT|UPDATE|DELETE)\b/)
+    if(sql.includes('SELECT user_id FROM accounts'))return [[{user_id:7}]]
+    if(sql.includes('FROM fines f'))return [[{fine_id:1,balance:'140.00'}]]
+    if(sql.includes('FROM lost_book_reports l'))return [[]]
+    assert.match(sql,/WHERE a.account_id=\?/)
     assert.match(sql,/transaction_status IN \('Pending','Borrowed','Overdue'\)/)
     assert.match(sql,/reservation_status IN \('pending','approved','ready_for_pickup'\)/)
     assert.doesNotMatch(sql,/\b(INSERT|UPDATE|DELETE)\b/)
     return [[{title_id:'12'},{title_id:20}]]
   }} as unknown as Pool
-  assert.deepEqual(await createCirculationService(database).cartState(7),{activeTitleIds:[12,20]})
+  assert.deepEqual(await createCirculationService(database).cartState(7),{activeTitleIds:[12,20],outstandingBalance:140})
   await assert.rejects(createCirculationService(database).cartState(0))
-  assert.equal(calls,1)
+  assert.equal(calls,4)
 })
 
 function checkoutPool(role: 'Student' | 'Faculty', activeCount = 0, readyClaim: boolean | 'cart' = false, condition = 'Good') {

@@ -1,3 +1,4 @@
+import { usePaymentUpdates } from '../payments/payment-updates'
 import { ArrowRight, Bell, BookMarked, BookOpen, CalendarClock, CheckCircle2, Clock3, Eye, MapPin, PhilippinePeso, Printer, RotateCcw, Search, ShoppingBag, Sparkles } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -23,7 +24,8 @@ export function UserDashboardPage(){
   const{items:cart,addItem}=useBookCart();const cartIds=useMemo(()=>new Set(cart.map(item=>item.titleId)),[cart])
   const fetching=useRef(false)
   const load=useCallback(async()=>{if(fetching.current)return;fetching.current=true;setError('');try{setData(await dashboardApi.user())}catch(value){setError(value instanceof Error?value.message:'The dashboard could not be loaded.')}finally{setLoading(false);fetching.current=false}},[])
-  useEffect(()=>{void load();const refresh=()=>{if(!document.hidden)void load()};const timer=window.setInterval(refresh,5000);window.addEventListener('focus',refresh);return()=>{clearInterval(timer);window.removeEventListener('focus',refresh)}},[load])
+  useEffect(()=>{void load()},[load])
+  usePaymentUpdates(load,5000)
   if(!data&&loading)return <div className="space-y-4"><div className="h-10 w-72 animate-pulse rounded-xl bg-[#0b5ea2]/10"/><div className="h-48 animate-pulse rounded-3xl bg-[#0b5ea2]/10"/></div>
   if(!data)return <SectionCard className="p-8 text-center"><p className="font-display text-xl font-bold text-[#0b5ea2]">Dashboard unavailable</p><p role="alert" className="mt-4 rounded-xl p-4 text-sm">{error}</p><Button className="mt-5" onClick={()=>void load()}><RotateCcw size={16}/>Try again</Button></SectionCard>
   const prefix=data.user.role==='Faculty'?'/faculty':'/student',limitNote=data.summary.borrowingLimit===null?'No fixed borrowing limit':`${Math.max(0,data.summary.borrowingLimit-data.summary.activeLoans)} slot${Math.max(0,data.summary.borrowingLimit-data.summary.activeLoans)===1?'':'s'} remaining`

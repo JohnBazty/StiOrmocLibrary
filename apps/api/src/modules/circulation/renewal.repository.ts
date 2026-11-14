@@ -1,3 +1,6 @@
+import { borrowerBalances, borrowerPaymentCredits } from '../payments/borrower-balances.ts'
+import { localPaymentPreview } from '../payments/payments.preview.ts'
+import type { PreviewCredit } from '../payments/preview-balances.ts'
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { forUpdate } from '../../config/sql-dialect.js'
@@ -154,7 +157,7 @@ function localDateKey(value: Date): string {
   return `${year}-${month}-${day}`
 }
 
-export function createRenewalRepository(database: Pool = db) {
+export function createRenewalRepository(database: Pool = db, options: { previewCredits?: (userId: number) => Promise<PreviewCredit[]> } = {}) {
   return {
     async findAccount(accountId: number, executor: RenewalExecutor = database, lock = false): Promise<RenewalAccount | null> {
       const [rows] = await executor.execute<RowDataPacket[]>(
@@ -239,10 +242,13 @@ export function createRenewalRepository(database: Pool = db) {
           LIMIT 1`,
         [loan.transactionId],
       )
+      const credits = options.previewCredits ? await options.previewCredits(loan.userId)
+        : database === db && localPaymentPreview ? await borrowerPaymentCredits(executor, loan.userId) : null
+      const balance = credits === null ? null : await borrowerBalances(executor, loan.userId, credits)
       return {
         hasWaitingReservation,
-        hasOutstandingFine: fineRows.length > 0,
-        hasUnpaidLostCharge: lostChargeRows.length > 0,
+        hasOutstandingFine: balance ? balance.finesCentavos > 0 : fineRows.length > 0,
+        hasUnpaidLostCharge: balance ? balance.replacementCentavos > 0 : lostChargeRows.length > 0,
         hasOpenLostReport: lostReportRows.length > 0,
       }
     },

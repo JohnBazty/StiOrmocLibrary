@@ -1,3 +1,4 @@
+import { usePaymentUpdates } from '../payments/payment-updates'
 import {Link} from 'react-router-dom'
 import {getCurrentIdentity} from '../auth/auth-storage'
 import { PrintingInvoice } from './PrintingInvoice'
@@ -47,7 +48,8 @@ export function StudentPrintingPage(){
     })().finally(()=>{refreshFlight.current=null})
     return refreshFlight.current
   }
-  useEffect(()=>{void load();const refresh=()=>{if(!document.hidden)void load()};window.addEventListener('focus',refresh);return()=>window.removeEventListener('focus',refresh)},[])
+  useEffect(()=>{void load()},[])
+  usePaymentUpdates(load)
   useEffect(()=>{
     setQuoteError('');setQuoting(false)
     if(!file){setQuoteState(null);return}

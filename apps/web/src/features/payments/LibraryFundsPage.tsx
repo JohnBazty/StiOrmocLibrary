@@ -1,3 +1,4 @@
+import { notifyPaymentUpdate } from './payment-updates'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight, RefreshCw } from 'lucide-react'
@@ -19,11 +20,11 @@ export function LibraryFundsPage() {
   const [selectedLocal, setSelectedLocal] = useState<PracticeTransfer | null>(null)
   const [selected, setSelected] = useState<MoneyOutRecord | null>(null), [providerId, setProviderId] = useState('')
   useEffect(() => { if (data) setSelected(current => current ? data.operations.find(row => row.id === current.id) ?? current : null) }, [data])
-  function saved() { window.dispatchEvent(new Event('library-payments-updated')); void refreshAfterChange() }
+  function saved() { notifyPaymentUpdate(); void refreshAfterChange() }
   async function action(run?: () => Promise<unknown>) {
     if (busy) return
     setBusy(true); setError('')
-    try { if (run) { await run(); window.dispatchEvent(new Event('library-payments-updated')) }; await (run ? refreshAfterChange() : refresh()) }
+    try { if (run) { await run(); notifyPaymentUpdate() }; await (run ? refreshAfterChange() : refresh()) }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'The request could not be checked.') }
     finally { setBusy(false) }
   }

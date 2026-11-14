@@ -1,3 +1,4 @@
+import { notifyPaymentUpdate } from './payment-updates'
 import { useCallback,useEffect,useRef,useState } from 'react'
 import { Button,PageHeader,SectionCard } from '../../components/ui'
 import { getCurrentIdentity } from '../auth/auth-storage'
@@ -54,7 +55,7 @@ export function AdminPaymentsPage() {
     {!loading&&!rows.length&&!error?<SectionCard className="p-8 text-center">No online payments match these filters.</SectionCard>:null}
     <div className="mt-5 flex flex-wrap items-center justify-end gap-3"><Button variant="secondary" disabled={loading||filters.page===1} onClick={()=>setFilters(value=>({...value,page:value.page-1}))}>Previous</Button><span>Page {filters.page} of {Math.max(1,Math.ceil(total/25))}</span><Button variant="secondary" disabled={loading||filters.page*25>=total} onClick={()=>setFilters(value=>({...value,page:value.page+1}))}>Next</Button></div>
     {settlement?<SettlementReview payment={settlement} onClose={()=>setSettlement(null)}/>:null}
-    {refund?<RefundReview payment={refund} onClose={()=>setRefund(null)} onSaved={()=>window.dispatchEvent(new Event('library-payments-updated'))}/>:null}
+    {refund?<RefundReview payment={refund} onClose={()=>setRefund(null)} onSaved={()=>notifyPaymentUpdate()}/>:null}
     {voidPayment?<VoidFineReview payment={voidPayment} onClose={()=>setVoidPayment(null)} onSaved={()=>void load()}/>:null}
   </>
 }

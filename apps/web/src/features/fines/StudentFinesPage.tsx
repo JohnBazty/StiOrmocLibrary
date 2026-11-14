@@ -1,3 +1,4 @@
+import { usePaymentUpdates } from '../payments/payment-updates'
 import { AlertTriangle,PhilippinePeso,ReceiptText,RefreshCw } from 'lucide-react'
 import { useCallback,useEffect,useRef,useState } from 'react'
 import { Button,PageHeader,SectionCard,StatCard,StatusBadge } from '../../components/ui'
@@ -22,7 +23,8 @@ export function StudentFinesPage(){
       if(current===request.current){setData(records);setPaymentVersion(value=>value+1);setError('')}
     } catch(cause) { if(current===request.current)setError(cause instanceof Error?cause.message:'Fine records are unavailable.') }
   },[])
-  useEffect(()=>{void load();const refresh=()=>{if(!document.hidden)void load()};window.addEventListener('focus',refresh);return()=>window.removeEventListener('focus',refresh)},[load])
+  useEffect(()=>{void load()},[load])
+  usePaymentUpdates(load)
   return <>
     <PageHeader eyebrow="Account payments" title="Library fines" action={<Button variant="secondary" onClick={()=>void load()}><RefreshCw size={16}/>Refresh</Button>}/>
     {error?<div role="alert" className="mb-5 flex gap-2 rounded-xl bg-[#FFF200] p-4 font-bold text-[#0b5ea2]"><AlertTriangle size={18}/>{error}</div>:null}

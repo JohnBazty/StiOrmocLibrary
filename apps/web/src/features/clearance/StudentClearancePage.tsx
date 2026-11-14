@@ -1,3 +1,4 @@
+import { usePaymentUpdates } from '../payments/payment-updates'
 import { AlertTriangle, BadgeCheck, BookOpen, Clock3, PhilippinePeso, RefreshCw, ShieldAlert } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, PageHeader, SectionCard, StatCard, StatusBadge } from '../../components/ui'
@@ -28,13 +29,8 @@ export function StudentClearancePage() {
       setError(reason instanceof Error ? reason.message : 'Clearance is unavailable.')
     } finally { setRefreshing(false); running.current = false }
   }, [])
-  useEffect(() => {
-    void load(false, true)
-    const returned = () => { if (!document.hidden) void load(false, true) }
-    const timer = window.setInterval(() => { if (!document.hidden) void load() }, 5000)
-    window.addEventListener('focus', returned)
-    return () => { clearInterval(timer); window.removeEventListener('focus', returned) }
-  }, [load])
+  useEffect(() => { void load(false, true) }, [load])
+  usePaymentUpdates(()=>load(),5000)
   const cleared = (data?.computedStatus ?? data?.status) === 'Cleared'
   const approvedOverride = data?.activeOverride?.status === 'Cleared'
   const deadline = data?.schedule?.deadlineAt

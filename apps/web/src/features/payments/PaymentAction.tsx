@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { ArrowRight, ChevronDown, CreditCard, QrCode, RefreshCw, Wallet, X } from 'lucide-react'
 import { Button } from '../../components/ui'
 import { PaymentStateIcon, PaymentTrustNote } from './PaymentPresentation'
+import { notifyPaymentUpdate } from './payment-updates'
 import { openPaymentReviewResult, openWalletPayment, paymentResultPath } from './payment-navigation'
 import { downloadPaymentRecord, paymentMoney, paymentsApi, paymentStatus, type Payment, type PaymentKind, type PaymentOptions } from './payments-api'
 
@@ -22,7 +23,7 @@ export function PaymentStatusPanel({ payment, onChange, onUpdated, showDetails =
   async function action(run: () => Promise<Payment | void>) {
     if (running.current) return
     running.current = true; setBusy(true); setError('')
-    try { const result = await run(); if (result) { onChange(result); if (result.state === 'Succeeded') onUpdated?.() } }
+    try { const result = await run(); if (result) { onChange(result); if (result.state === 'Succeeded') { notifyPaymentUpdate(); onUpdated?.() } } }
     catch (error) { setError(message(error)) }
     finally { running.current = false; setBusy(false) }
   }

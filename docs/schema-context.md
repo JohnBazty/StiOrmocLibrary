@@ -1,5 +1,19 @@
 # Database Schema Context
 
+## Payment-aware borrowing standing — 2026-11-15
+
+In the enabled local/hosted development payment flow, the cart, desk/online borrowing
+checks and renewal eligibility read provider-confirmed net principal credits against
+each matching fine/replacement charge after cash receipts and adjustments. A credit
+cannot erase another charge or a printing payment clear a fine. Restored refunds
+reopen the amount; confirmed charge cancellations retain their matching credit.
+Unreturned/overdue books, enrollment, explicit holds and loan limits remain separate
+checks. These reads do not create official receipts, change school fines or write
+simulated clearance to the official cache. Cart state adds `outstandingBalance` to
+the existing owner-scoped `activeTitleIds` response. Clearance also recognizes Book
+Price replacement resolutions and issued cash allocations. No schema/migration
+change. Applied 044, next 045. See [verification](plans/2026-11-15-payment-standing-sync.md).
+
 ## Demo wallet and funds presentation — 2026-11-13
 
 The guarded local payment preview exposes optional `demoWalletEnabled` and public

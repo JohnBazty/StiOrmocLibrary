@@ -9,6 +9,7 @@ import { handoffToProvider } from './payment-navigation'
 import { PaymentStateIcon, PaymentTrustNote } from './PaymentPresentation'
 import { PaymentStatusPanel, PaymentSummary } from './PaymentAction'
 import { RefundTimeline } from './RefundReview'
+import { notifyPaymentUpdate } from './payment-updates'
 
 function heading(payment: Payment) {
   if (payment.refundStatus) return payment.refundStatus === 'Refunded' ? 'Payment refunded' : 'Payment partially refunded'
@@ -20,6 +21,14 @@ export function PaymentResultPage() {
   const [params] = useSearchParams(), id = params.get('payment') ?? '', startCheckout = params.get('checkout') === '1'
   const [payment, setPayment] = useState<Payment | null>(null), [error, setError] = useState(''), [loading, setLoading] = useState(true)
   const automaticChecks = useRef(0), request = useRef(0), handoffStarted = useRef(false)
+  const announced = useRef('')
+  useEffect(() => {
+    if (!payment || payment.state !== 'Succeeded') return
+    const signature = JSON.stringify([payment.paymentId,payment.state,payment.refundStatus,payment.refundedCentavos])
+    if (announced.current === signature) return
+    announced.current = signature
+    notifyPaymentUpdate()
+  }, [payment])
   const prefix = getCurrentIdentity()?.role === 'Faculty' ? '/faculty' : '/student'
   const load = useCallback(async () => {
     const current = ++request.current

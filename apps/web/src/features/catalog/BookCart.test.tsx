@@ -16,6 +16,40 @@ function AddFixture() {
 }
 
 describe('BookCart', () => {
+  it('updates the balance hold after a payment in another tab without clearing the cart or checking out',async()=>{
+    api.fetchCartState.mockResolvedValue({activeTitleIds:[],outstandingBalance:380})
+    render(<><AddFixture/><BookCart/></>)
+    fireEvent.click(screen.getByRole('button',{name:'Add fixture'}))
+    await screen.findByText(/outstanding library balance of ₱380.00/)
+    expect(screen.getByRole('button',{name:'Check Out'})).toHaveProperty('disabled',true)
+    api.fetchCartState.mockResolvedValue({activeTitleIds:[],outstandingBalance:190})
+    fireEvent(window,new StorageEvent('storage',{key:'sti-library-payment-update',newValue:'changed'}))
+    await screen.findByText(/outstanding library balance of ₱190.00/)
+    api.fetchCartState.mockResolvedValue({activeTitleIds:[],outstandingBalance:0})
+    fireEvent(window,new Event('library-payments-updated'))
+    await waitFor(()=>expect(screen.queryByText(/outstanding library balance/)).toBeNull())
+    expect(screen.getByRole('button',{name:'Check Out'})).toHaveProperty('disabled',false)
+    expect(screen.getByRole('heading',{name:'Clean Code'})).toBeTruthy()
+    expect(api.submitBorrowRequest).not.toHaveBeenCalled()
+    api.fetchCartState.mockResolvedValue({activeTitleIds:[],outstandingBalance:50})
+    fireEvent(window,new Event('library-payments-updated'))
+    await screen.findByText(/outstanding library balance of ₱50.00/)
+    expect(screen.getByRole('button',{name:'Check Out'})).toHaveProperty('disabled',true)
+  })
+
+  it('retains the last balance hold and selections when a payment refresh fails',async()=>{
+    api.fetchCartState.mockResolvedValue({activeTitleIds:[],outstandingBalance:190})
+    render(<><AddFixture/><BookCart/></>)
+    fireEvent.click(screen.getByRole('button',{name:'Add fixture'}))
+    await screen.findByText(/outstanding library balance of ₱190.00/)
+    api.fetchCartState.mockRejectedValue(new Error('Balance temporarily unavailable'))
+    fireEvent(window,new Event('library-payments-updated'))
+    await screen.findByText('Balance temporarily unavailable')
+    expect(screen.getByText(/outstanding library balance of ₱190.00/)).toBeTruthy()
+    expect(screen.getByRole('heading',{name:'Clean Code'})).toBeTruthy()
+    expect(api.submitBorrowRequest).not.toHaveBeenCalled()
+  })
+
   it('removes a stale checked-out selection when the cart is opened',async()=>{
     api.fetchCartState.mockResolvedValue({activeTitleIds:[4]})
     render(<><AddFixture/><BookCart/></>)

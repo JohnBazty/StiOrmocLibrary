@@ -1,3 +1,4 @@
+import { usePaymentUpdates } from '../payments/payment-updates'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { ViewLocationButton } from '../floor-plan/ViewLocationButton'
 import { AlertTriangle, BookOpen, CalendarClock, CalendarPlus, Eye, RefreshCw, X } from 'lucide-react'
@@ -45,10 +46,11 @@ export function BorrowingHistory() {
   useEffect(() => {
     void load()
     const refresh = () => { if (!document.hidden) void load() }
-    const timer = window.setInterval(refresh, 5_000)
     window.addEventListener('smartlib:circulation-updated', refresh)
-    return () => { window.clearInterval(timer); window.removeEventListener('smartlib:circulation-updated', refresh) }
+    return () => { window.removeEventListener('smartlib:circulation-updated', refresh) }
   }, [load])
+
+  usePaymentUpdates(load,5000)
 
   async function confirmCancellation(reason: string) {
     if (!cancelling || cancelBusy) return

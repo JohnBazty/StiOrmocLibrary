@@ -122,6 +122,9 @@ export function createClearanceService(database: Pool = db, options: { previewCr
       database.execute<RowDataPacket[]>(
         `SELECT l.lost_book_report_id, l.transaction_id, l.report_status, l.purchase_price_snapshot,
                 l.replacement_charge, l.charge_resolution, l.resolution_reason, l.payment_status, l.reported_at, l.verified_at,
+                (SELECT COALESCE(SUM(a.amount_allocated),0) FROM fine_payment_allocations a
+                 JOIN fine_payment_receipts r ON r.fine_payment_receipt_id=a.fine_payment_receipt_id AND r.receipt_status='Issued'
+                 WHERE a.lost_book_report_id=l.lost_book_report_id) AS paid_amount,
                 t.title_id, COALESCE(pc.cost_php, t.purchase_price) AS title_price, q.quotation_id AS current_quotation_id, q.quoted_amount AS current_quotation_amount,
                 COALESCE(t.title,m.title) AS title
            FROM lost_book_reports l INNER JOIN borrow_transactions bt ON bt.transaction_id=l.transaction_id
@@ -161,13 +164,11 @@ export function createClearanceService(database: Pool = db, options: { previewCr
     }
     fineRows.splice(0, fineRows.length, ...fineRows.filter(row => Number(row.fine_amount) > 0))
     for (const row of lostRows) {
-      if (row.report_status !== 'Confirmed' || row.charge_resolution !== 'Quoted' || row.payment_status !== 'Unpaid') continue
-      const balance = Math.round(Number(row.replacement_charge ?? 0) * 100)
+      if (row.report_status !== 'Confirmed' || !CHARGED_RESOLUTIONS.includes(String(row.charge_resolution)) || row.payment_status !== 'Unpaid') continue
+      const balance = Math.max(0, Math.round(Number(row.replacement_charge ?? 0) * 100) - Math.round(Number(row.paid_amount ?? 0) * 100))
       const applied = previewCredit(credits, 'LostBook', Number(row.lost_book_report_id), balance).applied
-      if (applied) {
-        row.replacement_charge = (balance - applied) / 100
-        if (balance === applied) row.payment_status = 'Paid'
-      }
+      row.replacement_charge = (balance - applied) / 100
+      if (balance === applied) row.payment_status = 'Paid'
     }
     for (const row of loanRows) {
       if (!row.fine_id) continue

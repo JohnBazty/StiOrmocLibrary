@@ -130,6 +130,8 @@ export function createLocalPaymentPreview(config: XenditSandboxConfig, database:
       return this.check(await borrowerOf(row), row.paymentId, cancel)
     },
     credits,
+    // Internal policy reads use identities already resolved from an account/loan.
+    borrowerCredits: async (accountId: number, userId: number) => creditsFor(await store.load(), positiveId(accountId), positiveId(userId)),
     async sync(actor: PaymentActor): Promise<{ checked: number; failed: number }> {
       const owner = await currentOwner(actor)
       const pending = (await store.load()).filter(row => row.accountId === owner.accountId && row.userId === owner.userId

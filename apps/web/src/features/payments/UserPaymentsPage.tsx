@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { usePaymentUpdates } from './payment-updates'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowRight, CreditCard, Download, FileText, MapPin, Printer, ReceiptText, RefreshCw, Search } from 'lucide-react'
 import { Button, cn } from '../../components/ui'
@@ -17,9 +18,9 @@ export function UserPaymentsPage() {
   const [error, setError] = useState(''), [downloadError, setDownloadError] = useState<{ id: string; message: string } | null>(null), [downloading, setDownloading] = useState<string | null>(null)
   const prefix = getCurrentIdentity()?.role === 'Faculty' ? '/faculty' : '/student'
   const refresh = useCallback(() => setVersion(value => value + 1), [])
-  useEffect(()=>{const onFocus=()=>{if(!document.hidden)refresh()};window.addEventListener('focus',onFocus);return()=>window.removeEventListener('focus',onFocus)},[refresh])
+  usePaymentUpdates(refresh)
   useEffect(() => {
-    let active = true; setError(''); setData(null)
+    let active = true; setError('')
     const timer = setTimeout(() => { void paymentsApi.sync().catch(()=>undefined).then(()=>paymentsApi.transactions({ channel, search, page })).then(value => { if (active) setData(value) }).catch(cause => { if (active) setError(cause instanceof Error ? cause.message : 'Transactions could not load. Try again.') }) }, search ? 250 : 0)
     return () => { active = false; clearTimeout(timer) }
   }, [channel, search, page, version])

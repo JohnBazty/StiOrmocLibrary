@@ -11,11 +11,11 @@ export class BookCartApiError extends Error {
   constructor(message: string, public code: string, public details?: unknown) { super(message) }
 }
 
-export async function fetchCartState():Promise<{activeTitleIds:number[]}> {
+export async function fetchCartState():Promise<{activeTitleIds:number[];outstandingBalance:number}> {
   const token=getCsrfToken()
   const response=await fetch('/api/v1/borrow/cart-state',{credentials:'include',headers:{Accept:'application/json',...(token?{'X-CSRF-Token': token}:{})}})
   const payload=await response.json().catch(()=>null)
-  if(!response.ok||!payload?.success||!Array.isArray(payload.data?.activeTitleIds)||!payload.data.activeTitleIds.every((id:unknown)=>Number.isSafeInteger(id)&&Number(id)>0))throw new Error('Current book requests and loans could not be checked.')
+  if(!response.ok||!payload?.success||!Array.isArray(payload.data?.activeTitleIds)||!payload.data.activeTitleIds.every((id:unknown)=>Number.isSafeInteger(id)&&Number(id)>0)||!Number.isFinite(payload.data.outstandingBalance)||payload.data.outstandingBalance<0)throw new Error('Current book requests, loans and balance could not be checked.')
   return payload.data
 }
 

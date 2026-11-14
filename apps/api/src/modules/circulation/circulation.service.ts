@@ -1,3 +1,5 @@
+import { localPaymentPreview } from '../payments/payments.preview.ts'
+import { borrowerBalances, borrowerPaymentCredits } from '../payments/borrower-balances.ts'
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { requireOperationalService } from '../attendance/attendance-operations.service.ts'
 import { db } from '../../config/db.js'
@@ -202,6 +204,23 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
   const policyService = createBorrowingPolicyService(database, clock)
   const renewalService = createRenewalService(database, clock)
   const caseService = createCirculationCaseService(database, clock)
+  async function refreshRenewalBalances(rows: RowDataPacket[], owner?: {userId:number;accountId:number}) {
+    if (database !== db || !localPaymentPreview) return
+    const balances = new Map<number, Promise<Awaited<ReturnType<typeof borrowerBalances>>>>()
+    for (const row of rows) {
+      const userId = owner?.userId ?? Number(row.user_id)
+      if (!userId) continue
+      let balance = balances.get(userId)
+      if (!balance) {
+        const accountId = owner?.accountId ?? Number(row.account_id)
+        balance = borrowerPaymentCredits(database,userId,accountId).then(credits=>borrowerBalances(database,userId,credits))
+        balances.set(userId,balance)
+      }
+      const standing = await balance
+      row.blocking_fines = standing.finesCentavos > 0 ? 1 : 0
+      row.blocking_lost_charges = standing.replacementCentavos > 0 ? 1 : 0
+    }
+  }
   return {
     async cartState(accountIdValue: unknown) {
       const accountId = positiveCirculationId(accountIdValue, 'accountId')
@@ -217,7 +236,12 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
           WHERE r.reservation_status IN ('pending','approved','ready_for_pickup')
         ) activity ON activity.user_id=a.user_id
         WHERE a.account_id=? AND activity.title_id IS NOT NULL`,[accountId])
-      return {activeTitleIds:rows.map(row=>Number(row.title_id))}
+      const [accounts] = await database.execute<RowDataPacket[]>('SELECT user_id FROM accounts WHERE account_id=? LIMIT 1', [accountId])
+      const userId = Number(accounts[0]?.user_id)
+      if (!userId) throw new HttpError(422, 'CIRCULATION_PROFILE_NOT_LINKED', 'This login account is not linked to a circulation profile.')
+      const credits = database === db ? await borrowerPaymentCredits(database, userId, accountId) : []
+      const balance = await borrowerBalances(database, userId, credits)
+      return {activeTitleIds:rows.map(row=>Number(row.title_id)), outstandingBalance:balance.totalCentavos / 100}
     },
     async myBooks(accountIdValue: unknown) {
       const accountId = positiveCirculationId(accountIdValue, 'accountId')
@@ -292,6 +316,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         const [commitments] = await database.execute<RowDataPacket[]>(`SELECT COUNT(*) AS total FROM reservations r WHERE r.user_id=? AND r.reservation_status IN ${ACTIVE_RESERVATIONS} AND NOT EXISTS (SELECT 1 FROM borrow_transactions bt WHERE bt.reservation_id=r.reservation_id AND bt.transaction_status IN ${ACTIVE_LOANS})`, [userId])
         activeStackCount = activeLoans + Number(commitments[0]?.total ?? 0)
       }
+      await refreshRenewalBalances(rows,{userId,accountId})
       const caseSummaries = await caseService.publicSummariesForTransactions(userId, rows.map((row) => Number(row.transaction_id)))
       return {
         summary: { role, activeLoans, activeReservations, activeStackCount,
@@ -441,7 +466,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         LEFT JOIN titles t ON t.title_id = pc.title_id`
       const [[rows], [summaryRows], [countRows]] = await Promise.all([
         database.execute<RowDataPacket[]>(
-          `SELECT bt.transaction_id, bt.reservation_id, u.full_name, u.school_id, ro.role_name, u.account_status AS user_account_status,
+          `SELECT bt.transaction_id, bt.reservation_id, bt.user_id, acc.account_id, u.full_name, u.school_id, ro.role_name, u.account_status AS user_account_status,
              acc.account_status AS normalized_account_status, COALESCE(t.title, m.title) AS title,
              pc.accession_number, COALESCE(pc.barcode, m.barcode) AS barcode, bt.created_at AS requested_at,
              ${loanTimestamp('bt.borrowed_at')}, ${loanTimestamp('bt.due_at')}, ${loanTimestamp('bt.initial_due_at')}, ${loanTimestamp('bt.returned_at')},
@@ -472,6 +497,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         FROM reservations r JOIN users u ON u.user_id=r.user_id JOIN titles t ON t.title_id=r.book_title_id
         JOIN physical_copies pc ON pc.physical_copy_id=r.assigned_physical_copy_id
         WHERE r.reservation_status='ready_for_pickup' OR (r.request_kind='CartHandover' AND r.reservation_status='approved') ORDER BY r.pickup_deadline,r.reservation_id LIMIT 100`)
+      await refreshRenewalBalances(rows)
       const summary = summaryRows[0] ?? {}; const total = Number(countRows[0]?.total ?? 0)
       return {
         summary: { pendingClaims: Number(summary.pending_claims ?? 0), activeLoans: Number(summary.active_loans ?? 0), overdueLoans: Number(summary.overdue_loans ?? 0), returnedToday: Number(summary.returned_today ?? 0), dueToday: Number(summary.due_today ?? 0) },
