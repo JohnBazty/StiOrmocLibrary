@@ -7,6 +7,10 @@ Status: inprogress
 
 ## Cause and how
 
+Confirmed root cause from authenticated production requests: Vercel also appends the named wildcard source capture `path` to the rewritten query. Field-name-only diagnostics showed `kind`, `targetId`, `path` reaching parseTarget. The earlier changes below did not remove this URL-level field and did not resolve the live failure.
+
+Rename the rewrite's source capture to the existing reserved `__api_route` key and use that same key in the destination. Both the generated capture and explicit destination then use one internal key, which the adapter removes. Do not ignore an ordinary client-supplied `path` or loosen strict payment validation. A regression derives its simulated captures from the actual vercel.json: it failed with 422 before this change and passes afterward. Remove the temporary field-name diagnostics. Targeted checks: 28 passed. Live signed-in verification remains pending.
+
 The Vercel Node request includes a pre-parsed query object containing the internal __api_route rewrite field. The entry previously removed this field only from request.url. Strict parseTarget rejects extra query keys, so valid payment options fail before checking the bill. Vercel documents its request.query helper separately from request.url.
 
 Extract the existing URL normalization into core/vercel-request.js, remove only __api_route from the pre-parsed query object too, and invoke this normalization from the deployed entry. Preserve genuine query fields and strict rejection of unexpected fields such as userId; do not bypass ownership, authorization, CSRF or financial checks.

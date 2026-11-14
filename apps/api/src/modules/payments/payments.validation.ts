@@ -62,10 +62,6 @@ export function parseCheckout(value: unknown) {
 }
 
 export function parseTarget(value: unknown) {
-  // Field names only: never log identifiers, amounts, credentials or values.
-  if (value && typeof value === 'object' && Object.keys(value).some(key => !['kind','targetId'].includes(key))) {
-    console.warn('[Payment target fields]', JSON.stringify(Object.keys(value).slice(0, 12).map(key => key.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 40))))
-  }
   const body=object(value,['kind','targetId'])
   if (!['Printing','Fine','LostBook'].includes(String(body.kind))) throw paymentError('Choose a printing bill or fine.')
   return {kind:body.kind as 'Printing'|'Fine'|'LostBook',targetId:positiveId(body.targetId)}

@@ -20,7 +20,7 @@ test('payment options ignore an immutable hosting query helper and validate actu
   const valid = await request(app).get('/options?kind=Printing&targetId=30&__api_route=ignored')
   assert.equal(valid.status, 200)
   assert.deepEqual(valid.body.data, {kind:'Printing',targetId:30})
-  for (const query of ['kind=Fine&targetId=12&userId=99', 'kind=Fine&kind=Printing&targetId=12', 'kind=Fine&targetId=12&targetId=99']) {
+  for (const query of ['kind=Fine&targetId=12&userId=99', 'kind=Fine&targetId=12&path=unexpected', 'kind=Fine&kind=Printing&targetId=12', 'kind=Fine&targetId=12&targetId=99']) {
     assert.equal((await request(app).get('/options?'+query)).status, 422)
   }
 })

@@ -1,9 +1,26 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import express from 'express'
 import request from 'supertest'
 import { normalizeVercelRequest } from './vercel-request.js'
 import { parseTarget } from '../modules/payments/payments.validation.ts'
+
+test('deployed rewrite uses only reserved routing parameters in the resulting query', async () => {
+  const config = JSON.parse(readFileSync(new URL('../../../../vercel.json', import.meta.url), 'utf8'))
+  const rewrite = config.rewrites.find(rule => rule.source.startsWith('/api/'))
+  // Vercel also appends named source captures to the destination query. Model
+  // that behavior: removing an explicit destination field alone is insufficient.
+  const fields = [...rewrite.source.matchAll(/:([A-Za-z_][A-Za-z0-9_]*)\*/g)].map(match => match[1])
+  const route = 'v1/user/payments/options'
+  const url = new URL(rewrite.destination.replaceAll(/:[A-Za-z_][A-Za-z0-9_]*\*/g, route), 'http://localhost')
+  url.searchParams.set('kind', 'Fine')
+  url.searchParams.set('targetId', '12')
+  for (const field of fields) url.searchParams.set(field, route)
+  const response = await request(app()).get(url.pathname + url.search)
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body, {kind: 'Fine', targetId: 12})
+})
 
 function app(lazy = false) {
   const api = express()
