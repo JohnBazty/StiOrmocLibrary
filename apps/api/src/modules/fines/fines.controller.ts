@@ -14,7 +14,7 @@ function safeFilename(value: string) { return value.replace(/[^A-Za-z0-9_-]/g, '
 
 export const finesController = {
   list: handle(async (request,response)=>response.json({success:true,data:await finesService.list(parseFineFilters(request.query as Record<string,unknown>))})),
-  mine: handle(async (request,response)=>response.json({success:true,data:await finesService.mine(actor(response),parseFineFilters(request.query as Record<string,unknown>))})),
+  mine: handle(async (request,response)=>response.set('Cache-Control','private, no-store').json({success:true,data:await finesService.mine(actor(response),parseFineFilters(request.query as Record<string,unknown>))})),
   terms: handle(async (_request,response)=>response.json({success:true,data:await finesService.terms()})),
   receipts: handle(async (_request,response)=>response.json({success:true,data:await finesService.receiptsForUser(actor(response))})),
   receipt: handle(async (request,response)=>response.json({success:true,data:await finesService.receipt(receiptId(request.params.receiptId),actor(response))})),

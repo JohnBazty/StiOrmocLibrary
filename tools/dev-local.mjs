@@ -32,12 +32,31 @@ if (!existsSync(configuration)) {
   const environment = { ...process.env, NODE_ENV: 'development' }
   start('Library API', ['--env-file=' + configuration, 'src/server.ts'], apiDirectory, {
     ...environment, PORT: '4000', WEB_ORIGIN: 'http://localhost:5173',
-    // Test credentials must never mark school charges as paid. Payment screens
-    // stay integrated; provider activation requires its separately reviewed setup.
+    // The settlement gateway stays off. Local Test checkout only reads school
+    // charges and saves clearly labelled attempts in ignored local output.
     XENDIT_ENABLED: 'false', JOB_RUNNER_LOCAL_TIMER: 'off',
+    LOCAL_PAYMENT_PREVIEW: existsSync(path.join(apiDirectory, '.env.xendit-sandbox')) ? 'true' : 'false',
   })
-  start('Library website', [path.join(root, 'node_modules', 'vite', 'bin', 'vite.js'), '--force'],
-    path.join(root, 'apps', 'web'), environment)
   process.once('SIGINT', () => stop())
   process.once('SIGTERM', () => stop())
+  // Do not let the website cache unavailable/payment errors while the API is
+  // still checking the school connection and schema during startup.
+  let ready = false
+  const deadline = Date.now() + 60_000
+  while (!stopping && Date.now() < deadline) {
+    try {
+      const response = await fetch('http://localhost:4000/api/health', { signal: AbortSignal.timeout(1500) })
+      ready = response.ok
+      await response.body?.cancel()
+      if (ready) break
+    } catch { /* The API is still starting. */ }
+    await new Promise(resolve => setTimeout(resolve, 250))
+  }
+  if (!stopping && ready) {
+    start('Library website', [path.join(root, 'node_modules', 'vite', 'bin', 'vite.js'), '--force'],
+      path.join(root, 'apps', 'web'), environment)
+  } else if (!stopping) {
+    console.error('Library API did not become ready. Check the database connection before trying again.')
+    stop(1)
+  }
 }

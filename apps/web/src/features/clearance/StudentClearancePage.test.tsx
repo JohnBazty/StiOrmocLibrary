@@ -3,7 +3,9 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { StudentClearancePage } from './StudentClearancePage'
 
 const api = vi.hoisted(() => ({ mine: vi.fn() }))
+const payments = vi.hoisted(() => ({ sync: vi.fn().mockResolvedValue({checked:0,failed:0}) }))
 vi.mock('./clearance-api', () => ({ clearanceApi: api }))
+vi.mock('../payments/payments-api',()=>({paymentsApi:payments}))
 
 const base = {
   status: 'Cleared', reason: 'No library obligations', checkedAt: '2026-09-25T10:00:00+08:00',
@@ -67,4 +69,15 @@ it('shows an authorized approval without claiming outstanding requirements are c
   expect(screen.getByText('Approved by override')).toBeTruthy()
   expect(screen.queryByText('Your clearance is currently blocked.')).toBeNull()
   expect(screen.queryByText('Requirements complete')).toBeNull()
+})
+it('refreshes verified payments before replacing unpaid clearance with completed requirements',async()=>{
+  api.mine.mockResolvedValueOnce({...base,status:'Not Cleared',computedStatus:'Not Cleared',reason:'PHP 190.00 unpaid overdue fines',summary:{...base.summary,unpaidOverdueFines:190,totalOutstanding:190},fines:[{fineId:1,title:'Returned book',amount:190,basis:'Daily',overdueUnits:19,rate:10}]}).mockResolvedValue({...base,computedStatus:'Cleared'})
+  render(<StudentClearancePage/>)
+  expect(await screen.findByText('Overdue fine · Returned book')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button',{name:'Refresh'}))
+  expect(await screen.findByText('Requirements complete')).toBeTruthy()
+  expect(screen.queryByText('Overdue fine · Returned book')).toBeNull()
+  expect(screen.getByText('No unpaid charges.')).toBeTruthy()
+  expect(payments.sync).toHaveBeenCalledTimes(2)
+  expect(payments.sync.mock.invocationCallOrder[0]).toBeLessThan(api.mine.mock.invocationCallOrder[0])
 })

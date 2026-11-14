@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, PageHeader, SectionCard, StatCard, StatusBadge } from '../../components/ui'
 import { clearanceApi } from './clearance-api'
 import type { ClearanceRecord } from './types'
+import { paymentsApi } from '../payments/payments-api'
 
 function lostResolution(item: ClearanceRecord['lostBooks'][number]) { return item['chargeResolution'] || (item.status === 'Confirmed' ? item.replacementCharge > 0 ? 'Quoted' : 'Awaiting Quotation' : 'Awaiting Review') }
 function money(value: number) { return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(value) }
@@ -14,11 +15,12 @@ export function StudentClearancePage() {
   const [refreshing, setRefreshing] = useState(false)
   const [notice, setNotice] = useState('')
   const running = useRef(false)
-  const load = useCallback(async (showNotice = false) => {
+  const load = useCallback(async (showNotice = false, syncPayments = false) => {
     if (running.current) return
     running.current = true
     if (showNotice) { setRefreshing(true); setNotice('') }
     try {
+      if (syncPayments) await paymentsApi.sync().catch(() => undefined)
       setData(await clearanceApi.mine())
       setError('')
       if (showNotice) setNotice('Clearance updated from your current library records.')
@@ -26,13 +28,19 @@ export function StudentClearancePage() {
       setError(reason instanceof Error ? reason.message : 'Clearance is unavailable.')
     } finally { setRefreshing(false); running.current = false }
   }, [])
-  useEffect(() => { void load(); const timer = window.setInterval(() => { if (!document.hidden) void load() }, 5000); return () => clearInterval(timer) }, [load])
+  useEffect(() => {
+    void load(false, true)
+    const returned = () => { if (!document.hidden) void load(false, true) }
+    const timer = window.setInterval(() => { if (!document.hidden) void load() }, 5000)
+    window.addEventListener('focus', returned)
+    return () => { clearInterval(timer); window.removeEventListener('focus', returned) }
+  }, [load])
   const cleared = (data?.computedStatus ?? data?.status) === 'Cleared'
   const approvedOverride = data?.activeOverride?.status === 'Cleared'
   const deadline = data?.schedule?.deadlineAt
   const pastDeadline = Boolean(deadline && Date.now() > new Date(deadline).getTime())
   return <>
-    <PageHeader eyebrow="Account standing" title="Library clearance" description="Computed from current unreturned books, overdue fines, and lost-book replacement charges." action={<Button variant="secondary" disabled={refreshing} onClick={() => void load(true)}><RefreshCw size={16} /> {refreshing ? 'Refreshing…' : 'Refresh'}</Button>} />
+    <PageHeader eyebrow="Account standing" title="Library clearance" description="Computed from current unreturned books, overdue fines, and lost-book replacement charges." action={<Button variant="secondary" disabled={refreshing} onClick={() => void load(true, true)}><RefreshCw size={16} /> {refreshing ? 'Refreshing…' : 'Refresh'}</Button>} />
     {error ? <div role="alert" className="mb-5 flex gap-2 rounded-xl bg-[#FFF200] p-4 font-bold text-[#0b5ea2]"><AlertTriangle size={18} />{error}</div> : null}
     {notice ? <p role="status" className="mb-5 rounded-xl bg-[#0b5ea2]/5 p-4 text-sm font-semibold text-[#0b5ea2]">{notice}</p> : null}
     <section className="relative overflow-hidden rounded-3xl bg-[#0b5ea2] p-7 text-white"><div className="relative z-10 max-w-3xl"><div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold"><BadgeCheck size={15} className="text-[#FFF200]" />{data ? approvedOverride ? 'Approved by override' : cleared ? 'Requirements complete' : pastDeadline ? 'Clearance overdue' : 'Requirements to complete' : error ? 'Unavailable' : 'Checking…'}</div><h2 className="mt-5 font-display text-3xl font-bold">{!data ? error ? 'Clearance status is temporarily unavailable.' : 'Checking your clearance…' : approvedOverride ? 'Your clearance has an authorized approval.' : cleared ? 'You have no library obligations.' : pastDeadline ? 'Your clearance is currently blocked.' : data.schedule === null ? 'Review your current library requirements.' : 'Complete your library requirements before clearance day.'}</h2><p className="mt-3 text-sm leading-6 text-white/80">{data?.reason ?? (error ? 'Use Refresh to check your current library records again.' : 'Reviewing your live circulation and fine records.')}</p>{data ? <p className="mt-2 text-xs text-white/55">Checked {date(data.checkedAt)}</p> : null}</div></section>

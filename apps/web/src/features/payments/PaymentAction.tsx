@@ -1,106 +1,120 @@
-import { useCallback,useEffect,useId,useRef,useState } from 'react'
-import { CreditCard,QrCode,RefreshCw,ShieldCheck,X } from 'lucide-react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { ArrowRight, ChevronDown, CreditCard, QrCode, RefreshCw, Wallet, X } from 'lucide-react'
 import { Button } from '../../components/ui'
-import { downloadPaymentRecord,paymentMoney,paymentsApi,paymentStatus,providerCheckout,type Payment,type PaymentKind,type PaymentOptions } from './payments-api'
+import { PaymentStateIcon, PaymentTrustNote } from './PaymentPresentation'
+import { openPaymentReviewResult, openWalletPayment, paymentResultPath } from './payment-navigation'
+import { downloadPaymentRecord, paymentMoney, paymentsApi, paymentStatus, type Payment, type PaymentKind, type PaymentOptions } from './payments-api'
 
-const field='min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-base text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 dark:border-white/25 dark:bg-[#001a4d] dark:text-white'
-const message=(error:unknown)=>error instanceof Error?error.message:'Payment information could not load. Please try again.'
-const go=(payment:Payment)=>{if(payment.checkoutUrl)window.location.assign(providerCheckout(payment.checkoutUrl))}
+const message = (error: unknown) => error instanceof Error ? error.message : 'Payment information could not load. Please try again.'
 
-export function PaymentSummary({payment}:{payment:Payment}) {
-  return <dl className="space-y-3 rounded-xl bg-slate-50 p-4 text-base tabular-nums dark:bg-white/5">
-    <div className="flex justify-between gap-4"><dt>{payment.kind==='Printing'?'Printing bill':'Applied to balance'}</dt><dd className="font-semibold">{paymentMoney(payment.principalCentavos)}</dd></div>
-    <div className="flex justify-between gap-4"><dt>Transaction fee</dt><dd>{paymentMoney(payment.feeCentavos)}</dd></div>
-    <div className="flex justify-between gap-4 border-t border-slate-200 pt-3 text-lg font-bold dark:border-white/20"><dt>{payment.state==='Succeeded'?'Total paid':'Total to pay'}</dt><dd>{paymentMoney(payment.totalCentavos)}</dd></div>
-    {payment.kind==='Fine'?<div className="flex justify-between gap-4 text-sm"><dt>Remaining fine balance after payment</dt><dd>{paymentMoney(payment.remainingCentavos)}</dd></div>:null}
+export function PaymentSummary({ payment }: { payment: Payment }) {
+  return <dl className="payment-ui payment-summary">
+    <div className="payment-total"><dt>{payment.state === 'Succeeded' ? 'Total paid' : 'Total to pay'}</dt><dd>{paymentMoney(payment.totalCentavos)}</dd></div>
+    <div className="payment-summary-row"><dt>{payment.kind === 'Printing' ? 'Printing bill' : 'Payment amount'}</dt><dd>{paymentMoney(payment.principalCentavos)}</dd></div>
+    <div className="payment-summary-row"><dt>Transaction fee</dt><dd>{paymentMoney(payment.feeCentavos)}</dd></div>
+    {payment.kind === 'Fine' && (!payment.localPreview || payment.state === 'Quoted') ? <div className="payment-summary-row payment-balance"><dt>Balance after payment</dt><dd>{paymentMoney(payment.localPreview ? Math.max(0, payment.remainingCentavos - payment.principalCentavos) : payment.remainingCentavos)}</dd></div> : null}
   </dl>
 }
 
-export function PaymentStatusPanel({payment,onChange,onUpdated}:{payment:Payment;onChange:(value:Payment)=>void;onUpdated?:()=>void}) {
-  const [busy,setBusy]=useState(false),[error,setError]=useState('')
-  async function action(run:()=>Promise<Payment|void>){if(busy)return;setBusy(true);setError('');try{const result=await run();if(result){onChange(result);if(result.state==='Succeeded')onUpdated?.()}}catch(error){setError(message(error))}finally{setBusy(false)}}
-  const closed=['Succeeded','Expired','Cancelled'].includes(payment.state)
-  return <div className={'space-y-3 rounded-xl border p-4 text-sm '+(payment.state==='Succeeded'?'border-emerald-200 bg-emerald-50/60 dark:border-emerald-400/25 dark:bg-emerald-400/10':'border-slate-200 bg-slate-50/60 dark:border-white/20 dark:bg-white/5')} aria-live="polite">
-    <p className={`text-base font-bold ${payment.state==='Succeeded'?'text-emerald-700 dark:text-emerald-300':''}`}>{paymentStatus(payment)}</p>
-    {payment.state==='Review'?<p>The library needs to check this payment. Please do not pay again until it is resolved.</p>:null}
-    {payment.cancellationPending?<p>Your payment stays reserved until Xendit confirms cancellation. Wait before paying cash.</p>:null}
-    {payment.state==='Creating'?<p>We are waiting for the payment provider. Please do not start another payment.</p>:null}
-    <p className="break-all text-xs opacity-70">Reference {payment.paymentId.slice(0,8).toUpperCase()}</p>
-    {error?<p role="alert" className="auth-error rounded-lg p-3">{error}</p>:null}
-    <div className="flex flex-wrap gap-2">
-      {!closed?<Button className="min-h-11" variant="secondary" disabled={busy} onClick={()=>void action(()=>paymentsApi.check(payment.paymentId))}><RefreshCw size={15}/>Check status</Button>:null}
-      {!payment.cancellationPending && ['Active','Prepared'].includes(payment.state)?<Button className="min-h-11" disabled={busy} onClick={()=>void action(async()=>{const result=await paymentsApi.resume(payment.paymentId);go(result);return result})}>Continue payment</Button>:null}
-      {!closed&&!payment.refundReview?<Button className="min-h-11" variant="ghost" disabled={busy} onClick={()=>void action(()=>paymentsApi.cancel(payment.paymentId))}>Cancel online payment</Button>:null}
-      {payment.state==='Succeeded'&&payment.receiptId?<Button className="min-h-11" disabled={busy} onClick={()=>void action(()=>downloadPaymentRecord(payment))}>Download payment record</Button>:null}
+export function PaymentStatusPanel({ payment, onChange, onUpdated, showDetails = true }: { payment: Payment; onChange: (value: Payment) => void; onUpdated?: () => void; showDetails?: boolean }) {
+  const [busy, setBusy] = useState(false), [error, setError] = useState('')
+  const running = useRef(false)
+  async function action(run: () => Promise<Payment | void>) {
+    if (running.current) return
+    running.current = true; setBusy(true); setError('')
+    try { const result = await run(); if (result) { onChange(result); if (result.state === 'Succeeded') onUpdated?.() } }
+    catch (error) { setError(message(error)) }
+    finally { running.current = false; setBusy(false) }
+  }
+  const closed = ['Succeeded', 'Expired', 'Cancelled'].includes(payment.state)
+  return <div className="payment-ui payment-status" aria-live="polite">
+    <div className="payment-status-heading"><PaymentStateIcon state={payment.state}/><p>{paymentStatus(payment)}</p></div>
+    {payment.state === 'Review' ? <p className="payment-status-copy">{'The library needs to check this payment. Please do not pay again until it is resolved.'}</p> : null}
+    {payment.cancellationPending ? <p className="payment-status-copy">Your payment stays reserved until Xendit confirms cancellation. Wait before paying cash.</p> : null}
+    {payment.state === 'Creating' ? <p className="payment-status-copy">Waiting for the payment provider. Please do not start another payment.</p> : null}
+    {error ? <p role="alert" className="payment-error mt-3">{error}</p> : null}
+    <div className="payment-status-actions">
+      {!closed ? <Button className="payment-button" variant="secondary" disabled={busy} onClick={() => void action(() => paymentsApi.check(payment.paymentId))}><RefreshCw size={16} aria-hidden="true"/>{busy ? 'Checking…' : 'Check status'}</Button> : null}
+      {!payment.cancellationPending && ['Active', 'Prepared'].includes(payment.state) ? <Button className="payment-button" disabled={busy} onClick={() => void action(async () => { const result = await paymentsApi.resume(payment.paymentId); openPaymentReviewResult(result); return result })}>Continue payment<ArrowRight size={16} aria-hidden="true"/></Button> : null}
+      {!closed && !payment.refundReview ? <Button className="payment-button" variant="ghost" disabled={busy} onClick={() => void action(() => paymentsApi.cancel(payment.paymentId))}>Cancel online payment</Button> : null}
+      {payment.state === 'Succeeded' && payment.receiptId ? <Button className="payment-button" disabled={busy} onClick={() => void action(() => downloadPaymentRecord(payment))}>Download payment record</Button> : null}
+      {showDetails ? <a className="payment-link" href={paymentResultPath(payment)}>View details<ArrowRight size={15} aria-hidden="true"/></a> : null}
     </div>
   </div>
 }
 
-function PaymentReview({kind,targetId,title,options,onClose,onPayment}:{kind:PaymentKind;targetId:number;title:string;options:PaymentOptions;onClose:()=>void;onPayment:(payment:Payment)=>void}) {
-  const dialog=useRef<HTMLDialogElement>(null),[channel,setChannel]=useState(options.methods[0]?.channelCode??'')
-  const [part,setPart]=useState(false),[amount,setAmount]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false)
-  const [quoteState,setQuoteState]=useState<{key:string;payment:Payment}|null>(null),[retry,setRetry]=useState(0)
-  const retryKey=useRef<{id:string;key:string}|null>(null),submitting=useRef(false),labelId=useId()
-  const validAmount=!part||(/^\d+(\.\d{1,2})?$/.test(amount)&&Number(amount)>0&&Math.round(Number(amount)*100)<=options.balanceCentavos)
-  const key=JSON.stringify({kind,targetId,channel,...(part?{amount}:{})})
-  const quote=quoteState?.key===key?quoteState.payment:null
-  const selected=options.methods.find(method=>method.channelCode===channel)
-  function close(){if(busy)return;dialog.current?.close?.();onClose()}
-  useEffect(()=>{const element=dialog.current;if(element?.showModal)element.showModal();else element?.setAttribute('open','');return()=>{if(element?.close)element.close()}},[])
-  useEffect(()=>{
-    if(!channel||!validAmount)return
-    let active=true
-    const timer=setTimeout(()=>{setError('');void paymentsApi.quote({kind,targetId,channelCode:channel,...(part?{amount}:{})})
-      .then(payment=>{if(active)setQuoteState({key,payment})}).catch(error=>{if(active){setQuoteState(null);setError(message(error))}})},250)
-    return()=>{active=false;clearTimeout(timer)}
-  },[key,retry,validAmount])
-  async function checkout(){
-    if(!quote||submitting.current)return
-    submitting.current=true;setBusy(true);setError('')
-    if(retryKey.current?.id!==quote.paymentId)retryKey.current={id:quote.paymentId,key:crypto.randomUUID()}
-    try{const payment=await paymentsApi.checkout(quote.paymentId,retryKey.current.key);onPayment(payment);go(payment)}
-    catch(error){setError(message(error))}finally{submitting.current=false;setBusy(false)}
+function PaymentReview({ kind, targetId, title, options, onClose, onPayment }: { kind: PaymentKind; targetId: number; title: string; options: PaymentOptions; onClose: () => void; onPayment: (payment: Payment) => void }) {
+  const dialog = useRef<HTMLDialogElement>(null), [channel, setChannel] = useState(options.methods[0]?.channelCode ?? '')
+  const [part, setPart] = useState(false), [amount, setAmount] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false)
+  const [quoteState, setQuoteState] = useState<{ key: string; payment: Payment } | null>(null), [retry, setRetry] = useState(0)
+  const retryKey = useRef<{ id: string; key: string } | null>(null), submitting = useRef(false), labelId = useId()
+  const validAmount = !part || (/^\d+(\.\d{1,2})?$/.test(amount) && Number(amount) > 0 && Math.round(Number(amount) * 100) <= options.balanceCentavos)
+  const key = JSON.stringify({ kind, targetId, channel, ...(part ? { amount } : {}) })
+  const quote = quoteState?.key === key ? quoteState.payment : null
+  const selected = options.methods.find(method => method.channelCode === channel)
+  function close() { if (submitting.current) return; dialog.current?.close?.(); onClose() }
+  useEffect(() => { const element = dialog.current; if (element?.showModal) element.showModal(); else element?.setAttribute('open', ''); return () => { element?.close?.() } }, [])
+  useEffect(() => {
+    if (!channel || !validAmount) return
+    let active = true
+    const timer = setTimeout(() => { setError(''); void paymentsApi.quote({ kind, targetId, channelCode: channel, ...(part ? { amount } : {}) })
+      .then(payment => { if (active) setQuoteState({ key, payment }) }).catch(error => { if (active) { setQuoteState(null); setError(message(error)) } }) }, 250)
+    return () => { active = false; clearTimeout(timer) }
+  }, [key, retry, validAmount])
+  async function checkout() {
+    if (!quote || submitting.current) return
+    submitting.current = true; setBusy(true); setError('')
+    if (retryKey.current?.id !== quote.paymentId) retryKey.current = { id: quote.paymentId, key: crypto.randomUUID() }
+    try { const payment = await paymentsApi.checkout(quote.paymentId, retryKey.current.key); onPayment(payment); openPaymentReviewResult(payment) }
+    catch (error) { setError(message(error)) }
+    finally { submitting.current = false; setBusy(false) }
   }
-  return <dialog ref={dialog} aria-labelledby={labelId} onCancel={event=>{event.preventDefault();close()}}
-    className="m-auto max-h-[90dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-2xl border-0 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-black/50 dark:bg-[#001a4d] dark:text-white">
-    <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-white p-5 dark:border-white/20 dark:bg-[#001a4d]"><div><h2 id={labelId} className="text-xl font-bold">Review payment</h2><p className="mt-1 break-words text-sm opacity-70">{title}</p></div><button type="button" disabled={busy} aria-label="Close payment review" className="grid min-h-11 min-w-11 place-items-center rounded-lg focus-visible:ring-2" onClick={close}><X size={20}/></button></div>
-    <div className="space-y-5 p-5">
-      <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-300/15 dark:text-amber-100">Sandbox test. Sample fees are shown. No real payment is collected.</p>
-      {kind==='Fine'?<fieldset className="space-y-3"><legend className="mb-2 font-semibold">How much would you like to pay?</legend>
-        <label className="flex min-h-11 items-center gap-3"><input type="radio" name="amount-choice" checked={!part} onChange={()=>setPart(false)} disabled={busy}/>Pay full balance</label>
-        <label className="flex min-h-11 items-center gap-3"><input type="radio" name="amount-choice" checked={part} onChange={()=>setPart(true)} disabled={busy}/>Pay part of the balance</label>
-        {part?<label className="block">Amount to pay<input aria-label="Amount to pay" className={field+' mt-2'} inputMode="decimal" value={amount} onChange={event=>setAmount(event.target.value)} disabled={busy}/><span className="mt-2 block text-sm opacity-70">Up to {paymentMoney(options.balanceCentavos)}. Fees are added separately.</span>{amount&&!validAmount?<span role="alert" className="block text-sm text-red-700 dark:text-red-300">Enter an amount within your balance, with up to two decimal places.</span>:null}</label>:null}
-      </fieldset>:null}
-      <label className="block font-semibold">Payment method<select className={field+' mt-2'} value={channel} onChange={event=>setChannel(event.target.value)} disabled={busy}>{options.methods.map(method=><option key={method.channelCode} value={method.channelCode}>{method.channelCode==='QRPH'?'Scan QR · QRPh':method.displayName}</option>)}</select></label>
-      {channel==='QRPH'?<div className="space-y-2 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-950 dark:border-blue-300/25 dark:bg-blue-400/10 dark:text-blue-100"><p className="flex items-center gap-2 font-semibold"><QrCode size={20} aria-hidden="true"/>Scan the payment QR in secure checkout</p><p>Open your bank or wallet app, scan the QR, and check the merchant and total before confirming. Each payment has its own QR.</p><p>Using the same phone? Choose a wallet method that opens its app, or use QR image import only if your wallet supports it.</p></div>:null}
-      {selected?<p className="text-sm opacity-70">Total including fees must be between {paymentMoney(selected.minTotalCentavos)} and {paymentMoney(selected.maxTotalCentavos)}.</p>:null}
-      {quote?<PaymentSummary payment={quote}/>:validAmount?<p role="status" className="text-sm">Calculating your payment…</p>:null}
-      {error?<div role="alert" className="auth-error rounded-xl p-3"><p>{error}</p><button type="button" disabled={busy} className="mt-2 min-h-11 font-semibold underline" onClick={()=>setRetry(value=>value+1)}>Try again</button></div>:null}
-      <p className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300"><ShieldCheck size={18} className="shrink-0" aria-hidden="true"/>Xendit handles your payment details. Your balance changes after payment is verified.</p>
-      <Button className="min-h-12 w-full" disabled={!quote||busy||!validAmount} onClick={()=>void checkout()}>{channel==='QRPH'?<QrCode size={18}/>:<CreditCard size={18}/>} {busy?'Opening secure checkout…':channel==='QRPH'?'Continue to QR payment':'Continue to Xendit'}</Button>
+  return <dialog ref={dialog} aria-labelledby={labelId} onCancel={event => { event.preventDefault(); close() }} className="payment-ui payment-dialog">
+    <div className="payment-dialog-shell">
+      <header className="payment-dialog-header"><span className="payment-service-icon"><Wallet size={22} aria-hidden="true"/></span><div className="min-w-0"><h2 id={labelId}>Review payment</h2><p>{title}</p></div><button type="button" disabled={busy} aria-label="Close payment review" className="payment-close" onClick={close}><X size={20}/></button></header>
+      <div className="payment-dialog-content">
+        <div className="payment-review-grid">
+          <div className="payment-review-fields">
+            {kind === 'Fine' ? <fieldset><legend className="payment-field-title">How much would you like to pay?</legend><div className="payment-amount-options">
+              <label className="payment-amount-option"><input type="radio" name={labelId + '-amount'} checked={!part} onChange={() => setPart(false)} disabled={busy}/><span className="flex flex-1 flex-wrap justify-between gap-2"><span>Pay full balance</span><strong className="tabular-nums">{paymentMoney(options.balanceCentavos)}</strong></span></label>
+              <label className="payment-amount-option"><input type="radio" name={labelId + '-amount'} checked={part} onChange={() => setPart(true)} disabled={busy}/>Pay part of the balance</label>
+            </div>{part ? <label className="mt-4 block text-sm font-semibold">Amount to pay<input aria-label="Amount to pay" className="payment-field mt-2" inputMode="decimal" value={amount} onChange={event => setAmount(event.target.value)} disabled={busy}/><span className="payment-field-note">Up to {paymentMoney(options.balanceCentavos)}. Fees are added separately.</span>{amount && !validAmount ? <span role="alert" className="payment-error mt-2 block">Enter an amount within your balance, with up to two decimal places.</span> : null}</label> : null}</fieldset> : <div><p className="payment-field-title">{kind === 'Printing' ? 'Printing bill' : 'Replacement charge'}</p><p className="payment-muted text-sm">Pay the full bill amount. Your total includes the transaction fee shown.</p></div>}
+            <div><label className="payment-field-title" htmlFor={labelId + '-method'}>Payment method</label><select id={labelId + '-method'} className="payment-field" value={channel} onChange={event => setChannel(event.target.value)} disabled={busy}>{options.methods.map(method => <option key={method.channelCode} value={method.channelCode}>{method.channelCode === 'QRPH' ? 'Scan QR · QRPh' : method.channelCode === 'GCASH' ? 'GCash' : method.displayName.replace(/\s*[·-]\s*Test$/i, '')}</option>)}</select>
+              {channel === 'QRPH' ? <div className="payment-qr-help mt-3"><p><QrCode size={18} aria-hidden="true"/>Scan the payment QR in secure checkout</p><details className="payment-optional"><summary>Using the same phone?<ChevronDown size={14}/></summary><p>Choose a wallet method that opens its app, or import the payment QR image if your wallet supports it. Each payment has its own QR.</p></details></div> : <p className="payment-field-note">Continue to Xendit to complete your selected payment.</p>}
+            </div>
+            <details className="payment-optional"><summary>Prefer to pay onsite?<ChevronDown size={14}/></summary><p>Bring your school ID and pay at the library. No online transaction fee applies. Staff record the payment in Transactions.</p></details>
+          </div>
+          <div className="min-w-0">
+            {quote ? <PaymentSummary payment={quote}/> : <div role="status" className="payment-summary payment-muted">{validAmount ? 'Calculating your payment…' : 'Enter an amount to see your total.'}</div>}
+            {selected ? <details className="payment-optional mt-2"><summary>Payment limits<ChevronDown size={14}/></summary><p>Total including fees: {paymentMoney(selected.minTotalCentavos)} to {paymentMoney(selected.maxTotalCentavos)}.</p></details> : null}
+            {error ? <div role="alert" className="payment-error mt-3"><p>{error}</p><button type="button" disabled={busy} className="mt-2 min-h-11 font-semibold underline" onClick={() => setRetry(value => value + 1)}>Try again</button></div> : null}
+          </div>
+        </div>
+      </div>
+      <footer className="payment-dialog-footer"><PaymentTrustNote/><Button className="payment-button" disabled={!quote || busy || !validAmount} onClick={() => channel === 'GCASH' && options.demoWalletEnabled ? quote && openWalletPayment(quote) : void checkout()}>{channel === 'QRPH' ? <QrCode size={18} aria-hidden="true"/> : <CreditCard size={18} aria-hidden="true"/>}{busy ? 'Opening secure checkout…' : channel === 'QRPH' ? 'Continue to QR payment' : options.demoWalletEnabled ? 'Continue with GCash' : 'Continue to Xendit'}<ArrowRight size={17} aria-hidden="true"/></Button></footer>
     </div>
   </dialog>
 }
 
-export function PaymentAction({kind,targetId,title,onUpdated,allowNew=true,refreshKey=0}:{kind:PaymentKind;targetId:number;title:string;onUpdated?:()=>void;allowNew?:boolean;refreshKey?:number}) {
-  const [options,setOptions]=useState<PaymentOptions|null>(null),[error,setError]=useState(''),[open,setOpen]=useState(false),[cash,setCash]=useState(false)
-  const [payment,setPayment]=useState<Payment|null>(null)
-  const load=useCallback(async()=>{try{const next=await paymentsApi.options(kind,targetId);setOptions(next);setPayment(next.active);setError('')}catch(error){setError(message(error))}},[kind,targetId])
-  useEffect(()=>{let mounted=true;void paymentsApi.options(kind,targetId).then(next=>{if(mounted){setOptions(next);setPayment(next.active);setError('')}}).catch(error=>{if(mounted)setError(message(error))});return()=>{mounted=false}},[kind,targetId,refreshKey])
-  const closed=payment&&['Succeeded','Expired','Cancelled'].includes(payment.state)
-  const canStart=allowNew&&!(payment?.state==='Succeeded'&&payment.remainingCentavos===0)
-  function changed(next:Payment){setPayment(next);if(['Succeeded','Expired','Cancelled'].includes(next.state)){
-    setOptions(null);void paymentsApi.options(kind,targetId).then(setOptions).catch(error=>setError(message(error)))
-  }}
-  return <div className="mt-3 min-w-0 space-y-3">
-    {payment?<PaymentStatusPanel payment={payment} onChange={changed} onUpdated={onUpdated}/>:null}
-    {canStart&&(!payment||closed)?<div className="flex flex-wrap gap-2">
-      {options?.enabled&&options.paymentAllowed&&options.methods.length?<Button className="min-h-12" onClick={()=>setOpen(true)}><CreditCard size={17}/>Pay now</Button>:null}
-      <Button variant="secondary" className="min-h-11" onClick={()=>setCash(value=>!value)}>Pay cash at library</Button>
-      {closed?<Button variant="ghost" className="min-h-11" onClick={()=>void load()}>Review remaining balance</Button>:null}
-    </div>:null}
-    {cash?<p role="status" className="rounded-xl bg-blue-50 p-3 text-sm text-blue-950 dark:bg-white/10 dark:text-white">Bring your school ID and pay authorized library personnel. No online transaction fee. Your payment record appears after cash is recorded.</p>:null}
-    {error?<div className="text-sm"><p role="alert" className="auth-error rounded-lg p-3">{error}</p><button type="button" className="min-h-11 font-semibold underline" onClick={()=>void load()}>Retry payment options</button></div>:null}
-    {open&&options?<PaymentReview kind={kind} targetId={targetId} title={title} options={options} onClose={()=>setOpen(false)} onPayment={payment=>{setPayment(payment);setOpen(false)}}/>:null}
+export function PaymentAction({ kind, targetId, title, onUpdated, allowNew = true, refreshKey = 0 }: { kind: PaymentKind; targetId: number; title: string; onUpdated?: () => void; allowNew?: boolean; refreshKey?: number }) {
+  const [options, setOptions] = useState<PaymentOptions | null>(null), [error, setError] = useState(''), [open, setOpen] = useState(false)
+  const [payment, setPayment] = useState<Payment | null>(null)
+  const load = useCallback(async () => { try { const next = await paymentsApi.options(kind, targetId); setOptions(next); setPayment(next.active); setError('') } catch (error) { setError(message(error)) } }, [kind, targetId])
+  useEffect(() => { let mounted = true; void paymentsApi.options(kind, targetId).then(next => { if (mounted) { setOptions(next); setPayment(next.active); setError('') } }).catch(error => { if (mounted) setError(message(error)) }); return () => { mounted = false } }, [kind, targetId, refreshKey])
+  const closed = payment && ['Succeeded', 'Expired', 'Cancelled'].includes(payment.state)
+  const canStart = allowNew && options?.paymentAllowed !== false && options?.balanceCentavos !== 0 && !(payment?.state === 'Succeeded' && payment.remainingCentavos === 0)
+  function changed(next: Payment) { setPayment(next); if (['Succeeded', 'Expired', 'Cancelled'].includes(next.state)) { setOptions(null); void paymentsApi.options(kind, targetId).then(setOptions).catch(error => setError(message(error))) } }
+  return <div className="payment-ui mt-3 min-w-0 space-y-3">
+    {payment ? <PaymentStatusPanel payment={payment} onChange={changed} onUpdated={onUpdated}/> : null}
+    {canStart && (!payment || closed) ? <div className="flex flex-wrap gap-2"><Button className="payment-button" disabled={!options} onClick={() => setOpen(true)}><CreditCard size={17} aria-hidden="true"/>Pay</Button>{closed ? <Button variant="ghost" className="payment-button" onClick={() => void load()}>Review remaining balance</Button> : null}</div> : null}
+    {error ? <div className="text-sm"><p role="alert" className="payment-error">{error}</p><button type="button" className="min-h-11 font-semibold underline" onClick={() => void load()}>Retry payment options</button></div> : null}
+    {open && options?.enabled && options.paymentAllowed && options.methods.length ? <PaymentReview kind={kind} targetId={targetId} title={title} options={options} onClose={() => setOpen(false)} onPayment={payment => { setPayment(payment); setOpen(false) }}/> : null}
+    {open && options && (!options.enabled || !options.paymentAllowed || !options.methods.length) ? <OnsitePaymentInfo onClose={() => setOpen(false)}/> : null}
   </div>
+}
+
+function OnsitePaymentInfo({ onClose }: { onClose: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null)
+  useEffect(() => { const element = dialog.current; if (element?.showModal) element.showModal(); else element?.setAttribute('open', ''); return () => element?.close?.() }, [])
+  return <dialog ref={dialog} aria-label="Payment options" onCancel={onClose} className="payment-ui payment-dialog max-w-md"><div className="p-6"><span className="payment-service-icon mb-4"><Wallet size={22} aria-hidden="true"/></span><h2 className="text-xl font-bold">Pay at the library</h2><p className="payment-muted mt-3 text-sm leading-7">Online checkout is not available for this charge. Bring your school ID and ask library staff to review the bill.</p><p className="payment-muted mt-3 text-sm leading-7">No online transaction fee. After staff confirm your payment, the record appears in Transactions.</p><Button className="payment-button mt-5 w-full" onClick={onClose}>Close</Button></div></dialog>
 }

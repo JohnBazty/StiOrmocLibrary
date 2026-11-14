@@ -12,15 +12,48 @@ This guide explains how to prepare a Windows development computer, run and test 
 
 ## Contents
 
+**November 13 local update:** Payment review now opens a dedicated library-branded
+wallet page with assigned number, PIN and final review steps before Xendit's approval
+screen. Tab switching preserves entered fields. Assigned PINs never confirm payment
+and do not authenticate real GCash wallets. Admin **Library funds** combines bank actions and activity
+in one screen, with cash separate from withdrawable funds. This update is local
+only. See the [wallet page and tab-switch repair](docs/plans/2026-11-13-dedicated-wallet-payment.md)
+and [provider integration record](docs/plans/2026-11-13-demo-wallet-and-library-funds.md).
+
 **Latest local app:** from
 `C:\Users\JOHN\Documents\SSL\StiOrmocLibrary-main-sync`, run
 `npm run dev` and open `http://localhost:5173`. The same application contains the
 latest payment features and reads the existing school database configuration.
 `dev:stable` and `dev:payments` start this same app too; they do not switch to
-sample records. Online checkout remains disabled until its real-data activation
-is separately reviewed. Automated isolated payment QA is available as
+sample records. When the existing ignored `apps/api/.env.xendit-sandbox` is
+present, the local launcher enables Xendit Test checkout beside eligible bills.
+It reads the school database but keeps test attempts in ignored local output;
+real school balances, clearance and receipts never change from these tests.
+The settlement gateway remains disabled. See the
+[Test checkout record](docs/plans/2026-11-12-transactions-and-inline-pay.md).
+Automated isolated payment QA is available as
 `npm run qa:payments` and does not replace the normal application. See the
 [integration record](docs/plans/2026-11-11-local-payment-integration.md).
+
+Local refund/withdrawal work adds **Online payments → Refund payment** and the
+Admin **Library funds** page. A disposable Xendit development capture/refund passed;
+school financial records remain unchanged. Withdrawals require a verified school
+bank and confirmed provider transfer fee. For local development, the owner approved
+and configured a Xendit sample bank and a PHP 5 sample transfer fee.
+See the [implementation and remaining setup](docs/plans/2026-11-12-refunds-withdrawals-and-voids.md).
+
+**Local Library funds:** Withdraw funds now creates a Xendit development payout to
+the approved sample school-bank destination. The page checks provider status on
+open, Refresh, focus and every ten seconds while a recent/pending transfer needs
+updates. Status, open details and available funds update from verified provider
+results. Both actual development success and failure checks passed with synthetic
+recipients. Confirmed bank additions now increase the withdrawal allowance while
+remaining separate from student collections. Cash and unconfirmed additions are
+excluded. Xendit's available balance remains a hard limit: adding a local practice
+entry does not create an actual bank deposit or increase the provider's cash balance.
+Earlier local withdrawals are preserved and labeled as local records, without
+claiming or replaying a provider transfer. No real bank money moves. See
+[practice bank transfers](docs/plans/2026-11-12-library-funds-practice-transfers.md).
 
 1. [System overview](#system-overview)
 2. [Prerequisites](#prerequisites)

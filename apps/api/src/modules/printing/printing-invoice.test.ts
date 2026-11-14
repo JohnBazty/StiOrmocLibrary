@@ -11,3 +11,7 @@ test('invoice shows a bill before payment and no amount due after confirmed paym
 test('invalid charges cannot become printable bills', () => {
   for (const amount of [-1, 'bad', Infinity]) assert.throws(() => invoiceAmounts(amount, 'Unpaid', 'Pending'), /staff review/)
 })
+test('refund invoices retain explicit pending/refunded state and do not ask for another payment',()=>{
+  assert.deepEqual(invoiceAmounts(5,'Refund pending','Pending'),{total:5,amountDue:0,status:'Refund pending'})
+  assert.deepEqual(invoiceAmounts(5,'Refunded','Cancelled'),{total:5,amountDue:0,status:'Refunded'})
+})

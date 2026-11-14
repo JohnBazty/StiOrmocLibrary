@@ -6,7 +6,7 @@ export function DeviceSwitchPrompt({ busy, onConfirm, onCancel }: {
   onCancel: () => void
 }) {
   const heading = useRef<HTMLHeadingElement>(null)
-  useEffect(() => { heading.current?.focus() }, [])
+  useEffect(() => { heading.current?.focus({ preventScroll: true }) }, [])
   return (
     <section aria-labelledby="device-switch-heading" className="mt-7 space-y-4">
       <h2 id="device-switch-heading" tabIndex={-1} ref={heading} className="text-lg font-bold">This account is signed in on another device.</h2>

@@ -6,6 +6,7 @@ import { RouteErrorBoundary } from './components/RouteErrorBoundary'
 const ChangePasswordPage = lazy(() => import('./features/auth/ChangePasswordPage').then(m => ({ default: m.ChangePasswordPage })))
 const PaymentResultPage = lazy(() => import('./features/payments/PaymentResultPage').then(m => ({ default: m.PaymentResultPage })))
 const AdminPaymentsPage = lazy(() => import('./features/payments/AdminPaymentsPage').then(m => ({ default: m.AdminPaymentsPage })))
+const LibraryFundsPage = lazy(() => import('./features/payments/LibraryFundsPage').then(m => ({ default: m.LibraryFundsPage })))
 const UserPaymentsPage = lazy(() => import('./features/payments/UserPaymentsPage').then(m => ({ default: m.UserPaymentsPage })))
 
 // Lazy-loaded pages - route-level code splitting
@@ -29,6 +30,7 @@ const ProtectedRoute = lazy(() => import('./features/auth/ProtectedRoute').then(
 const LoginPage = lazy(() => import('./features/auth/LoginPage').then(m => ({ default: m.LoginPage })))
 const RegistrationPage = lazy(() => import('./features/auth/RegistrationPage').then(m => ({ default: m.RegistrationPage })))
 const PublicAuthLayout = lazy(() => import('./features/auth/PublicAuthLayout').then(m => ({ default: m.PublicAuthLayout })))
+const PaymentWalletPage = lazy(() => import('./features/payments/PaymentWalletPage').then(m => ({ default: m.PaymentWalletPage })))
 const AdminLoginPage = lazy(() => import('./features/auth/AdminLoginPage').then(m => ({ default: m.AdminLoginPage })))
 const PasswordRecoveryPage = lazy(() => import('./features/auth/PasswordRecoveryPage').then(m => ({ default: m.PasswordRecoveryPage })))
 const LibrarianNotificationsPage = lazy(() => import('./features/notifications/LibrarianNotificationsPage').then(m => ({ default: m.LibrarianNotificationsPage })))
@@ -53,7 +55,6 @@ const StudentClearancePage = lazy(() => import('./features/clearance/StudentClea
 const AdminClearancePage = lazy(() => import('./features/clearance/AdminClearancePage').then(m => ({ default: m.AdminClearancePage })))
 const AdminFinesPage = lazy(() => import('./features/fines/AdminFinesPage').then(m => ({ default: m.AdminFinesPage })))
 const StudentFinesPage = lazy(() => import('./features/fines/StudentFinesPage').then(m => ({ default: m.StudentFinesPage })))
-const PublicCatalogPage = lazy(() => import('./features/catalog/PublicCatalogPage').then(m => ({ default: m.PublicCatalogPage })))
 const BorrowingPoliciesArchivedPage = lazy(() => import('./features/borrowing-policies/BorrowingPoliciesArchivedPage').then(m => ({ default: m.BorrowingPoliciesArchivedPage })))
 const CatalogMaintenancePage = lazy(() => import('./features/catalog/CatalogMaintenancePage').then(m => ({ default: m.CatalogMaintenancePage })))
 const CatalogReportsPage = lazy(() => import('./features/catalog/CatalogReportsPage').then(m => ({ default: m.CatalogReportsPage })))
@@ -73,9 +74,9 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<AppLayout><PublicCatalogPage restoreDevice /></AppLayout>} />
       <Route path="/workspace" element={<AppLayout><AuthenticatedHome /></AppLayout>} />
       <Route element={<AppLayout><PublicAuthLayout /></AppLayout>}>
+        <Route path="/" element={null} />
         <Route path="/login" element={<AppLayout><LoginPage popup /></AppLayout>} />
         <Route path="/register" element={<AppLayout><RegistrationPage popup /></AppLayout>} />
       </Route>
@@ -85,12 +86,14 @@ export default function App() {
       <Route path="/change-password" element={<AppLayout><ChangePasswordPage /></AppLayout>} />
       <Route element={<AppLayout><ProtectedRoute roles={['Student', 'Faculty']} /></AppLayout>}>
         <Route path="/payments/result" element={<AppLayout><PaymentResultPage /></AppLayout>} />
+        <Route path="/payments/wallet" element={<AppLayout><PaymentWalletPage /></AppLayout>} />
       </Route>
 
       <Route element={<AppLayout><ProtectedRoute roles={['Student']} /></AppLayout>}>
         <Route element={<AppLayout><PortalLayout role="student" /></AppLayout>}>
           <Route path="/student/dashboard" element={<AppLayout><UserDashboardPage /></AppLayout>} />
-          <Route path="/student/payments" element={<AppLayout><UserPaymentsPage /></AppLayout>} />
+          <Route path="/student/transactions" element={<AppLayout><UserPaymentsPage /></AppLayout>} />
+          <Route path="/student/payments" element={<Navigate to="/student/transactions" replace />} />
           <Route path="/student/catalog" element={<AppLayout><LegacyCatalogRedirect /></AppLayout>} />
           <Route path="/student/library" element={<AppLayout><BookCatalog /></AppLayout>} />
           <Route path="/student/floor-plan" element={<AppLayout><FloorPlanImagePage /></AppLayout>} />
@@ -124,6 +127,7 @@ export default function App() {
         <Route element={<AppLayout><PortalLayout role="librarian" /></AppLayout>}>
           <Route path="/librarian/dashboard" element={<AppLayout><AdminDashboardPage /></AppLayout>} />
           <Route path="/librarian/payments" element={<AppLayout><AdminPaymentsPage /></AppLayout>} />
+          <Route path="/librarian/funds" element={<AppLayout><LibraryFundsPage /></AppLayout>} />
           <Route path="/librarian/accounts" element={<AppLayout><AdminAccountDashboardPage /></AppLayout>} />
           <Route path="/librarian/users" element={<AppLayout><AdminUsersPage /></AppLayout>} />
           <Route path="/librarian/users/enrollment" element={<AppLayout><EnrollmentPage /></AppLayout>} />
@@ -166,7 +170,9 @@ export default function App() {
       <Route element={<AppLayout><ProtectedRoute roles={['Faculty']} /></AppLayout>}>
         <Route element={<AppLayout><PortalLayout role="faculty" /></AppLayout>}>
           <Route path="/faculty/dashboard" element={<AppLayout><UserDashboardPage /></AppLayout>} />
-          <Route path="/faculty/payments" element={<AppLayout><UserPaymentsPage /></AppLayout>} />
+          <Route path="/faculty/transactions" element={<AppLayout><UserPaymentsPage /></AppLayout>} />
+          <Route path="/faculty/printing" element={<AppLayout><StudentPrintingPage /></AppLayout>} />
+          <Route path="/faculty/payments" element={<Navigate to="/faculty/transactions" replace />} />
           <Route path="/faculty/catalog" element={<AppLayout><LegacyCatalogRedirect /></AppLayout>} />
           <Route path="/faculty/library" element={<AppLayout><BookCatalog /></AppLayout>} />
           <Route path="/faculty/floor-plan" element={<AppLayout><FloorPlanImagePage /></AppLayout>} />

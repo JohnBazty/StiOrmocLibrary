@@ -7,6 +7,10 @@ import { readXenditSandboxConfig } from './xendit-sandbox.ts'
 // the same API environment file consistently.
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)), quiet: true })
 
+// Vercel reserves the TZ project variable. Normalize Node's business-calendar
+// reads here; stored instants and job lease durations remain unchanged.
+process.env.TZ = 'Asia/Manila'
+
 const isProduction = process.env.NODE_ENV === 'production'
 const configuredSecret = process.env.SESSION_SECRET?.trim()
 const configuredJwtSecret = process.env.JWT_SECRET?.trim()

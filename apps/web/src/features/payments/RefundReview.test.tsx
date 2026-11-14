@@ -1,0 +1,96 @@
+import { cleanup,fireEvent,render,screen,waitFor } from '@testing-library/react'
+import { afterEach,expect,it,vi } from 'vitest'
+import { RefundReview,RefundTimeline,DestinationForm } from './RefundReview'
+import type { Payment } from './payments-api'
+const api=vi.hoisted(()=>({options:vi.fn(),refund:vi.fn(),confirm:vi.fn(),cancel:vi.fn(),beneficiary:vi.fn()}))
+vi.mock('./money-out-api',async original=>({...await original<typeof import('./money-out-api')>(),moneyOutApi:api}))
+afterEach(()=>{cleanup();vi.clearAllMocks()})
+const payment={paymentId:'00000000-0000-4000-8000-000000000001',kind:'Fine',state:'Succeeded',principalCentavos:10000,feeCentavos:201,description:'Library fine'} as Payment
+const options={principalCentavos:10000,feeCentavos:201,refundableCentavos:10000,channel:'GCASH',kind:'Fine',eligible:true,enabled:true,beneficiaries:[],refunds:[]}
+const draft={id:'draft-1',type:'Refund',state:'Draft',reference:'REF-123',principalCentavos:5000,feeCentavos:101,totalCentavos:5101,decision:'Restore',destination:null,events:[]}
+it('requires an explicit charge choice, reviews server fee, and confirms one saved refund',async()=>{
+  api.options.mockResolvedValue(options);api.refund.mockResolvedValue(draft);api.confirm.mockResolvedValue({...draft,state:'Processing'})
+  render(<RefundReview payment={payment} onClose={()=>{}} onSaved={()=>{}}/>)
+  const review=await screen.findByRole('button',{name:'Review refund'})
+  expect(review.hasAttribute('disabled')).toBe(true)
+  fireEvent.click(screen.getByLabelText('Part of the payment'))
+  fireEvent.change(screen.getByLabelText('Amount in pesos'),{target:{value:'50'}})
+  fireEvent.change(screen.getByLabelText('What happens to the refunded charge?'),{target:{value:'Restore'}})
+  fireEvent.change(screen.getByLabelText('Reason'),{target:{value:'Duplicate payment requested'}})
+  fireEvent.click(review);fireEvent.click(review)
+  await screen.findByText('Review before sending')
+  expect(api.refund).toHaveBeenCalledTimes(1)
+  expect(api.refund.mock.calls[0][1]).toMatchObject({amount:'50',decision:'Restore'})
+  expect(screen.getByText('₱51.01')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button',{name:'Confirm refund'}))
+  expect(await screen.findByText(/The refund is being processed/)).toBeTruthy()
+  expect(api.confirm).toHaveBeenCalledWith('draft-1')
+})
+it('a job already printing cannot open a refund review',async()=>{
+  api.options.mockResolvedValue({...options,eligible:false,kind:'Printing'})
+  render(<RefundReview payment={{...payment,kind:'Printing'}} onClose={()=>{}} onSaved={()=>{}}/>)
+  expect(await screen.findByRole('alert')).toBeTruthy()
+  fireEvent.change(screen.getByLabelText('Reason'),{target:{value:'Requested cancellation'}})
+  expect(screen.getByRole('button',{name:'Review refund'}).hasAttribute('disabled')).toBe(true)
+  expect(api.refund).not.toHaveBeenCalled()
+})
+it('provider access missing allows review but disables sending without hiding the reason',async()=>{
+  api.options.mockResolvedValue({...options,enabled:false});api.refund.mockResolvedValue(draft)
+  render(<RefundReview payment={payment} onClose={()=>{}} onSaved={()=>{}}/>)
+  await screen.findByText(/Provider refund access must be configured/)
+  fireEvent.change(screen.getByLabelText('What happens to the refunded charge?'),{target:{value:'Cancel'}})
+  fireEvent.change(screen.getByLabelText('Reason'),{target:{value:'Incorrect charge assessed'}})
+  fireEvent.click(screen.getByRole('button',{name:'Review refund'}))
+  expect((await screen.findByRole('button',{name:'Confirm refund'})).hasAttribute('disabled')).toBe(true)
+  expect(api.confirm).not.toHaveBeenCalled()
+})
+it('closing an unsent review releases its reservation before dismissing the dialog',async()=>{
+  api.options.mockResolvedValue(options);api.refund.mockResolvedValue(draft);api.cancel.mockResolvedValue({})
+  const close=vi.fn()
+  render(<RefundReview payment={payment} onClose={close} onSaved={()=>{}}/>)
+  await screen.findByRole('button',{name:'Review refund'})
+  fireEvent.change(screen.getByLabelText('What happens to the refunded charge?'),{target:{value:'Restore'}})
+  fireEvent.change(screen.getByLabelText('Reason'),{target:{value:'Requested refund review'}})
+  fireEvent.click(screen.getByRole('button',{name:'Review refund'}));await screen.findByText('Review before sending')
+  fireEvent.click(screen.getByRole('button',{name:'Close'}));await waitFor(()=>expect(close).toHaveBeenCalledOnce())
+  expect(api.cancel).toHaveBeenCalledWith('draft-1')
+})
+it('pending history keeps payment applied and completed history shows fee and charge decision',()=>{
+  render(<RefundTimeline rows={[{...draft,id:'pending',state:'Processing',createdAt:'2026-11-12T00:00:00Z'} as never,{...draft,id:'done',state:'Succeeded',decision:'Cancel',createdAt:'2026-11-12T00:00:00Z'} as never]}/>)
+  expect(screen.getByText(/The original payment stays applied/)).toBeTruthy()
+  expect(screen.getByText('Refunded')).toBeTruthy()
+  expect(screen.getByText(/charge is cancelled after confirmation/)).toBeTruthy()
+})
+it('school destination needs verification and a review before saving',()=>{
+  render(<DestinationForm onSaved={()=>{}} onCancel={()=>{}}/>)
+  expect(screen.getByRole('button',{name:'Review destination'}).hasAttribute('disabled')).toBe(true)
+  expect(screen.getByText(/Personal accounts and wallets/)).toBeTruthy()
+  expect(api.beneficiary).not.toHaveBeenCalled()
+})
+it('an open refund updates from processing to confirmed history without another submission',async()=>{
+  api.options.mockResolvedValue(options);api.refund.mockResolvedValue(draft);api.confirm.mockResolvedValue({...draft,state:'Processing',events:[]})
+  const props={onClose:()=>{},onSaved:()=>{}}
+  const view=render(<RefundReview payment={payment} {...props}/> )
+  await screen.findByRole('button',{name:'Review refund'})
+  fireEvent.change(screen.getByLabelText('What happens to the refunded charge?'),{target:{value:'Restore'}})
+  fireEvent.change(screen.getByLabelText('Reason'),{target:{value:'Requested payment return'}})
+  fireEvent.click(screen.getByRole('button',{name:'Review refund'}))
+  fireEvent.click(await screen.findByRole('button',{name:'Confirm refund'}))
+  await screen.findByText('Processing')
+  view.rerender(<RefundReview payment={{...payment,refunds:[{...draft,state:'Succeeded',events:[{at:'2026-11-12T00:00:00Z',state:'Succeeded',code:'SUCCEEDED'}]} as never]}} {...props}/> )
+  expect(await screen.findByText('Refunded')).toBeTruthy()
+  expect(screen.queryByRole('button',{name:'Confirm refund'})).toBeNull()
+  expect(api.confirm).toHaveBeenCalledTimes(1)
+})
+it('an open printing-refund form becomes blocked when printing starts in another view',async()=>{
+  api.options.mockResolvedValue({...options,kind:'Printing'})
+  const props={onClose:()=>{},onSaved:()=>{}}
+  const printing={...payment,kind:'Printing' as const,refundEligible:true}
+  const view=render(<RefundReview payment={printing} {...props}/> )
+  await screen.findByRole('button',{name:'Review refund'})
+  fireEvent.change(screen.getByLabelText('Reason'),{target:{value:'Cancel before printing starts'}})
+  view.rerender(<RefundReview payment={{...printing,refundEligible:false}} {...props}/> )
+  expect(screen.getByRole('button',{name:'Review refund'}).hasAttribute('disabled')).toBe(true)
+  expect(screen.getByRole('alert').textContent).toContain('already started')
+  expect(api.refund).not.toHaveBeenCalled()
+})

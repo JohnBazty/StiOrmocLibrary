@@ -31,7 +31,7 @@ export function parseQueueFilters(query: Record<string, unknown>): QueueFilters 
   const status = String(query.status ?? '')
   const payment = String(query.payment_status ?? '')
   if (status && !['Pending','Printing','Ready for Pickup','Completed','Cancelled'].includes(status)) throw new HttpError(422, 'PRINT_STATUS_INVALID', 'Choose a valid print status.')
-  if (payment && !['Unpaid','Paid'].includes(payment)) throw new HttpError(422, 'PAYMENT_STATUS_INVALID', 'Choose a valid cash payment status.')
+  if (payment && !['Unpaid','Paid','Refund pending','Refunded'].includes(payment)) throw new HttpError(422, 'PAYMENT_STATUS_INVALID', 'Choose a valid payment status.')
   const page = Math.max(1, Number.parseInt(String(query.page ?? '1'), 10) || 1)
   const limit = Math.min(100, Math.max(1, Number.parseInt(String(query.limit ?? '25'), 10) || 25))
   return { q: String(query.q ?? '').trim().slice(0, 150), status, payment, page, limit }

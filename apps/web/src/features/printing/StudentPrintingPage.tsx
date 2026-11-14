@@ -1,11 +1,14 @@
+import {Link} from 'react-router-dom'
+import {getCurrentIdentity} from '../auth/auth-storage'
 import { PrintingInvoice } from './PrintingInvoice'
 import { PaymentAction } from '../payments/PaymentAction'
-import { CheckCircle2, Download, Eye, FileText, ReceiptText, RefreshCw, Upload } from 'lucide-react'
+import {paymentsApi} from '../payments/payments-api'
+import {paymentResultPath} from '../payments/payment-navigation'
+import { CheckCircle2, FileText, RefreshCw, Upload } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { SelectedFilePreview } from '../../components/SelectedFilePreview'
 import { Button, PageHeader, SectionCard, StatusBadge } from '../../components/ui'
-import { printingApi, type PrintQuote, type PrintRequest, type PrintingReceipt, type ServiceStatus } from './printing-api'
-import { PrintingReceiptModal } from './PrintingReceiptModal'
+import { printingApi, type PrintQuote, type PrintRequest, type ServiceStatus } from './printing-api'
 
 const field='mt-1.5 h-14 w-full rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] px-4 text-sm font-normal text-[#0b5ea2] outline-none focus:border-[#0b5ea2]'
 function validQuantity(value:string,max:number){const count=Number(value);return Number.isInteger(count)&&count>=1&&count<=max?count:0}
@@ -13,7 +16,9 @@ function validQuantity(value:string,max:number){const count=Number(value);return
 export function StudentPrintingPage(){
   const [service,setService]=useState<ServiceStatus|null>(null)
   const [requests,setRequests]=useState<PrintRequest[]>([])
-  const [receipts,setReceipts]=useState<PrintingReceipt[]>([]),[selectedReceipt,setSelectedReceipt]=useState<PrintingReceipt|null>(null)
+  const [paymentVersion,setPaymentVersion]=useState(0)
+  const refreshFlight=useRef<Promise<void>|null>(null)
+  const prefix=getCurrentIdentity()?.role==='Faculty'?'/faculty':'/student'
   const [file,setFile]=useState<File|null>(null)
   const fileInput=useRef<HTMLInputElement>(null)
   const clearFile=()=>{setFile(null);setQuoteState(null);if(fileInput.current)fileInput.current.value=''}
@@ -21,7 +26,7 @@ export function StudentPrintingPage(){
   const [type,setType]=useState<'Monochrome'|'Colored'>('Monochrome')
   const [paper,setPaper]=useState<'Short'|'A4'|'Long'>('A4')
   const [notes,setNotes]=useState('')
-  const [loading,setLoading]=useState(true),[submitting,setSubmitting]=useState(false),[downloading,setDownloading]=useState(false)
+  const [loading,setLoading]=useState(true),[submitting,setSubmitting]=useState(false)
   const [error,setError]=useState(''),[success,setSuccess]=useState('')
   const [quoteState,setQuoteState]=useState<{file:File;copies:string;type:string;paper:string;quote:PrintQuote}|null>(null),[quoteError,setQuoteError]=useState(''),[quoting,setQuoting]=useState(false)
   const [quoteAttempt,setQuoteAttempt]=useState(0)
@@ -29,17 +34,20 @@ export function StudentPrintingPage(){
   const quote=quoteState?.file===file&&quoteState.copies===copies&&quoteState.type===type&&quoteState.paper===paper?quoteState.quote:null
   const pageCount=quoteState?.file===file?quoteState.quote.page_count:null
 
-  const load=async()=>{
-    setLoading(true);setError('');setService(null)
-    const results=await Promise.allSettled([
-      printingApi.serviceStatus().then(setService),
-      printingApi.mine().then(setRequests).catch(e=>{setRequests([]);throw e}),
-      printingApi.receipts().then(setReceipts).catch(e=>{setReceipts([]);throw e}),
-    ])
-    const messages=results.flatMap(result=>result.status==='rejected'?[result.reason instanceof Error?result.reason.message:'Unable to load printing service.']:[])
-    setError([...new Set(messages)].join(' '));setLoading(false)
+  const load=()=>{
+    if(refreshFlight.current)return refreshFlight.current
+    refreshFlight.current=(async()=>{
+      setError('')
+      const results=await Promise.allSettled([
+        printingApi.serviceStatus().then(setService),
+        paymentsApi.sync().catch(()=>undefined).then(()=>printingApi.mine()).then(rows=>{setRequests(rows);setPaymentVersion(value=>value+1)}),
+      ])
+      const messages=results.flatMap(result=>result.status==='rejected'?[result.reason instanceof Error?result.reason.message:'Unable to load printing service.']:[])
+      setError([...new Set(messages)].join(' '));setLoading(false)
+    })().finally(()=>{refreshFlight.current=null})
+    return refreshFlight.current
   }
-  useEffect(()=>{void load()},[])
+  useEffect(()=>{void load();const refresh=()=>{if(!document.hidden)void load()};window.addEventListener('focus',refresh);return()=>window.removeEventListener('focus',refresh)},[])
   useEffect(()=>{
     setQuoteError('');setQuoting(false)
     if(!file){setQuoteState(null);return}
@@ -51,7 +59,6 @@ export function StudentPrintingPage(){
   },[file,copies,type,paper,quoteAttempt])
   const submit=async(event:FormEvent)=>{event.preventDefault();if(!file){setError('Select a PDF or DOCX document.');return}const copyCount=validQuantity(copies,100);if(!copyCount){setError('Enter a whole number from 1 to 100 copies.');return}if(!quote||quoting){setError('Wait for the page count and price before submitting.');return}setSubmitting(true);setError('');setSuccess('');try{const form=new FormData();form.set('document',file);form.set('number_of_copies',String(copyCount));form.set('page_count',String(quote.page_count));form.set('document_sha256',quote.document_sha256);form.set('quoted_cost',String(quote.calculated_cost));form.set('print_type',type);form.set('paper_size',paper);form.set('optional_notes',notes);await printingApi.submit(form);clearFile();setNotes('');setSuccess('Request submitted. Review payment options below before printing starts.');await load()}catch(e){setError(e instanceof Error?e.message:'Unable to submit print request.')}finally{setSubmitting(false)}}
   const cancel=async(id:number)=>{setError('');try{await printingApi.cancel(id);await load()}catch(e){setError(e instanceof Error?e.message:'Unable to cancel request.')}}
-  const downloadReceipt=async(receipt:PrintingReceipt)=>{setDownloading(true);setError('');try{await printingApi.downloadReceipt(receipt)}catch(e){setError(e instanceof Error?e.message:'Unable to download the printing payment record.')}finally{setDownloading(false)}}
 
   return <>
     <PageHeader eyebrow="Online service" title="Printing service" action={<Button variant="secondary" onClick={()=>{void load();setQuoteAttempt(value=>value+1)}}><RefreshCw size={15}/>Refresh</Button>}/>
@@ -73,9 +80,8 @@ export function StudentPrintingPage(){
           <Button className="w-full" type="submit" disabled={submitting||!accepting||!quote||quoting||!validQuantity(copies,100)}><Upload size={16}/>{submitting?'Submitting…':'Submit print request'}</Button>
         </form>
       </SectionCard>
-      <SectionCard className="overflow-hidden"><div className="border-b border-[#0b5ea2]/15 p-5"><h2 className="font-bold text-[#0b5ea2]">My print requests</h2></div><div className="divide-y divide-[#0b5ea2]/10">{loading?<p className="p-10 text-center text-[#0b5ea2]">Loading requests…</p>:requests.length===0?<p className="p-10 text-center font-semibold text-[#0b5ea2]">No print requests yet.</p>:requests.map(r=><div key={r.request_id} className="p-5"><PrintingInvoice request={r} /><div className="flex flex-col gap-3 sm:flex-row sm:items-center"><span className="rounded-xl bg-[#0b5ea2]/5 p-3 text-[#0b5ea2]"><FileText size={20}/></span><div className="min-w-0 flex-1"><p className="truncate font-bold text-[#0b5ea2]">{r.file_name}</p><p className="mt-1 text-xs text-[#0b5ea2]/65">{r.page_count} pages · {r.number_of_copies} copies · {r.print_type} · {r.paper_size}</p></div><div className="flex items-center gap-2"><StatusBadge status={r.payment_status}/><StatusBadge status={r.job_status}/></div></div><div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="font-bold text-[#0b5ea2]">₱{Number(r.calculated_cost).toFixed(2)}</p><div className="flex gap-2">{r.print_receipt_id&&<Button variant="secondary" onClick={()=>{const receipt=receipts.find(item=>item.print_receipt_id===Number(r.print_receipt_id));if(receipt)setSelectedReceipt(receipt)}}><Eye size={14}/>View payment</Button>}{r.job_status==='Pending'&&r.payment_status==='Unpaid'&&<Button variant="secondary" onClick={()=>void cancel(r.request_id)}>Cancel</Button>}</div></div>{r.payment_status==='Unpaid'&&r.job_status==='Pending'?<PaymentAction kind="Printing" targetId={r.request_id} title={r.file_name} onUpdated={()=>void load()}/>:null}</div>)}</div></SectionCard>
+      <SectionCard className="overflow-hidden"><div className="border-b border-[#0b5ea2]/15 p-5"><h2 className="font-bold text-[#0b5ea2]">My print requests</h2></div><div className="divide-y divide-[#0b5ea2]/10">{loading?<p className="p-10 text-center text-[#0b5ea2]">Loading requests…</p>:requests.length===0?<p className="p-10 text-center font-semibold text-[#0b5ea2]">No print requests yet.</p>:requests.map(r=><div key={r.request_id} className="p-5"><PrintingInvoice request={r} /><div className="flex flex-col gap-3 sm:flex-row sm:items-center"><span className="rounded-xl bg-[#0b5ea2]/5 p-3 text-[#0b5ea2]"><FileText size={20}/></span><div className="min-w-0 flex-1"><p className="truncate font-bold text-[#0b5ea2]">{r.file_name}</p><p className="mt-1 text-xs text-[#0b5ea2]/65">{r.page_count} pages · {r.number_of_copies} copies · {r.print_type} · {r.paper_size}</p></div><div className="flex items-center gap-2"><StatusBadge status={r.payment_status}/><StatusBadge status={r.job_status}/></div></div><div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="font-bold text-[#0b5ea2]">₱{Number(r.calculated_cost).toFixed(2)}</p><div className="flex gap-2">{r.localPaymentId&&<Link className="inline-flex min-h-11 items-center rounded-xl border px-4 text-sm font-semibold" to={paymentResultPath({paymentId:r.localPaymentId})}>View payment</Link>}{r.print_receipt_id&&<Link className="inline-flex min-h-11 items-center rounded-xl border px-4 text-sm font-semibold" to={prefix+'/transactions?search='+encodeURIComponent(r.receipt_number??'')}>View transaction</Link>}{r.job_status==='Pending'&&r.payment_status==='Unpaid'&&<Button variant="secondary" onClick={()=>void cancel(r.request_id)}>Cancel</Button>}</div></div>{r.payment_status==='Unpaid'&&r.job_status==='Pending'?<PaymentAction kind="Printing" targetId={r.request_id} title={r.file_name} refreshKey={paymentVersion} onUpdated={()=>void load()}/>:null}</div>)}</div></SectionCard>
     </div>
-    <SectionCard className="mt-5 overflow-hidden"><div className="flex items-center gap-3 border-b border-[#0b5ea2]/15 p-5"><span className="rounded-xl bg-[#FFF200] p-2 text-[#0b5ea2]"><ReceiptText size={20}/></span><div><h2 className="font-bold text-[#0b5ea2]">Payment records</h2><p className="text-xs text-[#0b5ea2]/65">Your confirmed printing payments appear here, including any online transaction fee.</p></div></div><div className="divide-y divide-[#0b5ea2]/10">{loading?<p className="p-8 text-center text-[#0b5ea2]">Loading payment records…</p>:receipts.length===0?<p className="p-8 text-center font-semibold text-[#0b5ea2]">No printing payment records yet. A record appears after payment is confirmed.</p>:receipts.map(receipt=><div key={receipt.print_receipt_id} className="flex flex-col gap-3 p-5 md:flex-row md:items-center"><span className="rounded-xl bg-[#0b5ea2]/5 p-3 text-[#0b5ea2]"><ReceiptText size={20}/></span><div className="min-w-0 flex-1"><p className="font-bold text-[#0b5ea2]">{receipt.receipt_number}</p><p className="truncate text-sm text-[#0b5ea2]/70">{receipt.file_name}</p><p className="mt-1 text-xs text-[#0b5ea2]/55">Paid {new Date(receipt.received_at).toLocaleString('en-PH',{timeZone:'Asia/Manila'})} · {receipt.payment_method} · Verification {receipt.verification_code}</p></div><strong className="text-lg text-[#0b5ea2]">₱{Number(receipt.total_received??receipt.amount_received).toFixed(2)}</strong><div className="flex gap-2"><Button variant="secondary" onClick={()=>setSelectedReceipt(receipt)}><Eye size={14}/>View payment</Button><Button onClick={()=>void downloadReceipt(receipt)} disabled={downloading}><Download size={14}/>Download</Button></div></div>)}</div></SectionCard>
-    <PrintingReceiptModal receipt={selectedReceipt} onClose={()=>setSelectedReceipt(null)} onDownload={()=>selectedReceipt&&void downloadReceipt(selectedReceipt)} downloading={downloading}/>
+    <p className="mt-5 text-sm opacity-75">Your online and onsite payment records are in <Link className="font-semibold underline" to={prefix+'/transactions'}>Transactions</Link>.</p>
   </>
 }

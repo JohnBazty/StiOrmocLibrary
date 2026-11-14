@@ -1,6 +1,104 @@
 # Database Schema Context
 
+## Demo wallet and funds presentation — 2026-11-13
+
+The guarded local payment preview exposes optional `demoWalletEnabled` and public
+demo fixture pairs in owner-scoped payment options, plus `demoWallet` on payment
+responses. The new authenticated/CSRF-protected demo checkout validates only fixed
+example credentials and reuses the existing hosted-session and captured-payment
+verification. Credentials are not persisted or sent to Xendit. Provider-only
+confirmation still controls local credit. No school account, bill, receipt or
+schema meanings change. Library funds combines existing provider operations and
+local addition history into one view; their original ledgers and provenance stay
+separate. No migration was added or applied (applied 036; next unused 042).
+See [implementation and verification](plans/2026-11-13-demo-wallet-and-library-funds.md).
+
+## Starting a locally online-paid print job — 2026-11-12
+
+The status command now recognizes the same local confirmed online credit displayed
+in the queue. It matches request and borrower, requires net paid principal to cover
+the current cost exactly or in excess, and refuses refund holds/cancellations. The
+queue's Paid projection also checks coverage against the current cost, preventing
+a changed cost from retaining a stale Paid label. An online credit does not mark
+the school payment Paid or generate a cash receipt.
+
+In the guarded local workflow, status changes acquire the existing payment lock
+before the printing transaction/row lock. Refund initiation uses the same order,
+so printing cannot begin between refund validation and saving its reservation.
+The normal status/history/notification transaction still runs only when personnel
+choose Start printing. Operating hours, cash checks and allowed transitions remain.
+No schema or migration changes. See [implementation and checks](plans/2026-11-12-start-online-paid-printing.md).
+
+## Local refund / printing view synchronization — 2026-11-12
+
+Printing payment cards additionally expose `refundEligible`, derived from current
+job state and print-status history. The refund button and open review form block
+when printing has ever begun; later cancellation does not restore eligibility.
+Server review and final submission keep the same authoritative checks. No schema
+change is required for this response field.
+
+The local payment decoration now exposes refund reservation state and the current
+refund lifecycle while retaining the original successful payment. A fully refunded
+payment has zero refundable principal. Pending/review/draft refunds block another
+refund; failed/cancelled requests release the reservation as before.
+
+The Admin printing queue and summary apply local payment/refund projections before
+filters, counts, ordering and pagination. A parameterized Postgres CTE overlays the
+existing print-request record type and joins on both request ID and borrower ID.
+Refund pending blocks cash/printing controls. Confirmed cancellation/refund shows
+Refunded/Cancelled and drops out of active/unpaid counts. Original school rows and
+receipt history remain unchanged. Active jobs use created_at then request_id ascending;
+terminal history follows active jobs. Invoice views/PDFs use the same refund state.
+
+No new columns or tables, and no hosted migration. Current tracker remains applied
+036 / next unused 042. See [implementation and evidence](plans/2026-11-12-refund-printing-status-sync.md).
+
+## Local library funds and practice transfers — 2026-11-12
+
+**Current owner amendment:** The primary withdrawal action now uses the existing
+Xendit development payout ledger (`operations`), not `practiceTransfers`. Status
+checks retrieve and verify the provider payout before updating the record. Payout
+amounts remain integer centavos. For PHP-to-PHP evidence, exact destination amount
+is required; the optional source amount must match when present. Merchant, reference,
+recipient, currencies, purpose and provider ID stay bound to the saved review.
+The primary available balance is capped by provider cash and net confirmed online
+collections plus confirmed bank additions after fees, withdrawals, refunds and
+reservations. Cash and draft/cancelled additions are excluded. Bank additions are
+funding, not collections/revenue, and a local entry does not create an actual
+provider deposit. This eligibility amendment is limited to the existing guarded
+development workflow; real-money funding needs independent deposit verification.
+Old local withdrawal history is retained but new
+local withdrawal creation/confirmation is blocked; local additions remain supported.
+Sample bank and sample fee approvals are flagged separately from actual agreements.
+The page checks status on open/refresh/focus and during bounded visible-page polling;
+the existing durable runner remains the only server recovery job. No callback is
+claimed to reach localhost, and no migration/production change was made.
+
+The following paragraphs describe the initial local practice accounting, retained
+for legacy records and bank additions.
+
+The local Library funds screen now combines confirmed local online collections
+with issued counter cash receipts. Cash totals read the existing fine/printing
+receipt tables, count only Cash/Issued records, and exclude Xendit-source receipts.
+Reversed receipts are excluded. Bank top-ups are funding, not collections.
+
+Optional `practiceTransfers` records extend the existing ignored local money-out
+ledger without changing its version or existing records. They retain actor,
+direction, exact centavos, fixed sample fee, purpose, retry key, review expiry and
+event history. Online-only withdrawals reserve principal plus fee and recheck at
+confirmation under the existing payment lock. Additions do not count until
+confirmed. These practice actions never call the provider or write school bills,
+receipts or clearance. They cannot run outside the localhost preview guard.
+Existing provider-backed transfers remain separately configured. No database
+migration: latest applied 036 and next unused 042 are unchanged. See
+[implementation and checks](plans/2026-11-12-library-funds-practice-transfers.md).
+
 ## Engine note (updated 2026-11-11)
+
+Local-only refund/withdrawal implementation (2026-11-12) uses ignored private
+intents and verified provider results; it adds no hosted tables or migrations.
+School receipt/allocation/clearance data stays unchanged. See
+[implementation evidence and setup gates](plans/2026-11-12-refunds-withdrawals-and-voids.md).
 
 The API runs on Supabase PostgreSQL only (`DATABASE_URL`, `pg`). MySQL was retired on 2026-11-10; see [mysql-removal-plan.md](mysql-removal-plan.md). History of the move: [supabase-migration-plan.md](supabase-migration-plan.md).
 
@@ -14,6 +112,28 @@ The API runs on Supabase PostgreSQL only (`DATABASE_URL`, `pg`). MySQL was retir
 - The 2026-09-25 historical data cutover copied local MySQL rows into Supabase after applying Postgres 008–009. Hosted users/accounts were preserved, and the pre-cutover hosted snapshot is in schema `mysql_cutover_backup_20260925100301`. Postgres 010 adds book archive actor and floor image version metadata. Postgres 011 adds account authentication versions and management audit events. Product files 012–016 are now applied; the private pre-migration snapshot of affected rows for 012–015 is `migration_backup_20260927154637`. The current tracker above supersedes historical numbering. See the cutover record in the migration plan.
 
 ## Online payment foundation — local only, 2026-11-11
+
+**Local Test checkout, 2026-11-12:** the normal local school-data app can now
+read an eligible bill and open an actual Xendit Test session. This separate
+read-only preview path stores its attempts under ignored local output. It never
+settles school balances, changes clearance, or creates official receipts. The
+ordinary settlement gateway stays disabled and payment migrations remain
+unapplied. Borrower Transactions combines existing onsite receipts with owned
+online attempts, with filters and protected downloads. See the
+[implementation record](plans/2026-11-12-transactions-and-inline-pay.md).
+
+**Local bill-view correction, 2026-11-12:** verified local attempts now project
+Paid/Partially Paid, balances and summary totals into borrower fine/print views
+and checkout eligibility. These are principal-only local credits, capped at each
+bill, not SQL receipt allocations. Staff financial records and school fine/print
+statuses remain unchanged. The owner separately approved a navigation-only HTTPS
+return bridge for new local checkout sessions; it has no database access.
+
+**Local borrower clearance, 2026-11-12:** the borrower Clearance view now applies
+the same owner-scoped principal credits as Fines before computing outstanding
+charges, reasons and standing. Unreturned books and other unpaid obligations
+still block clearance. This local projection never updates `clearance_statuses`;
+official staff calculations, overrides and reports retain the school ledger.
 
 Phase 6 draft `041_payment_reconciliation.sql` adds server-only RLS `online_payment_settlements`: one append-only evidence record per successful attempt, exact gross/cost/net centavos, provider settlement reference, settlement instant and recording account. A library-entered settlement is explicitly separate from verified capture. Unknown costs and settlement are not inferred as zero/paid in detailed reports. Fine/printing reports count issued principal once and separate user fees, provider costs and recorded net settlement; legacy cash without a receipt is retained without duplicating receipted cash. Printing revenue/finance sources include verified online principal and exclude user fees from service revenue.
 
@@ -442,3 +562,11 @@ Postgres migration `032_login_devices.sql` was applied individually on 2026-11-1
 - `library_login_sessions` stores the browser token hash and optional seven-day deadline alongside the existing account version, last activity and revocation time. A browser-session cookie identifies an ordinary sign-in. It can resume within the existing ten-minute inactivity limit.
 - `login_otp_challenges.remember_device` binds the Student or Faculty choice to the verified challenge.
 - `login_device_switches` stores private, hashed two-minute confirmations tied to the account version and the session they can replace. The account lock serializes switches, resumptions and revocations.
+
+## Circulation audit integration — local, 2026-11-13
+
+No schema migration was introduced. Renewal code uses the applied 017_loan_renewals.sql and 018_loan_renewal_hardening.sql; damaged-book and long-overdue reviews use applied 017_circulation_cases.sql. Their applied filenames and SHA-256 checksums were verified read-only against public.schema_migrations.
+
+The existing operational overdue runner opens a unique Long Overdue case using the recorded loan policy threshold and open-day fine calendar. It does not declare Lost or assess a replacement price automatically. Staff-confirmed physical returns resolve open overdue reviews and preserve outstanding fines. Renewal extends from the recorded due time without resetting its clock, respects reservations/monetary blocks, and rejects damaged or repair copies. The borrowing-policy editor remains archived; resolving the saved policy does not unarchive it. Claims-returned needs a new additive schema proposal, not a reinterpretation of the applied Damage/Long Overdue types.
+
+See docs/plans/2026-11-13-circulation-audit-remediation.md for release boundaries, separate policy plans, verification and the still-inactive production schedule.

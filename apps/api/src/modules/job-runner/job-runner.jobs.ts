@@ -11,6 +11,7 @@ import { createBookRequestService } from '../reservations/book-request.service.t
 import { expireReadyReservations } from '../reservations/reservation-expiration.service.ts'
 import { parseOverdueCursor } from './job-runner.rules.ts'
 import { createPaymentOperations } from '../payments/payments.operations.ts'
+import { localPaymentPreview } from '../payments/payments.preview.ts'
 
 /** Run order for `all`, kept from the earlier single chain. Only these names are accepted by the internal route. */
 export const JOB_NAMES = [
@@ -39,7 +40,7 @@ function counts(value: unknown): Record<string, number | boolean> {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => typeof item === 'number' || typeof item === 'boolean')) as Record<string, number | boolean>
 }
 
-export function createJobHandlers(database: Pool = db, clock = () => new Date(), recoverPayments: () => Promise<unknown> = () => createPaymentOperations(database).recover()): JobHandlers {
+export function createJobHandlers(database: Pool = db, clock = () => new Date(), recoverPayments: () => Promise<unknown> = async () => ({ ...await createPaymentOperations(database).recover(), ...(database === db && localPaymentPreview ? await localPaymentPreview.moneyOut.recover() : {}) })): JobHandlers {
   return {
     'enrollment-close': async () => ({ result: counts({ closed: await createEnrollmentService(database).closeDue() }) }),
     'attendance-auto-checkout': async () => ({ result: counts(await createAttendanceOperations(database, clock).autoCheckout()) }),

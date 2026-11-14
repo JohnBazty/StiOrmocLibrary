@@ -1,9 +1,11 @@
 import type { PoolConnection, RowDataPacket } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import type { PaymentTarget } from './payments.repository.ts'
+import { localPaymentPreview } from './payments.preview.ts'
 
 /** Call after locking the obligation. Avoid locking attempts here: checkout locks them before the obligation. */
 export async function guardCounterPayment(connection: Pick<PoolConnection,'execute'>, target: PaymentTarget) {
+  if (localPaymentPreview) await localPaymentPreview.moneyOut.guard(target.kind,target.targetId)
   const [tables] = await connection.execute<RowDataPacket[]>("SELECT to_regclass('online_payment_attempts') IS NOT NULL AS installed")
   if (!tables[0]?.installed) return
   const column = {Printing:'print_request_id',Fine:'fine_id',LostBook:'lost_book_report_id'}[target.kind]

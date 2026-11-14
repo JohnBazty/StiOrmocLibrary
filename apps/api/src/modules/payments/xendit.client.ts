@@ -83,14 +83,15 @@ export function verifyCapturedPayment(payment: ProviderObject, session: Provider
 }
 
 export function createXenditClient(config: () => XenditSandboxConfig = () => env.xendit, fetcher: typeof fetch = fetch) {
-  async function call(path: string, body?: ProviderObject) {
+  async function call(path: string, body?: ProviderObject, options: { payout?: boolean; key?: string; array?: boolean } = {}) {
     const settings = config()
     if (!settings.enabled || !settings.secretKey.startsWith('xnd_development_')) throw unavailable()
     try {
       const response = await fetcher('https://api.xendit.co'+path,{
         method:body?'POST':'GET',redirect:'error',signal:AbortSignal.timeout(10_000),
         headers:{Authorization:'Basic '+Buffer.from(settings.secretKey+':').toString('base64'),
-          'Content-Type':'application/json',Accept:'application/json',...(path.startsWith('/v3/')?{'api-version':'2024-11-11'}:{})},
+          'Content-Type':'application/json',Accept:'application/json',...(path.startsWith('/v3/')?{'api-version':options.payout?'2025-09-01':'2024-11-11'}:{}),
+          ...(options.key ? { 'idempotency-key': options.key } : {})},
         ...(body?{body:JSON.stringify(body)}:{}),
       })
       if (!response.ok || !response.body) { await response.body?.cancel(); throw unavailable() }
@@ -104,11 +105,17 @@ export function createXenditClient(config: () => XenditSandboxConfig = () => env
         chunks.push(chunk.value)
       }
       const result = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-      if (!result || typeof result!=='object' || Array.isArray(result)) throw unavailable()
+      if (!result || typeof result!=='object' || Array.isArray(result) !== Boolean(options.array)) throw unavailable()
       return result as ProviderObject
     } catch { throw unavailable() }
   }
   return {
+    createRefund:(body: ProviderObject)=>call('/v3/refunds',body),
+    getRefund:(id: string)=>{ if (!/^rfd-[a-f\d-]{36}$/i.test(id)) return Promise.reject(mismatch()); return call('/v3/refunds/'+id) },
+    listRefunds:(id: string)=>{ if (!/^py-[A-Za-z0-9-]{1,100}$/.test(id)) return Promise.reject(mismatch()); return call('/v3/refunds?payment_id='+encodeURIComponent(id),undefined,{array:true}) },
+    createPayout:(body: ProviderObject,key: string)=>call('/v3/payouts',body,{payout:true,key}),
+    getPayout:(id: string)=>{ if (!/^po-[a-f\d-]{36}$/i.test(id)) return Promise.reject(mismatch()); return call('/v3/payouts/'+id,undefined,{payout:true}) },
+    getBalance:()=>call('/balance?account_type=CASH&currency=PHP'),
     createSession:(body: ProviderObject)=>call('/sessions',body),
     cancelSession:(id: string)=>call('/sessions/'+sessionId(id)+'/cancel',{}),
     getSession:(id: string)=>call('/sessions/'+sessionId(id)),

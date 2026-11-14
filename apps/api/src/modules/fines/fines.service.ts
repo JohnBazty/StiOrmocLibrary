@@ -5,6 +5,8 @@ import { HttpError } from '../../core/http-error.ts'
 import { receiptVerificationCode } from './fine-receipt-verification.ts'
 import { guardCounterPayment } from '../payments/payments.guard.ts'
 import { createPaymentsRepository } from '../payments/payments.repository.ts'
+import { localPaymentPreview } from '../payments/payments.preview.ts'
+import { previewFine, type PreviewCredit } from '../payments/preview-balances.ts'
 import { fineId, parseFineFilters, receiptId, validateAdjustment, validateCashPayment, validateInfraction, validateReversal, type FineFilters } from './fines.validation.ts'
 
 export type FineActor = { accountId?: number; role?: string }
@@ -91,7 +93,7 @@ type Obligation = {
 
 function number(value: unknown) { return Number(value ?? 0) }
 
-async function queryObligations(database: Pool, filters: FineFilters, onlyUserId?: number) {
+async function queryObligations(database: Pool, filters: FineFilters, onlyUserId?: number, credits: PreviewCredit[] = []) {
   const range = await resolveRange(database, filters)
   const commonParameters: Array<string|number> = [`${range.from} 00:00:00`, `${range.to} 23:59:59`]
   const userClause = onlyUserId ? ' AND f.user_id=?' : ''
@@ -189,7 +191,7 @@ async function queryObligations(database: Pool, filters: FineFilters, onlyUserId
     }
   }
   const needle = filters.search.toLocaleLowerCase('en-US')
-  const filtered = obligations.filter((item) => {
+  const filtered = obligations.map(item => previewFine(item, credits)).filter((item) => {
     if (filters.type !== 'all' && item.type !== filters.type) return false
     if (filters.status === 'outstanding' ? item.balance <= 0 || ['Paid','Waived','Voided'].includes(item.status) : filters.status !== 'all' && item.status !== filters.status) return false
     return !needle || [item.id,item.userName,item.schoolId,item.title,item.reason,...item.receipts.flatMap((receipt) => [receipt.receiptNumber,receipt.verificationCode])].some((value) => value.toLocaleLowerCase('en-US').includes(needle))
@@ -232,7 +234,7 @@ export async function refreshClearance(connection: PoolConnection, userId: numbe
   )
 }
 
-export function createFinesService(database: Pool = db) {
+export function createFinesService(database: Pool = db, options: { previewCredits?: (actor: FineActor) => Promise<PreviewCredit[]> } = {}) {
   async function receiptDetail(targetReceiptId: number, actor?: FineActor) {
     const [rows] = await database.execute<RowDataPacket[]>(
       `SELECT r.*,u.school_id,u.full_name,CASE WHEN to_jsonb(r)->>'confirmation_source'='Xendit' THEN 'Xendit' ELSE COALESCE(staff.full_name,'Library staff') END AS received_by,reverser.full_name AS reversed_by
@@ -281,8 +283,8 @@ export function createFinesService(database: Pool = db) {
     }
   }
 
-  async function list(filters: FineFilters, onlyUserId?: number) {
-    const result = await queryObligations(database, filters, onlyUserId)
+  async function list(filters: FineFilters, onlyUserId?: number, credits: PreviewCredit[] = []) {
+    const result = await queryObligations(database, filters, onlyUserId, credits)
     const total = result.items.length; const start = (filters.page - 1) * filters.limit
     const summary = result.items.reduce((value, item) => ({
       assessed: value.assessed + item.assessed, outstanding: value.outstanding + item.balance,
@@ -304,7 +306,11 @@ export function createFinesService(database: Pool = db) {
       return rows.map((row) => ({ id: Number(row.academic_term_id), academicYear: String(row.academic_year), name: String(row.term_name), startsOn: row.starts_on, endsOn: row.ends_on, active: Boolean(row.is_active) }))
     },
     list,
-    async mine(actor: FineActor, filters: FineFilters) { return list(filters, await linkedUserId(database, actorAccountId(actor))) },
+    async mine(actor: FineActor, filters: FineFilters) {
+      const userId = await linkedUserId(database, actorAccountId(actor))
+      const credits = options.previewCredits ? await options.previewCredits(actor) : database === db && localPaymentPreview && ['Student', 'Faculty'].includes(String(actor.role)) ? await localPaymentPreview.credits(actor) : []
+      return list(filters, userId, credits)
+    },
     async report(filters: FineFilters) { return queryObligations(database, filters) },
     async issueInfraction(actor: FineActor, body: unknown) {
       requireStaff(actor); const input = validateInfraction(body); const connection = await database.getConnection()

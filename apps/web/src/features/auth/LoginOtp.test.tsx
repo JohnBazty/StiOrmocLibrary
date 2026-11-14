@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, expect, it, vi } from 'vitest'
 import { LoginPage } from './LoginPage'
@@ -13,7 +13,19 @@ function submit() {
   fireEvent.click(screen.getByRole('button',{name:'Log In'}))
 }
 function response(data:unknown,ok=true) {return {ok,headers:new Headers({'Content-Type':'application/json'}),json:async()=>data}}
-afterEach(()=>{cleanup();sessionStorage.clear();vi.unstubAllGlobals()})
+afterEach(()=>{cleanup();sessionStorage.clear();vi.restoreAllMocks();vi.unstubAllGlobals()})
+it('focuses the popup login-code field without scrolling the catalog',async()=>{
+  const focus=vi.spyOn(HTMLElement.prototype,'focus')
+  vi.stubGlobal('fetch',vi.fn(async()=>response({data:challenge})))
+  page();submit()
+  const input=await screen.findByLabelText('Login code')
+  await waitFor(()=>{
+    const calls=focus.mock.calls.filter((_,index)=>focus.mock.instances[index]===input)
+    expect(calls.length).toBeGreaterThan(0)
+    expect(calls.every(args=>args[0]?.preventScroll===true)).toBe(true)
+    expect(document.activeElement).toBe(input)
+  })
+})
 it('does not save a token or enter the portal until the login code succeeds',async()=>{
   const session={userId:999001,accountId:999001,schoolId:'EXAMPLE-123',role:'Student',exp:Math.floor(Date.now()/1000)+900},csrfToken='a'.repeat(64)
   vi.stubGlobal('fetch',vi.fn(async(url:string)=>response({data:url.endsWith('/verify')?{session,csrfToken,user:{id:999001,role:'Student'},redirect:'/student/dashboard'}:challenge})))

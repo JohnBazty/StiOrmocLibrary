@@ -3,6 +3,8 @@ import { db } from '../../config/db.js'
 import { excluded, forUpdate, timestampDiffSeconds } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { createFinesService } from '../fines/fines.service.ts'
+import { localPaymentPreview } from '../payments/payments.preview.ts'
+import { previewCredit, type PreviewCredit } from '../payments/preview-balances.ts'
 import { positiveId, validateLostDecision, validateOverride, validateRevocation } from './clearance.validation.ts'
 
 export type ClearanceActor = { accountId?: number; role?: string }
@@ -25,7 +27,7 @@ function requireLibrarian(actor: ClearanceActor) {
   if (actor.role !== 'Librarian') throw new HttpError(403, 'CLEARANCE_LIBRARIAN_ONLY', 'Only Librarian accounts can manage lost-book charges.')
 }
 
-export function createClearanceService(database: Pool = db) {
+export function createClearanceService(database: Pool = db, options: { previewCredits?: (actor: ClearanceActor) => Promise<PreviewCredit[]> } = {}) {
   async function aggregateStudents() {
     const [rows] = await database.execute<RowDataPacket[]>(
       `SELECT u.user_id,u.school_id,u.full_name,u.course_or_strand,u.section,u.account_status,
@@ -78,14 +80,14 @@ export function createClearanceService(database: Pool = db) {
     })
   }
 
-  async function compute(userId: number, updateCache = true) {
+  async function compute(userId: number, updateCache = true, credits: PreviewCredit[] = []) {
     const [[userRows], [loanRows], [fineRows], [lostRows], [overrideRows], [historyRows]] = await Promise.all([
       database.execute<RowDataPacket[]>(
         `SELECT u.user_id, u.school_id, u.full_name, u.course_or_strand, u.section, u.account_status
            FROM users u WHERE u.user_id = ? AND u.user_role IN ('Student','Faculty') LIMIT 1`, [userId],
       ),
       database.execute<RowDataPacket[]>(
-        `SELECT bt.transaction_id, bt.transaction_status, bt.borrowed_at, bt.due_at,
+        `SELECT bt.transaction_id, bt.transaction_status, bt.borrowed_at, bt.due_at, f.fine_id,
                 COALESCE(t.title,m.title) AS title, COALESCE(pc.accession_number,m.barcode) AS accession_number,
                 CASE WHEN bt.due_at IS NULL OR bt.due_at >= NOW() THEN 0
                      ELSE CEIL(${timestampDiffSeconds('bt.due_at', 'NOW()')}/3600) END AS overdue_hours,
@@ -149,6 +151,27 @@ export function createClearanceService(database: Pool = db) {
       const [uses]=await database.execute<RowDataPacket[]>(`SELECT -iu.use_id AS transaction_id,t.title,COALESCE(pc.accession_number,ri.accession_number) AS accession_number,CASE WHEN iu.status='Review' THEN 'In-library: hand-back missing' ELSE 'In-library use' END AS transaction_status,iu.started_at AS borrowed_at,iu.hand_back_by AS due_at,0 AS overdue_hours,0 AS current_fine FROM in_library_uses iu LEFT JOIN physical_copies pc ON pc.physical_copy_id=iu.physical_copy_id LEFT JOIN research_inventory ri ON ri.research_inventory_id=iu.research_inventory_id JOIN titles t ON t.title_id=COALESCE(pc.title_id,ri.title_id) WHERE iu.user_id=? AND iu.ended_at IS NULL ORDER BY iu.started_at`,[userId])
       loanRows.push(...uses)
     }
+    // Local borrower presentation only. Staff reads and official clearance cache
+    // continue to use school records, never simulated payment allocations.
+    for (const row of fineRows) {
+      const balance = Math.round(Number(row.fine_amount ?? 0) * 100)
+      row.fine_amount = (balance - previewCredit(credits, 'Fine', Number(row.fine_id), balance).applied) / 100
+    }
+    fineRows.splice(0, fineRows.length, ...fineRows.filter(row => Number(row.fine_amount) > 0))
+    for (const row of lostRows) {
+      if (row.report_status !== 'Confirmed' || row.charge_resolution !== 'Quoted' || row.payment_status !== 'Unpaid') continue
+      const balance = Math.round(Number(row.replacement_charge ?? 0) * 100)
+      const applied = previewCredit(credits, 'LostBook', Number(row.lost_book_report_id), balance).applied
+      if (applied) {
+        row.replacement_charge = (balance - applied) / 100
+        if (balance === applied) row.payment_status = 'Paid'
+      }
+    }
+    for (const row of loanRows) {
+      if (!row.fine_id) continue
+      const balance = Math.round(Number(row.current_fine ?? 0) * 100)
+      row.current_fine = (balance - previewCredit(credits, 'Fine', Number(row.fine_id), balance).applied) / 100
+    }
     const unpaidFines = fineRows.reduce((sum, row) => sum + Number(row.fine_amount ?? 0), 0)
     const unpaidReplacement = lostRows
       .filter((row) => row.report_status === 'Confirmed' && row.charge_resolution === 'Quoted' && row.payment_status === 'Unpaid')
@@ -191,7 +214,13 @@ export function createClearanceService(database: Pool = db) {
         unknown: students.filter(item => !['Cleared', 'Not Cleared'].includes(item.status)).length,
       }
     },
-    async mine(actor: ClearanceActor) { return compute(await linkedUserId(database, actorAccountId(actor))) },
+    async mine(actor: ClearanceActor, updateCache = true) {
+      const userId = await linkedUserId(database, actorAccountId(actor))
+      const preview = database === db && localPaymentPreview && ['Student','Faculty'].includes(String(actor.role)) ? localPaymentPreview : null
+      const credits = options.previewCredits ? await options.previewCredits(actor) : preview ? await preview.credits(actor) : []
+      // Never write a simulated Cleared state into the school's official cache.
+      return compute(userId, updateCache && !preview && !options.previewCredits, credits)
+    },
 
     async list(actor: ClearanceActor, query: Record<string, unknown>) {
       requireStaff(actor)

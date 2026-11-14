@@ -11,11 +11,12 @@ import { CatalogDetailsPanel, catalogInput } from './CatalogDetailsPanel'
 type Props = {
  embedded?: boolean
  restoreDevice?: boolean
+ suppressAnchorScroll?: boolean
  refreshKey?: number
  onViewBook?: (id: number) => void
  renderBookAction?: (book: CatalogRecord) => ReactNode
 }
-export function PublicCatalogPage({embedded=false,restoreDevice=false,refreshKey=0,onViewBook,renderBookAction}:Props){
+export function PublicCatalogPage({embedded=false,restoreDevice=false,suppressAnchorScroll=false,refreshKey=0,onViewBook,renderBookAction}:Props){
  const location=useLocation()
  const [params,setParams]=useSearchParams(),[options,setOptions]=useState<Options|null>(null),[items,setItems]=useState<CatalogRecord[]>([]),[total,setTotal]=useState(0),[detail,setDetail]=useState<CatalogRecord|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true)
  const lastScrolledAnchor=useRef('')
@@ -38,7 +39,7 @@ export function PublicCatalogPage({embedded=false,restoreDevice=false,refreshKey
      document.removeEventListener('visibilitychange', resume)
    }
  }, [restoreDevice])
- useEffect(()=>{if(embedded)return;if(!['#home','#catalog','#categories'].includes(location.hash)){lastScrolledAnchor.current='';return}if(!loading&&lastScrolledAnchor.current!==location.hash){document.getElementById(location.hash.slice(1))?.scrollIntoView?.({block:'start'});lastScrolledAnchor.current=location.hash}},[embedded,location.hash,loading])
+ useEffect(()=>{if(embedded||suppressAnchorScroll)return;if(!['#home','#catalog','#categories'].includes(location.hash)){lastScrolledAnchor.current='';return}if(!loading&&lastScrolledAnchor.current!==location.hash){document.getElementById(location.hash.slice(1))?.scrollIntoView?.({block:'start'});lastScrolledAnchor.current=location.hash}},[embedded,suppressAnchorScroll,location.hash,loading])
  const claims=getCurrentClaims(),page=Number(params.get('page')||1)
  const heading=params.get('kind')==='Book'?'All Books':params.get('kind')==='Research/Thesis'?'All Research & Theses':'All Books & Research'
  useEffect(()=>{let active=true;enhancedCatalog.options().then(o=>{if(active)setOptions(o)}).catch(e=>{if(active)setError(e.message)});return()=>{active=false}},[])

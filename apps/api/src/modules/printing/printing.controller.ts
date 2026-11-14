@@ -5,8 +5,10 @@ import { printingRepository } from './printing.repository.ts'
 import { printingService } from './printing.service.ts'
 import { createPrintingReceiptPdf, type PrintingReceipt } from './printing-receipt.pdf.ts'
 import { parseFinanceFilters, parseQueueFilters } from './printing.validation.ts'
+import { localPaymentPreview } from '../payments/payments.preview.ts'
+import { previewPrint } from '../payments/preview-balances.ts'
 
-function actor(request:Request,response:Response){const jwt=response.locals.authenticatedUser as {schoolId?:string;role?:string}|undefined;const session=request.session?.user as {schoolId?:string;school_id?:string;role?:string}|undefined;return{schoolId:jwt?.schoolId??session?.schoolId??session?.school_id,role:jwt?.role??session?.role}}
+function actor(request:Request,response:Response){const jwt=response.locals.authenticatedUser as {accountId?:number;id?:number;schoolId?:string;role?:string}|undefined;const session=request.session?.user as {schoolId?:string;school_id?:string;role?:string}|undefined;return{accountId:jwt?.accountId??jwt?.id,schoolId:jwt?.schoolId??session?.schoolId??session?.school_id,role:jwt?.role??session?.role}}
 const handle=(fn:(request:Request,response:Response)=>Promise<void>)=>(request:Request,response:Response,next:NextFunction)=>{void fn(request,response).catch(next)}
 const wholeStock=(value:unknown)=>value==null?'Legacy':String(Math.trunc(Number(value)))
 
@@ -17,7 +19,14 @@ export const printingController={
   serviceStatus:handle(async(_request,response)=>{response.json({success:true,data:await printingService.serviceStatus()})}),
   setServiceStatus:handle(async(request,response)=>{response.json({success:true,message:'Printing service availability updated.',data:await printingService.setServiceStatus(actor(request,response),request.body)})}),
   pricing:handle(async(_request,response)=>{response.json({success:true,data:await printingService.pricing()})}),
-  mine:handle(async(request,response)=>{response.json({success:true,data:await printingService.ownRequests(actor(request,response))})}),
+  mine:handle(async(request,response)=>{
+    const rows = await printingService.ownRequests(actor(request,response))
+    const identity = response.locals.authenticatedUser
+    const credits = localPaymentPreview && ['Student','Faculty'].includes(String(identity?.role))
+      ? await localPaymentPreview.credits({accountId:identity?.accountId ?? identity?.id,role:identity?.role}) : []
+    const data = credits.length ? rows.map(row => previewPrint({...row,request_id:Number(row.request_id),calculated_cost:Number(row.calculated_cost),payment_status:String(row.payment_status),job_status:String(row.job_status)},credits)) : rows
+    response.set('Cache-Control','private, no-store').json({success:true,data})
+  }),
   myReceipts:handle(async(request,response)=>{response.json({success:true,data:await printingService.ownReceipts(actor(request,response))})}),
   myReceipt:handle(async(request,response)=>{response.json({success:true,data:await printingService.ownReceipt(actor(request,response),request.params.id)})}),
   myReceiptPdf:handle(async(request,response)=>{const receipt=await printingService.ownReceipt(actor(request,response),request.params.id) as unknown as PrintingReceipt;const report=createPrintingReceiptPdf(receipt);response.status(200).set({'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="${receipt.receipt_number}.pdf"`,'Cache-Control':'no-store'});report.pipe(response)}),

@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/return.js": { "maxDuration": 5 }
+  },
+  "rewrites": [
+    { "source": "/payments/result", "destination": "/api/return" }
+  ]
+}

@@ -6,8 +6,10 @@ import {
   dateAddDays,
   monthStart as startOfMonth,
   sumEquals,
+  formatDate,
 } from '../../config/sql-dialect.js'
 import type { FinanceFilters, QueueFilters } from './printing.validation.ts'
+import { printingPaymentViewSql, type PrintingPaymentView } from './printing-payment-view.ts'
 
 const dayAfter = (placeholder = '?') => dateAddDays(placeholder, 1)
 const monthStart = startOfMonth()
@@ -50,6 +52,15 @@ export class PrintingRepository {
     return rows
   }
 
+  async latestOpenForUser(userId: number, views: PrintingPaymentView[] = []) {
+    const [rows] = await this.pool.execute<RowDataPacket[]>(`${printingPaymentViewSql}
+      SELECT pr.request_id,pr.file_name,pr.number_of_copies,pr.print_type,pr.calculated_cost,pr.job_status,
+        ${formatDate('pr.created_at', 'YYYY-MM-DD HH12:MI AM')} created_at
+      FROM projected_print_requests pr WHERE pr.user_id=? AND pr.job_status NOT IN ('Completed','Cancelled')
+      ORDER BY pr.created_at DESC,pr.request_id DESC LIMIT 1`, [JSON.stringify(views), userId])
+    return rows[0] ?? null
+  }
+
   async ownReceipts(schoolId: string) {
     const [rows] = await this.pool.execute<RowDataPacket[]>(`SELECT r.print_receipt_id,r.request_id,r.receipt_number,r.verification_code,r.receipt_status,${receiptDocumentLabel},
         r.student_name_snapshot student_name,r.school_id_snapshot school_id,r.file_name_snapshot file_name,
@@ -85,22 +96,23 @@ export class PrintingRepository {
     return { sql: clauses.join(' AND '), values }
   }
 
-  async queue(filters: QueueFilters) {
+  async queue(filters: QueueFilters,views:PrintingPaymentView[]=[]) {
     const where=this.queueWhere(filters),offset=(filters.page-1)*filters.limit
-    const [count]=await this.pool.execute<RowDataPacket[]>(`SELECT COUNT(*) total FROM print_requests pr JOIN users u ON u.user_id=pr.user_id LEFT JOIN print_payment_receipts r ON r.request_id=pr.request_id WHERE ${where.sql}`,where.values)
-    const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT pr.request_id,u.full_name,u.school_id,u.user_role,pr.file_name,pr.number_of_copies,pr.print_type,pr.paper_size,pr.page_count,pr.total_sheets,pr.calculated_cost,pr.payment_status,pr.job_status,pr.created_at,
+    const values=[JSON.stringify(views),...where.values]
+    const [count]=await this.pool.execute<RowDataPacket[]>(`${printingPaymentViewSql} SELECT COUNT(*) total FROM projected_print_requests pr JOIN users u ON u.user_id=pr.user_id LEFT JOIN print_payment_receipts r ON r.request_id=pr.request_id WHERE ${where.sql}`,values)
+    const [rows]=await this.pool.execute<RowDataPacket[]>(`${printingPaymentViewSql} SELECT pr.request_id,u.full_name,u.school_id,u.user_role,pr.file_name,pr.number_of_copies,pr.print_type,pr.paper_size,pr.page_count,pr.total_sheets,pr.calculated_cost,pr.payment_status,pr.job_status,pr.created_at,pr.local_payment_id AS "localPaymentId",pr.refund_pending,
         r.print_receipt_id,r.receipt_number,r.verification_code,r.receipt_status,r.received_at receipt_issued_at
-      FROM print_requests pr JOIN users u ON u.user_id=pr.user_id
+      FROM projected_print_requests pr JOIN users u ON u.user_id=pr.user_id
       LEFT JOIN print_payment_receipts r ON r.request_id=pr.request_id
-      WHERE ${where.sql} ORDER BY CASE pr.job_status WHEN 'Pending' THEN 1 WHEN 'Printing' THEN 2 WHEN 'Ready for Pickup' THEN 3 WHEN 'Completed' THEN 4 WHEN 'Cancelled' THEN 5 ELSE 6 END,pr.created_at ASC LIMIT ${filters.limit} OFFSET ${offset}`,where.values)
+      WHERE ${where.sql} ORDER BY CASE WHEN pr.job_status IN ('Pending','Printing','Ready for Pickup') THEN 0 ELSE 1 END,pr.created_at ASC,pr.request_id ASC LIMIT ${filters.limit} OFFSET ${offset}`,values)
     const total=Number(count[0]?.total??0)
     return { rows, pagination:{page:filters.page,limit:filters.limit,total,total_pages:Math.ceil(total/filters.limit)} }
   }
 
-  async summary() {
+  async summary(views:PrintingPaymentView[]=[]) {
     const completedToday = `COUNT(*) FILTER (WHERE job_status='Completed' AND DATE(completed_at)=${currentDate()})`
     const unpaidJobs = `COUNT(*) FILTER (WHERE payment_status='Unpaid' AND job_status<>'Cancelled')`
-    const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT ${sumEquals('job_status', 'Pending')} pending_jobs,${sumEquals('job_status', 'Printing')} printing_jobs,${sumEquals('job_status', 'Ready for Pickup')} ready_jobs,${completedToday} completed_today,${unpaidJobs} unpaid_jobs,COALESCE(SUM(CASE WHEN payment_status='Paid' AND DATE(paid_at)=${currentDate()} THEN calculated_cost ELSE 0 END),0) revenue_today FROM print_requests`)
+    const [rows]=await this.pool.execute<RowDataPacket[]>(`${printingPaymentViewSql} SELECT ${sumEquals('job_status', 'Pending')} pending_jobs,${sumEquals('job_status', 'Printing')} printing_jobs,${sumEquals('job_status', 'Ready for Pickup')} ready_jobs,${completedToday} completed_today,${unpaidJobs} unpaid_jobs,COALESCE(SUM(CASE WHEN payment_status='Paid' AND DATE(paid_at)=${currentDate()} THEN calculated_cost ELSE 0 END),0) revenue_today FROM projected_print_requests`,[JSON.stringify(views)])
     const service_status=await this.serviceStatus()
     return { pending_jobs:Number(rows[0]?.pending_jobs??0),printing_jobs:Number(rows[0]?.printing_jobs??0),ready_jobs:Number(rows[0]?.ready_jobs??0),completed_today:Number(rows[0]?.completed_today??0),unpaid_jobs:Number(rows[0]?.unpaid_jobs??0),revenue_today:Number(rows[0]?.revenue_today??0),service_status }
   }

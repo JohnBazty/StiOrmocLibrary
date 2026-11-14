@@ -1,7 +1,7 @@
 export type FinePeriod='all'|'daily'|'weekly'|'monthly'|'semester'|'custom'
 export type FineFilters={search:string;status:string;type:string;period:FinePeriod;date?:string;month?:string;week?:number;termId?:number;from?:string;to?:string;page?:number;limit?:number}
 export type FineReceiptReference={receiptId:number;receiptNumber:string;verificationCode:string;status:string}
-export type FineObligation={id:string;fineId:number|null;lostBookReportId:number|null;userId:number;schoolId:string;userName:string;type:'Overdue'|'Infraction'|'Lost Book';title:string;reason:string;assessed:number;paid:number;adjusted:number;balance:number;status:string;occurredAt:string;updatedAt:string;paymentAllowed:boolean;receipts:FineReceiptReference[]}
+export type FineObligation={id:string;fineId:number|null;lostBookReportId:number|null;userId:number;schoolId:string;userName:string;type:'Overdue'|'Infraction'|'Lost Book';title:string;reason:string;assessed:number;paid:number;adjusted:number;balance:number;status:string;occurredAt:string;updatedAt:string;paymentAllowed:boolean;receipts:FineReceiptReference[];localPaymentId?:string}
 export type FineList={range:{from:string;to:string;label:string;termId:number|null};summary:{assessed:number;outstanding:number;collected:number;waived:number;accountsWithBalance:number};items:FineObligation[];pagination:{page:number;limit:number;total:number;totalPages:number}}
 export type FineTerm={id:number;academicYear:string;name:string;startsOn:string;endsOn:string;active:boolean}
 export type FineReceiptSummary={receiptId:number;receiptNumber:string;amountReceived:number;paymentMethod:string;transactionFeeCentavos?:number;totalReceived?:number;confirmationSource?:string;receivedAt:string;status:string}

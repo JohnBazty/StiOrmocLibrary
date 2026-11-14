@@ -3,19 +3,28 @@ import type { Pool, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { randomBytes } from 'node:crypto'
 import { db } from '../../config/db.js'
 import { guardCounterPayment } from '../payments/payments.guard.ts'
+import { localPaymentPreview } from '../payments/payments.preview.ts'
 import { excluded } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { removePrintDocument, resolvePrintDocument, storePrintDocument } from './printing.storage.ts'
 import { inspectPrintDocument } from './printing.document.ts'
 import { parseFinanceFilters, parseNewInkStock, parsePrintRequest, parseQueueFilters, parseRestock, parseServiceStatus, parseStatusUpdate, parseStockMovement } from './printing.validation.ts'
 import { PrintingRepository, printingRepository } from './printing.repository.ts'
+import type { PrintingPaymentView } from './printing-payment-view.ts'
+import { centavos } from '../payments/payments.validation.ts'
 
 type Actor = { schoolId?: string; role?: string }
 const transitions: Record<string, string[]> = { Pending:['Printing','Cancelled'],Printing:['Ready for Pickup'], 'Ready for Pickup':['Completed'],Completed:[],Cancelled:[] }
 function receiptDateKey(value: Date) { return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(value).replaceAll('-','') }
 function receiptId(value: unknown) { const id=Number(value);if(!Number.isSafeInteger(id)||id<1)throw new HttpError(422,'PRINT_RECEIPT_INVALID','The printing receipt ID is invalid.');return id }
 
-export function createPrintingService(pool: Pool = db, repository: PrintingRepository = printingRepository) {
+type LocalPrintingPayments={
+  withPrintingLock<T>(run:()=>Promise<T>):Promise<T>
+  guard(kind:string,requestId:number):Promise<void>
+  printingProjection():Promise<PrintingPaymentView[]>
+}
+export function createPrintingService(pool: Pool = db, repository: PrintingRepository = printingRepository,
+  localPayments:LocalPrintingPayments|null=pool===db&&localPaymentPreview?localPaymentPreview.moneyOut:null) {
   async function actorUserId(schoolId?: string) {
     if (!schoolId) throw new HttpError(401,'PRINT_AUTH_REQUIRED','Sign in before using the printing service.')
     const user=await repository.userBySchoolId(schoolId)
@@ -29,7 +38,8 @@ export function createPrintingService(pool: Pool = db, repository: PrintingRepos
     ownReceipts:async(actor:Actor)=>{await actorUserId(actor.schoolId);return repository.ownReceipts(actor.schoolId!)},
     ownReceipt:async(actor:Actor,receiptIdValue:unknown)=>{await actorUserId(actor.schoolId);const row=await repository.receiptById(receiptId(receiptIdValue),actor.schoolId);if(!row)throw new HttpError(404,'PRINT_RECEIPT_NOT_FOUND','The printing receipt was not found.');return row},
     adminReceipt:async(actor:Actor,receiptIdValue:unknown)=>{await actorUserId(actor.schoolId);const row=await repository.receiptById(receiptId(receiptIdValue));if(!row)throw new HttpError(404,'PRINT_RECEIPT_NOT_FOUND','The printing receipt was not found.');return row},
-    queue:(query:Record<string,unknown>)=>repository.queue(parseQueueFilters(query)), summary:()=>repository.summary(), supplies:()=>repository.supplies(), movements:(limit:unknown)=>repository.movements(Number(limit)||100),
+    queue:async(query:Record<string,unknown>)=>repository.queue(parseQueueFilters(query),pool===db&&localPaymentPreview?await localPaymentPreview.moneyOut.printingProjection():[]),
+    summary:async()=>({...await repository.summary(pool===db&&localPaymentPreview?await localPaymentPreview.moneyOut.printingProjection():[]),localPreview:pool===db&&Boolean(localPaymentPreview)}), supplies:()=>repository.supplies(), movements:(limit:unknown)=>repository.movements(Number(limit)||100),
     financeSummary:(query:Record<string,unknown>)=>repository.financeSummary(parseFinanceFilters(query)),
     financeEntries:(query:Record<string,unknown>)=>repository.financeEntries(parseFinanceFilters(query)),
     revenueSummary:(query:Record<string,unknown>)=>repository.revenueSummary(parseFinanceFilters(query)),
@@ -106,9 +116,16 @@ export function createPrintingService(pool: Pool = db, repository: PrintingRepos
       }catch(error){await connection.rollback();throw error}finally{connection.release()}
     },
 
-    async updateStatus(actor:Actor,requestIdValue:unknown,body:Record<string,unknown>){const staffId=await actorUserId(actor.schoolId),requestId=Number(requestIdValue),input=parseStatusUpdate(body);const connection=await pool.getConnection();try{await connection.beginTransaction();if(input.status==='Printing')await requireOperationalService(connection,'Printing');const[rows]=await connection.execute<RowDataPacket[]>(`SELECT * FROM print_requests WHERE request_id=? FOR UPDATE`,[requestId]);const row=rows[0];if(!row)throw new HttpError(404,'PRINT_REQUEST_NOT_FOUND','The print request was not found.');if(!transitions[String(row.job_status)]?.includes(input.status))throw new HttpError(422,'PRINT_STATUS_TRANSITION_INVALID',`A ${row.job_status} job cannot move to ${input.status}.`)
-      if(input.status==='Cancelled'){if(row.payment_status==='Paid')throw new HttpError(409,'PRINT_REFUND_REVIEW_REQUIRED','A paid print request needs library refund review before cancellation.');await guardCounterPayment(connection,{kind:'Printing',targetId:requestId})}
-      if(input.status==='Printing'&&row.payment_status!=='Paid')throw new HttpError(422,'PRINT_PAYMENT_REQUIRED','Record the cash payment before starting this print job.')
+    async updateStatus(actor:Actor,requestIdValue:unknown,body:Record<string,unknown>){const staffId=await actorUserId(actor.schoolId),requestId=Number(requestIdValue),input=parseStatusUpdate(body);
+      // Refund review and print start acquire the local lock before the print-row lock.
+      // Keep that order so a refund cannot pass the paid check while printing starts.
+      const run=async()=>{const connection=await pool.getConnection();try{await connection.beginTransaction();if(input.status==='Printing')await requireOperationalService(connection,'Printing');const[rows]=await connection.execute<RowDataPacket[]>(`SELECT * FROM print_requests WHERE request_id=? FOR UPDATE`,[requestId]);const row=rows[0];if(!row)throw new HttpError(404,'PRINT_REQUEST_NOT_FOUND','The print request was not found.');if(!transitions[String(row.job_status)]?.includes(input.status))throw new HttpError(422,'PRINT_STATUS_TRANSITION_INVALID',`A ${row.job_status} job cannot move to ${input.status}.`)
+      if(localPayments)await localPayments.guard('Printing',requestId)
+      const online=localPayments?(await localPayments.printingProjection()).find(view=>view.request_id===requestId&&view.user_id===Number(row.user_id)):undefined
+      const paid=row.payment_status==='Paid'||Boolean(online&&online.payment_status==='Paid'&&!online.refund_pending&&!online.cancel_job
+        &&(online.paid_centavos??0)>=Number(centavos(row.calculated_cost)))
+      if(input.status==='Cancelled'){if(paid)throw new HttpError(409,'PRINT_REFUND_REVIEW_REQUIRED','A paid print request needs library refund review before cancellation.');await guardCounterPayment(connection,{kind:'Printing',targetId:requestId})}
+      if(input.status==='Printing'&&!paid)throw new HttpError(422,'PRINT_PAYMENT_REQUIRED','Confirm the full cash or online payment before starting this print job.')
       const timestamp=input.status==='Printing'?'started_at':input.status==='Ready for Pickup'?'ready_at':input.status==='Completed'?'completed_at':'cancelled_at'
       await connection.execute(`UPDATE print_requests SET job_status=?,printer_id=NULL,processed_by_user_id=?,${timestamp}=NOW(),cancelled_reason=?,updated_at=NOW(),row_version=row_version+1 WHERE request_id=?`,[input.status,staffId,input.status==='Cancelled'?input.reason:null,requestId])
       await connection.execute(`INSERT INTO print_status_history(request_id,from_status,to_status,changed_by_user_id,reason) VALUES (?,?,?,?,?)`,[requestId,row.job_status,input.status,staffId,input.reason])
@@ -119,7 +136,9 @@ export function createPrintingService(pool: Pool = db, repository: PrintingRepos
         await connection.execute(notificationSql,[row.user_id,`${row.file_name} is now printing. Request #${requestId}.`,requestId,`print:${requestId}:printing`])
       }
       await connection.commit();return{request_id:requestId,job_status:input.status}
-    }catch(error){await connection.rollback();throw error}finally{connection.release()}},
+    }catch(error){await connection.rollback();throw error}finally{connection.release()}}
+      return localPayments?localPayments.withPrintingLock(run):run()
+    },
 
     async setServiceStatus(actor:Actor,body:Record<string,unknown>){const staffId=await actorUserId(actor.schoolId),input=parseServiceStatus(body);await pool.execute(`INSERT INTO printing_service_settings(settings_id,accepting_requests,unavailable_reason,updated_by_user_id,updated_at) VALUES (1,?,?,?,NOW()) ON CONFLICT (settings_id) DO UPDATE SET accepting_requests=${excluded('accepting_requests')},unavailable_reason=${excluded('unavailable_reason')},updated_by_user_id=${excluded('updated_by_user_id')},updated_at=NOW()`,[input.acceptingRequests?1:0,input.reason,staffId]);return{accepting_requests:input.acceptingRequests,unavailable_reason:input.reason}},
 
