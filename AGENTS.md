@@ -64,6 +64,7 @@ These skills are committed in both `.claude/skills/` (Claude Code) and `.agents/
 | `design-system` | Design-token structure and component specs. |
 | `ui-styling` | Tailwind styling patterns and accessible components. |
 | `start-session` | The `start session` briefing: greet as Agent Alpha, catch up wiki-first, report migration numbers and open plans, then wait. Project-specific (this repo only). |
+| `plan-and-build` | How every feature is planned and built here: requirement (Final Draft, approved STI ILMS REA spec and `spec-decisions.md`), gap check, plan doc, Ethan's approval, build tests first, verify, review, finish. Read it before planning or building any feature or behavior fix. Project-specific (this repo only). |
 
 Project rules win over skill advice. Use only the STI colors in `agent.md` "Frontend Visual Rules" (blue `#003399`, yellow `#FFF200`, white and their opacity variants), never a palette a skill suggests. Add no new UI library without Ethan's approval. When a skill changes, update both copies; the `.agents/skills/` copy uses `.agents/skills/...` paths. Other skills Ethan has installed (banner-design, brand, design, slides, stageshow) stay local and are not committed.
 
