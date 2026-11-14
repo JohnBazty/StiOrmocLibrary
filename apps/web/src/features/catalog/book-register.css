@@ -1,0 +1,49 @@
+/* Phone cards and printed tables retain ResponsiveTable's existing layout. */
+@media screen and (min-width: 640px) {
+  .book-register-scroll {
+    max-height: 60vh;
+    overflow: auto;
+  }
+
+  .book-register-scroll > table {
+    min-width: 124rem;
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .book-register-scroll th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #0b5ea2;
+  }
+
+  .book-register-scroll td {
+    overflow-wrap: anywhere;
+  }
+
+  .book-register-scroll :is(th, td):first-child:not([colspan]) {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    box-shadow: 1px 0 var(--sl-border);
+  }
+
+  .book-register-scroll thead th:first-child:not([colspan]) {
+    z-index: 3;
+  }
+
+  .book-register-scroll td:first-child:not([colspan]) {
+    background: #fff;
+  }
+
+  .dark .book-register-scroll td:first-child:not([colspan]) {
+    background: #22232e;
+  }
+
+  .book-register-scroll td:nth-child(2),
+  .book-register-scroll td:nth-child(10) {
+    white-space: nowrap;
+  }
+}

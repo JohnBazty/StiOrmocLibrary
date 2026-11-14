@@ -1,5 +1,5 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BookRegisterPage } from './BookRegisterPage'
 
 const api = vi.hoisted(() => ({ bookRegister: vi.fn(), downloadBookRegister: vi.fn() }))
@@ -12,6 +12,39 @@ const row = {
 }
 
 describe('BookRegisterPage', () => {
+  beforeEach(() => {
+    vi.stubGlobal('ResizeObserver', class {
+      observe() {}
+      disconnect() {}
+    })
+  })
+
+  it('shows scrolling guidance only while the register overflows and updates on resize', async () => {
+    let width = 1900
+    let resize: ResizeObserverCallback = () => {}
+    const disconnect = vi.fn()
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: ResizeObserverCallback) { resize = callback }
+      observe() {}
+      disconnect = disconnect
+    })
+    vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(() => width)
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(900)
+    api.bookRegister.mockResolvedValue({ rows: [row], total: 1, page: 1, limit: 50 })
+    const view = render(<BookRegisterPage />)
+    await screen.findByText('Clean Code')
+    expect(screen.getByRole('region', { name: 'Book register' }).tabIndex).toBe(0)
+    expect(screen.getByText('Scroll sideways to view all columns')).toBeTruthy()
+    width = 900
+    act(() => resize([], {} as ResizeObserver))
+    expect(screen.queryByText('Scroll sideways to view all columns')).toBeNull()
+    width = 1900
+    act(() => resize([], {} as ResizeObserver))
+    expect(screen.getByText('Scroll sideways to view all columns')).toBeTruthy()
+    view.unmount()
+    expect(disconnect).toHaveBeenCalledOnce()
+  })
+
   it('shows the 13 register columns for each copy', async () => {
     api.bookRegister.mockResolvedValue({ rows: [row], total: 1, page: 1, limit: 50 })
     render(<BookRegisterPage />)
@@ -40,4 +73,4 @@ describe('BookRegisterPage', () => {
   })
 })
 
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+afterEach(() => { cleanup(); vi.clearAllMocks(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
