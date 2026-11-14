@@ -1,9 +1,19 @@
 import type { Batch, ImportRow, Mapping, Option, Sheet } from './enhanced-catalog-api'
 
-export const importFields = ['title', 'author', 'isbn', 'edition', 'publisher', 'publicationYear', 'copyrightYear', 'pages', 'copies', 'missingCopies', 'accessions', 'barcodes', 'callNumber', 'categoryName', 'shelfLocation'] as const
-export const importFieldNames: Record<string, string> = { title: 'Book title', author: 'Author', isbn: 'ISBN', edition: 'Edition', publisher: 'Publisher', publicationYear: 'Publication year', copyrightYear: 'Copyright year', pages: 'Pages', copies: 'Number of copies', missingCopies: 'Missing copies', accessions: 'Accession numbers', barcodes: 'Book barcodes', callNumber: 'Call number', categoryName: 'Category in this file', shelfLocation: 'Shelf in this file' }
+export const importFields = ['title', 'author', 'isbn', 'edition', 'publisher', 'publicationYear', 'copyrightYear', 'pages', 'copies', 'missingCopies', 'accessions', 'barcodes', 'callNumber', 'categoryName', 'shelfLocation', 'summary'] as const
+export const importFieldNames: Record<string, string> = { summary: 'Summary (optional)', title: 'Book title', author: 'Author', isbn: 'ISBN', edition: 'Edition', publisher: 'Publisher', publicationYear: 'Publication year', copyrightYear: 'Copyright year', pages: 'Pages', copies: 'Number of copies', missingCopies: 'Missing copies', accessions: 'Accession numbers', barcodes: 'Book barcodes', callNumber: 'Call number', categoryName: 'Category in this file', shelfLocation: 'Shelf in this file' }
 export const blankImportCsv = '\uFEFFTitle,Author,Copies\r\n'
 export const requiredImportFields = ['title', 'author', 'copies'] as const
+/** Copies is required, plus Title or ISBN: the book lookup can fill a missing title and author from the ISBN. */
+export function missingImportFields(columns: Record<string, number>) {
+  return [...(columns.copies > 0 ? [] : ['copies' as const]), ...(columns.title > 0 || columns.isbn > 0 ? [] : ['title' as const])]
+}
+export const lookupSourceName = (source: string) => source === 'google_books' ? 'Google Books' : source === 'open_library' ? 'Open Library' : 'the library catalog'
+/** A row the book lookup filled waits for the librarian's check before it can be saved. */
+export const needsLookupCheck = (row: ImportRow) => Boolean(row.data.lookupFilled && Object.keys(row.data.lookupFilled).length && !row.data.lookupCheckedAt)
+const FILL_FIELDS = ['title', 'author', 'isbn', 'publisher', 'publicationYear'] as const
+/** Rows the lookup could still fill: under review, a blank in one of its fields, and not tried yet. */
+export const rowsToFill = (batch: Batch) => batch.rows.filter(row => row.status === 'Review' && !row.data.lookupTried && FILL_FIELDS.some(field => !String(row.data[field] ?? '').trim()))
 export function applyImportDefaults(mapping: Mapping[], category: string, shelf: string) {
   return mapping.map(item => ({ ...item, categoryId: item.categoryId || Number(category) || undefined,
     location: item.location || shelf,
@@ -11,7 +21,7 @@ export function applyImportDefaults(mapping: Mapping[], category: string, shelf:
   }))
 }
 export function importFileReady(mapping: Mapping[]) {
-  return mapping.length > 0 && mapping.every(item => requiredImportFields.every(field => item.columns[field] > 0) && (item.categoryId || item.columns.categoryName > 0) && (item.location || item.columns.shelfLocation > 0))
+  return mapping.length > 0 && mapping.every(item => missingImportFields(item.columns).length === 0 && (item.categoryId || item.columns.categoryName > 0) && (item.location || item.columns.shelfLocation > 0))
 }
 
 /** Suggestions are display-only; the librarian must choose one and save the normal review. */
@@ -42,12 +52,13 @@ export function unrecognizedImportHeadings(sheet: Sheet, mapping = sheet.mapping
 }
 
 export function canReviewTogether(row: ImportRow) {
-  return row.status === 'Review' && !row.decision && !row.error && row.errors.length === 0 && row.matches.length === 0 && row.overlaps.length === 0
+  return row.status === 'Review' && !row.decision && !row.error && row.errors.length === 0 && row.matches.length === 0 && row.overlaps.length === 0 && !needsLookupCheck(row)
 }
 export function importRowLabel(row: ImportRow) {
   if (row.status === 'Imported') return 'Added'
   if (row.status === 'Skipped') return 'Left out'
   if (row.error || row.errors.length) return 'Needs correction'
+  if (row.status === 'Review' && needsLookupCheck(row)) return 'Needs a lookup check'
   if (row.status === 'Ready') return 'Choice saved'
   if (row.matches.length || row.overlaps.length) return 'Needs your choice'
   return 'Ready to add'

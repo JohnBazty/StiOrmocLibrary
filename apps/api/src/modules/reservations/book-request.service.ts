@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Pool, PoolConnection, RowDataPacket, ResultSetHeader } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
-import { borrowerEligibility, requireEligible } from '../circulation/desk-circulation.policy.ts'
+import { borrowerEligibility, requireEligible, policyDueDate } from '../circulation/desk-circulation.policy.ts'
 import { roleReservationLimit } from '../circulation/borrowing-policy.types.ts'
 import { createBorrowingPolicyService } from '../circulation/borrowing-policy.service.ts'
 import { cancelPendingCounterClaim } from './reservation-claim.repository.ts'
@@ -217,7 +217,7 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
       const input=object(body)
       if(input.status==='cancelled') return this.cancel(accountId,id,true)
       if(!['approved','ready_for_pickup'].includes(String(input.status))) throw fail('RESERVATION_STATUS_INVALID','Choose Mark ready or Cancel request.')
-      if(input.pickupDeadline) throw fail('PICKUP_DEADLINE_FIXED','Pickup deadlines are fixed at 24 hours from Mark ready.')
+      if(input.pickupDeadline) throw fail('PICKUP_DEADLINE_FIXED','Pickup deadlines are one open library day after Mark ready.')
       return transaction(async q=> {
         await linkedUser(q,positiveId(accountId,'accountId'),true)
         let r=await requestRow(q,positiveId(id,'reservationId'))
@@ -240,7 +240,7 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
           AND pc.availability_status='Reserved' AND pc.condition_status NOT IN ('Lost','Damaged','For Repair') FOR UPDATE OF pc,t`,[r.assigned_physical_copy_id])
         if(!copies.length) throw fail('DESK_COPY_BLOCKED','The assigned copy is unavailable. Review its physical condition before marking ready.')
         if(input.status==='approved') return result(r) // Compatible legacy Prepare action, never another approval gate.
-        const now=clock(),deadline=new Date(now.getTime()+24*60*60*1000)
+        const now=clock(),deadline=await policyDueDate(q,now,{borrowing_days:1})
         await q.execute(`UPDATE reservations SET reservation_status='ready_for_pickup',ready_at=?,
           pickup_deadline=(?::timestamptz AT TIME ZONE 'Asia/Manila'),updated_at=NOW() WHERE reservation_id=?`,[now,deadline,r.reservation_id])
         await recordRequestEvent(q,Number(r.reservation_id),'ready_for_pickup',now)

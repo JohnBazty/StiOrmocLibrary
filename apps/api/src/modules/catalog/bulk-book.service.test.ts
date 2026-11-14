@@ -66,3 +66,45 @@ test('rejects an ISBN already assigned to different catalog metadata before crea
   assert.equal(state.copyInserts, 0)
   assert.equal(state.rollbacks, 1)
 })
+
+test('a new title saves the register fields on the title, its details and every copy', async () => {
+  const calls: { sql: string; parameters: unknown[] }[] = []
+  const connection = {
+    async beginTransaction() {}, async commit() {}, async rollback() {}, release() {},
+    async execute(sql: string, parameters: unknown[] = []) {
+      calls.push({ sql, parameters })
+      if (sql.includes('FROM categories c')) return [[{ category_id: 2, shelf_location: 'Shelf A-1', shelf_id: 1 }]]
+      if (sql.includes('FROM catalog_locations')) return [[{ location_id: 1 }]]
+      if (sql.includes('FROM titles t')) return [[]]
+      if (sql.includes('INSERT INTO titles')) return [{ insertId: 77 }]
+      if (sql.includes('SELECT last_value FROM barcode_sequences')) return [[{ last_value: 0 }]]
+      if (sql.includes('INSERT INTO materials')) return [{ insertId: 300 }]
+      if (sql.includes('INSERT INTO physical_copies')) return [{ insertId: 400 }]
+      return [{ affectedRows: 1 }]
+    },
+  }
+  const database = { getConnection: async () => connection } as unknown as Pool
+  const renderer = async () => ({ trackingJson: '{}', qrCodeData: 'qr', barcodeImageData: 'bar' })
+  await createBulkBookService(database, () => new Date('2026-11-13T08:00:00+08:00'), renderer).addBulk({
+    ...body, isbn: '9780132350884', number_of_copies: 2, classification: '005.1', edition: '1st ed.', pages: 464, volumes: '1 vol.', remarks: 'Donated',
+    fund_source: 'Donation', fund_detail: 'Alumni', cost_php: '450', received_on: '2026-11-02',
+  })
+  const title = calls.find((call) => call.sql.includes('INSERT INTO titles'))!
+  assert.match(title.sql, /classification, volumes, remarks/)
+  assert.deepEqual(title.parameters.slice(-3), ['005.1', '1 vol.', 'Donated'])
+  const details = calls.find((call) => call.sql.includes('INSERT INTO catalog_title_details'))!
+  assert.deepEqual(details.parameters, [77, '1st ed.', 464, 'Book'])
+  const copies = calls.filter((call) => call.sql.includes('INSERT INTO physical_copies'))
+  assert.equal(copies.length, 2)
+  for (const copy of copies) {
+    assert.match(copy.sql, /fund_source, fund_detail, cost_php, acquired_at/)
+    assert.deepEqual(copy.parameters.slice(-4), ['Donation', 'Alumni', '450.00', '2026-11-02'])
+  }
+})
+
+test('adding copies to an existing title leaves its details alone but still records copy cost', async () => {
+  const { state, database } = fakePool()
+  const renderer = async () => ({ trackingJson: '{}', qrCodeData: 'qr', barcodeImageData: 'bar' })
+  await createBulkBookService(database, () => new Date('2026-11-13T08:00:00+08:00'), renderer).addBulk({ ...body, number_of_copies: 1, cost_php: '99.5', classification: 'ignored' })
+  assert.deepEqual(state.copyParameters[0].slice(-4), [null, null, '99.50', null])
+})

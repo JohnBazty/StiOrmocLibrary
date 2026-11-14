@@ -15,7 +15,7 @@ export const deskCirculationApi={
  preview:(payload:string,barcode:string,mode:DeskMode,reservationId?:number|null)=>request<DeskCopy>(`${base}/preview`,{payload,barcode,mode,reservationId}),
  checkout:(payload:string,barcode:string,mode:DeskMode,requestId:string,reservationId?:number|null)=>request<{mode:string;dueAt?:string;handBackBy?:string;title?:string;copy?:{title:string}}>(`${base}/checkout`,{payload,barcode,mode,requestId,reservationId}),
  returnPreview:(barcode:string)=>request<ReturnPreview>(`${base}/return-preview`,{barcode}),
- returnCopy:(preview:ReturnPreview,requestId:string,condition:string,assessmentNote:string)=>request<{title:string;assessmentNeeded:boolean}>(`${base}/return`,{barcode:preview.barcode,kind:preview.kind,expectedId:preview.id,requestId,condition:condition||null,assessmentNote}),
+ returnCopy:(preview:ReturnPreview,requestId:string,condition:string,assessmentNote:string)=>request<{title:string;assessmentNeeded:boolean;damageCaseId?:number|null}>(`${base}/return`,{barcode:preview.barcode,kind:preview.kind,expectedId:preview.id,requestId,condition:condition||null,assessmentNote}),
  uses:()=>request<InLibraryUse[]>(`${base}/in-library`),
  mine:()=>request<InLibraryUse[]>('/api/v1/borrowing/in-library'),
 }

@@ -1,4 +1,4 @@
-import { AlertTriangle, BookOpen, CheckCircle2, RefreshCw, Search } from 'lucide-react'
+import { AlertTriangle, BookOpen, CalendarPlus, CheckCircle2, RefreshCw, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, PageHeader, SectionCard, StatusBadge } from '../../components/ui'
 import { reservationApi } from '../reservations/reservation-api'
@@ -7,7 +7,9 @@ import { circulationApi } from './circulation-api'
 import type { CirculationMonitorData } from './types'
 import { CancelBorrowRequestDialog } from './CancelBorrowRequestDialog'
 import { ReportLostDialog } from './ReportLostDialog'
+import { StaffRenewLoanDialog } from './StaffRenewLoanDialog'
 import { CirculationDesk } from './CirculationDesk'
+import { DamageCasesPanel } from './DamageCasesPanel'
 
 function formatDate(value: string | null) {
   if (!value) return '—'
@@ -27,6 +29,7 @@ export function AdminCirculationMonitor() {
   const [cancelTarget, setCancelTarget] = useState<CirculationMonitorData['items'][number] | null>(null)
   const [cancelError, setCancelError] = useState('')
   const [lostTarget, setLostTarget] = useState<CirculationMonitorData['items'][number] | null>(null)
+  const [renewTarget, setRenewTarget] = useState<CirculationMonitorData['items'][number] | null>(null)
   const [lostError, setLostError] = useState('')
   const load = useCallback(async () => {
     setLoading(true)
@@ -118,15 +121,17 @@ export function AdminCirculationMonitor() {
       {(filter === 'all' || filter === 'pending') && pickups.length ? <div className="divide-y divide-[#0b5ea2]/10 dark:divide-white/10">{pickups.map(item => <article key={`request-${item.reservationId}`} aria-label={`${item.title} pickup`} className="flex flex-col justify-between gap-4 border-b border-[#0b5ea2]/10 p-5 sm:flex-row sm:items-center"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="break-words font-bold">{item.title}</h3><StatusBadge status={item.requestKind==='CartHandover'?'Awaiting handover':'Ready for pickup'} /></div><p className="mt-1 text-sm opacity-75">{item.userName} · {item.schoolId}</p><p className="mt-1 break-all font-mono text-xs opacity-60">{item.barcode}</p><p className="mt-2 text-xs opacity-65">{item.requestKind==='CartHandover'?'Cart sent to desk':`Collect by ${formatDate(item.pickupDeadline)}`} · No loan started</p></div><div className="flex shrink-0 flex-col gap-2"><Button disabled={locked} onClick={() => { setError(''); setSuccess(''); setBorrowerRequest(previous => ({reservationId:item.reservationId,key:(previous?.key ?? 0)+1})) }}><BookOpen size={16} /> Start checkout</Button>{item.requestKind==='CartHandover'?<Button variant="secondary" disabled={locked} onClick={()=>void cancelCart(item.reservationId)}>Cancel handover</Button>:<a href={`${workspace}/reservations`} className="rounded-lg px-3 py-2 text-center text-xs font-semibold">Manage reservation</a>}</div></article>)}</div> : null}
       {loading && !data ? <p role="status" className="p-8 text-center text-sm opacity-65">Loading loans…</p> : <div className="divide-y divide-[#0b5ea2]/10 dark:divide-white/10">{filtered.length ? filtered.map(item => <article key={item.transactionId} aria-label={`${item.title} loan`} className="p-5">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-          <div className="min-w-0 flex-1"><div className="mb-1 flex flex-wrap items-center gap-2"><h3 className="break-words font-bold">{item.title}</h3><StatusBadge status={item.status === 'Pending' ? (item.reservationId ? 'In request queue' : 'Pending pickup') : item.status} /></div><p className="break-words text-sm opacity-75">{item.userName} · {item.schoolId}</p><p className="mt-1 break-all font-mono text-xs opacity-55">{item.barcode}</p><p className="mt-2 text-xs opacity-65">{item.status === 'Pending' ? `Requested ${formatDate(item.requestedAt)}` : `Due ${formatDate(item.dueDate)}`}</p></div>
+          <div className="min-w-0 flex-1"><div className="mb-1 flex flex-wrap items-center gap-2"><h3 className="break-words font-bold">{item.title}</h3><StatusBadge status={item.status === 'Pending' ? (item.reservationId ? 'In request queue' : 'Pending pickup') : item.status} /></div><p className="break-words text-sm opacity-75">{item.userName} · {item.schoolId}</p><p className="mt-1 break-all font-mono text-xs opacity-55">{item.barcode}</p><p className="mt-2 text-xs opacity-65">{item.status === 'Pending' ? `Requested ${formatDate(item.requestedAt)}` : `Due ${formatDate(item.dueDate)}`}</p>{item.status !== 'Pending' && typeof item.renewalCount === 'number' ? <p className="mt-1 text-xs opacity-65">Renewed {item.renewalCount} of {item.maxRenewals}{item.lastRenewalDecisionSource ? ` · Last renewal: ${item.lastRenewalDecisionSource}` : ''}</p> : null}</div>
           <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
             {item.status === 'Pending' && item.reservationId ? <a href={`${workspace}/reservations`} className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#0b5ea2] px-4 py-2 text-sm font-semibold text-white">Prepare request</a> : item.status === 'Pending' ? <Button disabled={locked} onClick={() => { setError(''); setSuccess(''); setBorrowerRequest(previous => ({...(item.reservationId ? {reservationId:item.reservationId} : {transactionId:item.transactionId}),key:(previous?.key ?? 0)+1})) }}><BookOpen size={16} /> Start checkout</Button> : <Button disabled={locked} onClick={() => { setError(''); setSuccess(''); setReturnBarcode(previous => ({ value: item.barcode, key: (previous?.key ?? 0) + 1 })) }}>Return book</Button>}
-            <details className="text-sm"><summary className="min-h-10 cursor-pointer rounded-lg px-3 py-2 text-center text-xs font-semibold opacity-65 hover:bg-[#0b5ea2]/5 dark:hover:bg-white/10">More actions</summary><div className="mt-2 flex flex-wrap justify-end gap-2">{item.status === 'Pending' ? <Button variant="secondary" disabled={locked} onClick={() => { setCancelError(''); setCancelTarget(item) }}>Cancel request</Button> : <>{item.status === 'Overdue' ? <Button variant="secondary" disabled={locked} onClick={() => void penalty(item.transactionId)}>Calculate penalty</Button> : null}<Button variant="secondary" disabled={locked} onClick={() => { setLostError(''); setLostTarget(item) }}>Report lost</Button></>}</div></details>
+            <details className="text-sm"><summary className="min-h-10 cursor-pointer rounded-lg px-3 py-2 text-center text-xs font-semibold opacity-65 hover:bg-[#0b5ea2]/5 dark:hover:bg-white/10">More actions</summary><div className="mt-2 flex flex-wrap justify-end gap-2">{item.status === 'Pending' ? <Button variant="secondary" disabled={locked} onClick={() => { setCancelError(''); setCancelTarget(item) }}>Cancel request</Button> : <>{item.canRequestRenewal && item.status === 'Borrowed' ? <Button variant="secondary" disabled={locked} onClick={() => setRenewTarget(item)}><CalendarPlus size={14} /> Renew on behalf</Button> : null}{item.status === 'Overdue' ? <Button variant="secondary" disabled={locked} onClick={() => void penalty(item.transactionId)}>Calculate penalty</Button> : null}<Button variant="secondary" disabled={locked} onClick={() => { setLostError(''); setLostTarget(item) }}>Report lost</Button></>}</div></details>
           </div>
         </div>
       </article>) : <p className="p-8 text-center text-sm opacity-65">{(filter === 'all' || filter === 'pending') && pickups.length ? 'Borrowed books will appear here after handover.' : query ? 'No loans match your search.' : 'No loans in this view.'}</p>}</div>}
     </SectionCard>
+    <DamageCasesPanel />
     {cancelTarget ? <CancelBorrowRequestDialog title={cancelTarget.title} busy={busyId === cancelTarget.transactionId} error={cancelError} onCancel={() => { if (busyId === null) setCancelTarget(null) }} onConfirm={reason => void cancelPending(reason)} /> : null}
+    {renewTarget ? <StaffRenewLoanDialog transactionId={renewTarget.transactionId} title={renewTarget.title} borrowerName={renewTarget.userName} onCancel={() => setRenewTarget(null)} onSuccess={(decision) => { setRenewTarget(null); setSuccess(`${renewTarget.title} was renewed for ${renewTarget.userName} until ${formatDate(decision.newDueAt)}.`); window.dispatchEvent(new Event('smartlib:circulation-updated')); void load() }} /> : null}
     {lostTarget ? <ReportLostDialog title={lostTarget.title} busy={busyId === lostTarget.transactionId} error={lostError} onCancel={() => { if (busyId === null) setLostTarget(null) }} onConfirm={() => void reportLost()} /> : null}
   </>
 }

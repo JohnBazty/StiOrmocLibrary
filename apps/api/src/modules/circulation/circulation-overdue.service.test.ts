@@ -25,7 +25,7 @@ test('overdue escalation atomically updates loan, fine, notification, and cleara
     },
   }
   const result = await escalateOverdueTransactions({ getConnection: async () => connection } as unknown as Pool, new Date(2026, 7, 24, 10, 0))
-  assert.deepEqual(result, { evaluatedCount: 1, newlyOverdue: 1, nextCursor: null })
+  assert.deepEqual(result, { evaluatedCount: 1, newlyOverdue: 1, longOverdueCasesOpened:0, nextCursor: null })
   assert.deepEqual(state, { committed: 1, rolledBack: 0, overdue: 1, fine: 1, notification: 1, clearance: 1 })
 })
 
@@ -57,4 +57,20 @@ test('D5: the overdue scan continues after the cursor and returns the next one w
   assert.doesNotMatch(seen[2].sql, /::bigint/, 'no cursor scans from the oldest loan')
   assert.equal(seen[2].values.length, 1)
   assert.equal(first.evaluatedCount, 2)
+})
+
+for(const threshold of [3,4])test('long-overdue threshold '+threshold+' counts open days, skipping Sunday and a closure',async()=>{
+ let cases=0,commits=0;const sqls:string[]=[]
+ const connection={async beginTransaction(){},async commit(){commits++},async rollback(){},release(){},async execute(sql:string):Promise<any>{
+  sqls.push(sql)
+  if(sql.includes('FROM borrow_transactions bt')&&sql.includes('FOR UPDATE'))return [[{transaction_id:8,user_id:4,physical_copy_id:50,borrowing_policy_version_id:1,long_overdue_after_days:threshold,due_at:new Date('2026-11-06T15:17:00+08:00'),title:'QA overdue title'}]]
+  if(sql.includes('FROM fine_policy_versions'))return [[{hourly_rate:2,daily_rate:10,maximum_penalty:500}]]
+  if(sql.includes('FROM library_operating_schedule'))return [[1,2,3,4,5,6].map(day_of_week=>({day_of_week,is_open:true}))]
+  if(sql.includes('FROM library_closed_days'))return [[{closed_date:'2026-11-09'}]]
+  if(sql.includes('INSERT INTO circulation_cases')){cases++;return [{insertId:3,affectedRows:1}]}
+  return [{affectedRows:0,insertId:1}]
+ }}
+ const result=await escalateOverdueTransactions({getConnection:async()=>connection} as unknown as Pool,new Date('2026-11-11T15:17:00+08:00'))
+ assert.equal(cases,threshold===3?1:0);assert.equal(result.longOverdueCasesOpened,cases);assert.equal(commits,1)
+ assert.equal(sqls.some(sql=>sql.includes('INSERT INTO lost_book_reports')),false)
 })

@@ -17,6 +17,7 @@ const StaffDashboardPage = lazy(() => import('./features/dashboard/StaffDashboar
 const ProfileAvatarPage = lazy(() => import('./features/users/ProfileAvatarPage').then(m => ({ default: m.ProfileAvatarPage })))
 const UserDashboardPage = lazy(() => import('./features/dashboard/UserDashboardPage').then(m => ({ default: m.UserDashboardPage })))
 const FloorPlanImagePage = lazy(() => import('./features/floor-plan/FloorPlanImagePage').then(m => ({ default: m.FloorPlanImagePage })))
+const BookRegisterPage = lazy(() => import('./features/catalog/BookRegisterPage').then(m => ({ default: m.BookRegisterPage })))
 const BookArchivePage = lazy(() => import('./features/catalog/BookArchivePage').then(m => ({ default: m.BookArchivePage })))
 const AdminAttendancePage = lazy(() => import('./features/attendance/AdminAttendancePage').then(m => ({ default: m.AdminAttendancePage })))
 const StaffAttendancePage = lazy(() => import('./features/attendance/StaffAttendancePage').then(m => ({ default: m.StaffAttendancePage })))
@@ -139,6 +140,7 @@ export default function App() {
           <Route path="/librarian/maintenance" element={<AppLayout><CatalogMaintenancePage /></AppLayout>} />
           <Route path="/librarian/reports" element={<AppLayout><CatalogReportsPage /></AppLayout>} />
           <Route path="/librarian/collection-review" element={<AppLayout><CollectionReviewPage /></AppLayout>} />
+          <Route path="/librarian/book-register" element={<AppLayout><BookRegisterPage /></AppLayout>} />
           <Route path="/librarian/book-archive" element={<AppLayout><BookArchivePage /></AppLayout>} />
           <Route path="/librarian/categories" element={<AppLayout><CategoryManagementPage /></AppLayout>} />
           <Route path="/librarian/circulation" element={<AppLayout><AdminCirculationMonitor /></AppLayout>} />

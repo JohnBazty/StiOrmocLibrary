@@ -42,7 +42,7 @@ curl -s -i -X POST https://<production-host>/api/internal/jobs/notifications
 
 A secret shorter than 32 characters stops the API from starting in production. If the variable is missing, the route refuses every call.
 
-## 3. Store the URL and secret in Supabase Vault (go-ahead 3)
+## 3. Store the URL and secret in Supabase Vault (go-ahead 3) — done 2026-11-13
 
 Supabase → STI SMART LIBRARY → Project Settings → Vault (or Integrations → Vault) → add two secrets:
 
@@ -73,7 +73,7 @@ Passed on 2026-11-11 (exposed schemas: `public`, `graphql_public`).
 select rolname, has_schema_privilege(oid, 'cron', 'USAGE') as cron_usage from pg_roles where rolname in ('anon', 'authenticated');
 ```
 
-## 5. Create the Cron schedule (go-ahead 5)
+## 5. Create the Cron schedule (go-ahead 5) — done 2026-11-13
 
 Supabase → SQL Editor, run:
 
@@ -139,3 +139,13 @@ Treat it as one change, in this order: update the Vault secret `smartlib_job_run
 
 - `library_job_runs` (from `013`) is no longer read or written. Dropping it needs its own migration and Ethan's go-ahead.
 - Never add `net` to the Data API's exposed schemas: `anon` and `authenticated` can still read its tables, so that one setting would expose the secret (step 4).
+
+## Latest activation checkpoint — 2026-11-13
+
+Owner approved step 3 only. The two named Vault settings now exist, are encrypted, match the reviewed live runner, and were verified after commit. No secret value appears in this record. Browser roles cannot log in directly and cannot use cron or vault. Fresh zero-row Data API probes using the existing backend key reject net/vault/cron with PGRST106; this verifies the global exposed-schema list, with role checks recorded separately.
+
+Step 5 remains pending: smartlib-jobs-all does not exist and no job was started by this preparation. Obtain separate approval before enabling the minute schedule; then verify all nine deployed job handlers, including scheduled enrollment/attendance actions and queued emails, through read-only status/results. See docs/plans/2026-11-13-circulation-audit-remediation.md for the deployment and preparation evidence.
+
+## Active checkpoint — 2026-11-13
+
+Owner approved step 5. smartlib-jobs-all is active as job ID 1, every minute. Two automatic cycles at 13:40 and 13:41 Asia/Manila returned HTTP 200, and all nine handlers recorded success with no error codes. Health/schema readiness stayed healthy. This supersedes the pending checkpoint above. No manual jobs/all call was used. Keep one scheduler; any unscheduling, secret rotation or live migration still needs its own approval.

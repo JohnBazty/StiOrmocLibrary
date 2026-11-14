@@ -92,9 +92,6 @@ export function AdminBorrowingPoliciesPage() {
       ['Renewal extension', String(active.renewalExtensionDays), String(draft.renewalExtensionDays)],
       ['Student reservations', String(active.studentMaxActiveReservations), String(draft.studentMaxActiveReservations)],
       ['Faculty reservations', limitLabel(active.facultyMaxActiveReservations), limitLabel(draft.facultyMaxActiveReservations)],
-      ['Block if overdue', String(active.blockRenewalIfOverdue), String(draft.blockRenewalIfOverdue)],
-      ['Block if unpaid fines', String(active.blockRenewalIfUnpaidFines), String(draft.blockRenewalIfUnpaidFines)],
-      ['Block if reserved', String(active.blockRenewalIfReserved), String(draft.blockRenewalIfReserved)],
       ['Long overdue days', String(active.longOverdueAfterDays ?? 'null'), String(draft.longOverdueAfterDays)],
       ['Effective on', active.effectiveOn, draft.effectiveOn],
     ]
@@ -213,9 +210,7 @@ export function AdminBorrowingPoliciesPage() {
               <label className="text-sm font-bold text-[#0b5ea2]">Long overdue after days<input required type="number" min={1} max={365} value={draft.longOverdueAfterDays} onChange={(event) => setDraft({ ...draft, longOverdueAfterDays: Number(event.target.value) })} className={`${field} mt-1`} /></label>
               <label className="text-sm font-bold text-[#0b5ea2]">Student max reservations<input required type="number" min={1} max={20} value={draft.studentMaxActiveReservations} onChange={(event) => setDraft({ ...draft, studentMaxActiveReservations: Number(event.target.value) })} className={`${field} mt-1`} /></label>
               <label className="text-sm font-bold text-[#0b5ea2]">Faculty max reservations (blank = unlimited)<input type="number" min={1} max={100} value={draft.facultyMaxActiveReservations ?? ''} onChange={(event) => setDraft({ ...draft, facultyMaxActiveReservations: event.target.value === '' ? null : Number(event.target.value) })} className={`${field} mt-1`} /></label>
-              <label className="flex items-center gap-2 text-sm font-bold text-[#0b5ea2]"><input type="checkbox" checked={draft.blockRenewalIfOverdue} onChange={(event) => setDraft({ ...draft, blockRenewalIfOverdue: event.target.checked })} />Block renewal if overdue</label>
-              <label className="flex items-center gap-2 text-sm font-bold text-[#0b5ea2]"><input type="checkbox" checked={draft.blockRenewalIfUnpaidFines} onChange={(event) => setDraft({ ...draft, blockRenewalIfUnpaidFines: event.target.checked })} />Block renewal if unpaid fines</label>
-              <label className="flex items-center gap-2 text-sm font-bold text-[#0b5ea2] sm:col-span-2"><input type="checkbox" checked={draft.blockRenewalIfReserved} onChange={(event) => setDraft({ ...draft, blockRenewalIfReserved: event.target.checked })} />Block renewal if another user has an active reservation</label>
+              <p className="text-sm sm:col-span-2">Renewals are blocked for overdue loans, unpaid charges, and books reserved by another borrower.</p>
               {draft.materialRules.map((rule, index) => (
                 <label key={rule.materialType} className="flex items-center gap-2 text-sm font-bold text-[#0b5ea2]">
                   <input

@@ -81,3 +81,15 @@ it('refreshes verified payments before replacing unpaid clearance with completed
   expect(payments.sync).toHaveBeenCalledTimes(2)
   expect(payments.sync.mock.invocationCallOrder[0]).toBeLessThan(api.mine.mock.invocationCallOrder[0])
 })
+
+it('lists an unpaid book-price charge under outstanding charges', async () => {
+  api.mine.mockResolvedValue({
+    ...base, status: 'Not Cleared', reason: 'PHP 450.00 unpaid lost-book replacement charges',
+    summary: { ...base.summary, unpaidReplacementCharges: 450, totalOutstanding: 450 },
+    lostBooks: [{ lostBookReportId: 3, transactionId: 900, titleId: 10, title: 'Clean Code', status: 'Confirmed', chargeResolution: 'Book Price',
+      resolutionReason: null, quotationId: null, quotedAmount: null, replacementCharge: 450, paymentStatus: 'Unpaid', reportedAt: '2026-11-12T09:00:00', verifiedAt: '2026-11-12T09:00:00' }],
+  })
+  render(<StudentClearancePage />)
+  expect(await screen.findByText(/Lost-book replacement · Clean Code/)).toBeTruthy()
+  expect(screen.queryByText('No unpaid charges.')).toBeNull()
+})
