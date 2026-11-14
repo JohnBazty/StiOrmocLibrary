@@ -1,3 +1,6 @@
+import { resolveManualBorrower } from './manual-borrower.ts'
+import { libraryState, closeAttendanceAtCutoff } from '../attendance/attendance-operations.service.ts'
+import { manilaDate } from '../attendance/attendance-intervals.ts'
 import { createHash } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 import type { Pool,PoolConnection,RowDataPacket } from '../../config/db.js'
@@ -20,6 +23,11 @@ const object=(v:unknown)=>v&&typeof v==='object'?v as Record<string,unknown>:{}
 export function scanBarcode(v:unknown){const s=typeof v==='string'?v.trim().toUpperCase():'';if(!s||s.length>100||/[\x00-\x1f\x7f]/.test(s))throw problem('DESK_BARCODE_INVALID','Scan a valid physical-copy barcode.');return s}
 export function scanMode(v:unknown):UseMode {if(v!=='TakeHome'&&v!=='InLibrary')throw problem('DESK_MODE_REQUIRED','Choose Take-home or In-library use.');return v}
 export function confirmationKey(v:unknown){if(typeof v!=='string'||! /^[A-Za-z0-9_-]{16,64}$/.test(v))throw problem('DESK_REQUEST_ID_REQUIRED','A valid confirmation request ID is required.');return v}
+export function deskRequestDigest(operation:string,input:Record<string,unknown>) {
+ const fields=[operation,input.payload??null,input.barcode,input.expectedId??null,input.reservationId??null,input.transactionId??null,input.expectedCopyId??null,input.kind??null,input.condition??null,input.assessmentNote??null]
+ if(input.schoolId!==undefined)fields.push('School ID',String(input.schoolId).trim().toUpperCase())
+ return createHash('sha256').update(JSON.stringify(fields)).digest('hex')
+}
 export function conditionAssessment(v:Record<string,unknown>){
  const condition=v.condition==null||v.condition===''?null:String(v.condition)
  const note=typeof v.assessmentNote==='string'?v.assessmentNote.trim():''
@@ -90,7 +98,7 @@ export function createDeskCirculationService(database:Pool=db,clock=()=>new Date
   const q=await database.getConnection();try{await q.beginTransaction();await q.execute('SELECT settings_id FROM library_profile_settings WHERE settings_id=1 FOR UPDATE');const [actors]=await q.execute<RowDataPacket[]>('SELECT account_id FROM accounts WHERE account_id=? AND role=? AND account_status=\'Active\' FOR UPDATE',[actor.accountId,actor.role]);if(!actors.length)throw new HttpError(403,'DESK_ACTOR_INACTIVE','Your desk account is not active.');const result=await work(q);await q.commit();return result}catch(e){await q.rollback();throw e}finally{q.release()}
  }
  async function receipt(q:PoolConnection,actor:DeskActor,input:Record<string,unknown>,operation:string,run:()=>Promise<any>){
-  const key=confirmationKey(input.requestId),digest=createHash('sha256').update(JSON.stringify([operation,input.payload??null,input.barcode,input.expectedId??null,input.reservationId??null,input.transactionId??null,input.expectedCopyId??null,input.kind??null,input.condition??null,input.assessmentNote??null])).digest('hex')
+  const key=confirmationKey(input.requestId),digest=deskRequestDigest(operation,input)
   const [rows]=await q.execute<RowDataPacket[]>('SELECT * FROM circulation_scan_receipts WHERE request_id=? FOR UPDATE',[key])
   if(rows[0]){if(Number(rows[0].actor_account_id)!==actor.accountId||rows[0].payload_digest!==digest||rows[0].operation!==operation)throw new HttpError(409,'DESK_REQUEST_REUSED','This confirmation ID belongs to a different transaction.');return {...rows[0].result,replayed:true}}
   const result=await run();await q.execute('INSERT INTO circulation_scan_receipts(request_id,actor_account_id,operation,payload_digest,result) VALUES (?,?,?,?,?::jsonb)',[key,actor.accountId,operation,digest,JSON.stringify(result)]);return result
@@ -108,12 +116,36 @@ export function createDeskCirculationService(database:Pool=db,clock=()=>new Date
   const [requests]=await q.execute<RowDataPacket[]>(`SELECT r.reservation_id,r.request_kind,r.reservation_status,r.assigned_physical_copy_id,t.title,pc.barcode,pc.shelf_location,(r.pickup_deadline AT TIME ZONE 'Asia/Manila') AS deadline FROM reservations r JOIN titles t ON t.title_id=r.book_title_id LEFT JOIN physical_copies pc ON pc.physical_copy_id=r.assigned_physical_copy_id WHERE r.user_id=? AND r.reservation_status IN ('pending','approved','ready_for_pickup') ORDER BY r.reserved_at,r.reservation_id`,[userId]);return {requests:requests.map(r=>({reservationId:Number(r.reservation_id),title:r.title,statusLabel:r.request_kind==='CartHandover'?'Awaiting handover':requestLabels[requestEventStatus(String(r.reservation_status),Boolean(r.assigned_physical_copy_id))],barcode:r.barcode??null,shelfLocation:r.shelf_location??null,pickupDeadline:r.deadline??null})),user:{userId:userId,name:eligibility.user.full_name,schoolId:eligibility.user.school_id,role:eligibility.user.user_role,program:eligibility.user.course_or_strand,photoUrl:eligibility.user?.account_id?await approvedPhoto(q,Number(eligibility.user.account_id)):null},blockers:eligibility.blockers,eligible:!eligibility.blockers.length,enrollment:eligibility.enrollment,activeLoans:eligibility.loans.length,limit:eligibility.limit,hasAttendance:Boolean(eligibility.visit)}
  }
  async function identity(q:PoolConnection,input:Record<string,unknown>,mode:UseMode,confirming=false) {
+  if(input.schoolId!==undefined){if(input.payload)throw problem('DESK_IDENTITY_AMBIGUOUS','Use School ID or QR, not both.');return resolveManualBorrower(q,input.schoolId)}
   if(input.payload)return validateAttendanceCredential(q,input.payload,confirming,clock())
   if(mode!=='TakeHome')throw problem('DESK_MODE_REQUIRED','Pickup requests are for take-home borrowing.')
   return loadDeskRequest(q,input,clock(),confirming)
  }
  return {
-  async borrower(actor:DeskActor,body:unknown){const input=object(body),mode=scanMode(input.mode);return transaction(actor,async q=>{const qr=await validateAttendanceCredential(q,input.payload,false,clock());return borrowerDetails(q,qr.userId,mode)})},
+  async borrower(actor:DeskActor,body:unknown){const input=object(body),mode=scanMode(input.mode);return transaction(actor,async q=>{const qr=await identity(q,input,mode);return borrowerDetails(q,qr.userId,mode)})},
+  async manualCheckIn(actor:DeskActor,body:unknown){
+   const input=object(body),mode=scanMode(input.mode),requestId=confirmationKey(input.requestId)
+   return transaction(actor,async q=>{
+    const visitor=await resolveManualBorrower(q,input.schoolId),now=clock()
+    const [staff]=await q.execute<RowDataPacket[]>('SELECT user_id FROM accounts WHERE account_id=? LIMIT 1',[actor.accountId])
+    if(!staff[0]?.user_id)throw new HttpError(403,'DESK_ACTOR_PROFILE_REQUIRED','Your desk account needs a linked library profile.')
+    const [prior]=await q.execute<RowDataPacket[]>('SELECT user_id,checked_in_by_user_id FROM attendance_logs WHERE entry_request_id=?',[requestId])
+    if(prior[0]){
+     if(Number(prior[0].user_id)!==visitor.userId||Number(prior[0].checked_in_by_user_id)!==Number(staff[0]?.user_id))throw new HttpError(409,'DESK_REQUEST_REUSED','This entry confirmation belongs to a different visitor or staff member.')
+     return borrowerDetails(q,visitor.userId,mode)
+    }
+    await closeAttendanceAtCutoff(q,now)
+    const [open]=await q.execute<RowDataPacket[]>('SELECT log_id FROM attendance_logs WHERE user_id=? AND time_out IS NULL AND checked_out_at IS NULL',[visitor.userId])
+    if(!open.length){
+     const state=await libraryState(q,now),seat=!state.policy.servicePurposes.includes('Book Borrowing')
+     if(!state.entryOpen||!state.allowBorrowing)throw problem('ATTENDANCE_ENTRY_CLOSED','Borrowing entry is closed for the current hours or scheduled event.')
+     if(seat&&state.available<=0)throw problem('LIBRARY_AT_CAPACITY','All available library seats are occupied.')
+     await q.execute(`INSERT INTO attendance_logs(user_id,attendance_date,time_in,checked_in_at,reason_for_visit,scan_method,checked_in_by_user_id,entry_request_id,seat_visit)
+       VALUES (?,?::date,(?::timestamptz AT TIME ZONE 'Asia/Manila')::time,(?::timestamptz AT TIME ZONE 'Asia/Manila'),'Book Borrowing','Manual',?,?,?)`,[visitor.userId,manilaDate(now),now,now,Number(staff[0].user_id),requestId,seat])
+    }
+    return borrowerDetails(q,visitor.userId,mode)
+   })
+  },
   async requestPreview(actor:DeskActor,body:unknown){const input=object(body);return transaction(actor,async q=>{const selected=await loadDeskRequest(q,input,clock()),borrower=await borrowerDetails(q,selected.userId,'TakeHome'),c=await copy(q,selected.barcode),e=await borrowerEligibility(q,selected.userId,clock(),'TakeHome');const blockers=[...e.blockers,...await copyBlockers(q,c,selected.userId,'TakeHome',Number(e.policy.borrowing_policy_version_id),clock())];try{await requireLoanSlot(q,selected.userId,selected.copyId,e.limit)}catch(error){blockers.push(error instanceof Error?error.message:'The loan limit has been reached.')};return {borrower,preview:{copy:{id:selected.copyId,title:c.title,barcode:c.barcode,condition:c.condition_status},blockers,eligible:!blockers.length},reservationId:selected.reservationId,barcode:selected.barcode}})},
   async preview(actor:DeskActor,body:unknown){const input=object(body),mode=scanMode(input.mode),barcode=scanBarcode(input.barcode);return transaction(actor,async q=>{const qr=await identity(q,input,mode),e=await borrowerEligibility(q,qr.userId,clock(),mode),c=await copy(q,barcode),blockers=[...e.blockers,...await copyBlockers(q,c,qr.userId,mode,Number(e.policy.borrowing_policy_version_id),clock())];await verifySelectedRequest(q,input,qr.userId,c,mode);if(mode==='TakeHome')try{await requireLoanSlot(q,qr.userId,Number(c.physical_copy_id),e.limit)}catch(error){blockers.push(error instanceof Error?error.message:'The loan limit has been reached.')};return {copy:{id:Number(c.physical_copy_id??c.research_inventory_id),title:c.title,barcode:c.barcode,condition:c.condition_status},blockers,eligible:!blockers.length}})},
   async checkout(actor:DeskActor,body:unknown){const input=object(body),mode=scanMode(input.mode),barcode=scanBarcode(input.barcode);input.barcode=barcode;return transaction(actor,q=>receipt(q,actor,input,mode,async()=>{const now=clock(),qr=await identity(q,input,mode,true),e=await borrowerEligibility(q,qr.userId,now,mode);requireEligible(e);const c=await copy(q,barcode),blockers=await copyBlockers(q,c,qr.userId,mode,Number(e.policy.borrowing_policy_version_id),now);await verifySelectedRequest(q,input,qr.userId,c,mode);if(blockers.length)throw problem('DESK_COPY_BLOCKED',blockers.join(' '));if(mode==='TakeHome'){const result=await createCirculationService(transactionPool(q),clock).confirmCheckout(actor.accountId,{barcode,userId:qr.userId,reservationId:input.reservationId});return {...result,mode,enrollment:e.enrollment}}

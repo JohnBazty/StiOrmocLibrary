@@ -1,5 +1,18 @@
 # Database Schema Context
 
+## QR-free desk circulation — 2026-11-15
+
+The protected circulation desk accepts an explicit `schoolId` for borrower lookup,
+preview and checkout. It resolves one active linked profile using the exact School
+ID, and retains all existing borrowing/copy/attendance rules. Confirmation hashes
+include manual School ID; existing QR hashes remain compatible. The protected
+`POST /api/v1/admin/circulation-desk/manual-check-in` uses existing attendance rows,
+`scan_method='Manual'`, staff identity and `entry_request_id` for retry protection.
+It retains the shared settings lock, hours/events/capacity rules and active-account
+checks. No QR secret is created, disclosed or reactivated. Returns reuse the existing
+typed-barcode or selected-loan review and stale-assignment checks. No migration;
+applied 044, next 045. See [implementation](plans/2026-11-15-manual-circulation.md).
+
 ## Payment-aware borrowing standing — 2026-11-15
 
 In the enabled local/hosted development payment flow, the cart, desk/online borrowing

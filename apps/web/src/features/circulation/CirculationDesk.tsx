@@ -26,6 +26,8 @@ export function CirculationDesk({ onChanged, returnBarcode, borrowerRequest, onB
 
 }) {
 
+  const [manual,setManual]=useState(false)
+
   const [mode, setMode] = useState<DeskMode>('TakeHome')
 
   const [payload, setPayload] = useState('')
@@ -126,7 +128,7 @@ export function CirculationDesk({ onChanged, returnBarcode, borrowerRequest, onB
 
     setSelectedRequest(null); saving.current = true; setBusy(true); setError(''); setSuccess(''); setBorrower(null); setCopy(null); key.current = ''
 
-    try { setBorrower(await deskCirculationApi.borrower(value, useMode)); setPayload(value); attendanceKey.current = crypto.randomUUID(); activity.current = Date.now(); setScanFocus(value => value + 1) }
+    try { setBorrower(await (manual?deskCirculationApi.manualBorrower(value,useMode):deskCirculationApi.borrower(value, useMode))); setPayload(value); attendanceKey.current = crypto.randomUUID(); activity.current = Date.now(); setScanFocus(value => value + 1) }
 
     catch (reason) { setError(reason instanceof Error ? reason.message : 'The borrower could not be found.') }
 
@@ -144,7 +146,7 @@ export function CirculationDesk({ onChanged, returnBarcode, borrowerRequest, onB
 
       setBarcode(value)
 
-      if (Date.now() - activity.current > 5 * 60_000) { reset(); setFocusBorrower(Date.now()); throw new Error('Please scan the borrower again after five minutes of inactivity.') }
+      if (Date.now() - activity.current > 5 * 60_000) { reset(); setFocusBorrower(Date.now()); throw new Error('Look up the borrower again after five minutes of inactivity.') }
 
       const request = mode === 'TakeHome' ? borrower?.requests?.find(request => ['Ready for pickup','Awaiting handover'].includes(request.statusLabel) && request.barcode?.trim().toUpperCase() === value.trim().toUpperCase()) : undefined
 
@@ -152,7 +154,7 @@ export function CirculationDesk({ onChanged, returnBarcode, borrowerRequest, onB
 
       setSelectedRequest(requestId)
 
-      setCopy(await deskCirculationApi.preview(payload, value, mode, requestId))
+      setCopy(await (manual?deskCirculationApi.manualPreview(payload,value,mode,requestId):deskCirculationApi.preview(payload, value, mode, requestId)))
 
       activity.current = Date.now()
 
@@ -172,7 +174,7 @@ export function CirculationDesk({ onChanged, returnBarcode, borrowerRequest, onB
 
     try {
 
-      const result = pickupContext ? await deskCirculationApi.checkoutRequest(pickupContext, barcode, copy.copy.id, key.current) : await deskCirculationApi.checkout(payload, barcode, mode, key.current, selectedRequest)
+      const result = pickupContext ? await deskCirculationApi.checkoutRequest(pickupContext, barcode, copy.copy.id, key.current) : await (manual?deskCirculationApi.manualCheckout(payload,barcode,mode,key.current,selectedRequest):deskCirculationApi.checkout(payload, barcode, mode, key.current, selectedRequest))
 
       const title = result.copy?.title ?? result.title ?? 'Material'
 
@@ -184,7 +186,7 @@ export function CirculationDesk({ onChanged, returnBarcode, borrowerRequest, onB
 
       try {
 
-        const updated = await deskCirculationApi.borrower(payload, mode)
+        const updated = await (manual?deskCirculationApi.manualBorrower(payload,mode):deskCirculationApi.borrower(payload, mode))
 
         if (updated.user.userId !== borrower.user.userId) throw new Error('Borrower identity changed.')
 
@@ -246,15 +248,16 @@ export function CirculationDesk({ onChanged, returnBarcode, borrowerRequest, onB
 
     try {
 
-      await attendanceApi.scan(payload, 'Book Borrowing', attendanceKey.current, 'Entry')
+      if(manual)await deskCirculationApi.manualCheckIn(payload,mode,attendanceKey.current)
+      else await attendanceApi.scan(payload, 'Book Borrowing', attendanceKey.current, 'Entry')
 
-      const updated = await deskCirculationApi.borrower(payload, mode)
+      const updated = await (manual?deskCirculationApi.manualBorrower(payload,mode):deskCirculationApi.borrower(payload, mode))
 
       if (updated.user.userId !== borrower.user.userId) throw new Error('Please rescan the borrower.')
 
       setBorrower(updated); activity.current = Date.now(); setScanFocus(value => value + 1)
 
-      setSuccess(updated.eligible ? 'Attendance recorded. Scan the book to continue.' : 'Attendance recorded. Resolve the borrowing restrictions before checkout.')
+      setSuccess(updated.eligible ? manual?'Attendance recorded. Enter the book barcode to continue.':'Attendance recorded. Scan the book to continue.' : 'Attendance recorded. Resolve the borrowing restrictions before checkout.')
 
     } catch (reason) {
 
@@ -278,7 +281,7 @@ export function CirculationDesk({ onChanged, returnBarcode, borrowerRequest, onB
 
         <div className="flex flex-wrap items-center justify-between gap-4">
 
-          <div><h2 ref={heading} tabIndex={-1} className="text-xl font-bold outline-none">Library counter</h2><p className="mt-1 text-sm opacity-60">{pickupContext ? 'Borrower and assigned copy loaded. Review, then confirm handover.' : 'Scan, check the details, and confirm.'}</p></div>
+          <div><h2 ref={heading} tabIndex={-1} className="text-xl font-bold outline-none">Library counter</h2><p className="mt-1 text-sm opacity-60">{pickupContext ? 'Borrower and assigned copy loaded. Review, then confirm handover.' : manual?'Enter the details, review, and confirm.':'Scan, check the details, and confirm.'}</p></div>
 
           <div className="grid w-full grid-cols-2 gap-1 rounded-2xl bg-[#0b5ea2]/5 p-1 sm:w-auto dark:bg-white/10" role="group" aria-label="Counter task">
 
@@ -291,16 +294,17 @@ export function CirculationDesk({ onChanged, returnBarcode, borrowerRequest, onB
       </div>
 
       <div className="p-5 sm:p-6">
+        {!pickupContext ? <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#0b5ea2]/15 p-3 dark:border-white/15"><p className="text-sm opacity-75">{manual?'No scanner needed. Check the physical School ID and book label.':'No QR code or scanner? Enter the details manually.'}</p><Button variant="secondary" disabled={busy||Boolean(borrower)} aria-pressed={manual} onClick={()=>{reset();setManual(value=>!value);setSuccess('')}}>{manual?'Use scanner':'Enter manually'}</Button></div>:null}
 
         {success ? <div role="status" className="mb-5 flex items-start gap-3 rounded-2xl bg-[#FFF200] p-4 text-sm font-semibold text-[#0b5ea2]"><CheckCircle2 className="shrink-0" size={19} />{success}</div> : null}
 
         {error ? <p role="alert" className="auth-error mb-5 rounded-xl p-4 text-sm">{error}</p> : null}
 
-        {mode === 'Return' ? <div className="mx-auto max-w-xl py-2"><h3 className="text-lg font-bold">Which book is being returned?</h3><p className="mb-5 mt-1 text-sm opacity-65">Scan its barcode, or select Return book from the loans below.</p><DeskScanInput key="return-book" autoSubmit focusRequest={scanFocus} label="Book barcode" value={barcode} disabled={busy} actionLabel="Look up" onChange={setBarcode} onScan={value => { if (value.trim()) setReturnTarget({ value, key: Date.now() }) }} /></div> : <>
+        {mode === 'Return' ? <div className="mx-auto max-w-xl py-2"><h3 className="text-lg font-bold">Which book is being returned?</h3><p className="mb-5 mt-1 text-sm opacity-65">Enter the barcode printed on the book, scan it, or find the borrower/title in the loans below and select Return book.</p><DeskScanInput key="return-book" manual={manual} autoSubmit={!manual} focusRequest={scanFocus} label="Book barcode" value={barcode} disabled={busy} actionLabel="Look up" onChange={setBarcode} onScan={value => { if (value.trim()) setReturnTarget({ value, key: Date.now() }) }} /></div> : <>
 
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><p className="text-sm opacity-65">{pickupContext ? 'Check the name and assigned book below. No repeat scans needed.' : 'Scan borrower once → scan book → confirm.'}</p><label className="flex items-center gap-2 text-xs font-semibold">Use<select aria-label="Book use" disabled={busy || Boolean(pickupContext)} value={mode} onChange={event => { const nextMode = event.target.value as DeskMode; setMode(nextMode); setBarcode(''); setCopy(null); setSelectedRequest(null); key.current = ''; if (borrower) void verifyUser(payload, nextMode) }} className="rounded-lg border border-[#0b5ea2]/20 bg-white p-2 text-[#0b5ea2]"><option value="TakeHome">Take home</option><option value="InLibrary">Inside the library</option></select></label></div>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><p className="text-sm opacity-65">{pickupContext ? 'Check the name and assigned book below. No repeat scans needed.' : manual?'Find borrower by School ID → enter book barcode → confirm.':'Scan borrower once → scan book → confirm.'}</p><label className="flex items-center gap-2 text-xs font-semibold">Use<select aria-label="Book use" disabled={busy || Boolean(pickupContext)} value={mode} onChange={event => { const nextMode = event.target.value as DeskMode; setMode(nextMode); setBarcode(''); setCopy(null); setSelectedRequest(null); key.current = ''; if (borrower) void verifyUser(payload, nextMode) }} className="rounded-lg border border-[#0b5ea2]/20 bg-white p-2 text-[#0b5ea2]"><option value="TakeHome">Take home</option><option value="InLibrary">Inside the library</option></select></label></div>
 
-          {!borrower && pickupContext ? <div><p role="status" className="text-sm">{busy ? 'Loading borrower and assigned book…' : 'Pickup details are unavailable.'}</p><Button disabled={busy} variant="secondary" onClick={() => void loadPickup(pickupContext)}>Refresh pickup</Button></div> : !borrower ? <DeskScanInput key="borrower" autoSubmit qr label="Borrower QR" value={payload} disabled={busy} focusRequest={focusBorrower} actionLabel={busy ? 'Checking…' : 'Look up'} onChange={setPayload} onScan={value => void verifyUser(value)} /> : <>
+          {!borrower && pickupContext ? <div><p role="status" className="text-sm">{busy ? 'Loading borrower and assigned book…' : 'Pickup details are unavailable.'}</p><Button disabled={busy} variant="secondary" onClick={() => void loadPickup(pickupContext)}>Refresh pickup</Button></div> : !borrower && manual ? <form className="mx-auto max-w-xl space-y-3" onSubmit={event=>{event.preventDefault();void verifyUser(payload)}}><label className="block text-sm font-bold" htmlFor="manual-borrower-school-id">School ID</label><input id="manual-borrower-school-id" value={payload} maxLength={50} autoComplete="off" disabled={busy} onChange={event=>setPayload(event.target.value)} placeholder="Enter the borrower’s School ID" className="min-h-11 w-full rounded-xl border border-[#0b5ea2]/20 bg-white p-3 text-[#0b5ea2]"/><p className="text-sm opacity-65">Match the name and photo to their physical School ID before lending.</p><Button type="submit" disabled={busy||!payload.trim()}>{busy?'Checking…':'Find borrower'}</Button></form> : !borrower ? <DeskScanInput key="borrower" autoSubmit qr label="Borrower QR" value={payload} disabled={busy} focusRequest={focusBorrower} actionLabel={busy ? 'Checking…' : 'Look up'} onChange={setPayload} onScan={value => void verifyUser(value)} /> : <>
 
             <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-[#0b5ea2]/15 p-4 dark:border-white/15">
 
@@ -314,11 +318,11 @@ export function CirculationDesk({ onChanged, returnBarcode, borrowerRequest, onB
 
             {visibleBlockers.length ? <ul role="alert" className="auth-error mb-4 list-inside list-disc rounded-xl p-3 text-sm">{visibleBlockers.map(blocker => <li key={blocker}>{blocker}</li>)}</ul> : null}
 
-            {borrower.hasAttendance === false && !payload ? <div className="mb-4 rounded-xl border border-[#0b5ea2]/15 p-4 text-sm">Record entry with the user's permanent QR at the attendance scanner, then <Button disabled={busy} variant="secondary" onClick={() => { if (pickupContext) void loadPickup(pickupContext) }}>Refresh pickup</Button>.</div> : borrower.hasAttendance === false ? <div className="mb-4 rounded-xl border border-[#0b5ea2]/15 p-4 dark:border-white/15"><p className="text-sm font-semibold">Attendance is not recorded yet.</p><p className="mt-1 text-xs opacity-65">Use this QR to record entry here. No second scan is needed.</p>{!entryState && !entryError ? <p role="status" className="mt-2 text-xs">Checking entry availability…</p> : null}{entryState && !entryAllowed ? <p className="mt-2 text-xs font-semibold">{!entryState.entryOpen ? 'Entry is closed for the current operating hours or closing cutoff.' : !entryState.allowBorrowing ? 'Borrowing entry is restricted at this time.' : 'The library is at capacity.'}</p> : null}{entryError ? <p role="alert" className="auth-error mt-2 rounded-xl p-2 text-xs">{entryError}</p> : null}<div className="mt-3 flex flex-wrap gap-2"><Button disabled={busy || !entryAllowed} onClick={() => void checkInHere()}>Check in here</Button>{!entryAllowed ? <Button variant="ghost" disabled={busy} onClick={() => setEntryAttempt(value => value + 1)}>Check availability again</Button> : null}</div></div> : null}
+            {borrower.hasAttendance === false && !payload ? <div className="mb-4 rounded-xl border border-[#0b5ea2]/15 p-4 text-sm">Record entry with the user's permanent QR at the attendance scanner, then <Button disabled={busy} variant="secondary" onClick={() => { if (pickupContext) void loadPickup(pickupContext) }}>Refresh pickup</Button>.</div> : borrower.hasAttendance === false ? <div className="mb-4 rounded-xl border border-[#0b5ea2]/15 p-4 dark:border-white/15"><p className="text-sm font-semibold">Attendance is not recorded yet.</p><p className="mt-1 text-xs opacity-65">{manual?"Record entry here after checking the borrower’s School ID.":"Use this QR to record entry here. No second scan is needed."}</p>{!entryState && !entryError ? <p role="status" className="mt-2 text-xs">Checking entry availability…</p> : null}{entryState && !entryAllowed ? <p className="mt-2 text-xs font-semibold">{!entryState.entryOpen ? 'Entry is closed for the current operating hours or closing cutoff.' : !entryState.allowBorrowing ? 'Borrowing entry is restricted at this time.' : 'The library is at capacity.'}</p> : null}{entryError ? <p role="alert" className="auth-error mt-2 rounded-xl p-2 text-xs">{entryError}</p> : null}<div className="mt-3 flex flex-wrap gap-2"><Button disabled={busy || !entryAllowed} onClick={() => void checkInHere()}>Check in here</Button>{!entryAllowed ? <Button variant="ghost" disabled={busy} onClick={() => setEntryAttempt(value => value + 1)}>Check availability again</Button> : null}</div></div> : null}
 
             {borrower.eligible || pickupContext ? <>
 
-              {!pickupContext ? <DeskScanInput key="borrow-book" autoSubmit label="Book barcode" value={barcode} disabled={busy} focusRequest={scanFocus} actionLabel={busy ? 'Checking…' : 'Look up'} onChange={value => { setBarcode(value); setCopy(null); setSelectedRequest(null); key.current = '' }} onScan={value => void verifyCopy(value)} /> : null}
+              {!pickupContext ? <DeskScanInput key="borrow-book" manual={manual} autoSubmit={!manual} label="Book barcode" value={barcode} disabled={busy} focusRequest={scanFocus} actionLabel={busy ? 'Checking…' : manual?'Find book':'Look up'} onChange={value => { setBarcode(value); setCopy(null); setSelectedRequest(null); key.current = '' }} onScan={value => void verifyCopy(value)} /> : null}
 
               {copy ? <div className="mt-4 rounded-2xl bg-[#0b5ea2]/5 p-4 dark:bg-white/10"><h3 className="break-words text-lg font-bold">{copy.copy.title}</h3><p className="mt-1 break-all font-mono text-xs opacity-65">{copy.copy.barcode} · {copy.copy.condition}</p>{selectedRequest ? <p className="mt-2 text-xs font-semibold">Ready pickup request matched automatically.</p> : null}{copy.blockers.length ? <ul role="alert" className="auth-error mt-3 list-inside list-disc rounded-xl p-3 text-sm">{copy.blockers.map(blocker => <li key={blocker}>{blocker}</li>)}</ul> : null}{copy.eligible && borrower.eligible ? <><p className="mt-3 text-xs opacity-70">{mode === 'InLibrary' ? 'For use inside the library; hand back before the closing cutoff.' : 'Match the borrower and physical book, then confirm.'}</p><div className="mt-3 flex flex-col gap-2 sm:flex-row"><Button disabled={busy} className="flex-1" onClick={() => void confirm()}><CheckCircle2 size={17} />{busy ? 'Saving…' : mode === 'InLibrary' ? 'Confirm in-library use' : pickupContext ? 'Confirm handover' : 'Confirm checkout'}</Button><Button disabled={busy} variant="ghost" onClick={() => { if (pickupContext) { void loadPickup(pickupContext); return } setCopy(null); setBarcode(''); key.current = ''; setScanFocus(value => value + 1) }}>{pickupContext ? 'Refresh pickup' : 'Clear book'}</Button></div></> : null}</div> : null}
 

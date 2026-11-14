@@ -3,6 +3,8 @@ import { deskCirculationService,type DeskActor } from './desk-circulation.servic
 const actor=(res:Response):DeskActor=>({accountId:Number(res.locals.authenticatedUser?.accountId),role:String(res.locals.authenticatedUser?.role)})
 const handle=(fn:(req:Request,res:Response)=>Promise<unknown>)=>(req:Request,res:Response,next:NextFunction)=>{res.set('Cache-Control','no-store');void fn(req,res).then(data=>res.json({success:true,data})).catch(next)}
 export const deskCirculationRouter=Router()
+deskCirculationRouter.post('/manual-check-in',handle((req,res)=>deskCirculationService.manualCheckIn(actor(res),req.body)))
+
 deskCirculationRouter.post('/borrower',handle((req,res)=>deskCirculationService.borrower(actor(res),req.body)))
 deskCirculationRouter.post('/request-preview',handle((req,res)=>deskCirculationService.requestPreview(actor(res),req.body)))
 
