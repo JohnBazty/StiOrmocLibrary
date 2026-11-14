@@ -5,7 +5,12 @@ import request from 'supertest'
 import { HttpError } from '../../core/http-error.ts'
 import { requireJwtRoles } from '../auth/jwt-auth.middleware.ts'
 import { createCirculationController } from './circulation.controller.ts'
-import { createAdminCirculationRouter, createCirculationRequestRouter } from './circulation.routes.ts'
+import {
+  createAdminCirculationRouter,
+  createCirculationRequestRouter,
+  createUserCirculationRouter,
+  RENEWAL_SUBMIT_LIMIT,
+} from './circulation.routes.ts'
 
 function withHttpErrorHandler(app: express.Express) {
   app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
@@ -27,6 +32,54 @@ test('Student role cannot load or mutate administrative circulation routes', asy
   const preflight = await request(app).post('/api/v1/admin/borrowing/preflight').send({ barcode: 'BOOK-1', school_id: 'STI-7', flow: 'walk_in' })
   assert.equal(preflight.status, 403); assert.equal(preflight.body.code, 'JWT_ROLE_FORBIDDEN')
 })
+
+test('Student token cannot call staff renewal and the renewal service is not invoked', async () => {
+  let staffRenewalCalls = 0
+  const service = {
+    staffRenewal: async () => {
+      staffRenewalCalls += 1
+      return { status: 'Approved' }
+    },
+  }
+  const app = express()
+  app.use(express.json())
+  app.use((_request, response, next) => {
+    response.locals.authenticatedUser = { id: 7, accountId: 7, schoolId: 'STI-7', role: 'Student' }
+    next()
+  })
+  app.use('/api/v1/admin', requireJwtRoles('Admin'), createAdminCirculationRouter(createCirculationController(service as never)))
+  const response = await request(app)
+    .post('/api/v1/admin/borrowing/31/renewals')
+    .send({ requestKey: 'student-staff-renewal', staffNote: 'Should not reach the service.' })
+  assert.equal(response.status, 403)
+  assert.equal(response.body.code, 'JWT_ROLE_FORBIDDEN')
+  assert.equal(staffRenewalCalls, 0)
+})
+
+test('borrower renewal submits are rate limited per account, not per shared campus IP', async () => {
+  let calls = 0
+  const service = { submitRenewal: async () => { calls += 1; return { status: 'Rejected', decisionSummary: 'Blocked.' } } }
+  const app = express()
+  app.use(express.json())
+  app.use((request, response, next) => {
+    const accountId = Number(request.header('x-test-account'))
+    response.locals.authenticatedUser = { id: accountId, accountId, role: 'Student' }
+    next()
+  })
+  app.use('/api/v1/borrowing', createUserCirculationRouter(createCirculationController(service as never)))
+  withHttpErrorHandler(app)
+  for (let attempt = 0; attempt < RENEWAL_SUBMIT_LIMIT; attempt += 1) {
+    const allowed = await request(app).post('/api/v1/borrowing/31/renewals').set('x-test-account', '7').send({ requestKey: `k-${attempt}` })
+    assert.equal(allowed.status, 200)
+  }
+  const limited = await request(app).post('/api/v1/borrowing/31/renewals').set('x-test-account', '7').send({ requestKey: 'k-over' })
+  assert.equal(limited.status, 429)
+  assert.equal(limited.body.code, 'RENEWAL_RATE_LIMITED')
+  const otherAccount = await request(app).post('/api/v1/borrowing/32/renewals').set('x-test-account', '8').send({ requestKey: 'k-other' })
+  assert.equal(otherAccount.status, 200)
+  assert.equal(calls, RENEWAL_SUBMIT_LIMIT + 1)
+})
+
 
 test('Librarian can run preflight and blocked decisions return success with structured data', async () => {
   const service = {

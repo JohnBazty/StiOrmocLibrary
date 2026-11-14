@@ -1,6 +1,6 @@
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { ViewLocationButton } from '../floor-plan/ViewLocationButton'
-import { AlertTriangle, BookOpen, CalendarClock, Eye, RefreshCw, X } from 'lucide-react'
+import { AlertTriangle, BookOpen, CalendarClock, CalendarPlus, Eye, RefreshCw, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, PageHeader, SectionCard, StatCard, StatusBadge } from '../../components/ui'
 import { circulationApi } from './circulation-api'
@@ -8,6 +8,7 @@ import { InLibraryHistory } from './InLibraryHistory'
 import type { BorrowingHistoryData } from './types'
 import { BookDetailDrawer } from '../catalog/BookDetailDrawer'
 import { CancelBorrowRequestDialog } from './CancelBorrowRequestDialog'
+import { RenewLoanDialog } from './RenewLoanDialog'
 import { ReportLostDialog } from './ReportLostDialog'
 import { BookCoverThumbnail } from '../catalog/BookCoverThumbnail'
 import { clearanceApi } from '../clearance/clearance-api'
@@ -29,6 +30,7 @@ export function BorrowingHistory() {
   const [cancelBusy, setCancelBusy] = useState(false)
   const [cancelError, setCancelError] = useState('')
   const [reporting, setReporting] = useState<BorrowingHistoryData['items'][number] | null>(null)
+  const [renewing, setRenewing] = useState<BorrowingHistoryData['items'][number] | null>(null)
   const [reportBusy, setReportBusy] = useState(false)
   const [reportError, setReportError] = useState('')
   const fetching = useRef(false)
@@ -92,7 +94,7 @@ export function BorrowingHistory() {
         <thead className="bg-[#003399] text-[#FFFFFF]"><tr><th className="px-5 py-3">Title</th><th className="px-5 py-3">Author</th><th className="px-5 py-3">Borrow date</th><th className="px-5 py-3">Due date</th><th className="px-5 py-3">Status</th><th className="px-5 py-3 text-right">Actions</th></tr></thead>
         <tbody>{loading ? <tr><td colSpan={6} className="px-5 py-12 text-center text-[#003399]">Loading borrowing records…</td></tr> : data?.items.length ? data.items.map((item) => <tr key={item.transactionId} className="border-b border-[#003399]/10">
           <td className="px-5 py-4"><div className="flex items-center gap-3"><BookCoverThumbnail title={item.title} coverImagePath={item.coverImagePath} className="h-16 w-11 rounded-lg" /><div className="min-w-0"><p className="font-bold text-[#003399]">{item.title}</p><p className="mt-1 font-mono text-xs text-[#003399]/60">{item.accessionNumber ?? item.barcode ?? `TX-${item.transactionId}`}</p></div></div></td>
-          <td className="px-5 py-4 text-[#003399]">{item.author}</td><td className="px-5 py-4 text-[#003399]">{formatDate(item.borrowDate)}</td><td className="px-5 py-4 font-semibold text-[#003399]">{formatDate(item.dueDate)}</td><td className="px-5 py-4"><StatusBadge status={item.lostReportStatus ?? item.status} /></td><td className="px-5 py-4"><div className="flex justify-end gap-2">{item.titleId ? <ViewLocationButton titleId={Number(item.titleId)} barcode={item.barcode}/> : null}{item.titleId ? <button onClick={() => setDetail({ titleId: Number(item.titleId), barcode: item.barcode })} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#003399]/20 px-3 text-xs font-bold text-[#003399]"><Eye size={15} /> View details</button> : null}{item.status === 'Pending' ? <button onClick={() => { setCancelError(''); setCancelling(item) }} className="h-9 rounded-lg px-3 text-xs font-bold text-[#003399] hover:bg-[#FFF200]"><X size={14} className="inline" /> Cancel request</button> : null}{['Borrowed','Overdue'].includes(item.status) && !item.lostReportStatus ? <button onClick={() => { setReportError(''); setReporting(item) }} className="h-9 rounded-lg bg-[#FFF200] px-3 text-xs font-bold text-[#003399]">Report lost</button> : null}</div></td>
+          <td className="px-5 py-4 text-[#003399]">{item.author}</td><td className="px-5 py-4 text-[#003399]">{formatDate(item.borrowDate)}</td><td className="px-5 py-4 font-semibold text-[#003399]"><p>{formatDate(item.dueDate)}</p>{typeof item.renewalCount === 'number' ? <p className="mt-1 text-xs font-medium text-[#003399]/65">Renewed {item.renewalCount} of {item.maxRenewals}</p> : null}</td><td className="px-5 py-4"><StatusBadge status={item.lostReportStatus ?? item.status} /></td><td className="px-5 py-4"><div className="flex justify-end gap-2">{item.titleId ? <ViewLocationButton titleId={Number(item.titleId)} barcode={item.barcode}/> : null}{item.titleId ? <button onClick={() => setDetail({ titleId: Number(item.titleId), barcode: item.barcode })} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#003399]/20 px-3 text-xs font-bold text-[#003399]"><Eye size={15} /> View details</button> : null}{item.status === 'Pending' ? <button onClick={() => { setCancelError(''); setCancelling(item) }} className="h-9 rounded-lg px-3 text-xs font-bold text-[#003399] hover:bg-[#FFF200]"><X size={14} className="inline" /> Cancel request</button> : null}{item.canRequestRenewal ? <button onClick={() => setRenewing(item)} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#003399] px-3 text-xs font-bold text-[#FFFFFF]"><CalendarPlus size={15} /> Request renewal</button> : null}{['Borrowed','Overdue'].includes(item.status) && !item.lostReportStatus ? <button onClick={() => { setReportError(''); setReporting(item) }} className="h-9 rounded-lg bg-[#FFF200] px-3 text-xs font-bold text-[#003399]">Report lost</button> : null}</div></td>
         </tr>) : <tr><td colSpan={6} className="px-5 py-12 text-center font-semibold text-[#003399]">{error ? 'Unable to load borrowing records. Use Refresh to try again.' : 'No borrowing transactions have been recorded.'}</td></tr>}</tbody>
       </table></ResponsiveTable>
       {data && data.pagination.totalPages > 1 ? <nav aria-label="Borrowing history pages" className="flex flex-wrap items-center justify-between gap-3 border-t p-4 text-sm"><Button variant="secondary" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>Previous</Button><span>Page {data.pagination.page} of {data.pagination.totalPages} · {data.pagination.total} transactions</span><Button variant="secondary" disabled={page >= data.pagination.totalPages} onClick={() => setPage(value => value + 1)}>Next</Button></nav> : null}
@@ -100,6 +102,7 @@ export function BorrowingHistory() {
     <InLibraryHistory />
     {detail ? <BookDetailDrawer titleId={detail.titleId} barcode={detail.barcode} onClose={() => setDetail(null)} /> : null}
     {cancelling ? <CancelBorrowRequestDialog title={cancelling.title} busy={cancelBusy} error={cancelError} onCancel={() => { if (!cancelBusy) setCancelling(null) }} onConfirm={(reason) => void confirmCancellation(reason)} /> : null}
+    {renewing ? <RenewLoanDialog transactionId={renewing.transactionId} title={renewing.title} onCancel={() => setRenewing(null)} onSuccess={(decision) => { setRenewing(null); setNotice(`${renewing.title} was renewed until ${formatDate(decision.newDueAt)}.`); window.dispatchEvent(new Event('smartlib:circulation-updated')); void load() }} /> : null}
     {reporting ? <ReportLostDialog title={reporting.title} busy={reportBusy} error={reportError} onCancel={() => { if (!reportBusy) setReporting(null) }} onConfirm={() => void reportLost()} /> : null}
   </>
 }
