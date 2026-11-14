@@ -54,10 +54,10 @@ export function CategorySuggestion({ subjects, categories, categoryId, onSelect 
   }
 
   if (!subjects.length) return null
-  return <div className="text-xs text-[#003399] sm:col-span-2">
+  return <div className="text-xs text-[#0b5ea2] sm:col-span-2">
     <p><span className="font-bold">Subjects from the lookup:</span> {subjects.join('; ')}</p>
     {note ? <p role="status" className="mt-1 font-semibold">{note}</p> : null}
-    {!match && !categoryId ? <button type="button" onClick={() => void openCreate()} className="mt-2 h-9 rounded-lg border border-[#003399] bg-[#FFFFFF] px-3 font-bold">Create category “{subjects[0].slice(0, 100)}”</button> : null}
+    {!match && !categoryId ? <button type="button" onClick={() => void openCreate()} className="mt-2 h-9 rounded-lg border border-[#0b5ea2] bg-[#FFFFFF] px-3 font-bold">Create category “{subjects[0].slice(0, 100)}”</button> : null}
     {error ? <p role="alert" className="mt-1 rounded-lg bg-[#FFF200] p-2 font-bold">{error}</p> : null}
     {creating ? <CreateCategoryModal category={null} initialName={creating.name} shelves={creating.shelves} saving={saving} errors={errors} onSubmit={create} onClose={() => setCreating(null)} /> : null}
   </div>

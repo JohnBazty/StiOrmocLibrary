@@ -411,3 +411,11 @@ Postgres migration `032_login_devices.sql` was applied individually on 2026-11-1
 - `library_login_sessions` stores the browser token hash and optional seven-day deadline alongside the existing account version, last activity and revocation time. A browser-session cookie identifies an ordinary sign-in. It can resume within the existing ten-minute inactivity limit.
 - `login_otp_challenges.remember_device` binds the Student or Faculty choice to the verified challenge.
 - `login_device_switches` stores private, hashed two-minute confirmations tied to the account version and the session they can replace. The account lock serializes switches, resumptions and revocations.
+
+## Circulation audit integration — local, 2026-11-13
+
+No schema migration was introduced. Renewal code uses the applied 017_loan_renewals.sql and 018_loan_renewal_hardening.sql; damaged-book and long-overdue reviews use applied 017_circulation_cases.sql. Their applied filenames and SHA-256 checksums were verified read-only against public.schema_migrations.
+
+The existing operational overdue runner opens a unique Long Overdue case using the recorded loan policy threshold and open-day fine calendar. It does not declare Lost or assess a replacement price automatically. Staff-confirmed physical returns resolve open overdue reviews and preserve outstanding fines. Renewal extends from the recorded due time without resetting its clock, respects reservations/monetary blocks, and rejects damaged or repair copies. The borrowing-policy editor remains archived; resolving the saved policy does not unarchive it. Claims-returned needs a new additive schema proposal, not a reinterpretation of the applied Damage/Long Overdue types.
+
+See docs/plans/2026-11-13-circulation-audit-remediation.md for release boundaries, separate policy plans, verification and the still-inactive production schedule.

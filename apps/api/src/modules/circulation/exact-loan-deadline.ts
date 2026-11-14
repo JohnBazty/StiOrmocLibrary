@@ -13,3 +13,11 @@ export function exactLoanDeadline(borrowedAt: Date, days: number, openDays: Read
   }
   throw new Error('No open due date is configured within one year.')
 }
+
+/** Renewals add open library days and preserve the loan's recorded Manila clock time. */
+export function extendRecordedLoanDeadline(currentDueAt: Date, days: number, openDays: ReadonlySet<number>, closedDates: ReadonlySet<string>) {
+  if (!Number.isInteger(days) || days < 1 || days > 365) throw new Error('The renewal extension must be 1–365 days.')
+  let due = new Date(currentDueAt)
+  for (let added=0; added<days; added++) due=exactLoanDeadline(due,1,openDays,closedDates)
+  return due
+}

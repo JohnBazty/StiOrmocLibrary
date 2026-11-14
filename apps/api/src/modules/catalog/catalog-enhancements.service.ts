@@ -12,6 +12,7 @@ import { retainImportCorrections, type ImportReferences } from './holdings-clean
 import { insertAuthors, insertLegacyBookMaterial, insertPhysicalCopy, insertTitle } from './catalog.repository.ts'
 import { reserveBarcodeSequence } from './bulk-book.repository.ts'
 import { renderBookLabel } from './book-label.renderer.ts'
+import { parseResearchCatalogFilters } from './research-catalog.validation.ts'
 
 const fail=(message:string,status=422)=>new HttpError(status,'CATALOG_REVIEW_REQUIRED',message)
 const id=(value:unknown)=>{const n=positiveId(value);if(!n)throw fail('Choose a valid record.');return n}
@@ -58,12 +59,19 @@ const publicSelect=`SELECT t.title_id AS id,t.title,t.record_type AS kind,t.cove
  COALESCE((SELECT jsonb_agg(jsonb_build_object('id',s.course_id,'name',s.name,'programId',s.program_id,'code',s.code)) FROM catalog_title_courses tc JOIN catalog_courses s ON s.course_id=tc.course_id WHERE tc.title_id=t.title_id),'[]') AS courses,
  (SELECT COUNT(*) FROM physical_copies pc WHERE pc.title_id=t.title_id AND pc.lifecycle_status='Active') AS "copyCount",
  (SELECT COUNT(*) FROM physical_copies pc JOIN materials m ON m.material_id=pc.material_id WHERE pc.title_id=t.title_id AND pc.lifecycle_status='Active' AND pc.availability_status='Available' AND m.availability_status='Available' AND pc.condition_status NOT IN ('Lost','Damaged','For Repair')) AS available,
- COALESCE((SELECT abstract_text FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived' LIMIT 1),'') AS abstract
+ COALESCE((SELECT abstract_text FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived' LIMIT 1),'') AS abstract,
+ (SELECT department_or_program FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived' LIMIT 1) AS department,
+ (SELECT adviser_name FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived' LIMIT 1) AS adviser
  FROM titles t LEFT JOIN categories c ON c.category_id=t.category_id LEFT JOIN catalog_title_details d ON d.title_id=t.title_id LEFT JOIN catalog_resource_types rt ON rt.type_id=d.type_id`
-function publicWhere(query:Record<string,unknown>){
+export function publicWhere(query:Record<string,unknown>){
  const clauses=["t.lifecycle_status='Active'","(t.record_type='Book' OR EXISTS(SELECT 1 FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived'))"],values:any[]=[]
  const q=clean(query.q).slice(0,120);if(q){clauses.push('(t.title ILIKE ? OR t.isbn ILIKE ? OR EXISTS(SELECT 1 FROM authors a WHERE a.title_id=t.title_id AND a.author_name ILIKE ?))');values.push(`%${q}%`,`%${q}%`,`%${q}%`)}
  if(['Book','Research/Thesis'].includes(String(query.kind))){clauses.push('t.record_type=?');values.push(query.kind)}
+ const research=parseResearchCatalogFilters({department:query.department,publicationYear:query.publicationYear,author:query.author,adviser:query.adviser})
+ if(research.department){clauses.push("EXISTS(SELECT 1 FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived' AND rr.department_or_program ILIKE ?)");values.push(`%${research.department}%`)}
+ if(research.adviser){clauses.push("EXISTS(SELECT 1 FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived' AND rr.adviser_name ILIKE ?)");values.push(`%${research.adviser}%`)}
+ if(research.publicationYear!==null){clauses.push('t.publication_year=?');values.push(research.publicationYear)}
+ if(research.authors){clauses.push('EXISTS(SELECT 1 FROM authors a WHERE a.title_id=t.title_id AND a.author_name ILIKE ?)');values.push(`%${research.authors}%`)}
  if(positiveId(query.categoryId)){clauses.push('t.category_id=?');values.push(positiveId(query.categoryId))}
  for(const [param,table,col] of [['programId','catalog_title_programs','program_id'],['courseId','catalog_title_courses','course_id'],['typeId','catalog_title_details','type_id']])if(positiveId(query[param])){clauses.push(`EXISTS(SELECT 1 FROM ${table} f WHERE f.title_id=t.title_id AND f.${col}=?)`);values.push(positiveId(query[param]))}
  return {sql:clauses.join(' AND '),values}

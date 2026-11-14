@@ -6,7 +6,6 @@ import { ThemeProvider } from '../features/theme/ThemeProvider'
 import { NotificationCenterPage } from '../features/notifications/NotificationCenterPage'
 vi.mock('../features/auth/auth-storage',()=>({getAccessToken:()=>'fixture-token',getCurrentIdentity:()=>({role:'Student',schoolId:'EXAMPLE',userId:999001})}))
 vi.mock('../features/auth/SessionActivity',()=>({SessionActivity:()=>null}))
-vi.mock('./SidebarAccountCard',()=>({SidebarAccountCard:()=>null}))
 vi.mock('../features/attendance/AttendanceFab',()=>({AttendanceFab:()=>null}))
 afterEach(()=>{cleanup();vi.unstubAllGlobals()})
 it('previews notices, marks one read, and clears the shortcut and badge after deleting the inbox', async () => {
@@ -51,11 +50,14 @@ it('previews notices, marks one read, and clears the shortcut and badge after de
   expect(emptyPreview.queryByText(ready.title)).toBeNull()
   await waitFor(() => expect(screen.queryByLabelText(/unread notifications/)).toBeNull())
 })
-it('keeps the collection and requests separate and offers three profile sections',async()=>{
+it('keeps the collection and requests separate and offers one existing profile destination',async()=>{
   vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({success:true,data:{unreadCount:0}}))))
   render(<MemoryRouter initialEntries={['/student/dashboard']}><ThemeProvider><Routes><Route element={<PortalLayout role="student"/>}><Route path="/student/dashboard" element={<h1>Dashboard content</h1>}/></Route></Routes></ThemeProvider></MemoryRouter>)
   expect(screen.getByRole('link',{name:'My books'}).getAttribute('href')).toBe('/student/my-books')
   expect(screen.getByRole('link',{name:'Requests & reservations'}).getAttribute('href')).toBe('/student/reservations')
-  fireEvent.click(screen.getByText('My profile',{exact:true}))
-  for(const [name,section] of [['Personal details','personal'],['School details','school'],['Profile photo','photo']])expect(screen.getByRole('link',{name}).getAttribute('href')).toBe(`/student/profile?section=${section}`)
+  fireEvent.click(screen.getByRole('button',{name:/Account menu for/}))
+  expect(screen.getByRole('menuitem',{name:'Profile'}).getAttribute('href')).toBe('/student/profile')
+  expect(screen.queryByRole('link',{name:'Personal details'})).toBeNull()
+  expect(screen.queryByRole('link',{name:'School details'})).toBeNull()
+  expect(screen.queryByRole('link',{name:'Profile photo'})).toBeNull()
 })

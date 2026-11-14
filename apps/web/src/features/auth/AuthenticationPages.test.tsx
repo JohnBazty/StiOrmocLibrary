@@ -65,9 +65,35 @@ describe('authentication pages', () => {
   it('provides a shared personnel login without a selectable role', () => {
     render(<MemoryRouter><ThemeProvider><AdminLoginPage /></ThemeProvider></MemoryRouter>)
     expect(screen.getByRole('heading', { name: 'Library Personnel Login' })).toBeTruthy()
-    expect(screen.getByLabelText('School ID')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Set or reset Staff password' }).getAttribute('href')).toBe('/forgot-password?portal=staff')
+    expect(screen.queryByRole('checkbox', { name: 'Show password' })).toBeNull()
+    expect(screen.getByText('Librarian & Staff access')).toBeTruthy()
+    expect(screen.getByText('Library Staff Portal')).toBeTruthy()
+    expect(screen.queryByText('Restricted access')).toBeNull()
+    expect(screen.queryByText('ILMS Administration')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Show password' }))
+    expect(screen.getByPlaceholderText('Enter your password').getAttribute('type')).toBe('text')
+    fireEvent.click(screen.getByRole('button', { name: 'Hide password' }))
+    expect(screen.getByPlaceholderText('Enter your password').getAttribute('type')).toBe('password')
+    expect(screen.getAllByRole('img', { name: 'STI College Ormoc Logo' }).every(image => image.getAttribute('src') === '/reference-logo.jpg')).toBe(true)
+    const personnelId = screen.getByRole('textbox', { name: 'Personnel ID' })
+    expect(personnelId.getAttribute('placeholder')).toBe('Enter your personnel ID')
+    expect(document.getElementById(personnelId.getAttribute('aria-describedby')!)?.textContent).toBe('Use the ID registered for your library personnel account.')
     expect(screen.queryByLabelText('Login as')).toBeNull()
     expect(screen.getByRole('button', { name: 'Log In' })).toBeTruthy()
+  })
+
+  it.each([
+    ['', 'Personnel ID is required.'],
+    ['?', 'Enter a valid personnel ID.'],
+  ])('uses personnel wording when the entered ID is %j', (id, message) => {
+    const request = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { enabled: false } }) })
+    vi.stubGlobal('fetch', request)
+    render(<MemoryRouter><ThemeProvider><AdminLoginPage /></ThemeProvider></MemoryRouter>)
+    fireEvent.change(screen.getByPlaceholderText('Enter your personnel ID'), { target: { value: id } })
+    fireEvent.click(screen.getByRole('button', { name: 'Log In' }))
+    expect(screen.getByText(message)).toBeTruthy()
+    expect(request.mock.calls.some(([url]) => String(url).endsWith('/auth/login'))).toBe(false)
   })
 
   it('asks before switching after email verification and cancel makes no switch request', async () => {
@@ -97,3 +123,10 @@ describe('authentication pages', () => {
 })
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+
+it.each([['login', LoginPage], ['registration', RegistrationPage]] as const)('uses the reference logo on the full-page %s form', (_name, Page) => {
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({success:true,data:{enabled:false,open:false}}), {status:200,headers:{'Content-Type':'application/json'}})))
+  const {container}=render(<MemoryRouter><ThemeProvider><Page /></ThemeProvider></MemoryRouter>)
+  expect(screen.getAllByRole('img',{name:'STI College Ormoc Logo'}).every(image=>image.getAttribute('src')==='/reference-logo.jpg')).toBe(true)
+  expect(container.querySelector('.public-library-reference')).toBeTruthy()
+})

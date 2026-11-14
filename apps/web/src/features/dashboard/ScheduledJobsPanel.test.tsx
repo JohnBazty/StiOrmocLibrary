@@ -45,7 +45,7 @@ describe('Scheduled jobs panel', () => {
     const { container } = render(<ScheduledJobsPanel />)
     expect(screen.getByRole('status').textContent).toContain('Loading job status')
     // The shared SectionCard frame keeps its own dark background; only the panel's content is checked.
-    expect(container.querySelector('section')!.innerHTML).not.toMatch(/#(?!003399|FFF200)[0-9a-f]{6}/i)
+    expect(container.querySelector('section')!.innerHTML).not.toMatch(/#(?!0b5ea2|FFF200)[0-9a-f]{6}/i)
     expect(container.innerHTML).not.toMatch(/\/45/)
   })
 

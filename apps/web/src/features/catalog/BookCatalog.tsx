@@ -140,21 +140,21 @@ export function BookCatalog() {
 
   function bookAction(book: CatalogRecord) {
     const id = Number(book.id), selected = cartBooks.has(id), unavailable = Number(book.available) === 0
-    return <button onClick={() => unavailable ? void reserveBook({titleId:id,title:book.title}) : addBook(book)} disabled={Number(book.copyCount) === 0 || reserving !== null || reserved.has(id) || (!unavailable && selected)} className="min-h-11 rounded-full bg-[#003399] px-3 py-2 text-white disabled:opacity-50">
+    return <button onClick={() => unavailable ? void reserveBook({titleId:id,title:book.title}) : addBook(book)} disabled={Number(book.copyCount) === 0 || reserving !== null || reserved.has(id) || (!unavailable && selected)} className="min-h-11 rounded-full bg-[#0b5ea2] px-3 py-2 text-white disabled:opacity-50">
       {Number(book.copyCount) === 0 ? 'Digital only' : reserved.has(id) ? 'Reserved' : reserving === id ? 'Reserving…' : unavailable ? 'Reserve book' : selected ? 'In cart' : 'Borrow book'}
     </button>
   }
 
   return <>
 
-    <PageHeader eyebrow="My library" title="Library catalog" description="Add available books to your cart. Reserve unavailable books to join their waiting list. Borrowing begins at staff handover." action={<div className="flex flex-wrap items-center gap-2"><Link to={`${base}/reservations`} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[#003399] px-3 text-xs font-bold text-white"><ListChecks size={16}/> Requests &amp; reservations</Link>{<Link to={`${base}/cart`} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[#003399]/15 px-3 text-xs font-bold"><ShoppingBag size={16}/> Book cart ({cart.length})</Link>}<button onClick={() => { setError(''); void loadViewer(); setRefreshKey(value => value + 1) }} aria-label="Refresh catalog" className="rounded-xl border border-[#003399]/15 p-2.5"><RefreshCw size={17}/></button></div>}/>
+    <PageHeader eyebrow="My library" title="Library catalog" description="Add available books to your cart. Reserve unavailable books to join their waiting list. Borrowing begins at staff handover." action={<div className="flex flex-wrap items-center gap-2"><Link to={`${base}/reservations`} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[#0b5ea2] px-3 text-xs font-bold text-white"><ListChecks size={16}/> Requests &amp; reservations</Link>{<Link to={`${base}/cart`} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[#0b5ea2]/15 px-3 text-xs font-bold"><ShoppingBag size={16}/> Book cart ({cart.length})</Link>}<button onClick={() => { setError(''); void loadViewer(); setRefreshKey(value => value + 1) }} aria-label="Refresh catalog" className="rounded-xl border border-[#0b5ea2]/15 p-2.5"><RefreshCw size={17}/></button></div>}/>
 
     <p className="mb-5 text-sm opacity-70">Available books: choose Borrow book, review your cart and send it to the desk. Unavailable books: reserve and wait for a copy.</p>
-    {viewerError && <p role="status" className="mb-4 rounded-xl border border-[#003399]/15 p-3 text-sm">{viewerError} You can still choose books; eligibility will be checked when you submit. Use Refresh catalog to retry the check.</p>}
+    {viewerError && <p role="status" className="mb-4 rounded-xl border border-[#0b5ea2]/15 p-3 text-sm">{viewerError} You can still choose books; eligibility will be checked when you submit. Use Refresh catalog to retry the check.</p>}
     {error && <p role="alert" className="auth-error mb-4 rounded-xl p-3 text-sm font-semibold">{error}</p>}
 
-    {notice && <p role="status" className="mb-4 rounded-xl bg-[#003399] p-3 text-sm font-semibold text-white">{notice}</p>}
-    {viewerReady && viewer.bookLimit !== null && viewer.activeBookCount >= viewer.bookLimit && <p className="mb-4 rounded-xl border border-[#003399]/15 p-3 text-sm">You can prepare a cart, but your active books and requests already fill your limit of {viewer.bookLimit}. Return a book or cancel an existing request before submitting another request.</p>}
+    {notice && <p role="status" className="mb-4 rounded-xl bg-[#0b5ea2] p-3 text-sm font-semibold text-white">{notice}</p>}
+    {viewerReady && viewer.bookLimit !== null && viewer.activeBookCount >= viewer.bookLimit && <p className="mb-4 rounded-xl border border-[#0b5ea2]/15 p-3 text-sm">You can prepare a cart, but your active books and requests already fill your limit of {viewer.bookLimit}. Return a book or cancel an existing request before submitting another request.</p>}
 
     {viewer.bookLimit!==null && <p className="mb-5 text-xs font-semibold">{viewerReady ? `Active books + requests: ${viewer.activeBookCount} / ${viewer.bookLimit}` : viewerError ? 'Borrowing check unavailable. You can still choose books.' : 'Checking borrowing eligibility… You can choose books while this loads.'}</p>}
 

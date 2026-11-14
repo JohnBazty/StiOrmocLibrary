@@ -141,14 +141,14 @@ export function UnsavedGuard({ children, dirty: forced = false, onSave, resetKey
 
   return <GuardContext.Provider value={{ dirty, request, markClean }}>
     <div ref={box} className={className} onInputCapture={markTyped} onChangeCapture={markTyped} onSubmitCapture={cleanOnSubmit ? submitted : undefined}>{children}</div>
-    {pending ? <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#003399]/70 p-4" onKeyDown={(event) => { if (event.key === 'Escape') setPending(null) }}>
-      <div role="alertdialog" aria-modal="true" aria-labelledby="unsaved-title" aria-describedby="unsaved-text" className="w-full max-w-md rounded-2xl bg-[#FFFFFF] p-5 text-[#003399] shadow-2xl dark:bg-[#001a4d] dark:text-[#f2f6ff]">
+    {pending ? <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#0b5ea2]/70 p-4" onKeyDown={(event) => { if (event.key === 'Escape') setPending(null) }}>
+      <div role="alertdialog" aria-modal="true" aria-labelledby="unsaved-title" aria-describedby="unsaved-text" className="w-full max-w-md rounded-2xl bg-[#FFFFFF] p-5 text-[#0b5ea2] shadow-2xl dark:bg-[#22232e] dark:text-[#f2f6ff]">
         <h2 id="unsaved-title" className="text-lg font-black">You have unsaved changes</h2>
         <p id="unsaved-text" className="mt-2 text-sm">Save them before leaving, or discard them. Discarded changes cannot be recovered.</p>
         <div className="mt-5 flex flex-wrap justify-end gap-2">
           <button type="button" ref={keep} disabled={saving} onClick={() => setPending(null)} className="h-11 rounded-xl px-4 text-sm font-bold underline disabled:opacity-50">Keep editing</button>
-          <button type="button" disabled={saving} onClick={leave} className="h-11 rounded-xl border border-[#003399] px-4 text-sm font-bold disabled:opacity-50 dark:border-white/40">Discard changes</button>
-          <button type="button" disabled={saving} onClick={() => void save()} className="h-11 rounded-xl bg-[#003399] px-4 text-sm font-bold text-[#FFFFFF] disabled:opacity-50">{saving ? 'Saving…' : 'Save changes'}</button>
+          <button type="button" disabled={saving} onClick={leave} className="h-11 rounded-xl border border-[#0b5ea2] px-4 text-sm font-bold disabled:opacity-50 dark:border-white/40">Discard changes</button>
+          <button type="button" disabled={saving} onClick={() => void save()} className="h-11 rounded-xl bg-[#0b5ea2] px-4 text-sm font-bold text-[#FFFFFF] disabled:opacity-50">{saving ? 'Saving…' : 'Save changes'}</button>
         </div>
       </div>
     </div> : null}

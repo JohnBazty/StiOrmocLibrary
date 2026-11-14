@@ -1,5 +1,65 @@
 # Repository Instructions
 
+## Owner engineering and collaboration rules
+
+Added 2026-11-14, adapted from the owner's cross-project rules for the STI College Ormoc Integrated Library Management System. These rules apply throughout this repository alongside the library-specific safeguards below. Explicit user instructions take precedence over older project defaults.
+
+### 1. Engineering standards
+Work as a professional software engineer. Write clear, maintainable, secure code appropriate to this project's React, TypeScript, Vite, Tailwind CSS, Node.js/Express and PostgreSQL stack. Apply relevant frontend, accessibility, data, API and backend standards without waiting for a separate request.
+
+### 2. Independent judgment
+Evaluate requests before implementing them. If you identify a flaw, unnecessary complexity, or a better approach, explain the concern and recommend an alternative first. Give concrete reasons and tradeoffs. Do not invent objections when the proposed approach is sound.
+
+### 3. Relevant skills
+Use skills appropriate to the actual task. UI work should include relevant design, accessibility and React guidance; data changes should include persistence and migration considerations. Keep the process proportionate to the task.
+
+### 4. Quality belongs in planning
+Include applicable quality requirements when planning a feature: usability, accessibility, loading and error states, validation, security, performance and data integrity. Reuse the project's established architecture and design patterns.
+
+### 5. Response shortcuts
+When used as instructions in a prompt:
+- `ans`: Answer the question directly. Do not implement changes.
+- `simp`: Explain in plain language with minimal technical jargon.
+- `ans simp`: Give a direct answer in simple terms.
+
+Preserve essential facts and caveats when simplifying. Treat these words as shortcuts only when used as instructions, rather than as part of code, quoted text or other content.
+
+### 6. Avoid AI slop
+Write concise, specific prose without filler, exaggerated claims or automatic agreement. Keep code focused. Avoid unnecessary abstractions, duplicate helpers, speculative features, excessive comments and unrelated refactoring. Make UI decisions that fit the library's agreed design and user needs. Avoid generic layouts and decorative effects without a clear purpose.
+
+### 7. Clarify before implementing
+Always ask focused clarification questions before implementing a requested change. Inspect available project context first so questions address actual uncertainties. Do not repeat questions already answered or request approval again for an agreed scope. Once the required clarification is answered, proceed within that scope.
+
+### 8. Read before changing
+Inspect affected code, related behavior and existing patterns before proposing changes. Check relevant callers, data models and tests where available. Base decisions on the actual project rather than assumptions.
+
+### 9. Keep changes focused
+Make the smallest complete change that meets agreed requirements. Explain the need before introducing dependencies or restructuring architecture. Keep unrelated cleanup separate from the requested work.
+
+### 10. Verify before claiming success
+Run checks appropriate to the change, such as builds, focused tests, static analysis or UI verification, and complete the required repository checks below when applicable. Report what passed, what failed and what remains unverified. Never present an old build log as current proof or claim checks were run when they were not.
+
+### 11. Protect data and secrets
+Preserve user data and plan database migrations explicitly. Keep credentials out of source code, logs and documentation. Use appropriate local configuration or credential storage. Consider backup compatibility when changing stored data. Keep the library-specific database boundaries, secret-handling rules and approval requirements below intact.
+
+### 12. Fix causes rather than hiding failures
+Investigate the cause of failures. Do not disable checks, remove meaningful tests, suppress errors or weaken requirements merely to make a build pass. Explain legitimate exceptions and their consequences.
+
+### 13. Preserve existing work
+Do not overwrite unrelated user changes. Do not perform destructive actions without authorization. Inspect the working state before editing and keep changes reviewable. The prohibited destructive commands below remain prohibited.
+
+### 14. Maintain useful project context
+Update setup instructions when commands or requirements change. Document significant behavior and architecture decisions, including their reasons. Keep handoff notes factual and distinguish completed work, known issues and pending tasks.
+
+### 15. Keep the workflow proportionate
+Agree on requested changes once, then proceed without repeating clarification or approval requests for that scope. Make the smallest complete fix. Keep optional improvements, unrelated cleanup and extra documentation separate unless needed for correctness or existing project requirements.
+
+For small changes, run one build when applicable and checks focused on affected behavior. Run the full test suite when shared behavior, risk or project requirements justify it. Repeat checks only after relevant changes, failures or unresolved concerns. The required repository checks below still apply; a documentation-only edit does not require an application build.
+
+If tooling repeatedly fails, investigate the cause and try a justified alternative. When further retries stop providing useful evidence, report the limitation and what remains unverified instead of retrying indefinitely. Do not treat a tooling limitation as proof that the change works.
+
+Keep quality checks, data protection and required validation intact. Reduce unnecessary work, not engineering standards.
+
 ## First stop for AI agents
 
 1. Read the **AI agents — read this first** section at the top of [README.MD](README.MD) when present, otherwise continue below.

@@ -1,4 +1,5 @@
 import type { Pool, RowDataPacket } from '../../config/db.js'
+import {openLongOverdueCaseInTransaction} from './circulation-case.service.ts'
 import { localTimestamp } from '../attendance/attendance-intervals.ts'
 import { db } from '../../config/db.js'
 import { caseIf, excluded } from '../../config/sql-dialect.js'
@@ -18,9 +19,10 @@ export async function escalateOverdueTransactions(database: Pool = db, now: Date
   try {
     await connection.beginTransaction()
     const [rows] = await connection.execute<RowDataPacket[]>(
-      `SELECT bt.transaction_id, bt.user_id, ${"(bt.due_at AT TIME ZONE 'Asia/Manila') AS due_at"}, bt.due_at::text AS due_at_key, COALESCE(t.title, m.title) AS title
+      `SELECT bt.transaction_id, bt.user_id, ${"(bt.due_at AT TIME ZONE 'Asia/Manila') AS due_at"}, bt.due_at::text AS due_at_key, bt.physical_copy_id, bt.borrowing_policy_version_id, bp.long_overdue_after_days, COALESCE(t.title, m.title) AS title
          FROM borrow_transactions bt
          INNER JOIN materials m ON m.material_id = bt.material_id
+         LEFT JOIN borrowing_policy_versions bp ON bp.borrowing_policy_version_id=bt.borrowing_policy_version_id
          LEFT JOIN physical_copies pc ON pc.physical_copy_id = bt.physical_copy_id
          LEFT JOIN titles t ON t.title_id = pc.title_id
         WHERE bt.transaction_status IN ('Borrowed','Overdue') AND bt.lost_confirmed_at IS NULL
@@ -31,6 +33,7 @@ export async function escalateOverdueTransactions(database: Pool = db, now: Date
     const earliest=rows.reduce((value,row)=>Math.min(value,localTimestamp(row.due_at)),now.getTime())
     const context=await loadFineContext(connection,new Date(earliest),now)
     let newlyOverdue = 0
+    let longOverdueCasesOpened=0
     for (const loan of rows) {
       const charge = calculateOperatingFine(new Date(localTimestamp(loan.due_at)), now, context.policy, context.calendar)
       const [changed] = await connection.execute<import('../../config/db.js').ResultSetHeader>(
@@ -63,10 +66,15 @@ export async function escalateOverdueTransactions(database: Pool = db, now: Date
            last_checked_at = NOW(), updated_at = NOW()`,
         [loan.user_id, `Overdue material: ${loan.title}; outstanding fine: PHP ${charge.amount.toFixed(2)}.`],
       )
+      const threshold=Number(loan.long_overdue_after_days)
+      if(loan.physical_copy_id&&Number.isInteger(threshold)&&threshold>0&&charge.basis==='Daily'&&charge.units>=threshold){
+        const opened=await openLongOverdueCaseInTransaction(connection,{transactionId:Number(loan.transaction_id),physicalCopyId:Number(loan.physical_copy_id),borrowerUserId:Number(loan.user_id),policyVersionId:loan.borrowing_policy_version_id==null?null:Number(loan.borrowing_policy_version_id),thresholdDays:threshold,thresholdReachedAt:now,title:String(loan.title)})
+        if(opened.created)longOverdueCasesOpened++
+      }
     }
     await connection.commit()
     const last = rows.at(-1)
     const nextCursor: OverdueCursor | null = rows.length === limit && last ? { dueAt: String(last.due_at_key), transactionId: Number(last.transaction_id) } : null
-    return { evaluatedCount: rows.length, newlyOverdue, nextCursor }
+    return { evaluatedCount: rows.length, newlyOverdue, longOverdueCasesOpened, nextCursor }
   } catch (error) { await connection.rollback(); throw error } finally { connection.release() }
 }

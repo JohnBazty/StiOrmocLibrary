@@ -1,29 +1,45 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useId, useState, type ReactNode } from 'react'
 import { Button, SectionCard } from '../../components/ui'
 import { attendanceApi, type LibraryEvent, type OperationalState } from './attendance-api'
 import { UnsavedGuard } from '../../components/UnsavedChanges'
 
-const field='mt-1 w-full rounded-xl border border-[#003399]/20 bg-white p-3 text-sm'
+const field='mt-1 w-full rounded-xl border border-[#0b5ea2]/20 bg-white p-3 text-sm'
 const time=(v:string|null)=>v?new Date(v).toLocaleTimeString('en-PH',{timeZone:'Asia/Manila',hour:'numeric',minute:'2-digit',hour12:true}):'—'
 const dateTime=(v:string)=>new Date(v).toLocaleString('en-PH',{timeZone:'Asia/Manila',dateStyle:'medium',timeStyle:'short',hour12:true})
 const localInput=(v:string)=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(v)).replace(' ','T')
 const empty={title:'',kind:'Class',spaceName:'',startsAt:'',endsAt:'',capacity:'',allowWalkIns:false,allowBorrowing:true,allowPrinting:true,version:1}
 
-export function LibraryOperationsPanel({manage=false,onChanged}:{manage?:boolean;onChanged?:()=>void}){
- const [state,setState]=useState<OperationalState|null>(null),[events,setEvents]=useState<LibraryEvent[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState(false),[edit,setEdit]=useState<number|null>(null),[form,setForm]=useState(empty),[cancel,setCancel]=useState<LibraryEvent|null>(null),[minutes,setMinutes]=useState('5'),[policyOpen,setPolicyOpen]=useState(false)
- const load=useCallback(async()=>{try{const [s,e]=await Promise.all([attendanceApi.state(),attendanceApi.events()]);setState(s);setEvents(e);setError('')}catch(cause){setError(cause instanceof Error?cause.message:'Unable to load library operations.')}},[])
+export function LibraryOperationsPanel({manage=false,onChanged,capacitySettings}:{manage?:boolean;onChanged?:()=>void;capacitySettings?:ReactNode}){
+ const [state,setState]=useState<OperationalState|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[minutes,setMinutes]=useState('5'),[policyOpen,setPolicyOpen]=useState(false)
+ const load=useCallback(async()=>{try{setState(await attendanceApi.state());setError('')}catch(cause){setError(cause instanceof Error?cause.message:'Unable to load library operations.')}},[])
  useEffect(()=>{void load();const timer=setInterval(()=>void load(),30_000);return()=>clearInterval(timer)},[load])
- const patchForm=(patch:Partial<typeof empty>)=>setForm(current=>({...current,...patch}))
  useEffect(()=>{setMinutes(String(state?.policy.preclosingMinutes??5))},[state?.policy.preclosingMinutes])
  const act=async(task:()=>Promise<unknown>)=>{setBusy(true);setError('');try{await task();await load();onChanged?.();return true}catch(cause){setError(cause instanceof Error?cause.message:'Unable to update library operations.');return false}finally{setBusy(false)}}
- const save=async()=>{const ok=await act(()=>attendanceApi.saveEvent(edit,{...form,capacity:Number(form.capacity),startsAt:`${form.startsAt}:00+08:00`,endsAt:`${form.endsAt}:00+08:00`}));if(ok){setForm(empty);setEdit(null)}}
- const beginEdit=(e:LibraryEvent)=>{setEdit(e.event_id);setForm({title:e.title,kind:e.event_kind,spaceName:e.space_name,startsAt:localInput(e.starts_at),endsAt:localInput(e.ends_at),capacity:String(e.seat_capacity),allowWalkIns:e.allow_walk_ins,allowBorrowing:e.allow_borrowing,allowPrinting:e.allow_printing,version:e.row_version})}
- return <SectionCard className="mb-5 p-5">
+ return <><SectionCard className="mb-5 p-5">
   <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-display text-lg font-bold">Library operations</h2><p className="mt-1 text-sm">{state?.state??'Loading…'} · {state?.current??'—'} seats occupied · {state?.serviceVisits??'—'} printing visits</p></div><Button variant="secondary" onClick={()=>void load()} disabled={busy}>Refresh operations</Button></div>
   {error?<p role="alert" className="mt-3 rounded-xl bg-[#B42318] p-3 text-sm text-white">{error}</p>:null}
   {state?<><p className="mt-3 text-sm">Available seats: {state.available} of {state.capacity}. {state.cutoffAt?<>Entry stops and automatic checkout runs at {time(state.cutoffAt)}; closing is {time(state.closesAt)} (Manila).</>:<>No operating hours today. On operating days, entry stops and automatic checkout runs {state.policy.preclosingMinutes} minutes before closing.</>}</p><p className="mt-2 text-xs">Walk-ins: {state.allowWalkIns?'Allowed':'Closed'} · Borrowing: {state.allowBorrowing?'Allowed':'Closed'} · Printing: {state.allowPrinting?'Allowed':'Closed'}</p><p className="mt-2 text-xs">Only printing visits are excluded from occupied seats. Attendance checkout does not return borrowed books.</p></>:null}
   {manage&&state?<><Button variant="secondary" className="mt-4" onClick={()=>setPolicyOpen(v=>!v)}>Attendance cutoff settings</Button>{policyOpen?<UnsavedGuard className="contents" cleanOnSubmit><form className="mt-3 flex flex-wrap items-end gap-3" onSubmit={e=>{e.preventDefault();void act(()=>attendanceApi.updatePolicy({servicePurposes:['Printing'],preclosingMinutes:Number(minutes),version:state.policy.version}))}}><label className="text-xs font-bold">Minutes before closing<input className={field} type="number" min="1" max="60" required value={minutes} onChange={e=>setMinutes(e.target.value)}/></label><Button disabled={busy} type="submit">Save cutoff</Button></form></UnsavedGuard>:null}
-   <h3 className="mt-6 font-bold">{edit?'Edit event':'Schedule class, meeting or seminar'}</h3><UnsavedGuard className="contents" cleanOnSubmit><form className="mt-3 grid gap-3 sm:grid-cols-2" onSubmit={e=>{e.preventDefault();void save()}}>
+  </>:null}
+  {manage ? capacitySettings : null}
+ </SectionCard>{!manage ? <LibraryEventScheduler /> : null}</>
+}
+
+export function LibraryEventScheduler({manage=false,onChanged}:{manage?:boolean;onChanged?:()=>void}){
+ const [open,setOpen]=useState(false),[events,setEvents]=useState<LibraryEvent[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState(false),[edit,setEdit]=useState<number|null>(null),[form,setForm]=useState(empty),[cancel,setCancel]=useState<LibraryEvent|null>(null)
+ const panelId=useId()
+ const load=useCallback(async()=>{try{setEvents(await attendanceApi.events());setError('')}catch(cause){setError(cause instanceof Error?cause.message:'Unable to load scheduled events.')}},[])
+ useEffect(()=>{void load();const timer=setInterval(()=>void load(),30_000);return()=>clearInterval(timer)},[load])
+ const patchForm=(patch:Partial<typeof empty>)=>setForm(current=>({...current,...patch}))
+ const act=async(task:()=>Promise<unknown>)=>{setBusy(true);setError('');try{await task();await load();onChanged?.();return true}catch(cause){setError(cause instanceof Error?cause.message:'Unable to update the scheduled event.');return false}finally{setBusy(false)}}
+ const save=async()=>{const ok=await act(()=>attendanceApi.saveEvent(edit,{...form,capacity:Number(form.capacity),startsAt:`${form.startsAt}:00+08:00`,endsAt:`${form.endsAt}:00+08:00`}));if(ok){setForm(empty);setEdit(null)}}
+ const beginEdit=(e:LibraryEvent)=>{setOpen(true);setEdit(e.event_id);setForm({title:e.title,kind:e.event_kind,spaceName:e.space_name,startsAt:localInput(e.starts_at),endsAt:localInput(e.ends_at),capacity:String(e.seat_capacity),allowWalkIns:e.allow_walk_ins,allowBorrowing:e.allow_borrowing,allowPrinting:e.allow_printing,version:e.row_version})}
+ return <SectionCard className="mt-5 p-5">
+  <h2><button type="button" aria-expanded={open} aria-controls={panelId} onClick={()=>setOpen(v=>!v)} className="flex min-h-11 w-full items-center justify-between gap-3 text-left"><span className="font-display text-lg font-bold">{manage ? edit?'Edit event':'Schedule class, meeting or seminar' : 'Scheduled events'}</span><span className="text-xs font-bold text-[#0b5ea2]/60">{open?'Hide':'Show'}</span></button></h2>
+  {error?<p role="alert" className="mt-3 rounded-xl bg-[#B42318] p-3 text-sm text-white">{error}</p>:null}
+  <div id={panelId} hidden={!open}>
+   {manage ? <>
+   <UnsavedGuard className="contents" cleanOnSubmit><form className="mt-3 grid gap-3 sm:grid-cols-2" onSubmit={e=>{e.preventDefault();void save()}}>
     <label className="text-xs font-bold">Event title<input className={field} value={form.title} required maxLength={150} onChange={e=>patchForm({title:e.target.value})}/></label>
     <label className="text-xs font-bold">Event type<select className={field} value={form.kind} onChange={e=>patchForm({kind:e.target.value})}>{['Class','Meeting','Seminar'].map(v=><option key={v}>{v}</option>)}</select></label>
     <label className="text-xs font-bold">Affected space<input className={field} value={form.spaceName} required maxLength={150} placeholder="Example: Main reading area" onChange={e=>patchForm({spaceName:e.target.value})}/></label>
@@ -34,7 +50,8 @@ export function LibraryOperationsPanel({manage=false,onChanged}:{manage?:boolean
     <p className="text-xs sm:col-span-2">Enter the seats remaining for regular visitors during this event. When events overlap, the lowest capacity and all active service restrictions apply.</p>
     <div className="flex gap-2"><Button type="submit" disabled={busy}>{busy?'Saving…':edit?'Save event':'Schedule event'}</Button>{edit?<Button variant="secondary" onClick={()=>{setEdit(null);setForm(empty)}} disabled={busy}>Cancel edit</Button>:null}</div>
    </form></UnsavedGuard></>:null}
-  <h3 className="mt-6 font-bold">Scheduled events</h3><div className="mt-3 space-y-3">{events.length?events.map(e=><div className="rounded-xl border border-[#003399]/15 p-3" key={e.event_id}><b>{e.title}</b><p className="text-xs">{e.event_kind} · {e.space_name} · {e.lifecycle_status}</p><p className="mt-1 text-sm">{dateTime(e.starts_at)} – {dateTime(e.ends_at)}</p><p className="mt-1 text-xs">{e.seat_capacity} seats remain · Walk-ins {e.allow_walk_ins?'allowed':'closed'} · Borrowing {e.allow_borrowing?'allowed':'closed'} · Printing {e.allow_printing?'allowed':'closed'}</p>{manage&&e.lifecycle_status==='Active'?<div className="mt-3 flex gap-2"><Button variant="secondary" disabled={busy} onClick={()=>beginEdit(e)}>Edit event</Button><Button variant="secondary" disabled={busy} onClick={()=>setCancel(e)}>Cancel event</Button></div>:null}</div>):<p className="text-sm">No scheduled events.</p>}</div>
-  {cancel?<div role="alertdialog" aria-label="Cancel scheduled event" className="mt-4 rounded-xl border border-[#003399] p-4"><p className="font-bold">Cancel “{cancel.title}”?</p><p className="mt-1 text-sm">Its capacity and service restrictions will stop applying. The event record stays in history.</p><div className="mt-3 flex gap-2"><Button disabled={busy} onClick={()=>void act(()=>attendanceApi.cancelEvent(cancel.event_id,cancel.row_version)).then(ok=>{if(ok)setCancel(null)})}>Confirm cancellation</Button><Button variant="secondary" disabled={busy} onClick={()=>setCancel(null)}>Keep event</Button></div></div>:null}
+  {manage ? <h3 className="mt-6 font-bold">Scheduled events</h3> : null}<div className="mt-3 space-y-3">{events.length?events.map(e=><div className="rounded-xl border border-[#0b5ea2]/15 p-3" key={e.event_id}><b>{e.title}</b><p className="text-xs">{e.event_kind} · {e.space_name} · {e.lifecycle_status}</p><p className="mt-1 text-sm">{dateTime(e.starts_at)} – {dateTime(e.ends_at)}</p><p className="mt-1 text-xs">{e.seat_capacity} seats remain · Walk-ins {e.allow_walk_ins?'allowed':'closed'} · Borrowing {e.allow_borrowing?'allowed':'closed'} · Printing {e.allow_printing?'allowed':'closed'}</p>{manage&&e.lifecycle_status==='Active'?<div className="mt-3 flex gap-2"><Button variant="secondary" disabled={busy} onClick={()=>beginEdit(e)}>Edit event</Button><Button variant="secondary" disabled={busy} onClick={()=>setCancel(e)}>Cancel event</Button></div>:null}</div>):<p className="text-sm">No scheduled events.</p>}</div>
+  {cancel?<div role="alertdialog" aria-label="Cancel scheduled event" className="mt-4 rounded-xl border border-[#0b5ea2] p-4"><p className="font-bold">Cancel “{cancel.title}”?</p><p className="mt-1 text-sm">Its capacity and service restrictions will stop applying. The event record stays in history.</p><div className="mt-3 flex gap-2"><Button disabled={busy} onClick={()=>void act(()=>attendanceApi.cancelEvent(cancel.event_id,cancel.row_version)).then(ok=>{if(ok)setCancel(null)})}>Confirm cancellation</Button><Button variant="secondary" disabled={busy} onClick={()=>setCancel(null)}>Keep event</Button></div></div>:null}
+  </div>
  </SectionCard>
 }

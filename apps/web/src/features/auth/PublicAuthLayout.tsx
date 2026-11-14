@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, createContext, useContext } from 'react'
-import { ArrowLeft, LibraryBig, X } from 'lucide-react'
+import { ArrowLeft, X } from 'lucide-react'
 import { Link, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { PublicCatalogPage } from '../catalog/PublicCatalogPage'
 import { catalogAuthLink } from '../catalog/catalog-login-continuation'
@@ -44,7 +44,7 @@ export function PublicAuthLayout() {
 
   return <>
     <Routes location={catalogLocation}><Route path="/" element={<PublicCatalogPage />} /></Routes>
-    <dialog ref={dialog} aria-labelledby="auth-form-heading" className={`public-auth-dialog ${registration ? 'public-auth-dialog-wide' : ''}`}
+    <dialog ref={dialog} aria-labelledby="auth-form-heading" className={`public-auth-dialog public-library-reference public-reference-auth ${registration ? 'public-auth-dialog-wide' : ''}`}
       onCancel={event => { event.preventDefault(); close() }}
       onClick={event => {
         if (event.target !== event.currentTarget) return
@@ -54,8 +54,8 @@ export function PublicAuthLayout() {
       <div className="h-1.5 bg-[#FFF200]" />
       <div className="public-auth-content">
         <header className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#FFF200] text-[#003399]"><LibraryBig size={24} /></span><div><p className="text-sm font-black tracking-tight">STI COLLEGE ORMOC</p><p className="text-[10px] font-bold uppercase tracking-[.18em] opacity-55">ILMS</p></div></div>
-          <button type="button" disabled={busy} onClick={close} aria-label="Close account dialog" className="rounded-full border border-current/10 p-2 opacity-65 transition hover:bg-[#003399]/5 hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-30 dark:hover:bg-white/10"><X size={19} /></button>
+          <div className="flex items-center gap-3"><img src="/reference-logo.jpg" alt="STI College Ormoc Logo" width={44} height={44} className="h-11 w-11 rounded-xl object-contain" /><div><p className="text-sm font-black tracking-tight">STI COLLEGE ORMOC</p><p className="text-[10px] font-bold uppercase tracking-[.18em] opacity-55">Online Library</p></div></div>
+          <button type="button" disabled={busy} onClick={close} aria-label="Close account dialog" className="rounded-full border border-current/10 p-2 opacity-65 transition hover:bg-catalog-brand/5 hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-30 dark:hover:bg-white/10"><X size={19} /></button>
         </header>
         <nav aria-label="Account access" className="public-auth-tabs">
           {(['/login', '/register'] as const).map(path => <Link key={path} to={catalogAuthLink(path, location.search)} state={location.state}
@@ -64,7 +64,7 @@ export function PublicAuthLayout() {
             className={location.pathname === path ? 'public-auth-tab-active' : ''}>{path === '/login' ? 'Sign In' : 'Sign Up'}</Link>)}
         </nav>
         <PopupBusyContext.Provider value={setBusy}><Outlet /></PopupBusyContext.Provider>
-        <footer className="mt-6 border-t border-[#003399]/10 pt-4 dark:border-white/10"><Link to={returnTo} aria-disabled={busy || undefined} onClick={event => { if (busy) event.preventDefault() }} className="inline-flex min-h-10 items-center gap-2 rounded-xl px-2 text-xs font-bold opacity-65 transition hover:bg-[#003399]/5 hover:opacity-100 dark:hover:bg-white/10"><ArrowLeft size={15} />Back to browsing</Link></footer>
+        <footer className="mt-6 border-t border-catalog-brand/10 pt-4 dark:border-white/10"><Link to={returnTo} aria-disabled={busy || undefined} onClick={event => { if (busy) event.preventDefault() }} className="inline-flex min-h-10 items-center gap-2 rounded-xl px-2 text-xs font-bold opacity-65 transition hover:bg-catalog-brand/5 hover:opacity-100 dark:hover:bg-white/10"><ArrowLeft size={15} />Back to browsing</Link></footer>
       </div>
     </dialog>
   </>

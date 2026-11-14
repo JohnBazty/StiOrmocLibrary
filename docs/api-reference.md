@@ -154,17 +154,25 @@ The response status is `422 Unprocessable Entity`. A copy with completed borrowi
 | `POST` | `/api/v1/reservations/request` | Student, Faculty | Join a book-title waiting queue. |
 | `GET` | `/api/v1/reservations` | Student, Faculty | Read the authenticated user's reservation records. |
 | `PUT` | `/api/v1/reservations/:reservationId/cancel` | Student, Faculty | Cancel an owned waiting request and realign the queue. |
-| `GET` | `/api/v1/borrowing/history` | Student, Faculty | Read personal capacity and borrowing history. |
+| `GET` | `/api/v1/borrowing/history` | Student, Faculty | Read personal capacity and borrowing history (includes renewal fields). |
+| `GET` | `/api/v1/borrowing/:transactionId/renewals/preflight` | Student, Faculty | Preview renewal eligibility for an owned active loan. |
+| `POST` | `/api/v1/borrowing/:transactionId/renewals` | Student, Faculty | Submit an owned renewal request (`requestKey`); decided immediately. |
 | `POST` | `/api/v1/borrow/submit-request` | Student, Faculty | Atomically assign available copies and create a grouped pending-claim request from `title_ids`. |
 | `GET` | `/api/v1/admin/reservations` | Admin, Librarian | Read the contextual reservation queue. |
 | `POST` | `/api/v1/admin/borrowing/confirm-checkout` | Admin, Librarian | Confirm a barcode checkout. |
-| `GET` | `/api/v1/admin/borrowing/monitor` | Admin, Librarian | Read active, due, overdue, and returned records. |
+| `GET` | `/api/v1/admin/borrowing/monitor` | Admin, Librarian | Read active, due, overdue, and returned records (includes renewal fields). |
+| `GET` | `/api/v1/admin/borrowing/:transactionId/renewals/preflight` | Librarian, Staff | Preview renewal eligibility for staff renew-on-behalf. |
+| `POST` | `/api/v1/admin/borrowing/:transactionId/renewals` | Librarian, Staff | Renew on behalf (`requestKey` + required `staffNote`); same blockers as borrower path. |
 | `PUT` | `/api/v1/admin/borrowing/:transactionId/return` | Admin, Librarian | Complete a return and advance the queue. |
 | `POST` | `/api/v1/admin/borrowing/:transactionId/calculate-penalty` | Admin, Librarian | Persist the current overdue calculation. |
 | `GET` | `/api/v1/admin/notifications` | Admin, Librarian | Read shared circulation/reservation alerts. |
 ### POST `/api/v1/circulation/fulfill-claim`
 
 Admin/Librarian-only physical desk checkpoint. Accepts `{ "school_id": "...", "barcode": "..." }`. The selected borrower and barcode must match a linked `Pending` claim whose reservation is `ready_for_pickup`. On success the loan becomes `Borrowed`, the reservation becomes `claimed`, and the due time is fixed to 8:59 AM on the next operating day.
+
+### Loan renewals
+
+Borrower preflight/submit and Librarian/Staff renew-on-behalf use the same decision service. Preflight returns current/proposed due dates, policy version, renewal usage, blockers, and `canRequestRenewal`. Submit accepts a client `requestKey` (idempotent). Approved renewals extend from the current due date by the active policy's `renewalExtensionDays` on the operating calendar, preserving the recorded Manila due clock; rejected attempts are stored without changing `due_at`. Decision source is `System` for borrower requests and `Staff` for personnel acting on behalf of a borrower. Hard blockers cannot be overridden. Reusing a `requestKey` that belongs to another account or loan returns `409 RENEWAL_REQUEST_KEY_CONFLICT`. Borrower submits are limited to 10 per account per 15 minutes (`429 RENEWAL_RATE_LIMITED`). Due-reminder dedupe keys keep the `loan:<id>:due-12h` form until a loan is renewed, then add the renewal count (`loan:<id>:renewal:<n>:due-12h`).
 
 ## Admin attendance and active users (JWT)
 
@@ -217,3 +225,9 @@ Draft saves and publication use optimistic concurrency. If another administrator
 - These routes require the current Librarian `library.manage` permission. The web page is `/librarian/borrowing-policies`.
 - `POST /api/v1/admin/borrowing/preflight`: read-only take-home evaluation, structured blockers/warnings, and an expiring actor-bound confirmation token. The final checkout still enforces the current Phase 5 desk gates (attendance, balance, holds, ready claims, and copy assessment). In-library use keeps its separate desk flow.
 - Successful JWT and cookie login increments the respective stored authentication version and invalidates prior sessions.
+
+## Book follow-ups (2026-11-13 local audit integration)
+
+Librarian/Staff can read GET /api/v1/admin/circulation/cases (status, q, page, limit; bounded to 100) and GET /api/v1/admin/circulation/cases/:caseId. Lists contain Damage and Long Overdue reviews. POST /:caseId/notes requires desk.operate; disposition, resolve, dismiss and reopen require library.manage and a recorded reason. Dispositions apply only to a returned damaged copy, never a long-overdue loan. Borrowers receive only owner-scoped status/instruction summaries through history.
+
+The existing overdue job creates one Long Overdue case per eligible loan after its saved policy threshold in open library days. A confirmed physical return resolves its open follow-up atomically without waiving its fine. Cases do not automatically mark a copy Lost. Claims-returned and recovered-lost-book/refund workflows remain planned.

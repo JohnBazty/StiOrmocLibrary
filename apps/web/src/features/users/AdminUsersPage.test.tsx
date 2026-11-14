@@ -37,7 +37,7 @@ it('creates Staff accounts from official school details without asking Admin to 
   render(<AdminUsersPage />)
   fireEvent.click(screen.getByRole('button', { name: 'Set up Staff account' }))
   for (const [label, value] of [
-    ['First name', 'Test'], ['Last name', 'Staff'], ['School ID', 'STAFF-QA'], ['Ormoc school email', 'staff-qa@ormoc.sti.edu.ph'],
+    ['First name', 'Test'], ['Last name', 'Staff'], ['School ID', 'STAFF-QA'], ['STI Ormoc school email', 'staff-qa@ormoc.sti.edu.ph'],
   ]) fireEvent.change(screen.getByLabelText(label), { target: { value } })
   expect(screen.queryByLabelText('Password')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: 'Create Staff account' }))
