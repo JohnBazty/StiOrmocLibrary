@@ -34,8 +34,8 @@ when a request is retried or another device changes the visit.
 
 Migration 045 adds the private request table and was applied individually after
 the owner's explicit approval. Latest applied is 045; next unused number 046.
-The local app uses this shared school database. GitHub publication and deployment
-have not been requested for this feature.
+The local app uses this shared school database. The owner subsequently approved
+Vercel deployment, completed below. GitHub publication is not part of this step.
 
 ## Change log
 
@@ -70,3 +70,21 @@ health and web login return 200; unauthenticated pending requests return 401.
 Local integration server is running at http://localhost:5173. No GitHub push or
 Vercel deployment was performed. Real two-account/physical QR acceptance remains
 for the owner; entry/exit behavior passed disposable SQL and UI checks above.
+
+## Approved Vercel deployment — 2026-11-15 (Asia/Manila)
+
+Owner requested hosting after seeing the earlier scanner on Vercel. Deployed an
+archive of committed source `67e1079` only; private environment files, local
+payment history, uploads and ignored outputs were excluded. Production build
+passed. Candidate health, public catalog, login and attendance page returned 200;
+unauthenticated owner/scanner attendance and payment APIs returned 401. Verified
+the deployed entry bundle contains the user confirmation API and Confirm exit UI.
+
+Promoted `dpl_B8bEQwgDAvexwAVrZ2pLxHvy8RJK` to
+https://sti-ormoc-smart-library.vercel.app and checked the project production
+target, public health/catalog/login, protected APIs and exact new bundle again.
+Previous deployment `dpl_3wcXiyojseQ8RAgFyxyED3zXJBpe` remains available for rollback.
+No database migration, account/visit write or GitHub push was performed during
+deployment. Physical two-account QR acceptance remains unverified on production;
+no school visit was submitted as automated QA. Users should reload both signed-in
+tabs to replace the old scanner and mount the new visitor prompt.
