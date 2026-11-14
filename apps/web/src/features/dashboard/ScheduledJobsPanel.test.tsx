@@ -12,6 +12,11 @@ const job = (jobName: string, health: string, extra: Record<string, unknown> = {
 })
 
 describe('Scheduled jobs panel', () => {
+  it('gives payment recovery a clear library label', async () => {
+    api.jobs.mockResolvedValue({ generatedAt: '2026-11-11T02:00:00.000Z', jobs: [job('payment-recovery', 'healthy')] })
+    render(<ScheduledJobsPanel />)
+    expect(await screen.findByText('Payment confirmation checks')).toBeTruthy()
+  })
   it('shows each job status in words, the last success in Manila time and the last error', async () => {
     api.jobs.mockResolvedValue({ generatedAt: '2026-11-11T02:00:00.000Z', jobs: [
       job('circulation-overdue', 'healthy', { lastOutcome: 'succeeded', lastSuccessAt: '2026-11-11T01:59:30.000Z' }),
@@ -40,12 +45,12 @@ describe('Scheduled jobs panel', () => {
     expect(await screen.findByText('2 of 3 jobs need attention.')).toBeTruthy()
   })
 
-  it('announces loading and uses only STI colors', async () => {
+  it('announces loading and keeps the current interface colors', async () => {
     api.jobs.mockReturnValue(new Promise(() => {}))
     const { container } = render(<ScheduledJobsPanel />)
     expect(screen.getByRole('status').textContent).toContain('Loading job status')
     // The shared SectionCard frame keeps its own dark background; only the panel's content is checked.
-    expect(container.querySelector('section')!.innerHTML).not.toMatch(/#(?!003399|FFF200)[0-9a-f]{6}/i)
+    expect(container.querySelector('section')!.innerHTML).not.toMatch(/#(?!0b5ea2|FFF200)[0-9a-f]{6}/i)
     expect(container.innerHTML).not.toMatch(/\/45/)
   })
 

@@ -12,7 +12,7 @@ function handle(handler: (request: Request, response: Response) => Promise<void>
 function csv(value: unknown) { return `"${String(value ?? '').replace(/"/g, '""')}"` }
 
 export const clearanceController = {
-  mine: handle(async (_request, response) => { const [record,schedule]=await Promise.all([clearanceService.mine(actor(response)),actor(response).role==='Student'?clearanceScheduleService.current():Promise.resolve(null)]); response.json({ success: true, data: {...record,schedule} }) }),
+  mine: handle(async (_request, response) => { const [record,schedule]=await Promise.all([clearanceService.mine(actor(response)),actor(response).role==='Student'?clearanceScheduleService.current():Promise.resolve(null)]); response.set('Cache-Control','private, no-store').json({ success: true, data: {...record,schedule} }) }),
   schedule: handle(async (request,response) => { response.json({success:true,data:await clearanceScheduleService.current(Number(request.query.termId)||undefined)}) }),
   scheduleTerms: handle(async (_request,response) => { response.json({success:true,data:await clearanceScheduleService.terms()}) }),
   saveSchedule: handle(async (request,response) => { response.json({success:true,data:await clearanceScheduleService.save(actor(response),request.body)}) }),

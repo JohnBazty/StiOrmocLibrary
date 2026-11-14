@@ -6,7 +6,7 @@ import type { ClearanceRecord } from './types'
 
 const api = vi.hoisted(() => ({
   terms: vi.fn().mockResolvedValue([]), schedule: vi.fn(), saveSchedule: vi.fn(), list: vi.fn(), detail: vi.fn(), override: vi.fn(), revoke: vi.fn(),
-  decideLost: vi.fn(), settleLost: vi.fn(),
+  decideLost: vi.fn(), settleLost: vi.fn(), resolveLost: vi.fn(),
 }))
 vi.mock('./clearance-api', () => ({ clearanceApi: api }))
 
@@ -80,6 +80,28 @@ describe('AdminClearancePage simplified exceptions', () => {
     await waitFor(() => expect(api.detail).toHaveBeenCalledWith(7))
     expect(await screen.findByText('Lost-book reports')).toBeTruthy()
     expect(screen.getByText('Awaiting quotation')).toBeTruthy()
+  })
+
+  it('confirms a lost book at the book price and offers payment for a book-price charge', async () => {
+    const lost = { lostBookReportId: 12, transactionId: 20, titleId: 5, title: 'Emma', quotationId: 8, quotedAmount: 700, titlePrice: 450,
+      reportedAt: '2026-09-26T01:00:00.000Z', verifiedAt: null, resolutionReason: null }
+    api.list.mockResolvedValue(listWith(blocked))
+    api.detail.mockResolvedValueOnce({ ...blocked, lostBooks: [{ ...lost, status: 'Pending', chargeResolution: 'Awaiting Review', replacementCharge: 0, paymentStatus: 'Unpaid' }] })
+      .mockResolvedValue({ ...blocked, lostBooks: [{ ...lost, status: 'Confirmed', chargeResolution: 'Book Price', replacementCharge: 450, paymentStatus: 'Unpaid' }] })
+    api.decideLost.mockResolvedValue({})
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(<MemoryRouter initialEntries={['/librarian/clearance']}><AdminClearancePage /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: 'Review' }))
+    expect((await screen.findByText(/Book price: .*450\.00/)).textContent).not.toContain('700')
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm loss' }))
+    expect(confirm.mock.calls[0][0]).toMatch(/book price of .*450\.00/)
+    await waitFor(() => expect(api.decideLost).toHaveBeenCalledWith(12, 'Confirmed', 450))
+    fireEvent.click(await screen.findByRole('button', { name: 'Record replacement payment' }))
+    await waitFor(() => expect(api.settleLost).toHaveBeenCalledWith(12))
+    const prompt = vi.spyOn(window, 'prompt').mockReturnValue('Book found undamaged in the return bin.')
+    fireEvent.click(screen.getByRole('button', { name: 'Waive charge' }))
+    await waitFor(() => expect(api.resolveLost).toHaveBeenCalledWith(12, 'Waive', 'Book found undamaged in the return bin.'))
+    confirm.mockRestore(); prompt.mockRestore()
   })
 })
 

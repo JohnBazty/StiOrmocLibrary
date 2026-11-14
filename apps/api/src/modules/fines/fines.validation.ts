@@ -16,7 +16,7 @@ export type FineFilters = {
   limit: number
 }
 
-const STATUSES = new Set(['all', 'Accruing', 'Unpaid', 'Partially Paid', 'Paid', 'Waived', 'Voided'])
+const STATUSES = new Set(['all', 'outstanding', 'Accruing', 'Unpaid', 'Partially Paid', 'Paid', 'Waived', 'Voided'])
 const TYPES = new Set(['all', 'Overdue', 'Infraction', 'Lost Book'])
 const PERIODS = new Set<FinePeriod>(['all', 'daily', 'weekly', 'monthly', 'semester', 'custom'])
 const DATE = /^\d{4}-\d{2}-\d{2}$/

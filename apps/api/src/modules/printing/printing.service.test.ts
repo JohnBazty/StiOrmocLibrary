@@ -5,7 +5,7 @@ import { PDFDocument } from 'pdf-lib'
 import { PrintingRepository } from './printing.repository.ts'
 import { createPrintingService } from './printing.service.ts'
 
-function serviceFixture(selectedRow:Record<string,unknown>,acceptingRequests=1){
+function serviceFixture(selectedRow:Record<string,unknown>,acceptingRequests=1,localPayments?:Parameters<typeof createPrintingService>[2]){
   const calls:Array<{sql:string;values:unknown[]}>=[]
   const connection={
     beginTransaction:async()=>undefined,commit:async()=>undefined,rollback:async()=>undefined,release:()=>undefined,
@@ -17,8 +17,36 @@ function serviceFixture(selectedRow:Record<string,unknown>,acceptingRequests=1){
   }
   const pool={getConnection:async()=>connection} as unknown as Pool
   const repository={userBySchoolId:async()=>({user_id:5,account_status:'Active'}),serviceStatus:async()=>({accepting_requests:acceptingRequests}),pricing:async()=>[{print_type:'Monochrome',paper_size:'A4',price_per_page:3}]} as unknown as PrintingRepository
-  return{service:createPrintingService(pool,repository),calls}
+  return{service:createPrintingService(pool,repository,localPayments),calls}
 }
+
+test('verified online printing credit starts a job without recording cash or settling a school bill',async()=>{
+  let locked=false,checked=false
+  const localPayments={
+    async withPrintingLock<T>(run:()=>Promise<T>){locked=true;try{return await run()}finally{locked=false}},
+    async guard(){assert.equal(locked,true)},
+    async printingProjection(){assert.equal(locked,true);checked=true;return[{request_id:4,user_id:12,payment_status:'Paid',paid_centavos:5000,local_payment_id:'online-1',refund_pending:false,cancel_job:false}]},
+  }
+  const {service,calls}=serviceFixture({request_id:4,user_id:12,file_name:'qa.pdf',calculated_cost:50,job_status:'Pending',payment_status:'Unpaid'},1,localPayments)
+  assert.equal((await service.updateStatus({schoolId:'ADMIN-PORTAL-001'},4,{status:'Printing'})).job_status,'Printing')
+  assert.equal(checked,true)
+  assert.ok(calls.some(call=>call.sql.includes('INSERT INTO print_status_history')))
+  assert.ok(calls.every(call=>!call.sql.includes('INSERT INTO print_cash_payments')&&!call.sql.includes('INSERT INTO print_payment_receipts')&&!call.sql.includes("SET payment_status='Paid'")))
+})
+test('wrong-owner, insufficient credit and refunded online payments cannot start a print job',async()=>{
+  for(const view of [{user_id:99,paid_centavos:5000,payment_status:'Paid'},{user_id:12,paid_centavos:4999,payment_status:'Paid'},{user_id:12,paid_centavos:0,payment_status:'Refunded'}]){
+    const localPayments={withPrintingLock:<T>(run:()=>Promise<T>)=>run(),guard:async()=>{},printingProjection:async()=>[{request_id:4,local_payment_id:'qa',refund_pending:false,cancel_job:false,...view}]}
+    const {service,calls}=serviceFixture({request_id:4,user_id:12,calculated_cost:50,job_status:'Pending',payment_status:'Unpaid'},1,localPayments)
+    await assert.rejects(service.updateStatus({schoolId:'ADMIN-PORTAL-001'},4,{status:'Printing'}),{code:'PRINT_PAYMENT_REQUIRED'})
+    assert.ok(calls.every(call=>!call.sql.startsWith('UPDATE print_requests')))
+  }
+})
+test('a refund reservation blocks online-paid printing before the job changes',async()=>{
+  const localPayments={withPrintingLock:<T>(run:()=>Promise<T>)=>run(),guard:async()=>{throw Object.assign(new Error('Refund in progress'),{code:'REFUND_IN_PROGRESS'})},printingProjection:async()=>[]}
+  const {service,calls}=serviceFixture({request_id:4,user_id:12,calculated_cost:50,job_status:'Pending',payment_status:'Unpaid'},1,localPayments)
+  await assert.rejects(service.updateStatus({schoolId:'ADMIN-PORTAL-001'},4,{status:'Printing'}),{code:'REFUND_IN_PROGRESS'})
+  assert.ok(calls.every(call=>!call.sql.startsWith('UPDATE print_requests')))
+})
 
 test('new ink stores required unit cost and calculated expense with matching prepared values',async()=>{
   const{service,calls}=serviceFixture({})

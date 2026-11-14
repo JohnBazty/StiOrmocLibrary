@@ -1,4 +1,4 @@
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 
 export type AccountStatus = 'Active' | 'Deactivated' | 'Archived'
 export type ActiveUser = { id: number; school_id: string; role: string; account_status: AccountStatus; full_name: string; email: string; program: string; year_or_unit: string; clearance_status: string }
@@ -16,8 +16,8 @@ export type OwnAvatar = { currentUrl: string | null; pending: { id: number; subm
 async function request<T>(url: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers)
   headers.set('Accept', 'application/json')
-  const token = getAccessToken()
-  if (token) headers.set('Authorization', `Bearer ${token}`)
+  const token = getCsrfToken()
+  if (token) headers.set('X-CSRF-Token', token)
   if (init.body) headers.set('Content-Type', 'application/json')
   const response = await fetch(url, { ...init, credentials: 'include', headers })
   const payload = await response.json() as { data?: T; message?: string; meta?: { pagination?: Pagination } }
@@ -41,4 +41,7 @@ export const usersApi = {
   myAvatar: async () => (await request<OwnAvatar>('/api/v1/profile/avatar/me', { cache: 'no-store' })).data,
   saveMyProfile: async (body: ProfileEdit) => (await request('/api/v1/profile/me', { method: 'PATCH', body: JSON.stringify(body) })).data,
   changeStatus: async (id: number, status: AccountStatus, reason: string) => (await request(`/api/v1/admin/users/${id}/status`, { method: 'POST', body: JSON.stringify({ status, reason }) })).data,
+  unlockSignIn: async (id: number, reason: string) => (await request(`/api/v1/admin/users/${id}/unlock`, { method: 'POST', body: JSON.stringify({ reason }) })).data,
+  setTemporaryPassword: async (id: number, reason: string) =>
+    (await request<{ id: number; temporary_password: string }>(`/api/v1/admin/users/${id}/temporary-password`, { method: 'POST', body: JSON.stringify({ reason }), cache: 'no-store' })).data,
 }

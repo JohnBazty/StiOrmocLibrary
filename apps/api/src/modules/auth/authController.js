@@ -1,12 +1,12 @@
 import bcrypt from 'bcrypt'
 import { db } from '../../config/db.js'
-import { env } from '../../config/env.js'
+import { env, DUMMY_BCRYPT_HASH } from '../../config/env.js'
 import { ALL_ROLES, dashboardForRole, toEffectiveRole, webDashboardForRole } from './auth.constants.js'
 import { createCsrfToken, sessionCookie } from './auth.middleware.js'
 import { createAuthSessionRepository } from './auth-session.repository.ts'
+import { clearAccessCookie } from './jwt-auth.middleware.ts'
 import { validateLoginInput } from './auth.validation.js'
 
-const DUMMY_BCRYPT_HASH = '$2b$12$k1Pc4Uvw2o.7wwBZ1hQwHu5vTfEfRPRgRhhcaawYWpPJez0o7gaCq'
 const DEACTIVATED_MESSAGE = 'Your account is currently deactivated. Please coordinate with the campus librarian.'
 
 function regenerateSession(request) {
@@ -94,6 +94,8 @@ export function csrf(request, response) {
 
 export function currentUser(request, response) {
   response.set('Cache-Control', 'no-store')
+  // The JWT cookie also reaches this legacy route; only express-session users have a session user.
+  if (!request.session?.user) return response.status(401).json({ success: false, code: 'AUTHENTICATION_REQUIRED', message: 'Please sign in to continue.' })
   response.json({ success: true, user: request.session.user, redirect: dashboardForRole(request.session.user.role) })
 }
 
@@ -111,6 +113,7 @@ export function createLogoutController({ sessions = createAuthSessionRepository(
         sameSite: sessionCookie.sameSite,
         path: sessionCookie.path,
       })
+      clearAccessCookie(response)
       return response.redirect(303, '/login?logout=1')
     } catch (error) {
       next(error)

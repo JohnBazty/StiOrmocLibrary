@@ -30,6 +30,12 @@ const matches = (stored: string | null, id: string, value: string) => {
   return timingSafeEqual(Buffer.from(stored, 'hex'), Buffer.from(digest(id, value), 'hex'))
 }
 const future = (value: Date | null, now: number) => value != null && new Date(value).getTime() > now
+/** One new-password rule for the email reset and the signed-in change. */
+export function assertNewPassword(password: unknown, confirmation: unknown): asserts password is string {
+  if (typeof password !== 'string' || password.length < 8 || Buffer.byteLength(password) > 72 || password !== confirmation) {
+    throw new HttpError(422, 'AUTH_VALIDATION_FAILED', 'Use a password of at least 8 characters (at most 72 bytes), and enter the same confirmation.')
+  }
+}
 const object = (body: unknown) => body && typeof body === 'object' ? body as Record<string, unknown> : {}
 
 export function createPasswordRecoveryService(
@@ -134,10 +140,8 @@ export function createPasswordRecoveryService(
       const input = object(body)
       const publicId = String(input.challenge_id ?? '')
       const token = String(input.reset_token ?? '')
-      const password = typeof input.password === 'string' ? input.password : ''
-      if (password.length < 8 || Buffer.byteLength(password) > 72 || password !== input.confirm_password) {
-        throw new HttpError(422, 'AUTH_VALIDATION_FAILED', 'Use a password of at least 8 characters (at most 72 bytes), and enter the same confirmation.')
-      }
+      const password = input.password
+      assertNewPassword(password, input.confirm_password)
       if (!PUBLIC_ID.test(publicId) || !/^[a-f0-9]{64}$/.test(token)) throw invalidReset()
       await transaction(async connection => {
         const record = await loadChallenge(connection, publicId)
@@ -146,7 +150,7 @@ export function createPasswordRecoveryService(
           throw new HttpError(422, 'PASSWORD_UNCHANGED', 'Choose a password different from your current password.')
         }
         const hash = await passwordHasher.hash(password, 12)
-        await connection.execute('UPDATE accounts SET password_hash=?,auth_version=auth_version+1,updated_at=NOW() WHERE account_id=?', [hash, record.account.account_id])
+        await connection.execute('UPDATE accounts SET password_hash=?,must_change_password=FALSE,auth_version=auth_version+1,updated_at=NOW() WHERE account_id=?', [hash, record.account.account_id])
         await connection.execute('UPDATE users SET password_hash=?,auth_version=auth_version+1,updated_at=NOW() WHERE user_id=?', [hash, record.account.user_id])
         await connection.execute('UPDATE account_recovery_challenges SET code_hash=NULL,reset_token_hash=NULL,reset_expires_at=NULL,code_attempts=0,locked_until=NULL,updated_at=NOW() WHERE account_id=?', [record.account.account_id])
       })

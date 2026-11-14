@@ -1,4 +1,4 @@
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 export type Area={id:string;name:string;width:number;height:number;background:string|null}
 export type MapObject={id:string;areaId:string;kind:string;label:string;note:string;shelfId:number|null;x:number;y:number;width:number;height:number;rotation:number}
 export type Layout={areas:Area[];objects:MapObject[]}
@@ -8,7 +8,7 @@ export type MapBook={copyId:number;titleId:number;title:string;isbn:string|null;
 export type BooksResult={items:MapBook[];matches:{shelfId:number|null;count:number}[];total:number}
 export type Version={id:number;createdAt:string;publishedBy:string}
 export async function floorRequest<T>(path:string,method='GET',body?:unknown):Promise<T>{
-  const response=await fetch(`/api/v1/floor-plan${path}`,{method,credentials:'include',headers:{Accept:'application/json','Content-Type':'application/json',Authorization:`Bearer ${getAccessToken()??''}`},...(body===undefined?{}:{body:JSON.stringify(body)})})
+  const response=await fetch(`/api/v1/floor-plan${path}`,{method,credentials:'include',headers:{Accept:'application/json','Content-Type':'application/json','X-CSRF-Token': getCsrfToken()??''},...(body===undefined?{}:{body:JSON.stringify(body)})})
   const payload=await response.json().catch(()=>null)
   if(!response.ok||!payload?.success)throw new Error(payload?.message??'The floor plan could not be loaded.')
   return payload.data as T

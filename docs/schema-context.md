@@ -1,17 +1,173 @@
 # Database Schema Context
 
+## Payment-aware borrowing standing — 2026-11-15
+
+In the enabled local/hosted development payment flow, the cart, desk/online borrowing
+checks and renewal eligibility read provider-confirmed net principal credits against
+each matching fine/replacement charge after cash receipts and adjustments. A credit
+cannot erase another charge or a printing payment clear a fine. Restored refunds
+reopen the amount; confirmed charge cancellations retain their matching credit.
+Unreturned/overdue books, enrollment, explicit holds and loan limits remain separate
+checks. These reads do not create official receipts, change school fines or write
+simulated clearance to the official cache. Cart state adds `outstandingBalance` to
+the existing owner-scoped `activeTitleIds` response. Clearance also recognizes Book
+Price replacement resolutions and issued cash allocations. No schema/migration
+change. Applied 044, next 045. See [verification](plans/2026-11-15-payment-standing-sync.md).
+
+## Demo wallet and funds presentation — 2026-11-13
+
+The guarded local payment preview exposes optional `demoWalletEnabled` and public
+demo fixture pairs in owner-scoped payment options, plus `demoWallet` on payment
+responses. The new authenticated/CSRF-protected demo checkout validates only fixed
+example credentials and reuses the existing hosted-session and captured-payment
+verification. Credentials are not persisted or sent to Xendit. Provider-only
+confirmation still controls local credit. No school account, bill, receipt or
+schema meanings change. Library funds combines existing provider operations and
+local addition history into one view; their original ledgers and provenance stay
+separate. No migration was added or applied (applied 036; next unused 042).
+See [implementation and verification](plans/2026-11-13-demo-wallet-and-library-funds.md).
+
+## Starting a locally online-paid print job — 2026-11-12
+
+The status command now recognizes the same local confirmed online credit displayed
+in the queue. It matches request and borrower, requires net paid principal to cover
+the current cost exactly or in excess, and refuses refund holds/cancellations. The
+queue's Paid projection also checks coverage against the current cost, preventing
+a changed cost from retaining a stale Paid label. An online credit does not mark
+the school payment Paid or generate a cash receipt.
+
+In the guarded local workflow, status changes acquire the existing payment lock
+before the printing transaction/row lock. Refund initiation uses the same order,
+so printing cannot begin between refund validation and saving its reservation.
+The normal status/history/notification transaction still runs only when personnel
+choose Start printing. Operating hours, cash checks and allowed transitions remain.
+No schema or migration changes. See [implementation and checks](plans/2026-11-12-start-online-paid-printing.md).
+
+## Local refund / printing view synchronization — 2026-11-12
+
+Printing payment cards additionally expose `refundEligible`, derived from current
+job state and print-status history. The refund button and open review form block
+when printing has ever begun; later cancellation does not restore eligibility.
+Server review and final submission keep the same authoritative checks. No schema
+change is required for this response field.
+
+The local payment decoration now exposes refund reservation state and the current
+refund lifecycle while retaining the original successful payment. A fully refunded
+payment has zero refundable principal. Pending/review/draft refunds block another
+refund; failed/cancelled requests release the reservation as before.
+
+The Admin printing queue and summary apply local payment/refund projections before
+filters, counts, ordering and pagination. A parameterized Postgres CTE overlays the
+existing print-request record type and joins on both request ID and borrower ID.
+Refund pending blocks cash/printing controls. Confirmed cancellation/refund shows
+Refunded/Cancelled and drops out of active/unpaid counts. Original school rows and
+receipt history remain unchanged. Active jobs use created_at then request_id ascending;
+terminal history follows active jobs. Invoice views/PDFs use the same refund state.
+
+No new columns or tables, and no hosted migration. Current tracker remains applied
+036 / next unused 042. See [implementation and evidence](plans/2026-11-12-refund-printing-status-sync.md).
+
+## Local library funds and practice transfers — 2026-11-12
+
+**Current owner amendment:** The primary withdrawal action now uses the existing
+Xendit development payout ledger (`operations`), not `practiceTransfers`. Status
+checks retrieve and verify the provider payout before updating the record. Payout
+amounts remain integer centavos. For PHP-to-PHP evidence, exact destination amount
+is required; the optional source amount must match when present. Merchant, reference,
+recipient, currencies, purpose and provider ID stay bound to the saved review.
+The primary available balance is capped by provider cash and net confirmed online
+collections plus confirmed bank additions after fees, withdrawals, refunds and
+reservations. Cash and draft/cancelled additions are excluded. Bank additions are
+funding, not collections/revenue, and a local entry does not create an actual
+provider deposit. This eligibility amendment is limited to the existing guarded
+development workflow; real-money funding needs independent deposit verification.
+Old local withdrawal history is retained but new
+local withdrawal creation/confirmation is blocked; local additions remain supported.
+Sample bank and sample fee approvals are flagged separately from actual agreements.
+The page checks status on open/refresh/focus and during bounded visible-page polling;
+the existing durable runner remains the only server recovery job. No callback is
+claimed to reach localhost, and no migration/production change was made.
+
+The following paragraphs describe the initial local practice accounting, retained
+for legacy records and bank additions.
+
+The local Library funds screen now combines confirmed local online collections
+with issued counter cash receipts. Cash totals read the existing fine/printing
+receipt tables, count only Cash/Issued records, and exclude Xendit-source receipts.
+Reversed receipts are excluded. Bank top-ups are funding, not collections.
+
+Optional `practiceTransfers` records extend the existing ignored local money-out
+ledger without changing its version or existing records. They retain actor,
+direction, exact centavos, fixed sample fee, purpose, retry key, review expiry and
+event history. Online-only withdrawals reserve principal plus fee and recheck at
+confirmation under the existing payment lock. Additions do not count until
+confirmed. These practice actions never call the provider or write school bills,
+receipts or clearance. They cannot run outside the localhost preview guard.
+Existing provider-backed transfers remain separately configured. No database
+migration: latest applied 036 and next unused 042 are unchanged. See
+[implementation and checks](plans/2026-11-12-library-funds-practice-transfers.md).
+
 ## Engine note (updated 2026-11-11)
+
+Local-only refund/withdrawal implementation (2026-11-12) uses ignored private
+intents and verified provider results; it adds no hosted tables or migrations.
+School receipt/allocation/clearance data stays unchanged. See
+[implementation evidence and setup gates](plans/2026-11-12-refunds-withdrawals-and-voids.md).
 
 The API runs on Supabase PostgreSQL only (`DATABASE_URL`, `pg`). MySQL was retired on 2026-11-10; see [mysql-removal-plan.md](mysql-removal-plan.md). History of the move: [supabase-migration-plan.md](supabase-migration-plan.md).
 
 - When `DATABASE_URL` (postgresql://…) is set, the runtime uses `pg` against drafts under [database/supabase/](../database/supabase/).
-- Device sign-in migration 032 is the latest applied Postgres file. Branding 033 and job runner hardening 034 are pending review. The next unused number is 035.
+- Sign-in migration 036 is applied; its hosted ledger checksum was verified 2026-11-11. Branding 033, runner 034, circulation RLS 035 and payment drafts 038–041 remain unapplied. Next unused number is 042. Payment drafts were renumbered locally to avoid the safety-sprint reservations; applied files were not changed.
 - Additive MAIN product tables for Postgres land in `database/supabase/005_main_product_gapfill.sql` (033–040).
 - Applied Supabase Phase 2 files `012`–`014` add `book_quotations`, lost-report charge resolution, `library_job_runs`, `invoice_setup`, and `customer_invoices`. Since 2026-11-11 the scheduled jobs use `scheduled_job_state` and `scheduled_job_runs` from `019` (one row per job, created on first claim; leases, cursor, 30-day history); `library_job_runs` is no longer read or written. Existing payment rows now have `document_label='Legacy Receipt'`; future rows default to `Payment Record`.
 - Branding 033 changes the default public library name and updates the former stock name. It preserves customized names.
 - Invoice setup and ledger tables are retained but the invoice module is archived as of 2026-09-28. They remain in the schema health check because Admin account history and fine-payment reversal can refer to existing invoice records. The active app does not expose invoice pages or operations. Printing and fine payment records remain active and retain their original labels.
 - Applied Supabase Phase 6 file `015` adds `registration_requests` with hashed one-time codes and password hashes pending approval, the Library Staff role, a private `profile-avatars` Storage bucket, and `profile_avatar_submissions`. Current local registration puts every public role in `PendingApproval` after email verification; Admin review creates an Active account or marks the request Rejected. The API supplies standard decision notes and records the reviewer/time without a typed Audit reason. Completed/rejected requests clear their extra password hash. Applied Supabase file `016` backfills missing `accounts` links for existing Student/Faculty `users`, retaining their school ID, password hash, role, status, and operational user ID. The MySQL rollback reference `047` also extends account/user role enums with Staff but remains unapplied.
 - The 2026-09-25 historical data cutover copied local MySQL rows into Supabase after applying Postgres 008–009. Hosted users/accounts were preserved, and the pre-cutover hosted snapshot is in schema `mysql_cutover_backup_20260925100301`. Postgres 010 adds book archive actor and floor image version metadata. Postgres 011 adds account authentication versions and management audit events. Product files 012–016 are now applied; the private pre-migration snapshot of affected rows for 012–015 is `migration_backup_20260927154637`. The current tracker above supersedes historical numbering. See the cutover record in the migration plan.
+
+## Online payment foundation — local only, 2026-11-11
+
+**Local Test checkout, 2026-11-12:** the normal local school-data app can now
+read an eligible bill and open an actual Xendit Test session. This separate
+read-only preview path stores its attempts under ignored local output. It never
+settles school balances, changes clearance, or creates official receipts. The
+ordinary settlement gateway stays disabled and payment migrations remain
+unapplied. Borrower Transactions combines existing onsite receipts with owned
+online attempts, with filters and protected downloads. See the
+[implementation record](plans/2026-11-12-transactions-and-inline-pay.md).
+
+**Local bill-view correction, 2026-11-12:** verified local attempts now project
+Paid/Partially Paid, balances and summary totals into borrower fine/print views
+and checkout eligibility. These are principal-only local credits, capped at each
+bill, not SQL receipt allocations. Staff financial records and school fine/print
+statuses remain unchanged. The owner separately approved a navigation-only HTTPS
+return bridge for new local checkout sessions; it has no database access.
+
+**Local borrower clearance, 2026-11-12:** the borrower Clearance view now applies
+the same owner-scoped principal credits as Fines before computing outstanding
+charges, reasons and standing. Unreturned books and other unpaid obligations
+still block clearance. This local projection never updates `clearance_statuses`;
+official staff calculations, overrides and reports retain the school ledger.
+
+Phase 6 draft `043_payment_reconciliation.sql` adds server-only RLS `online_payment_settlements`: one append-only evidence record per successful attempt, exact gross/cost/net centavos, provider settlement reference, settlement instant and recording account. A library-entered settlement is explicitly separate from verified capture. Unknown costs and settlement are not inferred as zero/paid in detailed reports. Fine/printing reports count issued principal once and separate user fees, provider costs and recorded net settlement; legacy cash without a receipt is retained without duplicating receipted cash. Printing revenue/finance sources include verified online principal and exclude user fees from service revenue.
+
+037 also narrows the three active-attempt unique indexes to uncaptured work and constrains a captured ID to Succeeded/Review. A delayed captured exception can therefore stay Review alongside another already-active checkout, with its provider identity saved atomically. Existing service/counter guards continue to block new collection for any Review row. Online payment reconciliation reads attempts directly, showing captured exceptions even when no receipt/allocation was issued; those amounts are excluded from successful principal totals.
+
+The owner approved one existing runner for bounded payment recovery. Local integration now puts `payment-recovery` in the durable 019 runner and removes the older `operational-minute` implementation. No second scheduler or historical 019 table rewrite was introduced. `XENDIT_CHECKOUT_ENABLED=false` pauses new quotes/provider creation while `XENDIT_ENABLED=true` keeps callback intake, status checks, cancellation and recovery available. The Librarian-only monitor exposes pending/review counts and safe event codes; manual recovery uses the same service. Payment recovery failures are sanitized and recorded without stopping circulation scans. Enabled schema readiness requires payment draft 041. All payment schema remains local-only; confirmed live latest is sign-in 036 and next unused locally is 042.
+
+Unapplied migration `040_online_payment_foundation.sql` adds server-only RLS tables `online_payment_fee_rules`, `online_payment_attempts` and `online_payment_events`. Fee versions are append-only. Attempts reference exactly one printing bill, fine or confirmed lost-book assessment, and store integer-centavo principal, fees, total, balance snapshot, owner, environment and provider identities. Unique active-obligation, retry-key, provider-reference and event indexes prevent duplicate records.
+
+Print and fine receipt extensions preserve existing rows as `Legacy`. New cash rows default to `Staff`, require a human receiver and retain zero gateway fees. `Xendit` rows require a matching succeeded attempt, an explicit online source and no invented human receiver. Generated `total_received` separates principal from fees; fine allocations accept only the matching confirmed principal. These structures passed disposable local PostgreSQL checks. No live migration or online financial allocation has run.
+
+The payments module is disabled unless the dedicated local test configuration passes its loopback/database/key guards. Authenticated Student/Faculty quotes and prepared attempts are owner-scoped. Staff can list attempts, while Librarians can append sandbox fee versions. Preparation returns `gatewayConnected:false` until a verified session is attached. See the [payment plan](plans/2026-11-11-xendit-sandbox-payments.md).
+
+Unapplied `041_xendit_checkout_confirmation.sql` adds checkout URLs, merchant/request identities, creation/check timestamps, retry budgets and durable event leases. It binds an event's environment to its attempt and protects online receipt identities from later source/amount changes. The local gateway creates one automatic-capture Test session per prepared attempt. An unknown creation outcome stays reserved; it is never automatically posted again. Authenticated callbacks are normalized without customer data, committed before acknowledgment, then processed through a bounded recoverable batch. Provider GET checks verify session identity, merchant, test context, channel, total and fully captured payment before transactional receipt/allocation writes. Changed balances enter Review. Cash reversal cannot reverse an online fine receipt without a confirmed refund.
+
+Controlled-provider PostgreSQL tests cover fine/printing/lost-book settlement, duplicate/out-of-order callbacks, timeout recovery, pending capture, expired leases and rollback after an allocation outage. An actual Xendit Test session was created, read and canceled without making a payment. Public callback delivery, real completed-payment evidence, UI, gateway receipt views/PDFs, reporting and wider cash/adjustment guards remain later acceptance/integration work. The on-demand `/api/jobs/payments/run` endpoint uses the existing job bearer authorization; no new recurring scheduler or runner consolidation was introduced.
+
+Local Phases 4–5 supersede the UI/receipt/counter gaps above. Unapplied `042_payment_counter_and_cancellation.sql` adds `cancel_requested_at`, a method/status index and gateway-receipt reversal protection. Counter cash, fine adjustment, cash-receipt reversal and printing cancellation check shared active reservations after locking the obligation. Prepared, unsent and expired work can be safely released; Creating/Active/Review stays reserved until a verified outcome. The guard checks table installation independently of the checkout flag, so turning checkout off cannot permit competing cash collection. Charge reads take a separate lock statement before reading payment/allocation totals, avoiding stale snapshots after waiting for another collector.
+
+Owner and authorized library cancellation uses provider status reads before releasing reservations. Captured payments cannot be canceled as if refunded. Gateway receipts now return their actual method/source, principal, transaction fee and gross total; fine reads allow an automated source without a fabricated staff receiver. Existing PDFs and receipt screens display these amounts separately. Borrowers have payment review/result screens, partial fine amounts, cash guidance and resume/check/cancel actions. Librarian/Staff payment views have method/status/purpose filters; only the Librarian can cancel another user's checkout or download restricted administrative records. Faculty printing navigation now matches its existing API permission. Public callback/real completed-payment acceptance, recurring scheduling, report reconciliation, refund execution and human usability approval remain open release work.
 
 ## Borrowing policy management archive — 2026-10-17
 
@@ -404,6 +560,15 @@ Applied Postgres migration `031_semester_enrollment.sql` supersedes draft 028. E
 - Admin and Librarian can create Staff accounts from Users. Setup records a `StaffAccountCreated` audit event and generates a private random credential. The Staff member sets a password through the personnel login page. Existing password-recovery challenges also handle this Staff flow, limited to active Staff accounts created through the new setup.
 - New profile pictures publish on save. The storage bucket remains private, and the existing `Approved` storage status marks the published image for compatibility. Previously submitted pictures remain in history. Users can select and save an older pending picture again.
 
+## Sign-in hardening (2026-11-11, migration 036 applied)
+
+Postgres migration `036_sign_in_hardening.sql` (safety sprint Part C) was applied to live Supabase on 2026-11-11; all existing rows are `false`. The API that reads it is not deployed yet. `034` is reserved by Part A (PR #17) and `035` by the audit RLS fix.
+
+- `accounts.must_change_password BOOLEAN NOT NULL DEFAULT FALSE`: set by an Admin-set temporary password, cleared by `POST /api/v1/auth/change-password`. While it is set, `ensureActiveJwtAccount` answers `403 PASSWORD_CHANGE_REQUIRED` except on `/auth/me`, `/auth/activity`, `/auth/change-password` and sign-out.
+- The sign-in lock stays in `login_attempt_windows` (029): 5 wrong passwords within 15 minutes pause sign-in for 15 minutes. Admin unlock deletes that account's row.
+- New `account_management_events.action_code` values: `SignInUnlocked`, `TemporaryPasswordSet`, `PasswordChanged`. The temporary password itself is never stored or audited.
+- Deploy order: apply `036` before the API that reads the column; `/api/health` reports `migration_required` until then.
+
 ## Remembered browser sign-in (2026-11-10)
 
 Postgres migration `032_login_devices.sql` was applied individually on 2026-11-10. Branding 033 is pending review. The API reads the new fields only when `LOGIN_DEVICES_ENABLED=true` on Postgres.
@@ -411,3 +576,16 @@ Postgres migration `032_login_devices.sql` was applied individually on 2026-11-1
 - `library_login_sessions` stores the browser token hash and optional seven-day deadline alongside the existing account version, last activity and revocation time. A browser-session cookie identifies an ordinary sign-in. It can resume within the existing ten-minute inactivity limit.
 - `login_otp_challenges.remember_device` binds the Student or Faculty choice to the verified challenge.
 - `login_device_switches` stores private, hashed two-minute confirmations tied to the account version and the session they can replace. The account lock serializes switches, resumptions and revocations.
+
+## Circulation audit integration — local, 2026-11-13
+
+No schema migration was introduced. Renewal code uses the applied 017_loan_renewals.sql and 018_loan_renewal_hardening.sql; damaged-book and long-overdue reviews use applied 017_circulation_cases.sql. Their applied filenames and SHA-256 checksums were verified read-only against public.schema_migrations.
+
+The existing operational overdue runner opens a unique Long Overdue case using the recorded loan policy threshold and open-day fine calendar. It does not declare Lost or assess a replacement price automatically. Staff-confirmed physical returns resolve open overdue reviews and preserve outstanding fines. Renewal extends from the recorded due time without resetting its clock, respects reservations/monetary blocks, and rejects damaged or repair copies. The borrowing-policy editor remains archived; resolving the saved policy does not unarchive it. Claims-returned needs a new additive schema proposal, not a reinterpretation of the applied Damage/Long Overdue types.
+
+See docs/plans/2026-11-13-circulation-audit-remediation.md for release boundaries, separate policy plans, verification and the still-inactive production schedule.
+
+
+## Hosted payment release - 2026-11-15
+
+Applied `044_hosted_payment_preview.sql`: API-only durable practice ledger, RLS enabled, browser-role grants revoked, fenced leases. Latest live migration 044; next available 045. Applied 033-037 source checksums matched the live ledger. External applied 038/039 are preserved; unapplied payment gateway drafts 040-043 remain reserved and are not replayed. School bills/receipts are unchanged. See `docs/plans/2026-11-15-vercel-payment-release.md`.

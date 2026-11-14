@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { PortalLayout } from './PortalLayout'
 import { ThemeProvider } from '../features/theme/ThemeProvider'
 import { NotificationCenterPage } from '../features/notifications/NotificationCenterPage'
-vi.mock('../features/auth/auth-storage',()=>({getAccessToken:()=>'fixture-token',getCurrentIdentity:()=>({role:'Student',schoolId:'EXAMPLE',userId:999001})}))
+vi.mock('../features/auth/auth-storage',()=>({getCsrfToken:()=>'fixture-token',getCurrentIdentity:()=>({role:'Student',schoolId:'EXAMPLE',userId:999001})}))
 vi.mock('../features/auth/SessionActivity',()=>({SessionActivity:()=>null}))
 vi.mock('./SidebarAccountCard',()=>({SidebarAccountCard:()=>null}))
 vi.mock('../features/attendance/AttendanceFab',()=>({AttendanceFab:()=>null}))

@@ -1,21 +1,21 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Button, SectionCard } from '../../components/ui'
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 import { Download, RefreshCw } from 'lucide-react'
 
 export const reportChoices = [
   ['holdings','Book and research holdings'],['circulation','Take-home borrowing'],['returns','Returned books'],['requests','Book requests and pickups'],
   ['inlibrary','In-library use'],['attendance','Attendance and usage'],['fines','Fines and replacement obligations'],['payments','Fine payment records'],
-  ['printing','Printing requests'],['printRevenue','Printing cash revenue'],['stockExpenses','Supply restock expenses'],['supplies','Current print supplies'],['clearance','Student clearance'],
+  ['onlinePayments','Online payment reconciliation'],['printing','Printing requests'],['printRevenue','Printing payment records'],['stockExpenses','Supply restock expenses'],['supplies','Current print supplies'],['clearance','Student clearance'],
 ] as const
 type Filters={kind:string;period:string;from:string;to:string;termId:string;q:string;status:string;page:string}
 type ReportData={title:string;label:string;timezone:string;generatedAt:string;columns:string[];rows:Record<string,unknown>[];total:number;note:string;
   metrics:Record<string,unknown>;terms:Array<{id:number;academic_year:string;term_name:string}>}
-const field='min-h-11 w-full rounded-xl border border-[#003399]/20 bg-white px-3 text-sm text-[#003399] focus:outline-2 focus:outline-[#003399] dark:border-white/25 dark:bg-white/10 dark:text-white'
+const field='min-h-11 w-full rounded-xl border border-[#0b5ea2]/20 bg-white px-3 text-sm text-[#0b5ea2] focus:outline-2 focus:outline-[#0b5ea2] dark:border-white/25 dark:bg-white/10 dark:text-white'
 const display=(v:unknown)=>v==null?'—':typeof v==='number'?v.toLocaleString('en-PH',{maximumFractionDigits:2}):String(v)
 const label=(s:string)=>s.replaceAll('_',' ')
-function headers(){const token=getAccessToken();return token?{Authorization:`Bearer ${token}`}:undefined}
+function headers(){const token=getCsrfToken();return token?{'X-CSRF-Token': token}:undefined}
 export async function loadLiveReport(filters:Filters):Promise<ReportData>{
   const response=await fetch(`/api/v1/admin/reports?${new URLSearchParams(filters)}`,{headers:headers(),credentials:'include'})
   const body=await response.json().catch(()=>null)
@@ -53,9 +53,11 @@ export function OperationalReports(){
     {error&&<p role="alert" className="rounded-xl bg-[#b42318] p-4 text-white">{error}</p>}
     {loading&&<p role="status">Loading source records…</p>}
     {data&&!loading&&<>
-      <div className="flex flex-wrap justify-between gap-4 border-t border-[#003399]/15 pt-4 dark:border-white/20"><div><h3 className="font-bold">{data.title}</h3><p className="mt-1 text-sm opacity-70">{data.label} · {data.total.toLocaleString()} matching records</p><p className="mt-1 text-xs opacity-70">{data.note}</p></div><div className="flex flex-wrap gap-2"><Button disabled={exporting} onClick={()=>void download('csv')}><Download size={16}/>CSV</Button><Button variant="secondary" disabled={exporting} onClick={()=>void download('pdf')}><Download size={16}/>PDF</Button></div></div>
-      {active.kind==='attendance'&&<div className="grid gap-3 sm:grid-cols-3">{[['Visits',data.metrics.total_visits],['Peak occupied seats',data.metrics.peak_occupancy],['Average visit',data.metrics.average_visit]].map(([title,value])=><div key={String(title)} className="rounded-xl bg-[#003399]/5 p-3 dark:bg-white/10"><p className="text-sm">{String(title)}</p><p className="mt-1 text-xl font-bold">{display(value)}</p></div>)}</div>}
-      {data.rows.length?<div className="max-w-full overflow-x-auto rounded-xl border border-[#003399]/15 dark:border-white/20" tabIndex={0} aria-label="Scrollable report preview"><table className="w-full text-left text-sm"><thead className="bg-[#003399] text-white"><tr>{data.columns.map(c=><th scope="col" className="whitespace-nowrap px-4 py-3 capitalize" key={c}>{label(c)}</th>)}</tr></thead><tbody>{data.rows.map((r,i)=><tr key={i} className="border-t border-[#003399]/10 dark:border-white/15">{data.columns.map(c=><td key={c} className="min-w-28 max-w-80 break-words px-4 py-3">{display(r[c])}</td>)}</tr>)}</tbody></table></div>:<p className="rounded-xl bg-[#003399]/5 p-6 text-center dark:bg-white/10">No records match these filters.</p>}
+      <div className="flex flex-wrap justify-between gap-4 border-t border-[#0b5ea2]/15 pt-4 dark:border-white/20"><div><h3 className="font-bold">{data.title}</h3><p className="mt-1 text-sm opacity-70">{data.label} · {data.total.toLocaleString()} matching records</p><p className="mt-1 text-xs opacity-70">{data.note}</p></div><div className="flex flex-wrap gap-2"><Button disabled={exporting} onClick={()=>void download('csv')}><Download size={16}/>CSV</Button><Button variant="secondary" disabled={exporting} onClick={()=>void download('pdf')}><Download size={16}/>PDF</Button></div></div>
+      {active.kind==='attendance'&&<div className="grid gap-3 sm:grid-cols-3">{[['Visits',data.metrics.total_visits],['Peak occupied seats',data.metrics.peak_occupancy],['Average visit',data.metrics.average_visit]].map(([title,value])=><div key={String(title)} className="rounded-xl bg-[#0b5ea2]/5 p-3 dark:bg-white/10"><p className="text-sm">{String(title)}</p><p className="mt-1 text-xl font-bold">{display(value)}</p></div>)}</div>}
+      {['payments','printRevenue','onlinePayments'].includes(active.kind)&&<div className="grid gap-3 sm:grid-cols-3">{[['Principal (PHP)',data.metrics.principal],['User fees (PHP)',data.metrics.transaction_fees],['Gross paid (PHP)',data.metrics.gross],['Known provider costs (PHP)',data.metrics.processing_cost],['Recorded net settlement (PHP)',data.metrics.net_settled],['Settlements recorded',data.metrics.settlements_recorded]].map(([title,value])=><div key={String(title)} className="rounded-xl bg-[#0b5ea2]/5 p-3 dark:bg-white/10"><p className="text-sm">{String(title)}</p><p className="mt-1 text-xl font-bold tabular-nums">{display(value)}</p></div>)}</div>}
+      {active.kind==='onlinePayments'?<p className="rounded-xl border border-slate-300 p-4 font-semibold">Captured payments needing review (PHP): {display(data.metrics.captured_needing_review)}. These are excluded from successful principal totals.</p>:null}
+      {data.rows.length?<div className="max-w-full overflow-x-auto rounded-xl border border-[#0b5ea2]/15 dark:border-white/20" tabIndex={0} aria-label="Scrollable report preview"><table className="w-full text-left text-sm"><thead className="bg-[#0b5ea2] text-white"><tr>{data.columns.map(c=><th scope="col" className="whitespace-nowrap px-4 py-3 capitalize" key={c}>{label(c)}</th>)}</tr></thead><tbody>{data.rows.map((r,i)=><tr key={i} className="border-t border-[#0b5ea2]/10 dark:border-white/15">{data.columns.map(c=><td key={c} className="min-w-28 max-w-80 break-words px-4 py-3">{display(r[c])}</td>)}</tr>)}</tbody></table></div>:<p className="rounded-xl bg-[#0b5ea2]/5 p-6 text-center dark:bg-white/10">No records match these filters.</p>}
       {data.total>20&&<div className="flex items-center justify-between gap-3"><Button variant="secondary" disabled={Number(active.page)<=1} onClick={()=>page(Number(active.page)-1)}>Previous</Button><span className="text-sm">Page {active.page} of {Math.ceil(data.total/20)}</span><Button variant="secondary" disabled={Number(active.page)*20>=data.total} onClick={()=>page(Number(active.page)+1)}>Next</Button></div>}
       <p className="text-xs opacity-60">Source records checked {new Date(data.generatedAt).toLocaleString('en-PH',{timeZone:'Asia/Manila'})}. A later export reads the latest committed records.</p>
     </>}

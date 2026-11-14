@@ -9,6 +9,19 @@ vi.mock('./enhanced-catalog-api',()=>({enhancedCatalog:{options:vi.fn(),search:v
 vi.mock('./CatalogDetailsPanel',()=>({catalogInput:'field',CatalogDetailsPanel:()=> <p>Public book information</p>}))
 const book={id:42,title:'Example library book',coverImagePath:'/api/assets/covers/example.jpg',kind:'Book',author:'Author',category:'Science',programs:[],courses:[],files:[],copies:[{id:1,accession:'ACC-1',availability:'Available',condition:'Good',shelf:'Shelf A'}],available:1,copyCount:1}
 afterEach(()=>{cleanup();vi.clearAllMocks();vi.restoreAllMocks()})
+it('does not move the page when the catalog loads behind an account dialog',async()=>{
+ vi.mocked(enhancedCatalog.options).mockResolvedValue({categories:[],programs:[],courses:[],types:[],locations:[]} as never)
+ let finish:(value:unknown)=>void=()=>{}
+ vi.mocked(enhancedCatalog.search).mockReturnValue(new Promise(resolve=>{finish=resolve}) as never)
+ const previousScroll=HTMLElement.prototype.scrollIntoView,scroll=vi.fn()
+ HTMLElement.prototype.scrollIntoView=scroll
+ try {
+  render(<MemoryRouter initialEntries={['/#catalog']}><ThemeProvider><PublicCatalogPage suppressAnchorScroll/></ThemeProvider></MemoryRouter>)
+  finish({items:[book],pagination:{total:1,page:1,limit:24}})
+  await screen.findByRole('heading',{name:book.title})
+  expect(scroll).not.toHaveBeenCalled()
+ } finally {HTMLElement.prototype.scrollIntoView=previousScroll}
+})
 it('allows anonymous browsing and details while borrowing leads to login',async()=>{
  vi.mocked(enhancedCatalog.options).mockResolvedValue({categories:[{id:1,name:'Science'}],programs:[],courses:[],types:[],locations:[]} as never)
  vi.mocked(enhancedCatalog.search).mockResolvedValue({items:[book],pagination:{total:1,page:1,limit:24}} as never)

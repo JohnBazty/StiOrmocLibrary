@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { printingApi } from './printing-api'
 
-vi.mock('../auth/auth-storage',()=>({getAccessToken:()=> 'local-test-token'}))
+vi.mock('../auth/auth-storage',()=>({getCsrfToken:()=> 'local-test-token'}))
 afterEach(()=>vi.unstubAllGlobals())
 
 it.each([

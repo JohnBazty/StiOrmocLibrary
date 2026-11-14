@@ -1,4 +1,4 @@
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 
 export type Semester = {
   semester_id:number; academic_year:string; term_name:string; end_date:string
@@ -20,8 +20,8 @@ export class EnrollmentError extends Error {
 }
 
 async function request<T>(path:string, body?:unknown, signal?:AbortSignal) {
-  const token=getAccessToken(),headers=new Headers({Accept:'application/json'})
-  if(token)headers.set('Authorization',`Bearer ${token}`)
+  const token=getCsrfToken(),headers=new Headers({Accept:'application/json'})
+  if(token)headers.set('X-CSRF-Token', token)
   if(body!==undefined&&!(body instanceof FormData))headers.set('Content-Type','application/json')
   const response=await fetch('/api/v1/admin/enrollment'+path,{
     headers,signal,method:body===undefined?'GET':'POST',

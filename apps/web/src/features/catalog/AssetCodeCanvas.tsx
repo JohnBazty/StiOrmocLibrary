@@ -26,7 +26,7 @@ export async function renderAssetDataUri(canvas: HTMLCanvasElement, dataUri: str
   const height = image.naturalHeight * scale
   context.imageSmoothingEnabled = false
   if (heading) {
-    context.fillStyle = '#003399'
+    context.fillStyle = '#0b5ea2'
     context.font = '900 13px Arial, sans-serif'
     context.textAlign = 'center'
     context.textBaseline = 'middle'
@@ -34,7 +34,7 @@ export async function renderAssetDataUri(canvas: HTMLCanvasElement, dataUri: str
   }
   context.drawImage(image, (cssWidth - width) / 2, topSpace + (imageHeight - height) / 2, width, height)
   if (footer) {
-    context.fillStyle = '#003399'
+    context.fillStyle = '#0b5ea2'
     context.font = '700 12px monospace'
     context.textAlign = 'center'
     context.textBaseline = 'middle'
@@ -64,6 +64,6 @@ export function AssetCodeCanvas({ dataUri, kind, testId, canvasId, heading, foot
     void renderAssetDataUri(canvas, dataUri, kind === 'QR code' ? 220 : 440, 220, heading, footer).catch(() => setError(true))
   }, [dataUri, footer, heading, kind, testId])
   return error
-    ? <div role="alert" className="flex min-h-52 items-center justify-center p-4 text-center text-sm font-semibold text-[#003399]">{kind} preview unavailable.</div>
+    ? <div role="alert" className="flex min-h-52 items-center justify-center p-4 text-center text-sm font-semibold text-[#0b5ea2]">{kind} preview unavailable.</div>
     : <canvas id={canvasId} ref={canvasRef} role="img" aria-label={`${heading ? `${heading} ` : ''}${kind} image${footer ? ` ${footer}` : ''}`} data-testid={testId} className="max-w-full" />
 }

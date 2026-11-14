@@ -1,11 +1,11 @@
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 import type { ResearchCatalogItem, ResearchPagination } from './research-catalog-types'
 
 const BASE_URL = '/api/v1/catalog/research'
 
 function headers(): Record<string, string> {
-  const token = getAccessToken()
-  return { Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+  const token = getCsrfToken()
+  return { Accept: 'application/json', ...(token ? { 'X-CSRF-Token': token } : {}) }
 }
 
 async function json<T>(response: Response) {

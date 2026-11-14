@@ -30,13 +30,14 @@
 --   022_revision_phase4_attendance.sql        — attendance policy, events, scan receipts and checkout provenance (applied)
 --   023_revision_phase5_desk_circulation.sql   — in-library use and deduplicated desk confirmations (applied)
 --   024_revision_phase5_reading_materials.sql  — native physical thesis links for in-library use (applied)
--- Latest applied migration: 036_sign_in_hardening.sql (on PR #19's branch).
--- 034_job_runner_hardening.sql (job table RLS in the repo, open-loan cursor index) was applied 2026-11-11.
--- 033_rename_system_brand.sql is pending review. 035 is reserved by PR #20, not applied.
--- 037_book_register.sql (register columns, per-copy cost) was applied 2026-11-13 from feat/book-register, for Ethan's test.
--- Next unused number: 038.
+-- Latest applied migration: 039_category_record_kind.sql (live ledger checked 2026-11-14).
+-- Unapplied payment drafts: 040_online_payment_foundation.sql and
+-- 041_xendit_checkout_confirmation.sql, 042_payment_counter_and_cancellation.sql and 043_payment_reconciliation.sql are pending review.
+-- 033–039 are applied. Payment drafts 040–043 remain unapplied. Next unused number: 044.
 -- 031_semester_enrollment.sql supersedes the removed, unapplied 028 draft.
 -- Preserve the original bytes of applied files. The 003 source still needs checksum reconciliation.
+-- Phase 7 local bootstrap corrected unapplied 033 to use library_profile_settings,
+-- the actual application table, instead of nonexistent library_profiles. Still pending.
 -- See docs/main-branch-integration.md for the live ledger audit.
 -- Apply reviewed files individually; do not renumber previously applied files.
 --
@@ -58,3 +59,11 @@
 ## Main integration — 2026-10-11
 
 The main branch was reconciled with the current revision permission model and phase workflows. Borrowing policy management uses the Librarian workspace; prior login sessions are invalidated when a new login succeeds. The former reference directory is preserved in Git history. Checksum-matched applied sources now live in this directory. See `docs/main-branch-integration.md`.
+
+
+2026-11-14 payment publication: live ledger confirms 033 branding, 034 runner, 035 circulation RLS, 036 sign-in, 037 book register, 038 research optional details and 039 category record kind are applied. Applied sources 033/035/036 in this branch match their live checksums and are kept. Sources for externally applied catalog changes stay with their feature branches; none are guessed or reapplied here. Payment drafts were renumbered only: 040 foundation, 041 checkout confirmation, 042 counter/cancellation and 043 reconciliation. All four remain unapplied. Next available number is 044; the separate shared-rate-limit PR must also retire its conflicting 037 draft before integration.
+
+
+## Hosted payment release - 2026-11-15
+
+Applied `044_hosted_payment_preview.sql`: API-only durable practice ledger, RLS enabled, browser-role grants revoked, fenced leases. Latest live migration 044; next available 045. Applied 033-037 source checksums matched the live ledger. External applied 038/039 are preserved; unapplied payment gateway drafts 040-043 remain reserved and are not replayed. School bills/receipts are unchanged. See `docs/plans/2026-11-15-vercel-payment-release.md`.
