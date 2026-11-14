@@ -32,10 +32,10 @@ when a request is retried or another device changes the visit.
 - [x] Scanner handoff and owner prompt with UI regression tests.
 - [x] Tests, coverage, typecheck, build and local synchronization.
 
-Draft migration 045 adds the private request table; next unused number 046.
-Live remains 044. Live migration, push and deployment are not part of this request.
-This checkout's latest local app uses the hosted school database, so applying 045
-there requires explicit approval under AGENTS.md. Test on disposable Postgres first.
+Migration 045 adds the private request table and was applied individually after
+the owner's explicit approval. Latest applied is 045; next unused number 046.
+The local app uses this shared school database. GitHub publication and deployment
+have not been requested for this feature.
 
 ## Change log
 
@@ -53,3 +53,20 @@ there requires explicit approval under AGENTS.md. Test on disposable Postgres fi
    chooses purpose, then confirms entry; a later scan asks Confirm exit. Do not
    submit a real visit as an automated QA shortcut.
 5. GitHub publication and Vercel deployment require the owner's instruction.
+
+## Approved database activation — 2026-11-15
+
+Owner approved applying migration 045 to the existing database. The connected
+project matched the app configuration and the known 044 ledger checksum. API role
+owns all referenced tables. The existing single-file runner applied only 045 in
+one transaction, including its migration ledger entry. SHA-256:
+`d862f7b1cb81b66dccfe665b57d0f84396319516dec40ef0ad5420ce83cbf6d3`.
+
+Verified new table ownership, RLS and denied anon/authenticated table privileges.
+Before/after row counts and complete-row fingerprints match for accounts, users,
+attendance logs and QR credentials. No attendance request or visit was submitted.
+Read-only service check returns enabled=true with no pending request. Local API
+health and web login return 200; unauthenticated pending requests return 401.
+Local integration server is running at http://localhost:5173. No GitHub push or
+Vercel deployment was performed. Real two-account/physical QR acceptance remains
+for the owner; entry/exit behavior passed disposable SQL and UI checks above.

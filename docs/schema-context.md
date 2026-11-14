@@ -1,6 +1,6 @@
 # Database Schema Context
 
-## Attendance scan/user confirmation — draft 045, 2026-11-15
+## Attendance scan/user confirmation — applied 045, 2026-11-15
 
 The entrance operator creates an expiring owner-scoped confirmation after validating
 the visitor QR. The account owner selects purpose and confirms entry, or confirms
@@ -16,8 +16,8 @@ then uses existing attendance/scan receipts/notifications. Retry aliases prevent
 delayed duplicate scan from becoming the opposite attendance action. Cancellation
 or expiry records no visit. Owner and scanner UIs refresh the authoritative status.
 
-Draft `045_attendance_user_confirmation.sql` is unapplied; live remains 044, next
-unused 046. Polling reports disabled if the private table is absent; this does not
+`045_attendance_user_confirmation.sql` was applied with explicit owner approval;
+latest applied is 045, next unused 046. Polling reports disabled if the private table is absent; this does not
 change global readiness. Existing staff desk workflows remain available.
 See [implementation and checks](plans/2026-11-15-attendance-user-confirmation.md).
 
