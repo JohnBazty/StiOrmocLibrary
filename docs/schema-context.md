@@ -570,3 +570,8 @@ No schema migration was introduced. Renewal code uses the applied 017_loan_renew
 The existing operational overdue runner opens a unique Long Overdue case using the recorded loan policy threshold and open-day fine calendar. It does not declare Lost or assess a replacement price automatically. Staff-confirmed physical returns resolve open overdue reviews and preserve outstanding fines. Renewal extends from the recorded due time without resetting its clock, respects reservations/monetary blocks, and rejects damaged or repair copies. The borrowing-policy editor remains archived; resolving the saved policy does not unarchive it. Claims-returned needs a new additive schema proposal, not a reinterpretation of the applied Damage/Long Overdue types.
 
 See docs/plans/2026-11-13-circulation-audit-remediation.md for release boundaries, separate policy plans, verification and the still-inactive production schedule.
+
+
+## Hosted payment release - 2026-11-15
+
+Applied `044_hosted_payment_preview.sql`: API-only durable practice ledger, RLS enabled, browser-role grants revoked, fenced leases. Latest live migration 044; next available 045. Applied 033-037 source checksums matched the live ledger. External applied 038/039 are preserved; unapplied payment gateway drafts 040-043 remain reserved and are not replayed. School bills/receipts are unchanged. See `docs/plans/2026-11-15-vercel-payment-release.md`.

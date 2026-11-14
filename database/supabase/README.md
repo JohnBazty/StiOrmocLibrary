@@ -62,3 +62,8 @@ The main branch was reconciled with the current revision permission model and ph
 
 
 2026-11-14 payment publication: live ledger confirms 033 branding, 034 runner, 035 circulation RLS, 036 sign-in, 037 book register, 038 research optional details and 039 category record kind are applied. Applied sources 033/035/036 in this branch match their live checksums and are kept. Sources for externally applied catalog changes stay with their feature branches; none are guessed or reapplied here. Payment drafts were renumbered only: 040 foundation, 041 checkout confirmation, 042 counter/cancellation and 043 reconciliation. All four remain unapplied. Next available number is 044; the separate shared-rate-limit PR must also retire its conflicting 037 draft before integration.
+
+
+## Hosted payment release - 2026-11-15
+
+Applied `044_hosted_payment_preview.sql`: API-only durable practice ledger, RLS enabled, browser-role grants revoked, fenced leases. Latest live migration 044; next available 045. Applied 033-037 source checksums matched the live ledger. External applied 038/039 are preserved; unapplied payment gateway drafts 040-043 remain reserved and are not replayed. School bills/receipts are unchanged. See `docs/plans/2026-11-15-vercel-payment-release.md`.
