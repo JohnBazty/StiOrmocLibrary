@@ -3,9 +3,22 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AttendanceScannerModal } from './AttendanceScannerModal'
 const api=vi.hoisted(()=>({sendConfirmation:vi.fn(),scanConfirmation:vi.fn(),cancelScanConfirmation:vi.fn(),scan:vi.fn()}))
 vi.mock('./attendance-api',()=>({attendanceApi:api}))
-vi.mock('html5-qrcode',()=>({Html5QrcodeSupportedFormats:{QR_CODE:0},Html5Qrcode:class {isScanning=false;clear=vi.fn();scanFile=async()=> 'test-qr'}}))
+const {cameraStart,cameraStop}=vi.hoisted(()=>({cameraStart:vi.fn(async(..._args:unknown[])=>{}),cameraStop:vi.fn(async()=>{})}))
+vi.mock('html5-qrcode',()=>({Html5QrcodeSupportedFormats:{QR_CODE:0},Html5Qrcode:class {static getCameras=async()=>[{id:'camera-1',label:'Back camera'}];isScanning=false;clear=vi.fn();scanFile=async()=> 'test-qr';async start(...args:unknown[]){this.isScanning=true;await cameraStart(...args)}async stop(){this.isScanning=false;await cameraStop()}}}))
 const scan={confirmationId:'00000000-0000-4000-8000-000000000001',action:'Entry',state:'Pending',visitor:{name:'Test visitor',schoolId:'QA-1',role:'Student'},purpose:'',expiresAt:'2099-11-15T01:00:00Z',occupancy:{current:0,capacity:80},result:null}
 beforeEach(()=>{vi.resetAllMocks();api.sendConfirmation.mockResolvedValue(scan);api.scanConfirmation.mockResolvedValue(scan)})
+
+it('uses the wider attendance preview and a responsive scan guide with a stop control',async()=>{
+ render(<AttendanceScannerModal open onClose={()=>{}}/>)
+ fireEvent.click(screen.getByRole('button',{name:'Start camera'}))
+ await waitFor(()=>expect(cameraStart).toHaveBeenCalledOnce())
+ const config=cameraStart.mock.calls[0][1] as {qrbox:(width:number,height:number)=>{width:number;height:number}}
+ expect(config.qrbox(720,540).width).toBeGreaterThan(240)
+ expect(config.qrbox(240,180).width).toBeLessThan(180)
+ fireEvent.click(screen.getByRole('button',{name:'Stop camera'}))
+ await waitFor(()=>expect(cameraStop).toHaveBeenCalledOnce())
+ expect(api.sendConfirmation).not.toHaveBeenCalled()
+})
 afterEach(()=>{cleanup();vi.useRealTimers()})
 async function upload(){fireEvent.change(screen.getByLabelText('Saved QR image'),{target:{files:[new File(['qr'],'qr.png',{type:'image/png'})]}});expect(api.sendConfirmation).not.toHaveBeenCalled();fireEvent.click(await screen.findByRole('button',{name:'Read QR from image'}));await screen.findByText('Test visitor')}
 it('sends the scan to the user instead of offering staff purpose/entry controls',async()=>{

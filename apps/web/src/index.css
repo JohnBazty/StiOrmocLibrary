@@ -590,3 +590,7 @@ html.dark .portal-sidebar {
   .responsive-table td, .responsive-table td[data-label] { display: table-cell; width: auto; }
   .responsive-table td[data-label]::before { content: none; }
 }
+
+/* Large scanner previews keep the full camera image visible. */
+.camera-preview { width: 100%; overflow: hidden; border-radius: 1rem; background: #0f172a; }
+.camera-preview video { display: block; width: 100% !important; height: auto !important; object-fit: contain; }
