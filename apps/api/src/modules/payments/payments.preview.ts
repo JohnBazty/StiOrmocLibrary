@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { mkdir, open, readFile, rename } from 'node:fs/promises'
 import dotenv from 'dotenv'
+import { createPgPool } from '../../config/pg-pool.js'
+import { readHostedPaymentConfig } from '../../config/hosted-payments.ts'
+import { createHostedPaymentStore } from './hosted-payment-store.ts'
 import { db, type Pool } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { readXenditSandboxConfig, type XenditSandboxConfig } from '../../config/xendit-sandbox.ts'
@@ -18,7 +21,7 @@ import { emptyFunds } from './money-out.rules.ts'
 import { requireLibraryActor } from '../../core/library-permissions.ts'
 import { withLocalPaymentLock } from './local-payment-lock.ts'
 
-type Attempt = {
+export type Attempt = {
   paymentId: string; accountId: number; userId: number; kind: 'Fine' | 'Printing' | 'LostBook'; targetId: number
   principalCentavos: number; feeCentavos: number; totalCentavos: number; balanceCentavos: number; channelCode: string
   state: 'Quoted' | 'Creating' | 'Active' | 'Review' | 'Succeeded' | 'Cancelled' | 'Expired'
@@ -39,11 +42,11 @@ const privateStore: Store = {
 /** Local Test checkout only. School charges are read, never settled or updated. */
 export function createLocalPaymentPreview(config: XenditSandboxConfig, database: Pool = db, store: Store = privateStore,
   provider: Pick<ReturnType<typeof createXenditClient>, 'createSession'|'getSession'|'cancelSession'|'getPayment'> & Partial<ReturnType<typeof createXenditClient>> = createXenditClient(() => config),
-  moneyOutOptions: { funds?: FundsStore; refundsEnabled?: boolean; payoutsEnabled?: boolean; payoutFeeCentavos?: number | null } = {}) {
+  moneyOutOptions: { funds?: FundsStore; refundsEnabled?: boolean; payoutsEnabled?: boolean; payoutFeeCentavos?: number | null; lock?: <T>(run: () => Promise<T>) => Promise<T> } = {}) {
   if (!config.enabled || config.mode !== 'test') throw paymentError('Test checkout is not configured.')
   if (config.returnUrl) paymentReturnUrl(config.returnUrl, '00000000-0000-4000-8000-000000000001')
   let queue = Promise.resolve<unknown>(undefined)
-  const locked = <T>(run: () => Promise<T>): Promise<T> => { const next = queue.then(()=>store===privateStore?withLocalPaymentLock(database,run):run()); queue = next.catch(() => undefined); return next }
+  const locked = <T>(run: () => Promise<T>): Promise<T> => { const next = queue.then(()=>moneyOutOptions.lock?moneyOutOptions.lock(run):store===privateStore?withLocalPaymentLock(database,run):run()); queue = next.catch(() => undefined); return next }
   const methods = [
     { channelCode: 'GCASH', displayName: 'GCash', minTotalCentavos: 100, maxTotalCentavos: 1000000 },
     { channelCode: 'QRPH', displayName: 'QRPh', minTotalCentavos: 100, maxTotalCentavos: 1000000 },
@@ -235,6 +238,17 @@ export function createLocalPaymentPreview(config: XenditSandboxConfig, database:
 }
 
 function configuredPreview() {
+  if (!process.env.NODE_TEST_CONTEXT && process.env.HOSTED_PAYMENT_PREVIEW === 'true') {
+    const config = readHostedPaymentConfig(process.env)
+    if (!config.enabled) return null
+    const storage = createHostedPaymentStore(createPgPool(config.databaseUrl, 1) as unknown as Pool)
+    return createLocalPaymentPreview(config, db, storage.attempts, createXenditClient(() => config), {
+      funds: storage.funds, lock: storage.locked,
+      refundsEnabled: process.env.HOSTED_PAYMENT_REFUNDS_ENABLED === 'true',
+      payoutsEnabled: process.env.HOSTED_PAYMENT_PAYOUTS_ENABLED === 'true',
+      payoutFeeCentavos: /^\d{1,7}$/.test(process.env.HOSTED_PAYMENT_PAYOUT_FEE_CENTAVOS ?? '') ? Number(process.env.HOSTED_PAYMENT_PAYOUT_FEE_CENTAVOS) : null,
+    })
+  }
   if (process.env.LOCAL_PAYMENT_PREVIEW !== 'true' || process.env.NODE_TEST_CONTEXT) return null
   if (env.isProduction || process.env.VERCEL || env.webOrigin !== 'http://localhost:5173') throw new Error('Local Test checkout is only available on localhost.')
   const settings = dotenv.parse(readFileSync(new URL('../../../.env.xendit-sandbox', import.meta.url)))

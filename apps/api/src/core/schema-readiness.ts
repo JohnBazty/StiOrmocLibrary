@@ -94,6 +94,7 @@ export async function checkSchemaReadiness(database: Pool = db as Pool,features:
     attendance_scan_receipts:['request_id','user_id','actor_account_id','log_id','action'],
     attendance_logs:[...REQUIRED_COLUMNS.attendance_logs,'seat_visit','checkout_source','checked_in_at','checked_out_at'],
     account_recovery_challenges: ['account_id', 'public_id', 'account_version', 'code_hash', 'code_expires_at', 'code_sent_at', 'code_attempts', 'locked_until', 'reset_token_hash', 'reset_expires_at'],
+    ...(process.env.HOSTED_PAYMENT_PREVIEW === 'true' ? { hosted_payment_preview: ['singleton','attempts','funds','lease_owner','lease_until'] } : {}),
     ...((features.paymentsEnabled??env.xendit.enabled) ? {
       online_payment_attempts: ['payment_id','account_id','principal_centavos','fee_centavos','state','request_key','checkout_url','provider_business_id','next_check_at','creation_started_at','cancel_requested_at'],
       online_payment_events: ['event_id','provider_event_id','verified_fields','state','lease_token','lease_until','next_attempt_at'],
