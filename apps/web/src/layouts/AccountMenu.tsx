@@ -87,7 +87,7 @@ export function AccountMenu({ identity, preview = false, profilePath, signingOut
       <div className="pt-1">
         {profilePath ? <Link role="menuitem" tabIndex={-1} className={itemClass} to={profilePath} onClick={() => setOpen(false)}><UserRound size={17} />Profile</Link> : null}
         <button type="button" role="menuitem" tabIndex={-1} className={itemClass} onClick={toggleTheme}>{isDark ? <Sun size={17} /> : <Moon size={17} />}{isDark ? 'Light mode' : 'Dark mode'}</button>
-        <button type="button" role="menuitem" tabIndex={-1} className={itemClass} disabled={signingOut} onClick={() => { setOpen(false); onSignOut() }}><LogOut size={17} />Sign out</button>
+        <button type="button" role="menuitem" tabIndex={-1} className={itemClass} disabled={signingOut} onClick={() => { setOpen(false); trigger.current?.focus(); onSignOut() }}><LogOut size={17} />Sign out</button>
       </div>
     </div> : null}
   </div>

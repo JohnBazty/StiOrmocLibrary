@@ -58,8 +58,8 @@ export function AdminLoginPage() {
     event.preventDefault()
     const normalizedSchoolId = schoolId.trim().toUpperCase()
     const nextErrors: Record<string, string> = {}
-    if (!normalizedSchoolId) nextErrors.school_id = 'School ID is required.'
-    else if (!SCHOOL_ID.test(normalizedSchoolId)) nextErrors.school_id = 'Enter a valid School ID.'
+    if (!normalizedSchoolId) nextErrors.school_id = 'Personnel ID is required.'
+    else if (!SCHOOL_ID.test(normalizedSchoolId)) nextErrors.school_id = 'Enter a valid personnel ID.'
     if (!password) nextErrors.password = 'Password is required.'
     if (Object.keys(nextErrors).length) { setErrors(nextErrors); setMessage(''); return }
 
@@ -91,28 +91,32 @@ export function AdminLoginPage() {
           <p className="text-xs font-black uppercase tracking-[.18em] text-zinc-500 dark:text-zinc-400">Authorized personnel only</p>
           <h1 className="mt-2 font-display text-4xl font-black tracking-tight text-zinc-900 dark:text-white">Library Personnel Login</h1>
           <p className="mt-3 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-            Sign in with your authorized School ID to open the library workspace.
+            Sign in with your personnel ID to open the library workspace.
           </p>
 
           {message ? <AuthMessage>{message}</AuthMessage> : null}
 
           {switchToken ? <DeviceSwitchPrompt busy={busy} onConfirm={() => { void switchDevice() }} onCancel={() => { setSwitchToken(''); setMessage('') }} /> : <form className="mt-7 space-y-5" onSubmit={submit} noValidate>
-            <label className="block">
-              <span className="text-sm font-bold text-zinc-700 dark:text-zinc-300">School ID</span>
-              <span className="relative mt-2 block">
-                <IdCard className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
-                <input
-                  aria-invalid={Boolean(errors.school_id)}
-                  autoComplete="username"
-                  autoFocus
-                  value={schoolId}
-                  onChange={(event) => setSchoolId(event.target.value)}
-                  placeholder="Enter School ID"
-                  className="h-12 w-full rounded-xl border border-zinc-200 bg-white pl-11 pr-4 text-sm uppercase text-zinc-900 outline-none transition placeholder:normal-case placeholder:text-zinc-400 focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/10 dark:border-white/15 dark:bg-[#22232e] dark:text-white dark:focus:border-[#FFF200] dark:focus:ring-[#FFF200]/10"
-                />
-              </span>
-              {errors.school_id ? <span className="field-error mt-2 block text-xs font-bold">{errors.school_id}</span> : null}
-            </label>
+            <div>
+              <label className="block">
+                <span className="text-sm font-bold text-zinc-700 dark:text-zinc-300">Personnel ID</span>
+                <span className="relative mt-2 block">
+                  <IdCard className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+                  <input
+                    aria-invalid={Boolean(errors.school_id)}
+                    aria-describedby="personnel-id-help"
+                    autoComplete="username"
+                    autoFocus
+                    value={schoolId}
+                    onChange={(event) => setSchoolId(event.target.value)}
+                    placeholder="Enter your personnel ID"
+                    className="h-12 w-full rounded-xl border border-zinc-200 bg-white pl-11 pr-4 text-sm uppercase text-zinc-900 outline-none transition placeholder:normal-case placeholder:text-zinc-400 focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/10 dark:border-white/15 dark:bg-[#22232e] dark:text-white dark:focus:border-[#FFF200] dark:focus:ring-[#FFF200]/10"
+                  />
+                </span>
+                {errors.school_id ? <span className="field-error mt-2 block text-xs font-bold">{errors.school_id}</span> : null}
+              </label>
+              <p id="personnel-id-help" className="mt-1.5 text-xs leading-5 text-zinc-500 dark:text-zinc-400">Use the ID registered for your library personnel account.</p>
+            </div>
 
             <label className="block">
               <span className="text-sm font-bold text-zinc-700 dark:text-zinc-300">Password</span>
@@ -145,7 +149,6 @@ export function AdminLoginPage() {
               </Link>
             </div>
 
-            <label className="flex cursor-pointer items-center gap-3 text-sm font-semibold text-zinc-500 dark:text-zinc-400"><input type="checkbox" checked={showPassword} onChange={event => setShowPassword(event.target.checked)} className="h-4 w-4 accent-[#0b5ea2]" />Show password</label>
             <button
               disabled={busy}
               className="flex h-12 w-full items-center justify-center rounded-xl bg-[#0b5ea2] px-5 text-sm font-black text-white shadow-lg shadow-[#0b5ea2]/15 transition hover:bg-[#002266] active:scale-95 disabled:cursor-wait disabled:opacity-60 disabled:active:scale-100 dark:bg-[#FFF200] dark:text-[#0b5ea2] dark:hover:bg-yellow-400"
@@ -175,13 +178,13 @@ export function AdminLoginPage() {
             <img src="/reference-logo.jpg" alt="STI College Ormoc Logo" className="h-auto w-32 rounded-lg object-contain" />
             <div>
               <p className="font-display text-lg font-black">STI COLLEGE ORMOC</p>
-              <p className="text-xs font-bold uppercase tracking-[.18em] text-white/70">ILMS Administration</p>
+              <p className="text-xs font-bold uppercase tracking-[.18em] text-white/70">Library Staff Portal</p>
             </div>
           </div>
 
           <div className="max-w-xl">
             <span className="inline-flex rounded-full border border-[#FFF200]/40 bg-[#FFF200]/10 px-4 py-2 text-xs font-bold uppercase tracking-[.16em] text-[#FFF200] backdrop-blur-md">
-              Restricted access
+              Librarian &amp; Staff access
             </span>
             <p className="mt-7 font-display text-5xl font-black leading-tight text-white">
               Manage the campus library desk.

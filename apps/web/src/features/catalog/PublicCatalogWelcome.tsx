@@ -3,18 +3,14 @@ import { ArrowRight, BookOpen, GraduationCap, LibraryBig, Menu, Search, X } from
 import { Link, useLocation } from 'react-router-dom'
 import { ThemeToggle } from '../theme/ThemeToggle'
 import { dashboardForRole, type AuthRole } from '../auth/auth-storage'
-import type { Option } from './enhanced-catalog-api'
 
 type Props = {
   role?: AuthRole
   query: string
-  categories: Option[]
-  selectedCategory: string
   onSearch: (query: string) => void
-  onCategory: (id: string) => void
 }
 
-export function PublicCatalogWelcome({ role, query, categories, selectedCategory, onSearch, onCategory }: Props) {
+export function PublicCatalogWelcome({ role, query, onSearch }: Props) {
   const location = useLocation()
   const [search, setSearch] = useState(query)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -46,7 +42,7 @@ export function PublicCatalogWelcome({ role, query, categories, selectedCategory
           <span className="min-w-0"><strong className="block text-xs font-black sm:text-sm">STI COLLEGE ORMOC</strong><span className="block text-[9px] font-bold uppercase tracking-[.16em] opacity-65 sm:text-[10px]">Online library</span></span>
         </Link>
         <nav aria-label="Public library navigation" className="hidden items-center gap-6 text-sm font-bold lg:flex">
-          <a href="#home" className="inline-flex min-h-11 items-center border-b-2 border-catalog-brand pb-1 dark:border-[#FFF200]">Home</a><a href="#catalog" className="inline-flex min-h-11 items-center">Browse</a><a href="#categories" className="inline-flex min-h-11 items-center">Categories</a>
+          <a href="#home" className="inline-flex min-h-11 items-center border-b-2 border-catalog-brand pb-1 dark:border-[#FFF200]">Home</a><a href="#catalog" className="inline-flex min-h-11 items-center">Browse</a>
         </nav>
         <div className="flex shrink-0 items-center gap-2 text-sm font-bold lg:gap-3">
          <ThemeToggle className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-catalog-brand/15 bg-white text-catalog-brand/65 transition hover:bg-catalog-brand/5 dark:border-white/15 dark:bg-catalog-dark dark:text-white/80" />
@@ -55,7 +51,7 @@ export function PublicCatalogWelcome({ role, query, categories, selectedCategory
         </div>
        </div>
        {menuOpen&&<div id="public-mobile-menu" className="mt-3 border-t border-catalog-brand/10 pt-3 lg:hidden dark:border-white/15">
-        <nav aria-label="Mobile public library navigation" className="grid grid-cols-3 gap-2 text-sm font-bold">{[['#home','Home'],['#catalog','Browse'],['#categories','Categories']].map(([href,label])=><a key={href} href={href} onClick={()=>setMenuOpen(false)} className="flex min-h-11 items-center justify-center rounded-xl bg-catalog-brand/5 hover:bg-catalog-brand/10 dark:bg-white/5 dark:hover:bg-white/10">{label}</a>)}</nav>
+        <nav aria-label="Mobile public library navigation" className="grid grid-cols-2 gap-2 text-sm font-bold">{[['#home','Home'],['#catalog','Browse']].map(([href,label])=><a key={href} href={href} onClick={()=>setMenuOpen(false)} className="flex min-h-11 items-center justify-center rounded-xl bg-catalog-brand/5 hover:bg-catalog-brand/10 dark:bg-white/5 dark:hover:bg-white/10">{label}</a>)}</nav>
         <div className="mt-3 grid grid-cols-2 gap-2 text-sm font-bold">{role?<Link onClick={()=>setMenuOpen(false)} className="flex min-h-11 items-center justify-center rounded-xl bg-[#FFF200] px-4 text-catalog-brand col-span-2" to={dashboardForRole(role)}>My workspace</Link>:<><Link onClick={()=>setMenuOpen(false)} className="flex min-h-11 items-center justify-center rounded-xl border border-catalog-brand/20 px-4 dark:border-white/20" to="/login" state={{catalogLocation:location}}>Sign In</Link><Link onClick={()=>setMenuOpen(false)} className="flex min-h-11 items-center justify-center rounded-xl bg-[#FFF200] px-4 text-catalog-brand" to="/register" state={{catalogLocation:location}}>Sign Up</Link></>}</div>
        </div>}
       </div>
@@ -64,17 +60,13 @@ export function PublicCatalogWelcome({ role, query, categories, selectedCategory
 
       <div className="mx-auto max-w-4xl text-center">
         <p className="text-xs font-bold uppercase tracking-[.22em] text-white/75">Welcome to your online library</p>
-        <h1 id="library-welcome" className="mt-5 font-display text-4xl font-black leading-[1.12] tracking-tight sm:text-6xl">Your <span className="text-[#FFF200]">Academic Hub</span><br/>at STI College Ormoc</h1>
+        <h1 id="library-welcome" className="mt-5 font-display text-4xl font-black leading-[1.12] tracking-tight sm:text-6xl [text-shadow:0_2px_10px_rgba(0,17,51,0.45)]">Your <span className="text-[#FFF200]">Academic Hub</span><br/>at STI College Ormoc</h1>
         <p className="mx-auto mt-6 max-w-2xl text-base leading-7 text-white/80 sm:text-lg">Discover books, research, and digital resources from your library. Search and explore freely. Sign in when you are ready to borrow a book.</p>
         <form onSubmit={submit} role="search" aria-label="Search public library" className="public-welcome-form mx-auto mt-8 flex max-w-2xl items-center gap-3 rounded-full border-4 border-white/20 bg-white p-2 text-catalog-brand shadow-xl">
           <Search className="ml-3 shrink-0 opacity-60" size={21}/><label className="sr-only" htmlFor="welcome-search">Search books, authors or ISBN</label><input id="welcome-search" value={search} onChange={event=>{setSearch(event.target.value);onSearch(event.target.value)}} placeholder="Search books, authors or ISBN..." className="public-welcome-search min-w-0 flex-1 bg-white py-2 text-sm outline-none placeholder:text-catalog-brand/55 sm:text-base"/><button aria-label="Search catalog" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#FFF200] text-catalog-brand focus-visible:outline-2 focus-visible:outline-offset-2"><ArrowRight/></button>
         </form>
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-xs"><span className="mr-1 text-white/70">Explore categories:</span>{categories.slice(0,4).map(category=><a href="#catalog" key={category.id} onClick={()=>onCategory(String(category.id))} className="rounded-full bg-white/10 px-3 py-1.5 font-bold hover:bg-white/20">{category.name}</a>)}<a href="#catalog" className="rounded-full bg-white/10 px-3 py-1.5 font-bold hover:bg-white/20">Browse all</a></div>
         <div className="mx-auto mt-12 grid max-w-3xl gap-6 text-left sm:grid-cols-3">{[{icon:BookOpen,title:'Books & research',text:'Print and digital resources'},{icon:LibraryBig,title:'Browse freely',text:'No account needed to explore'},{icon:GraduationCap,title:'Campus borrowing',text:'Student and Faculty accounts'}].map(item=><div key={item.title} className="flex items-center gap-3"><item.icon className="shrink-0 text-[#FFF200]" size={28}/><div><strong className="block text-sm">{item.title}</strong><span className="text-xs text-white/70">{item.text}</span></div></div>)}</div>
       </div>
-    </section>
-    <section id="categories" aria-label="Browse by category" className="scroll-mt-6 border-b border-catalog-brand/10 bg-white px-5 py-6 dark:bg-catalog-dark">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3"><h2 className="mr-2 text-sm font-bold">Browse by category</h2><a href="#catalog" onClick={()=>onCategory('')} className={`rounded-full border border-catalog-brand/20 px-4 py-2 text-sm ${!selectedCategory?'bg-catalog-brand text-white':'dark:border-white/20'}`}>All resources</a>{categories.map(category=><a href="#catalog" key={category.id} onClick={()=>onCategory(String(category.id))} className={`rounded-full border border-catalog-brand/20 px-4 py-2 text-sm ${selectedCategory===String(category.id)?'bg-catalog-brand text-white':'dark:border-white/20'}`}>{category.name}</a>)}</div>
     </section>
   </>
 }

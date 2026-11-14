@@ -13,6 +13,12 @@ html.dark .user-dashboard-hero-overlay { background: #14151be6; }
 .portal-reference .font-display { font-family: var(--font-display); }
 .portal-reference .portal-sidebar { background-color: #132a3f !important; }
 .portal-reference .portal-sidebar > div:first-child { flex-shrink: 0; padding-inline: 1rem; }
+@media (min-width: 1024px) {
+  .portal-reference .portal-sidebar[data-collapsed="true"] > div:first-child { padding-inline: .5rem; }
+}
+.portal-signout-dialog { width: min(28rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); margin: auto; overflow-y: auto; }
+.portal-signout-dialog:not([open]) { display: none; }
+.portal-signout-dialog::backdrop { background: #0b5ea299; }
 .portal-reference .portal-sidebar nav { min-height: 0; }
 .portal-reference .portal-sidebar nav a svg { flex-shrink: 0; }
 .portal-reference .portal-sidebar nav p { color: #ffffffa6; }
@@ -88,7 +94,7 @@ html.dark :is(.portal-reference-header, .portal-reference .portal-sidebar, :is(.
 html.dark :is(.dashboard-reference, .attendance-reference) thead[class*="bg-[#0b5ea2]"] { background-color: #ffffff0d !important; }
 html.dark :is(.dashboard-reference, .attendance-reference) input:not([type="checkbox"]):not([type="radio"]),
 html.dark :is(.dashboard-reference, .attendance-reference) select { background-color: #22232e !important; }
-@media (prefers-reduced-motion: reduce) { .portal-reference .portal-sidebar { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .portal-reference :is(.portal-sidebar, .portal-sidebar nav, .portal-sidebar nav a, .portal-workspace) { transition: none; } }
 
 html.dark .portal-reference .portal-sidebar { background-color: #132a3f !important; }
 

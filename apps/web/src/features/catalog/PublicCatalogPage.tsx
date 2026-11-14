@@ -45,18 +45,21 @@ export function PublicCatalogPage({embedded=false,restoreDevice=false,refreshKey
      document.removeEventListener('visibilitychange', resume)
    }
  }, [restoreDevice])
- useEffect(()=>{if(embedded)return;if(!['#home','#catalog','#categories'].includes(location.hash)){lastScrolledAnchor.current='';return}if(!loading&&lastScrolledAnchor.current!==location.hash){document.getElementById(location.hash.slice(1))?.scrollIntoView?.({block:'start'});lastScrolledAnchor.current=location.hash}},[embedded,location.hash,loading])
+ useEffect(()=>{if(embedded)return;if(!['#home','#catalog','#categories'].includes(location.hash)){lastScrolledAnchor.current='';return}if(!loading&&lastScrolledAnchor.current!==location.hash){document.getElementById(location.hash==='#categories'?'catalog':location.hash.slice(1))?.scrollIntoView?.({block:'start'});lastScrolledAnchor.current=location.hash}},[embedded,location.hash,loading])
  const claims=getCurrentClaims(),page=Number(params.get('page')||1)
- const researchView=params.get('kind')==='Research/Thesis'
- const heading=params.get('kind')==='Book'?'All Books':params.get('kind')==='Research/Thesis'?'All Research & Theses':'All Books & Research'
+ const collection=params.get('kind')==='Research/Thesis'?'Research/Thesis':'Book'
+ const researchView=collection==='Research/Thesis'
+ const heading=researchView?'All Research & Theses':'All Books'
+ const selectedCategory=!researchView?options?.categories.find(category=>String(category.id)===params.get('categoryId')):undefined
  useEffect(()=>{let active=true;enhancedCatalog.options().then(o=>{if(active)setOptions(o)}).catch(e=>{if(active)setError(e.message)});return()=>{active=false}},[])
- const query=params.toString()
+ const searchParams=new URLSearchParams(params);searchParams.set('kind',collection)
+ const query=searchParams.toString()
  useEffect(()=>{let active=true;setLoading(true);setError('');const filters=new URLSearchParams(query);filters.delete('titleId');filters.delete('request');enhancedCatalog.search(filters).then(r=>{if(active){setItems(r.items);setTotal(r.pagination.total)}}).catch(e=>{if(active)setError(e.message)}).finally(()=>{if(active)setLoading(false)});return()=>{active=false}},[query,refreshKey])
  const change=(field:string,value:string)=>{const next=new URLSearchParams(params);if(value)next.set(field,value);else next.delete(field);if(field!=='page')next.delete('page');if(field==='kind'){for(const key of ['department','publicationYear','author','adviser',...(value==='Research/Thesis'?['categoryId','programId','courseId','typeId']:[])])next.delete(key)}setParams(next)}
  async function open(id:number){const entry=items.find(book=>Number(book.id)===id);if(onViewBook&&entry?.kind==='Book'&&Number(entry.copyCount)>0){onViewBook(id);return}setError('');try{setDetail(await enhancedCatalog.detail(id))}catch(e){setError(e instanceof Error?e.message:'Unable to load this title.')}}
  const requestLink=(book:CatalogRecord)=>claims&&['Student','Faculty'].includes(claims.role)?`/${claims.role.toLowerCase()}/library?titleId=${book.id}&request=1`:`/login?catalogTitleId=${book.id}`
  const content=<>
- {!embedded&&<PublicCatalogWelcome role={claims?.role} query={params.get('q')??''} categories={options?.categories??[]} selectedCategory={params.get('categoryId')??''} onSearch={value=>change('q',value)} onCategory={value=>change('categoryId',value)}/>}
+ {!embedded&&<PublicCatalogWelcome role={claims?.role} query={params.get('q')??''} onSearch={value=>change('q',value)}/>}
  <section id="catalog" className={embedded?'space-y-6':'scroll-mt-6 px-5 py-10 sm:px-8'}>
  <div className={embedded?'space-y-6':'mx-auto max-w-7xl space-y-6'}>
  <header className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
@@ -65,9 +68,9 @@ export function PublicCatalogPage({embedded=false,restoreDevice=false,refreshKey
  </header>
  {error&&<p role="alert" className="rounded-xl bg-[#b42318] p-3 text-white">{error}</p>}
  <details className="rounded-xl border border-catalog-brand/10 bg-white/80 px-4 py-3 dark:border-white/15 dark:bg-catalog-dark/80">
-  <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-bold"><SlidersHorizontal size={15}/>Filter collection<span className="ml-auto font-normal opacity-65">{loading?'Loading catalog…':total+' entries'}</span></summary>
+  <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 text-xs font-bold"><SlidersHorizontal size={15} className="shrink-0"/>Filter collection{selectedCategory&&<span className="min-w-0 break-words font-normal">Category: {selectedCategory.name}</span>}<span className="ml-auto font-normal opacity-65">{loading?'Loading catalog…':total+' entries'}</span></summary>
   <div className="mt-4 grid gap-3 text-xs sm:grid-cols-3 lg:grid-cols-5">
-   <label>Collection<select className={catalogInput} value={params.get('kind')??''} onChange={e=>change('kind',e.target.value)}><option value="">Books & research</option><option value="Book">Books</option><option value="Research/Thesis">Research / thesis</option></select></label>
+   <label>Collection<select className={catalogInput} value={collection} onChange={e=>change('kind',e.target.value)}><option value="Book">Books</option><option value="Research/Thesis">Research / thesis</option></select></label>
 
    {researchView&&<>
     <label>Department<select aria-label="Filter by department" className={catalogInput} value={params.get('department')??''} onChange={e=>change('department',e.target.value)}><option value="">All departments</option>{[...new Set([...RESEARCH_DEPARTMENTS,...items.filter(item=>item.kind==='Research/Thesis').map(item=>item.department).filter((value):value is string=>Boolean(value))])].map(name=><option key={name} value={name}>{name}</option>)}</select></label>

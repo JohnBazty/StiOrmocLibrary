@@ -1,6 +1,6 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { PortalLayout } from './PortalLayout'
 import { ThemeProvider } from '../features/theme/ThemeProvider'
 
@@ -10,6 +10,11 @@ vi.mock('../features/auth/auth-storage', () => ({ getCurrentIdentity: () => null
 vi.mock('../features/auth/SessionActivity', () => ({ SessionActivity: () => null }))
 vi.mock('../features/attendance/AttendanceFab', () => ({ AttendanceFab: () => null }))
 vi.mock('../features/notifications/NotificationShortcut', () => ({ NotificationShortcut: ({ path }: { path: string }) => <a href={path}>Notification preview</a> }))
+
+beforeAll(() => {
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value() { this.setAttribute('open', '') } })
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value() { this.removeAttribute('open') } })
+})
 
 afterEach(() => { cleanup(); vi.resetAllMocks(); vi.unstubAllGlobals() })
 
@@ -35,21 +40,68 @@ it.each(['student', 'faculty', 'staff', 'librarian', 'admin'] as const)('retains
     expect(screen.getByRole('link', { name: 'Borrow & return' }).getAttribute('href')).toBe('/staff/circulation')
     expect(screen.queryByRole('link', { name: 'Maintenance' })).toBeNull()
   }
-  expect(screen.queryByRole('button', { name: 'Collapse sidebar' })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+  expect(screen.getByRole('button', { name: 'Expand sidebar' }).getAttribute('aria-expanded')).toBe('false')
+  expect(screen.getByRole('link', { name: 'Dashboard' }).getAttribute('title')).toBe('Dashboard')
+  fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }))
+  expect(screen.getByRole('button', { name: 'Collapse sidebar' }).getAttribute('aria-expanded')).toBe('true')
   expect(screen.queryByRole('searchbox')).toBeNull()
 })
 
-it('keeps sign-out failure visible and retries without a new confirmation dialog', async () => {
+it.each(['student', 'faculty', 'staff', 'librarian', 'admin'] as const)('asks before signing out of the %s portal and supports Cancel and Escape', async role => {
+  auth.logout.mockResolvedValue(undefined)
+  open(role)
+  const account = screen.getByRole('button', { name: /Account menu for/ })
+  const request = () => {
+    fireEvent.click(account)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }))
+    return screen.getByRole('alertdialog', { name: 'Sign out' })
+  }
+  request()
+  expect(auth.logout).not.toHaveBeenCalled()
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cancel' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+  expect(screen.queryByRole('alertdialog')).toBeNull()
+  expect(document.activeElement).toBe(account)
+  fireEvent(request(), new Event('cancel', { bubbles: false, cancelable: true }))
+  expect(screen.queryByRole('alertdialog')).toBeNull()
+  expect(auth.logout).not.toHaveBeenCalled()
+  const dialog = request()
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Sign out' }))
+  expect(await screen.findByRole('heading', { name: 'Login destination' })).toBeTruthy()
+  expect(auth.logout).toHaveBeenCalledOnce()
+})
+
+it('keeps sign-out failure in the confirmation dialog and allows retry', async () => {
   auth.logout.mockRejectedValueOnce(new Error('Offline')).mockResolvedValueOnce(undefined)
   open('staff')
   fireEvent.click(screen.getByRole('button', { name: /Account menu for/ }))
   fireEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
   expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Sign out could not be confirmed. Check your connection and try again.')
   expect(screen.getByRole('heading', { name: 'Dashboard content' })).toBeTruthy()
-  fireEvent.click(screen.getByRole('button', { name: /Account menu for/ }))
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }))
+  expect(screen.getByRole('alertdialog')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
   expect(await screen.findByRole('heading', { name: 'Login destination' })).toBeTruthy()
   expect(auth.logout).toHaveBeenCalledTimes(2)
+})
+
+it('prevents duplicate logout requests and dismissal while signing out', async () => {
+  let finish!: () => void
+  auth.logout.mockImplementation(() => new Promise<void>(resolve => { finish = resolve }))
+  open('staff')
+  fireEvent.click(screen.getByRole('button', { name: /Account menu for/ }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+  const pending = screen.getByRole<HTMLButtonElement>('button', { name: 'Signing out…' })
+  expect(pending.disabled).toBe(true)
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Cancel' }).disabled).toBe(true)
+  fireEvent.click(pending)
+  fireEvent(screen.getByRole('alertdialog'), new Event('cancel', { cancelable: true }))
+  expect(auth.logout).toHaveBeenCalledOnce()
+  expect(screen.getByRole('alertdialog')).toBeTruthy()
+  await act(async () => finish())
+  expect(await screen.findByRole('heading', { name: 'Login destination' })).toBeTruthy()
 })
 
 it('keeps mobile background inert, restores scroll, and closes navigation with Escape', async () => {
