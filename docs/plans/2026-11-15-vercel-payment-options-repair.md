@@ -3,7 +3,7 @@
 Why: owner reported disabled Pay buttons and "Review the payment details and try again" on the hosted fine screen.
 Date created: 2026-11-15
 Date last updated: 2026-11-15
-Status: inprogress
+Status: built
 
 ## Cause and how
 
@@ -16,9 +16,9 @@ Extract the existing URL normalization into core/vercel-request.js, remove only 
 - [x] Reproduce the reported 422 in an HTTP regression with a Vercel-style pre-parsed own query property.
 - [x] Fix both rewritten URL and pre-parsed query handling.
 - [x] Targeted HTTP adapter and payment validation/routes/preview tests: 24 passed; unauthorized extra fields remain rejected.
-- [ ] Full tests, typecheck and build.
-- [ ] Deploy candidate and check API/catalog/protected payment routes.
-- [ ] Promote and confirm the public site.
+- [x] Full tests: 702 API and 453 web passed (1,155 total); typecheck and build passed.
+- [x] Candidate API health, catalog reads, book-register route and protected payment access checks passed.
+- [x] Promoted dpl_FQ7bdBmXn9hCngDi2ujNqC7nEGCS (source 22b68d2); verified canonical production target, healthy API, catalog queries, protected payment-options route and intact image responses.
 
 ## Scope and verification limits
 
@@ -27,3 +27,5 @@ No credentials, dependency, migration, bill, fine, payment-history or school-dat
 ## Change log
 
 - 2026-11-15: reproduce and repair Vercel-only payment options failure.
+
+- 2026-11-15: deployed the verified adapter correction. Same scoped repair copied locally after confirming the local entry had no independent edits. No financial record or payment status was manually altered.
