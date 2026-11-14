@@ -2,7 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
     "deploymentEnabled": {
-      "codex/phase2-phase6-updates": false
+      "codex/phase2-phase6-updates": false,
+      "codex/job-runner-manila": false
     }
   },
   "framework": "vite",

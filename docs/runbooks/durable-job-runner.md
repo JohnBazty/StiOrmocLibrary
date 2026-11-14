@@ -8,9 +8,11 @@ Never paste the secret into chat, a commit, an issue, a log or this file.
 
 - The Part A PR is merged and the production deployment finished.
 - `https://<production-host>/api/health` answers `200` with `"status":"healthy"`. A `503 DATABASE_MIGRATION_REQUIRED` means the deployed code expects tables the database lacks; stop.
-- Ask John whether the Vercel project sets `TZ=Asia/Manila`. The runner does not depend on it, but some services read stored Manila times through the process zone. Write the answer in the plan's change log.
+- The API normalizes its process time zone to `Asia/Manila` in `apps/api/src/config/env.js`. Vercel rejects `TZ` as a reserved project variable, so do not add it through Vercel settings. The runner uses absolute instants for leases; service calendar reads use Manila time. Verify a fresh production deployment includes this configuration before activating Cron.
 
-## 0b. Apply migration 034 (go-ahead 0b)
+## 0b. Apply migration 034 (go-ahead 0b) — done 2026-11-11
+
+Applied by Ethan's go-ahead; index `idx_borrow_open_due_cursor` and RLS on both job tables verified, `anon` and `authenticated` cannot read them.
 
 `034_job_runner_hardening.sql` records row-level security on the two job tables (already on live) and adds a partial index for the overdue cursor. It is safe to run twice. The index build briefly blocks writes to `borrow_transactions`; run it outside library hours.
 
@@ -51,22 +53,19 @@ Supabase → STI SMART LIBRARY → Project Settings → Vault (or Integrations �
 
 `pg_cron`, `pg_net` and Vault are already installed (checked 2026-11-11).
 
-## 4. Close pg_net's request tables to the API roles (go-ahead 4)
+## 4. Confirm pg_net's request tables are not reachable (read only)
 
-`pg_net` keeps each queued call, **including the `X-Job-Runner-Secret` header**, in `net.http_request_queue` until it is sent, and the reply in `net._http_response`. A read-only check on 2026-11-11 found that `anon` and `authenticated` can `SELECT` both tables. The `net` schema is not in the Data API's exposed schemas by default, so this is not reachable from the browser today, but one setting change would expose the secret. Run in the SQL Editor:
+`pg_net` keeps each queued call, **including the `X-Job-Runner-Secret` header**, in `net.http_request_queue` until it is sent (then deletes it), and the reply in `net._http_response` (reply headers only). `anon` and `authenticated` can `SELECT` both tables.
 
-```sql
-revoke select, insert, update, delete on net.http_request_queue, net._http_response from public, anon, authenticated;
+**A revoke does not work here.** `supabase_admin` owns the `net` schema and both tables and granted them to `PUBLIC`; `postgres` (the SQL Editor and the API's connection) is not a member of `supabase_admin`, so `revoke ... from public, anon, authenticated` only prints "no privileges could be revoked" notices and changes nothing (tried 2026-11-11). Removing the grants needs Supabase support.
+
+What protects the secret is that `anon` and `authenticated` cannot log in, and the Data API does not expose the `net` schema. Check the second part with the publishable key (expected `PGRST106` "Invalid schema: net"):
+
+```bash
+curl -s -H "apikey: <publishable key>" -H "Accept-Profile: net" "https://<project-ref>.supabase.co/rest/v1/_http_response?select=id&limit=1"
 ```
 
-Check (both columns should be `false` for both roles):
-
-```sql
-select r.rolname, has_table_privilege(r.oid, 'net.http_request_queue', 'SELECT') as queue, has_table_privilege(r.oid, 'net._http_response', 'SELECT') as replies
-  from pg_roles r where r.rolname in ('anon', 'authenticated');
-```
-
-This keeps the `net` functions working (they run as their owner); it only removes table access the app never uses. Right after the revoke, run `select count(*) from net._http_response;` in the SQL Editor; if it now fails with permission denied, the step 6 checks need `grant select on net._http_response to postgres;` first.
+Passed on 2026-11-11 (exposed schemas: `public`, `graphql_public`).
 
 `cron.job` and `cron.job_run_details` also hold command text and replies. On 2026-11-11 `anon` and `authenticated` had no `USAGE` on the `cron` schema, so they cannot reach them. Confirm it is still so (both `false`):
 
@@ -139,4 +138,4 @@ Treat it as one change, in this order: update the Vault secret `smartlib_job_run
 ## What is left behind
 
 - `library_job_runs` (from `013`) is no longer read or written. Dropping it needs its own migration and Ethan's go-ahead.
-- Never add `net` to the Data API's exposed schemas, and never grant its tables back to `anon` or `authenticated` (step 4).
+- Never add `net` to the Data API's exposed schemas: `anon` and `authenticated` can still read its tables, so that one setting would expose the secret (step 4).

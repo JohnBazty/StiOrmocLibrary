@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-11-11 (Supabase `036` applied; `033`–`035` and `038`–`041` pending; next unused `042`) |
+| **Date last updated** | 2026-11-11 (Supabase `036` applied; `033`–`039` applied; payment `040`–`043` pending; next unused `044`) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---
@@ -102,7 +102,7 @@ Always know and document:
 | Migrations directory | `database/supabase/` (Postgres only; MySQL was retired 2026-11-10) |
 | Latest applied migration | `036_sign_in_hardening.sql` (ledger and checksum verified 2026-11-11) |
 | Files pending review | `033_rename_system_brand.sql`, `034_job_runner_hardening.sql`, `035_rls_circulation_hardening.sql`, and payment drafts `038`–`041` |
-| **Next available number** | **`042`** |
+| **Next available number** | **`044`** |
 
 Applied enrollment 031 supersedes the removed 028 draft. Keep applied filenames and source bytes, including line endings. The 003 source still needs checksum reconciliation. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set.
 
@@ -163,3 +163,6 @@ Prefer simple, readable scripts under a clear folder (for example `tools/` or `s
 | 2026-10-09 | Configurable borrowing policies: MySQL `046` / Supabase `016`; tracker advanced to MySQL next `047` and Supabase next `017`. |
 | 2026-11-10 | Start session now reads the Obsidian wiki first and scans only what it does not cover; added the `start-session` skill. Migration numbers unchanged. |
 | 2026-11-10 | MySQL retired (`docs/mysql-removal-plan.md`): tracker is Supabase only, `016` / next `017`; MySQL rows and the `mysql_to_pg.py` step removed. |
+
+
+2026-11-14 payment publication: live ledger confirms 033 branding, 034 runner, 035 circulation RLS, 036 sign-in, 037 book register, 038 research optional details and 039 category record kind are applied. Applied sources 033/035/036 in this branch match their live checksums and are kept. Sources for externally applied catalog changes stay with their feature branches; none are guessed or reapplied here. Payment drafts were renumbered only: 040 foundation, 041 checkout confirmation, 042 counter/cancellation and 043 reconciliation. All four remain unapplied. Next available number is 044; the separate shared-rate-limit PR must also retire its conflicting 037 draft before integration.

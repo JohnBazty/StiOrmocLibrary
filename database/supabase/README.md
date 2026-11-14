@@ -31,8 +31,8 @@
 --   023_revision_phase5_desk_circulation.sql   — in-library use and deduplicated desk confirmations (applied)
 --   024_revision_phase5_reading_materials.sql  — native physical thesis links for in-library use (applied)
 -- Latest applied migration: 036_sign_in_hardening.sql (ledger/checksum verified 2026-11-11).
--- 033_rename_system_brand.sql, 038_online_payment_foundation.sql and
--- 039_xendit_checkout_confirmation.sql, 040_payment_counter_and_cancellation.sql and 041_payment_reconciliation.sql are pending review.
+-- 033_rename_system_brand.sql, 040_online_payment_foundation.sql and
+-- 041_xendit_checkout_confirmation.sql, 042_payment_counter_and_cancellation.sql and 043_payment_reconciliation.sql are pending review.
 -- 033–035 are unapplied safety/branding files. Payment 038–041 passed disposable local PostgreSQL only. Next unused number: 042.
 -- 031_semester_enrollment.sql supersedes the removed, unapplied 028 draft.
 -- Preserve the original bytes of applied files. The 003 source still needs checksum reconciliation.
@@ -59,3 +59,6 @@
 ## Main integration — 2026-10-11
 
 The main branch was reconciled with the current revision permission model and phase workflows. Borrowing policy management uses the Librarian workspace; prior login sessions are invalidated when a new login succeeds. The former reference directory is preserved in Git history. Checksum-matched applied sources now live in this directory. See `docs/main-branch-integration.md`.
+
+
+2026-11-14 payment publication: live ledger confirms 033 branding, 034 runner, 035 circulation RLS, 036 sign-in, 037 book register, 038 research optional details and 039 category record kind are applied. Applied sources 033/035/036 in this branch match their live checksums and are kept. Sources for externally applied catalog changes stay with their feature branches; none are guessed or reapplied here. Payment drafts were renumbered only: 040 foundation, 041 checkout confirmation, 042 counter/cancellation and 043 reconciliation. All four remain unapplied. Next available number is 044; the separate shared-rate-limit PR must also retire its conflicting 037 draft before integration.
