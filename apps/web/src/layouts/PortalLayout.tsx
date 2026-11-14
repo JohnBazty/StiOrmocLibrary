@@ -72,6 +72,7 @@ const librarianNav: NavItem[] = [
   { label: 'Dashboard', to: '/librarian/dashboard', icon: LayoutDashboard, section: 'Operations' },
   { label: 'Maintenance', to: '/librarian/maintenance', icon: Settings },
   { label: 'Reports', to: '/librarian/reports', icon: FileBarChart },
+  { label: 'Book register', to: '/librarian/book-register', icon: BookOpen },
   { label: 'Book archive', to: '/librarian/book-archive', icon: Archive },
   { label: 'Categories', to: '/librarian/categories', icon: Tags },
   { label: 'Borrow & return', to: '/librarian/circulation', icon: CalendarClock },

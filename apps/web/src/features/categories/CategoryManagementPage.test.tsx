@@ -4,6 +4,8 @@ import { CategoryManagementPage } from './CategoryManagementPage'
 
 const api = vi.hoisted(() => ({ list: vi.fn(), listShelves: vi.fn(), addShelf: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), reassign: vi.fn() }))
 vi.mock('./category-api', () => ({ categoryApi: api, CategoryApiError: class extends Error {} }))
+const catalog = vi.hoisted(() => ({ searchSubjects: vi.fn() }))
+vi.mock('../catalog/catalog-api', () => ({ catalogApi: catalog }))
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -41,5 +43,19 @@ describe('CategoryManagementPage', () => {
     expect((screen.getByRole('button', { name: /Cannot delete category/i }) as HTMLButtonElement).disabled).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: 'Edit Programming' }))
     expect((screen.getByLabelText('Description') as HTMLTextAreaElement).value).toBe('Software development books')
+  })
+
+  it('finds subjects online and opens a new category with the subject name', async () => {
+    api.list.mockResolvedValue([{ categoryId: 7, categoryName: 'Computer programming', description: '', shelfLocation: 'Shelf A', shelfColumn: 1, shelfRow: 1, totalBooksCount: 0, totalThesisCount: 0, createdAt: '2026-09-25T00:00:00Z', updatedAt: null }])
+    api.listShelves.mockResolvedValue([{ id: 1, label: 'Shelf A', columnCount: 3, rowCount: 5 }])
+    catalog.searchSubjects.mockResolvedValue({ subjects: [{ name: 'Computer programming', workCount: 6386 }, { name: 'Object-oriented programming', workCount: 1967 }] })
+    render(<CategoryManagementPage />)
+    await screen.findAllByText('Computer programming')
+    fireEvent.change(screen.getByLabelText('Subject to search'), { target: { value: 'programming' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Search subjects' }))
+    expect(await screen.findByText('Already a category')).toBeTruthy()
+    expect(catalog.searchSubjects).toHaveBeenCalledWith('programming')
+    fireEvent.click(screen.getByRole('button', { name: 'Create category Object-oriented programming' }))
+    expect((await screen.findByLabelText(/Category name \*/i) as HTMLInputElement).value).toBe('Object-oriented programming')
   })
 })

@@ -91,3 +91,23 @@ test('legacy mapping fingerprints remain identical while new mapped references a
  assert.equal(holdingsMappingIdentity(mappings), oldIdentity)
  assert.notEqual(holdingsMappingIdentity(mappings.map(mapping => ({ ...mapping, columns: { ...mapping.columns, categoryName: 4 } }))), oldIdentity)
 })
+
+test('the summary column is detected and kept, and an over-long summary needs correction',()=>{
+ const rows=[['No.','Book Title','Author/s','ISBN','Copies','ABSTRACT / SUMMARY','RESEARCH STATUS'],['1','Clean Code','Robert C. Martin','9780132350884','2','A handbook of agile craftsmanship.','Researched']]
+ const mapping={...detectMapping('IT BOOKS',rows),categoryId:1,location:'Shelf A'}
+ assert.equal(mapping.columns.summary,6)
+ const parsed=mappedRows([{name:'IT BOOKS',rows,mapping,headers:rows[0]}],[mapping])
+ assert.equal(parsed.items[0].data.summary,'A handbook of agile craftsmanship.')
+ assert.equal(validateHoldingsData(parsed.items[0].data).length,0)
+ assert.match(validateHoldingsData({...parsed.items[0].data,summary:'x'.repeat(5001)}).join(' '),/Summary/)
+})
+
+test('an ISBN column can stand in for Title and Author, which the lookup or the librarian fills before saving',()=>{
+ const rows=[['ISBN','Copies'],['9780132350884','2'],['Not verified','1']]
+ const mapping={sheet:'Books',headerRow:1,columns:{isbn:1,copies:2},categoryId:1,location:'Shelf A'}
+ const parsed=mappedRows([{name:'Books',rows,mapping,headers:rows[0]}],[mapping])
+ assert.equal(parsed.items.length,2)
+ assert.equal(parsed.items[0].data.title,'')
+ assert.match(validateHoldingsData(parsed.items[0].data).join(' '),/Title is required/)
+ assert.throws(()=>mappedRows([{name:'Books',rows,mapping:{...mapping,columns:{copies:2}},headers:rows[0]}],[{...mapping,columns:{copies:2}}]),/Map Copies, and Title or ISBN/)
+})

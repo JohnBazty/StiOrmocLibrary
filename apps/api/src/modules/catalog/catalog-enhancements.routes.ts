@@ -1,6 +1,8 @@
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import multer from 'multer'
-import { rateLimit } from 'express-rate-limit'
+import { ipKeyGenerator, rateLimit } from 'express-rate-limit'
+import { fillImportFromLookup } from './import-lookup-fill.ts'
+import { exportFoundRows, fillFoundRows, readFoundRows } from './find-book-details.ts'
 import * as service from './catalog-enhancements.service.ts'
 import type { SheetMapping } from './holdings-parser.ts'
 import { HttpError } from '../../core/http-error.ts'
@@ -26,4 +28,13 @@ catalogMaintenanceRouter.post('/imports',upload.single('holdings'),run((req,res)
 catalogMaintenanceRouter.get('/imports',run(()=>service.importBatches()))
 catalogMaintenanceRouter.get('/imports/:id',run((req,res)=>service.importBatch(req.params.id)))
 catalogMaintenanceRouter.put('/imports/rows/:id',run((req,res)=>service.reviewImport(req.params.id,req.body,Number(res.locals.authenticatedUser.accountId))))
+// Each click looks up at most 50 rows; the limit keeps repeated clicks from using up the Google Books daily quota.
+const lookupFillLimit=rateLimit({windowMs:60000,limit:6,standardHeaders:true,legacyHeaders:false,keyGenerator:(req,res)=>`account:${res.locals.authenticatedUser?.accountId ?? ipKeyGenerator(req.ip ?? '')}`,message:{success:false,code:'LOOKUP_RATE_LIMITED',message:'Wait a minute before filling more rows.'}})
+catalogMaintenanceRouter.post('/imports/:id/fill-from-lookup',lookupFillLimit,run(req=>fillImportFromLookup(Number(req.params.id)>0&&Number.isSafeInteger(Number(req.params.id))?Number(req.params.id):(()=>{throw new HttpError(422,'IMPORT_BATCH_INVALID','Choose an import batch.')})())))
+// Find book details: read, fill and download a book list; nothing is saved (plan 2026-11-13-find-book-details).
+// Reading and building files is heavy work: a small per-account limit.
+const findFileLimit=rateLimit({windowMs:60000,limit:20,standardHeaders:true,legacyHeaders:false,keyGenerator:(req,res)=>`account:${res.locals.authenticatedUser?.accountId ?? ipKeyGenerator(req.ip ?? '')}`,message:{success:false,code:'FIND_RATE_LIMITED',message:'Wait a minute before reading or downloading again.'}})
+catalogMaintenanceRouter.post('/find/read',findFileLimit,upload.single('holdings'),run(req=>readFoundRows(req.file,mappings(req.body.mapping))))
+catalogMaintenanceRouter.post('/find/fill',lookupFillLimit,run(req=>fillFoundRows(req.body?.rows)))
+catalogMaintenanceRouter.post('/find/export',findFileLimit,async(req,res,next)=>{try{const file=await exportFoundRows(req.body?.rows,req.query.format==='xlsx'?'xlsx':req.query.format==='csv'?'csv':String(req.query.format) as never);res.set({'Content-Type':file.contentType,'Content-Disposition':`attachment; filename="${file.filename}"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}).send(file.body)}catch(e){next(e)}})
 catalogMaintenanceRouter.post('/imports/:id/commit',run((req,res)=>service.commitImport(req.params.id,Number(res.locals.authenticatedUser.accountId))))
