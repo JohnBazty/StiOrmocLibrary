@@ -18,7 +18,7 @@ Lost-book assessment and clearance now use COALESCE(pc.cost_php, t.purchase_pric
 - [x] Copy-price regression tests: 23 passed, using isolated PGlite fixtures and immutable migration 037.
 - [x] Review checkout: full tests, typecheck, build and coverage commands passed. Web coverage remains below 80%; no claim of complete coverage.
 - [x] Incremental source integrated locally; four overlapping files resolved, payment logic and cookie/CSRF authentication retained. Local typecheck and build passed.
-- [ ] Local combined full test result recorded.
+- [x] Local combined full tests: 682 API and 453 web tests passed (1,135 total). Typecheck and build passed. Local services restarted successfully on API 4000 / web 5173.
 - [ ] Librarian browser walkthrough: Chrome tab creation failed because the created tab disappeared; no user records changed. Do not merge PR #36 before completing the required walkthrough.
 - [ ] Recheck current PR head and merge PR #36 only after its required checks.
 
