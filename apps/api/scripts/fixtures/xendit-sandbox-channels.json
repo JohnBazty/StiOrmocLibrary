@@ -1,0 +1,154 @@
+{
+  "environment": "test",
+  "verifiedOn": "2026-11-11",
+  "documentationSource": "https://docs.xendit.co/docs/available-payment-methods",
+  "amountBasis": "Total paid to provider, including any separately quoted fee",
+  "sampleFee": {
+    "label": "SAMPLE TEST FEE",
+    "fixedCentavos": 100,
+    "percentageBasisPoints": 100,
+    "percentageBasis": "principal",
+    "rounding": "half-up-centavo",
+    "taxBasisPoints": 0,
+    "liveApproved": false
+  },
+  "channels": [
+    {
+      "displayName": "7-Eleven",
+      "channelCode": "7ELEVEN",
+      "currency": "PHP",
+      "country": "PH",
+      "minTotalCentavos": 5000,
+      "maxTotalCentavos": 5000000,
+      "dashboardActivated": true,
+      "hostedSessionVerified": false
+    },
+    {
+      "displayName": "BPI",
+      "channelCode": "BPI_DIRECT_DEBIT",
+      "currency": "PHP",
+      "country": "PH",
+      "minTotalCentavos": 100,
+      "maxTotalCentavos": 50000000,
+      "dashboardActivated": true,
+      "hostedSessionVerified": false
+    },
+    {
+      "displayName": "Visa, Mastercard, JCB",
+      "channelCode": "CARDS",
+      "currency": "PHP",
+      "country": "PH",
+      "minTotalCentavos": 2000,
+      "maxTotalCentavos": 70000000,
+      "dashboardActivated": true,
+      "hostedSessionVerified": false
+    },
+    {
+      "displayName": "Cebuana",
+      "channelCode": "CEBUANA",
+      "currency": "PHP",
+      "country": "PH",
+      "minTotalCentavos": 5000,
+      "maxTotalCentavos": 3000000,
+      "dashboardActivated": true,
+      "hostedSessionVerified": false
+    },
+    {
+      "displayName": "GCash",
+      "channelCode": "GCASH",
+      "currency": "PHP",
+      "country": "PH",
+      "minTotalCentavos": 100,
+      "maxTotalCentavos": 10000000,
+      "dashboardActivated": true,
+      "hostedSessionVerified": false
+    },
+    {
+      "displayName": "GrabPay",
+      "channelCode": "GRABPAY",
+      "currency": "PHP",
+      "country": "PH",
+      "minTotalCentavos": 100,
+      "maxTotalCentavos": 10000000,
+      "dashboardActivated": true,
+      "hostedSessionVerified": false
+    },
+    {
+      "displayName": "LBC",
+      "channelCode": "LBC",
+      "currency": "PHP",
+      "country": "PH",
+      "minTotalCentavos": 5000,
+      "maxTotalCentavos": 20000000,
+      "dashboardActivated": true,
+      "hostedSessionVerified": false
+    },
+    {
+      "displayName": "Maya",
+      "channelCode": "PAYMAYA",
+      "currency": "PHP",
+      "country": "PH",
+      "minTotalCentavos": 100,
+      "maxTotalCentavos": 10000000,
+      "dashboardActivated": true,
+      "hostedSessionVerified": false
+    },
+    {
+      "displayName": "QRPH",
+      "channelCode": "QRPH",
+      "currency": "PHP",
+      "country": "PH",
+      "minTotalCentavos": 100,
+      "maxTotalCentavos": 5000000,
+      "dashboardActivated": true,
+      "hostedSessionVerified": false
+    },
+    {
+      "displayName": "RCBC",
+      "channelCode": "RCBC_DIRECT_DEBIT",
+      "currency": "PHP",
+      "country": "PH",
+      "minTotalCentavos": 100,
+      "maxTotalCentavos": 5000000,
+      "dashboardActivated": true,
+      "hostedSessionVerified": false
+    },
+    {
+      "displayName": "ShopeePay",
+      "channelCode": "SHOPEEPAY",
+      "currency": "PHP",
+      "country": "PH",
+      "minTotalCentavos": 100,
+      "maxTotalCentavos": 10000000,
+      "dashboardActivated": true,
+      "hostedSessionVerified": false
+    },
+    {
+      "displayName": "UBP",
+      "channelCode": "UBP_DIRECT_DEBIT",
+      "currency": "PHP",
+      "country": "PH",
+      "minTotalCentavos": 100,
+      "maxTotalCentavos": 10000000,
+      "dashboardActivated": true,
+      "hostedSessionVerified": false
+    }
+  ],
+  "digitalWalletVariants": [
+    {
+      "displayName": "Apple Pay",
+      "dashboardActivated": true,
+      "hostedSessionVerified": false,
+      "notes": "Confirm supported card-wallet options during hosted checkout tests"
+    },
+    {
+      "displayName": "Google Pay",
+      "dashboardActivated": true,
+      "hostedSessionVerified": false,
+      "notes": "Confirm supported card-wallet options during hosted checkout tests"
+    }
+  ],
+  "notActivated": [
+    "BillEase"
+  ]
+}

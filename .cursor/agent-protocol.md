@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-11-11 (Supabase `032`, `034` and `036` applied, `033` pending, `035` reserved by PR #20, next unused `038`; `037` applied 2026-11-13) |
+| **Date last updated** | 2026-11-14 (live through 039; payment drafts 040–043 pending; next unused 044) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---
@@ -100,11 +100,17 @@ Always know and document:
 | Item | Value |
 | --- | --- |
 | Migrations directory | `database/supabase/` (Postgres only; MySQL was retired 2026-11-10) |
-| Latest applied migration | `037_book_register.sql` (2026-11-13, from feat/book-register; also applied: `034_job_runner_hardening.sql`, 2026-11-11; `036` lives on PR #19's branch) |
-| Latest file pending review | `033_rename_system_brand.sql`; `035` reserved by PR #20 (circulation RLS), not applied |
-| **Next available number** | **`038`** |
+| Latest applied migration | `039_category_record_kind.sql` (live ledger checked 2026-11-14; catalog source remains on its feature branch) |
+| Files pending review | Payment drafts `040`–`043`; none applied by this publication |
+| **Next available number** | **`044`** |
 
 Applied enrollment 031 supersedes the removed 028 draft. Keep applied filenames and source bytes, including line endings. The 003 source still needs checksum reconciliation. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set.
+
+Payment foundation 038 was tested only in a disposable local PostgreSQL schema. It is unapplied on Supabase. Online payments remain disabled by default. See the [payment plan](../docs/plans/2026-11-11-xendit-sandbox-payments.md).
+
+Gateway extension 039 adds saved checkout/recovery state and receipt-source protection. It also passed disposable local PostgreSQL checks only. Real Xendit Test session creation, lookup and cancellation passed. Public callback delivery and a full isolated app deployment remain pending; do not enable this on the normal database.
+
+Counter extension 040 records cancellation intent, indexes method/status searches and blocks ordinary reversal of gateway receipts. Phases 4–5 add shared counter guards, usable online receipt reads/PDFs and borrower/staff payment screens. These remain local sandbox work. The live tracker now records the already applied sign-in 036 (checksum verified); no payment migration is applied. Phase 6 draft 041 adds append-only settlement evidence. The owner chose one runner. Payment recovery now runs as payment-recovery in the durable 019 runner, replacing the retired operational-minute implementation; no second scheduler is created.
 
 Naming pattern: `NNN_short_snake_description.sql`, hand-written Postgres with row-level security as in earlier files. Never regenerate or edit `002_from_migrations.sql`.
 
@@ -157,3 +163,11 @@ Prefer simple, readable scripts under a clear folder (for example `tools/` or `s
 | 2026-10-09 | Configurable borrowing policies: MySQL `046` / Supabase `016`; tracker advanced to MySQL next `047` and Supabase next `017`. |
 | 2026-11-10 | Start session now reads the Obsidian wiki first and scans only what it does not cover; added the `start-session` skill. Migration numbers unchanged. |
 | 2026-11-10 | MySQL retired (`docs/mysql-removal-plan.md`): tracker is Supabase only, `016` / next `017`; MySQL rows and the `mysql_to_pg.py` step removed. |
+
+
+2026-11-14 payment publication: live ledger confirms 033 branding, 034 runner, 035 circulation RLS, 036 sign-in, 037 book register, 038 research optional details and 039 category record kind are applied. Applied sources 033/035/036 in this branch match their live checksums and are kept. Sources for externally applied catalog changes stay with their feature branches; none are guessed or reapplied here. Payment drafts were renumbered only: 040 foundation, 041 checkout confirmation, 042 counter/cancellation and 043 reconciliation. All four remain unapplied. Next available number is 044; the separate shared-rate-limit PR must also retire its conflicting 037 draft before integration.
+
+
+## Hosted payment release - 2026-11-15
+
+Applied `044_hosted_payment_preview.sql`: API-only durable practice ledger, RLS enabled, browser-role grants revoked, fenced leases. Latest live migration 044; next available 045. Applied 033-037 source checksums matched the live ledger. External applied 038/039 are preserved; unapplied payment gateway drafts 040-043 remain reserved and are not replayed. School bills/receipts are unchanged. See `docs/plans/2026-11-15-vercel-payment-release.md`.

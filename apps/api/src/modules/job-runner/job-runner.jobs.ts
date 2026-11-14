@@ -10,6 +10,8 @@ import { deliverBookRequestEmails } from '../reservations/book-request-email.wor
 import { createBookRequestService } from '../reservations/book-request.service.ts'
 import { expireReadyReservations } from '../reservations/reservation-expiration.service.ts'
 import { parseOverdueCursor } from './job-runner.rules.ts'
+import { createPaymentOperations } from '../payments/payments.operations.ts'
+import { localPaymentPreview } from '../payments/payments.preview.ts'
 
 /** Run order for `all`, kept from the earlier single chain. Only these names are accepted by the internal route. */
 export const JOB_NAMES = [
@@ -22,6 +24,7 @@ export const JOB_NAMES = [
   'notifications',
   'book-request-emails',
   'collection-review-refresh',
+  'payment-recovery',
 ] as const
 
 export type JobName = (typeof JOB_NAMES)[number]
@@ -37,7 +40,7 @@ function counts(value: unknown): Record<string, number | boolean> {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => typeof item === 'number' || typeof item === 'boolean')) as Record<string, number | boolean>
 }
 
-export function createJobHandlers(database: Pool = db, clock = () => new Date()): JobHandlers {
+export function createJobHandlers(database: Pool = db, clock = () => new Date(), recoverPayments: () => Promise<unknown> = async () => ({ ...await createPaymentOperations(database).recover(), ...(database === db && localPaymentPreview ? await localPaymentPreview.moneyOut.recover() : {}) })): JobHandlers {
   return {
     'enrollment-close': async () => ({ result: counts({ closed: await createEnrollmentService(database).closeDue() }) }),
     'attendance-auto-checkout': async () => ({ result: counts(await createAttendanceOperations(database, clock).autoCheckout()) }),
@@ -53,5 +56,9 @@ export function createJobHandlers(database: Pool = db, clock = () => new Date())
     notifications: async () => ({ result: counts(await generateNotifications(database, clock())) }),
     'book-request-emails': async () => ({ result: counts(await deliverBookRequestEmails(database, clock())) }),
     'collection-review-refresh': async () => ({ result: counts(await createCollectionReviewService(database).refresh()) }),
+    'payment-recovery': async () => {
+      try { return { result: counts(await recoverPayments()) } }
+      catch { throw Object.assign(new Error('Payment recovery needs attention. Check Online payments.'), { code: 'PAYMENT_RECOVERY_FAILED' }) }
+    },
   }
 }

@@ -1,4 +1,4 @@
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 import type { BookCatalogItem, BookCatalogViewer, BookCategory, CatalogCopyAsset, Pagination } from './book-catalog-types'
 
 const BASE_URL = '/api/v1/catalog/books'
@@ -11,11 +11,12 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 function authorizationHeaders(): Record<string, string> {
-  const token = getAccessToken()
-  return token ? { Authorization: `Bearer ${token}` } : {}
+  const token = getCsrfToken()
+  return token ? { 'X-CSRF-Token': token } : {}
 }
 
 export type BookCatalogRequest = {
+  viewerOnly?: boolean
   query?: string
   categoryName?: string
   categoryId?: number
@@ -38,6 +39,7 @@ export async function fetchBookCategories(signal?: AbortSignal) {
 
 export async function fetchBookCatalog(request: BookCatalogRequest = {}) {
   const parameters = new URLSearchParams()
+  if (request.viewerOnly) parameters.set('viewer_only', '1')
   if (request.query) parameters.set('q', request.query)
   if (request.categoryName) parameters.set('category_name', request.categoryName)
   if (request.categoryId) parameters.set('category_id', String(request.categoryId))

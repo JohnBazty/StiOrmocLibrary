@@ -1,0 +1,81 @@
+import { getCsrfToken } from '../auth/auth-storage'
+
+export type PaymentKind='Printing'|'Fine'|'LostBook'
+export type Payment={paymentId:string;kind:PaymentKind;targetId:number;principalCentavos:number;feeCentavos:number;totalCentavos:number;
+  remainingCentavos:number;channelCode:string;state:string;isSample:boolean;checkoutUrl:string|null;cancellationPending?:boolean;refundReview?:boolean;
+  receiptId:number|null;description?:string|null;payerName?:string|null;schoolId?:string|null;createdAt:string;expiresAt:string;reviewCode?:string|null;localPreview?:boolean;
+  demoWallet?:boolean;refundStatus?:string|null;refundedCentavos?:number;refundableCentavos?:number;refundEligible?:boolean;refunds?:import('./money-out-api').MoneyOutRecord[]}
+export type PaymentMethod={channelCode:string;displayName:string;minTotalCentavos:number;maxTotalCentavos:number}
+export type PaymentOptions={enabled:boolean;isSample:boolean;paymentAllowed:boolean;balanceCentavos:number;methods:PaymentMethod[];active:Payment|null;localPreview?:boolean;demoWalletEnabled?:boolean;demoAccounts?:Array<{number:string;pin:string}>}
+export type Transaction={id:string;channel:'Online'|'Onsite';kind:PaymentKind;description:string;reference:string;method:string;status:string;date:string;amountCentavos:number;principalCentavos:number;feeCentavos:number;receiptId:number|null;payment:Payment|null}
+export type PaymentOperations={checkoutEnabled:boolean;needs_review:number;due_checks:number;review_events:number;pending_events:number;
+  runnerStatus:{last_success_at:string;last_error:string|null}|null;events:Array<{event_id:string;payment_id:string|null;event_type:string;state:string;attempts:number;last_error_code:string|null;received_at:string;next_attempt_at:string}>}
+export type PaymentSettlement={provider_reference:string;processing_cost_centavos:string;net_centavos:string;settled_at:string;recorded_at:string}
+export const paymentMoney=(centavos:number)=>new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP'}).format(centavos/100)
+export function paymentStatus(payment:Payment) {
+  if(payment.refunds?.some(row=>row.state==='Review'))return 'Refund needs review'
+  if(payment.refunds?.some(row=>row.state==='Processing'))return 'Refund processing'
+  if(payment.refunds?.some(row=>row.state==='Draft'))return 'Refund review'
+  if(payment.refundStatus)return payment.refundStatus
+  if(payment.localPreview&&payment.state==='Succeeded')return 'Payment successful'
+  if(payment.cancellationPending)return 'Waiting for cancellation'
+  return ({Quoted:'Ready to review',Prepared:'Ready to continue',Creating:'Waiting for confirmation',Active:'Payment in progress',
+    Succeeded:payment.remainingCentavos>0?'Partially paid':'Paid',Expired:'Expired',Cancelled:'Cancelled',Review:'Needs review'} as Record<string,string>)[payment.state]??'Waiting for confirmation'
+}
+export function canRefundPayment(payment:Payment) {
+  return payment.localPreview&&payment.state==='Succeeded'&&!payment.refundReview
+    &&payment.refundEligible!==false
+    &&!payment.refunds?.some(row=>['Draft','Processing','Review'].includes(row.state))
+    &&(payment.refundableCentavos??Math.max(0,payment.principalCentavos-(payment.refundedCentavos??0)))>0
+    &&payment.refundStatus!=='Refunded'
+}
+export function providerCheckout(value:string) {
+  const url=new URL(value)
+  if(url.protocol!=='https:'||!['dev.xen.to','checkout-staging.xendit.co'].includes(url.hostname)||url.username||url.password||url.port||url.hash)throw new Error('This checkout address could not be verified. Contact the library.')
+  return url.href
+}
+export class PaymentRequestError extends Error {code?:string;details?:Record<string,unknown>}
+export async function paymentRequest<T>(path:string,body?:unknown) {
+  const headers=new Headers({Accept:'application/json'}),token=getCsrfToken()
+  if(token)headers.set('X-CSRF-Token',token)
+  if(body!==undefined)headers.set('Content-Type','application/json')
+  const response=await fetch('/api/v1/'+path,{method:body===undefined?'GET':'POST',headers,credentials:'include',
+    ...(body!==undefined?{body:JSON.stringify(body)}:{})})
+  const payload=await response.json().catch(()=>null) as {success?:boolean;data?:T;message?:string;code?:string;details?:Record<string,unknown>}|null
+  if(!response.ok||!payload?.success||payload.data===undefined){const error=new PaymentRequestError(payload?.message??'Payment information could not load. Please try again.');error.code=payload?.code;error.details=payload?.details;throw error}
+  return payload.data
+}
+const request=paymentRequest
+const base='user/payments'
+export const paymentsApi={
+  sync:()=>request<{checked:number;failed:number}>(base+'/sync',{}),
+  transactions:(filters:{channel:string;search:string;page:number})=>request<{items:Transaction[];pagination:{page:number;limit:number;total:number}}>(base+'/transactions?'+new URLSearchParams({...filters,page:String(filters.page)})),
+  mine:(view:'pending'|'history',page=1)=>request<{enabled:boolean;items:Payment[];pagination:{page:number;limit:number;total:number}}>(base+'?'+new URLSearchParams({view,page:String(page)})),
+  options:(kind:PaymentKind,targetId:number)=>request<PaymentOptions>(base+'/options?'+new URLSearchParams({kind,targetId:String(targetId)})),
+  quote:(input:{kind:PaymentKind;targetId:number;channelCode:string;amount?:string})=>request<Payment>(base+'/quote',input),
+  checkout:(quoteId:string,requestKey:string)=>request<Payment>(base+'/checkout',{quoteId,requestKey}),
+  demoCheckout:(quoteId:string,requestKey:string,number:string,pin:string)=>request<Payment>(base+'/demo-checkout',{quoteId,requestKey,number,pin}),
+  read:(id:string)=>request<Payment>(base+'/'+encodeURIComponent(id)),
+  check:(id:string)=>request<Payment>(base+'/'+encodeURIComponent(id)+'/check',{}),
+  resume:(id:string)=>request<Payment>(base+'/'+encodeURIComponent(id)+'/resume',{}),
+  cancel:(id:string)=>request<Payment>(base+'/'+encodeURIComponent(id)+'/cancel',{}),
+  list:(filters:{state:string;channel:string;kind:string;page:number})=>request<{items:Payment[];pagination:{page:number;limit:number;total:number};methods?:Array<Pick<PaymentMethod,'channelCode'|'displayName'>>;localPreview?:boolean}>('admin/payments?'+new URLSearchParams({...filters,page:String(filters.page)})),
+  adminCheck:(id:string)=>request<Payment>('admin/payments/'+encodeURIComponent(id)+'/check',{}),
+  adminCancel:(id:string)=>request<Payment>('admin/payments/'+encodeURIComponent(id)+'/cancel',{}),
+  operations:()=>request<PaymentOperations>('admin/payments/operations'),
+  recover:()=>request<unknown>('admin/payments/recover',{}),
+  readSettlement:(id:string)=>request<PaymentSettlement|null>('admin/payments/'+encodeURIComponent(id)+'/settlement'),
+  recordSettlement:(id:string,body:{reference:string;processingCost:string;settledAt:string})=>request<{recorded:boolean}>('admin/payments/'+encodeURIComponent(id)+'/settlement',body),
+}
+
+export async function downloadPaymentRecord(payment:Payment,admin=false) {
+  if(!payment.receiptId)throw new Error('The payment record is not ready yet. Check its status again.')
+  const path=payment.kind==='Printing'?`${admin?'admin/printing':'printing'}/receipts/${payment.receiptId}/pdf`:
+    `${admin?'admin/':''}fines/receipts/${payment.receiptId}.pdf?download=1`
+  const headers=new Headers({Accept:'application/pdf'}),token=getCsrfToken()
+  if(token)headers.set('X-CSRF-Token',token)
+  const response=await fetch('/api/v1/'+path,{headers,credentials:'include'})
+  if(!response.ok||!response.headers.get('content-type')?.includes('application/pdf'))throw new Error('The payment record could not be downloaded. Please try again.')
+  const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement('a')
+  link.href=url;link.download='library-payment-'+payment.paymentId.slice(0,8)+'.pdf';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)
+}

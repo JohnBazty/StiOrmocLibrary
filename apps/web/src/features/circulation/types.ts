@@ -1,20 +1,52 @@
 export type BorrowStatus = 'Pending' | 'Borrowed' | 'Active' | 'Overdue' | 'Returned' | 'Cancelled' | 'Lost'
 
+export type RenewalDecisionStatus = 'Approved' | 'Rejected'
+export type RenewalDecisionSource = 'System' | 'Staff'
+export type RenewalBlocker = { code: string; message: string }
+
+export interface RenewalHistoryFields {
+  initialDueAt: string | null
+  renewalCount: number
+  maxRenewals: number
+  remainingRenewals: number
+  lastRenewalStatus: RenewalDecisionStatus | null
+  lastRenewalDecisionSummary: string | null
+  lastRenewalAt: string | null
+  lastRenewalDecisionSource: RenewalDecisionSource | null
+  canRequestRenewal: boolean
+}
+
 export type BorrowingHistoryData = {
   summary: {
     role: string; activeLoans: number; activeReservations: number; activeStackCount: number
     loanLimit: number | null; remainingLoanSlots: number | null; nextDueAt: string | null; dueCutoffLabel: string
   }
-  items: Array<{
+  items: Array<RenewalHistoryFields & {
     transactionId: number; titleId: number | null; title: string; author: string; coverImagePath: string | null; accessionNumber: string | null; barcode: string | null
     borrowDate: string | null; dueDate: string | null; returnDate: string | null; status: BorrowStatus; lostReportStatus: string | null
+    caseSummary?: { caseId: number; caseType: 'Damage' | 'Long Overdue'; status: string; openedAt: string; instruction: string } | null
   }>
   pagination: { page: number; limit: number; total: number; totalPages: number }
 }
 
+export type DamageCaseListItem = {
+  caseId: number; caseType: 'Damage' | 'Long Overdue'; transactionId: number; status: string; openedAt: string; summary: string | null
+  title: string; barcode: string; borrowerName: string; borrowerSchoolId: string; lostBookReportId: number | null
+}
+export type DamageCaseListData = { items: DamageCaseListItem[]; pagination: { page: number; limit: number; total: number; totalPages: number } }
+export type DamageCaseDetail = {
+  case: Pick<DamageCaseListItem, 'caseId' | 'caseType' | 'status' | 'summary' | 'lostBookReportId'>
+  loan: {
+    status: string; title: string; titlePrice: number | null; barcode: string; conditionStatus: string; availabilityStatus: string
+    borrowerName: string; borrowerSchoolId: string; replacementCharge: number | null; replacementPaymentStatus: string | null
+  } | null
+  events: Array<{ eventId: number; eventType: string; actorName: string | null; notes: string | null; reason: string | null; createdAt: string }>
+}
+export type DamageDisposition = 'repaired_available' | 'damaged_held' | 'lost'
+
 export type CirculationMonitorData = {
   summary: { pendingClaims: number; activeLoans: number; overdueLoans: number; returnedToday: number; dueToday: number }
-  items: Array<{
+  items: Array<RenewalHistoryFields & {
     transactionId: number; reservationId?:number|null; userName: string; schoolId: string; role: string; title: string
     accessionNumber: string | null; barcode: string; requestedAt: string; borrowDate: string | null; dueDate: string | null
     returnDate: string | null; status: BorrowStatus
@@ -51,4 +83,37 @@ export type CheckoutConfirmationInput = {
   schoolId: string
   preflightToken?: string | null
   overrideReason?: string | null
+}
+
+export type RenewalPreflightData = {
+  transactionId: number
+  currentDueAt: string
+  proposedDueAt: string | null
+  renewalCount: number
+  maxRenewals: number | null
+  remainingRenewals: number | null
+  policyVersionId: number | null
+  blockers: RenewalBlocker[]
+  canRequestRenewal: boolean
+}
+
+export type RenewalDecisionData = {
+  renewalRequestId: number
+  requestKey: string
+  transactionId: number
+  status: RenewalDecisionStatus
+  decisionCode: string
+  decisionSummary: string
+  decisionSource: RenewalDecisionSource
+  staffNote: string | null
+  previousDueAt: string
+  newDueAt: string | null
+  renewalNumber: number
+  maxRenewals: number | null
+  remainingRenewals: number | null
+  policyVersionId: number | null
+  requestedAt: string
+  decidedAt: string
+  blockers: RenewalBlocker[]
+  idempotent: boolean
 }

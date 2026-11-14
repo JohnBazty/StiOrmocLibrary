@@ -2,6 +2,7 @@ import type { Pool, RowDataPacket } from '../config/db.js'
 import { db } from '../config/db.js'
 import { enrollmentEnabled } from '../modules/enrollment/enrollment-policy.ts'
 import { loginDevicesEnabled } from '../modules/auth/login-device-policy.ts'
+import { env } from '../config/env.js'
 
 const REQUIRED_COLUMNS: Record<string, string[]> = {
   categories: ['category_id', 'category_name', 'shelf_location', 'created_at', 'updated_at'],
@@ -14,10 +15,13 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   research_inventory: ['research_inventory_id', 'title_id', 'title', 'authors', 'adviser', 'publication_year', 'accession_number', 'barcode', 'qr_code_data', 'condition_state', 'availability_status', 'lifecycle_status', 'shelf_location', 'archived_at', 'archive_reason'],
   research_inventory_audit_events: ['research_inventory_audit_event_id', 'research_inventory_id', 'barcode_snapshot', 'event_type', 'action_reason', 'created_at'],
   reservations: ['reservation_id', 'user_id', 'material_id', 'book_title_id', 'accession_id', 'assigned_physical_copy_id', 'borrowing_policy_version_id', 'reservation_status', 'reserved_at', 'pickup_deadline'],
-  borrow_transactions: ['transaction_id', 'user_id', 'material_id', 'physical_copy_id', 'reservation_id', 'borrowing_policy_version_id', 'request_group_id', 'borrowed_at', 'due_at', 'returned_at', 'reported_lost_at', 'lost_confirmed_at', 'transaction_status'],
+  borrow_transactions: ['transaction_id', 'user_id', 'material_id', 'physical_copy_id', 'reservation_id', 'borrowing_policy_version_id', 'request_group_id', 'borrowed_at', 'due_at', 'initial_due_at', 'renewal_count', 'returned_at', 'reported_lost_at', 'lost_confirmed_at', 'transaction_status'],
+  loan_renewal_requests: ['renewal_request_id', 'request_key', 'transaction_id', 'renewal_number', 'requester_account_id', 'requester_user_id', 'decision_source', 'deciding_staff_account_id', 'deciding_staff_user_id', 'staff_note', 'status', 'decision_code', 'decision_summary', 'blocker_codes', 'previous_due_at', 'new_due_at', 'borrowing_policy_version_id', 'requested_at', 'decided_at', 'created_at'],
   borrowing_policy_versions: ['borrowing_policy_version_id', 'effective_on', 'student_max_active_books', 'faculty_max_active_books', 'borrowing_days', 'due_time_cutoff', 'max_renewals', 'renewal_extension_days', 'student_max_active_reservations', 'faculty_max_active_reservations', 'change_reason', 'created_at'],
   borrowing_policy_material_rules: ['borrowing_policy_version_id', 'material_type', 'is_borrowable'],
   circulation_override_events: ['override_event_id', 'borrow_transaction_id', 'borrower_user_id', 'physical_copy_id', 'approved_by_user_id', 'warning_codes', 'override_reason', 'preflight_decision_id', 'approved_at'],
+  circulation_cases: ['case_id', 'case_type', 'transaction_id', 'physical_copy_id', 'borrower_user_id', 'status', 'opened_at', 'resolved_at', 'baseline_condition_status', 'observed_condition_status', 'lost_book_report_id'],
+  circulation_case_events: ['event_id', 'case_id', 'event_type', 'actor_user_id', 'from_status', 'to_status', 'reason', 'notes', 'created_at'],
   admin_notifications: ['admin_notification_id', 'event_type', 'reservation_id', 'borrow_transaction_id', 'book_title_id', 'created_at'],
   library_closed_days: ['closed_date', 'reason', 'created_at'],
   library_operating_schedule: ['day_of_week', 'is_open', 'opens_at', 'closes_at'],
@@ -38,7 +42,7 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   fine_payment_allocations: ['fine_payment_allocation_id', 'fine_payment_receipt_id', 'fine_id', 'lost_book_report_id', 'amount_allocated', 'balance_before', 'balance_after'],
   fine_adjustments: ['fine_adjustment_id', 'fine_id', 'adjustment_type', 'amount_adjusted', 'reason', 'adjusted_by_user_id'],
   users: ['user_id', 'school_id', 'user_role', 'password_hash'],
-  accounts: ['account_id', 'school_id', 'contact_number', 'password_hash', 'role', 'account_status'],
+  accounts: ['account_id', 'school_id', 'contact_number', 'password_hash', 'role', 'account_status', 'must_change_password'],
   registration_requests: ['request_id', 'school_id', 'email', 'requested_role', 'password_hash', 'status', 'code_hash', 'code_expires_at', 'email_verified_at', 'reviewed_by_account_id'],
   profile_avatar_submissions: ['submission_id', 'account_id', 'storage_path', 'status', 'reviewed_by_account_id', 'review_reason'],
   student_profiles: ['student_profile_id', 'account_id', 'first_name', 'last_name', 'program_strand', 'year_grade_level'],
@@ -64,7 +68,7 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
 
 export type SchemaReadiness = { ready: boolean; missingTables: string[]; missingColumns: string[] }
 
-export async function checkSchemaReadiness(database: Pool = db as Pool): Promise<SchemaReadiness> {
+export async function checkSchemaReadiness(database: Pool = db as Pool,features: {paymentsEnabled?:boolean} = {}): Promise<SchemaReadiness> {
   const requiredColumns: Record<string, string[]> = {
     ...REQUIRED_COLUMNS,
     login_attempt_windows: ['identifier_hash', 'failed_count', 'window_started_at', 'locked_until'],
@@ -90,6 +94,15 @@ export async function checkSchemaReadiness(database: Pool = db as Pool): Promise
     attendance_scan_receipts:['request_id','user_id','actor_account_id','log_id','action'],
     attendance_logs:[...REQUIRED_COLUMNS.attendance_logs,'seat_visit','checkout_source','checked_in_at','checked_out_at'],
     account_recovery_challenges: ['account_id', 'public_id', 'account_version', 'code_hash', 'code_expires_at', 'code_sent_at', 'code_attempts', 'locked_until', 'reset_token_hash', 'reset_expires_at'],
+    ...(process.env.HOSTED_PAYMENT_PREVIEW === 'true' ? { hosted_payment_preview: ['singleton','attempts','funds','lease_owner','lease_until'] } : {}),
+    ...((features.paymentsEnabled??env.xendit.enabled) ? {
+      online_payment_attempts: ['payment_id','account_id','principal_centavos','fee_centavos','state','request_key','checkout_url','provider_business_id','next_check_at','creation_started_at','cancel_requested_at'],
+      online_payment_events: ['event_id','provider_event_id','verified_fields','state','lease_token','lease_until','next_attempt_at'],
+      online_payment_fee_rules: ['fee_rule_id','environment','channel_code','fixed_centavos','percentage_basis_points'],
+      online_payment_settlements:['payment_id','processing_cost_centavos','settled_at','recorded_by_account_id'],
+      print_payment_receipts: [...REQUIRED_COLUMNS.print_payment_receipts,'online_payment_attempt_id','confirmation_source','transaction_fee_centavos','total_received'],
+      fine_payment_receipts: [...REQUIRED_COLUMNS.fine_payment_receipts,'online_payment_attempt_id','confirmation_source','transaction_fee_centavos','total_received'],
+    } : {}),
     ...(enrollmentEnabled() ? {
       enrollment_lifecycle: ['id', 'started'],
       enrollment_semesters: ['semester_id', 'academic_year', 'term_name', 'end_date', 'manual_end_at', 'scheduled_end_at', 'started_at', 'ended_at'],

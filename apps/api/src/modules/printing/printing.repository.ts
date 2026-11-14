@@ -1,21 +1,32 @@
 import type { Pool, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
+import {printingCollectionsSql} from './printing-collections.ts'
 import {
   currentDate,
   dateAddDays,
   monthStart as startOfMonth,
   sumEquals,
+  formatDate,
 } from '../../config/sql-dialect.js'
 import type { FinanceFilters, QueueFilters } from './printing.validation.ts'
+import { printingPaymentViewSql, type PrintingPaymentView } from './printing-payment-view.ts'
 
 const dayAfter = (placeholder = '?') => dateAddDays(placeholder, 1)
 const monthStart = startOfMonth()
 // Postgres can read this optional Phase 2 field from the row without referencing a missing column.
 const receiptDocumentLabel = "to_jsonb(r)->>'document_label' AS document_label"
+const receiptPaymentDetails = `COALESCE((to_jsonb(r)->>'transaction_fee_centavos')::bigint,0) AS transaction_fee_centavos,
+  COALESCE((to_jsonb(r)->>'total_received')::numeric,r.amount_received) AS total_received,
+  COALESCE(to_jsonb(r)->>'confirmation_source','Legacy') AS confirmation_source`
 
 export class PrintingRepository {
   readonly pool: Pool
   constructor(pool: Pool = db) { this.pool = pool }
+
+  private async collectionSource(){
+    const [rows]=await this.pool.execute<RowDataPacket[]>("SELECT to_regclass('online_payment_attempts') IS NOT NULL AS installed")
+    return printingCollectionsSql(Boolean(rows[0]?.installed))
+  }
 
   async userBySchoolId(schoolId: string) {
     const [rows] = await this.pool.execute<RowDataPacket[]>('SELECT user_id, school_id, full_name, user_role, account_status FROM users WHERE school_id=? LIMIT 1', [schoolId])
@@ -41,12 +52,21 @@ export class PrintingRepository {
     return rows
   }
 
+  async latestOpenForUser(userId: number, views: PrintingPaymentView[] = []) {
+    const [rows] = await this.pool.execute<RowDataPacket[]>(`${printingPaymentViewSql}
+      SELECT pr.request_id,pr.file_name,pr.number_of_copies,pr.print_type,pr.calculated_cost,pr.job_status,
+        ${formatDate('pr.created_at', 'YYYY-MM-DD HH12:MI AM')} created_at
+      FROM projected_print_requests pr WHERE pr.user_id=? AND pr.job_status NOT IN ('Completed','Cancelled')
+      ORDER BY pr.created_at DESC,pr.request_id DESC LIMIT 1`, [JSON.stringify(views), userId])
+    return rows[0] ?? null
+  }
+
   async ownReceipts(schoolId: string) {
     const [rows] = await this.pool.execute<RowDataPacket[]>(`SELECT r.print_receipt_id,r.request_id,r.receipt_number,r.verification_code,r.receipt_status,${receiptDocumentLabel},
         r.student_name_snapshot student_name,r.school_id_snapshot school_id,r.file_name_snapshot file_name,
         r.page_count_snapshot page_count,r.copies_snapshot number_of_copies,r.total_sheets_snapshot total_sheets,
         r.print_type_snapshot print_type,r.paper_size_snapshot paper_size,r.amount_received,r.payment_method,
-        r.received_by_name_snapshot received_by,r.received_at
+        r.received_by_name_snapshot received_by,r.received_at,${receiptPaymentDetails}
       FROM print_payment_receipts r
       INNER JOIN users u ON u.user_id=r.user_id
       WHERE u.school_id=?
@@ -62,7 +82,7 @@ export class PrintingRepository {
         r.student_name_snapshot student_name,r.school_id_snapshot school_id,r.file_name_snapshot file_name,
         r.page_count_snapshot page_count,r.copies_snapshot number_of_copies,r.total_sheets_snapshot total_sheets,
         r.print_type_snapshot print_type,r.paper_size_snapshot paper_size,r.amount_received,r.payment_method,
-        r.received_by_name_snapshot received_by,r.received_at
+        r.received_by_name_snapshot received_by,r.received_at,${receiptPaymentDetails}
       FROM print_payment_receipts r INNER JOIN users u ON u.user_id=r.user_id
       WHERE r.print_receipt_id=?${ownership} LIMIT 1`,values)
     return rows[0]??null
@@ -76,22 +96,23 @@ export class PrintingRepository {
     return { sql: clauses.join(' AND '), values }
   }
 
-  async queue(filters: QueueFilters) {
+  async queue(filters: QueueFilters,views:PrintingPaymentView[]=[]) {
     const where=this.queueWhere(filters),offset=(filters.page-1)*filters.limit
-    const [count]=await this.pool.execute<RowDataPacket[]>(`SELECT COUNT(*) total FROM print_requests pr JOIN users u ON u.user_id=pr.user_id LEFT JOIN print_payment_receipts r ON r.request_id=pr.request_id WHERE ${where.sql}`,where.values)
-    const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT pr.request_id,u.full_name,u.school_id,u.user_role,pr.file_name,pr.number_of_copies,pr.print_type,pr.paper_size,pr.page_count,pr.total_sheets,pr.calculated_cost,pr.payment_status,pr.job_status,pr.created_at,
+    const values=[JSON.stringify(views),...where.values]
+    const [count]=await this.pool.execute<RowDataPacket[]>(`${printingPaymentViewSql} SELECT COUNT(*) total FROM projected_print_requests pr JOIN users u ON u.user_id=pr.user_id LEFT JOIN print_payment_receipts r ON r.request_id=pr.request_id WHERE ${where.sql}`,values)
+    const [rows]=await this.pool.execute<RowDataPacket[]>(`${printingPaymentViewSql} SELECT pr.request_id,u.full_name,u.school_id,u.user_role,pr.file_name,pr.number_of_copies,pr.print_type,pr.paper_size,pr.page_count,pr.total_sheets,pr.calculated_cost,pr.payment_status,pr.job_status,pr.created_at,pr.local_payment_id AS "localPaymentId",pr.refund_pending,
         r.print_receipt_id,r.receipt_number,r.verification_code,r.receipt_status,r.received_at receipt_issued_at
-      FROM print_requests pr JOIN users u ON u.user_id=pr.user_id
+      FROM projected_print_requests pr JOIN users u ON u.user_id=pr.user_id
       LEFT JOIN print_payment_receipts r ON r.request_id=pr.request_id
-      WHERE ${where.sql} ORDER BY CASE pr.job_status WHEN 'Pending' THEN 1 WHEN 'Printing' THEN 2 WHEN 'Ready for Pickup' THEN 3 WHEN 'Completed' THEN 4 WHEN 'Cancelled' THEN 5 ELSE 6 END,pr.created_at ASC LIMIT ${filters.limit} OFFSET ${offset}`,where.values)
+      WHERE ${where.sql} ORDER BY CASE WHEN pr.job_status IN ('Pending','Printing','Ready for Pickup') THEN 0 ELSE 1 END,pr.created_at ASC,pr.request_id ASC LIMIT ${filters.limit} OFFSET ${offset}`,values)
     const total=Number(count[0]?.total??0)
     return { rows, pagination:{page:filters.page,limit:filters.limit,total,total_pages:Math.ceil(total/filters.limit)} }
   }
 
-  async summary() {
+  async summary(views:PrintingPaymentView[]=[]) {
     const completedToday = `COUNT(*) FILTER (WHERE job_status='Completed' AND DATE(completed_at)=${currentDate()})`
     const unpaidJobs = `COUNT(*) FILTER (WHERE payment_status='Unpaid' AND job_status<>'Cancelled')`
-    const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT ${sumEquals('job_status', 'Pending')} pending_jobs,${sumEquals('job_status', 'Printing')} printing_jobs,${sumEquals('job_status', 'Ready for Pickup')} ready_jobs,${completedToday} completed_today,${unpaidJobs} unpaid_jobs,COALESCE(SUM(CASE WHEN payment_status='Paid' AND DATE(paid_at)=${currentDate()} THEN calculated_cost ELSE 0 END),0) revenue_today FROM print_requests`)
+    const [rows]=await this.pool.execute<RowDataPacket[]>(`${printingPaymentViewSql} SELECT ${sumEquals('job_status', 'Pending')} pending_jobs,${sumEquals('job_status', 'Printing')} printing_jobs,${sumEquals('job_status', 'Ready for Pickup')} ready_jobs,${completedToday} completed_today,${unpaidJobs} unpaid_jobs,COALESCE(SUM(CASE WHEN payment_status='Paid' AND DATE(paid_at)=${currentDate()} THEN calculated_cost ELSE 0 END),0) revenue_today FROM projected_print_requests`,[JSON.stringify(views)])
     const service_status=await this.serviceStatus()
     return { pending_jobs:Number(rows[0]?.pending_jobs??0),printing_jobs:Number(rows[0]?.printing_jobs??0),ready_jobs:Number(rows[0]?.ready_jobs??0),completed_today:Number(rows[0]?.completed_today??0),unpaid_jobs:Number(rows[0]?.unpaid_jobs??0),revenue_today:Number(rows[0]?.revenue_today??0),service_status }
   }
@@ -104,20 +125,24 @@ export class PrintingRepository {
   }
 
   async revenueSummary(filters: FinanceFilters) {
+    const source=await this.collectionSource()
     const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT COUNT(*) paid_requests,COALESCE(SUM(pr.total_sheets),0) total_sheets,COALESCE(SUM(pr.number_of_copies),0) total_copies,COALESCE(SUM(p.amount_paid),0) total_revenue
-      FROM print_cash_payments p JOIN print_requests pr ON pr.request_id=p.request_id
+      FROM (${source}) p JOIN print_requests pr ON pr.request_id=p.request_id
       WHERE p.received_at>=? AND p.received_at<${dayAfter()}`,[filters.from,filters.to])
     return{period:filters.period,label:filters.label,from:filters.from,to:filters.to,paid_requests:Number(rows[0]?.paid_requests??0),total_sheets:Number(rows[0]?.total_sheets??0),total_copies:Number(rows[0]?.total_copies??0),total_revenue:Number(rows[0]?.total_revenue??0)}
   }
 
   async revenueEntries(filters: FinanceFilters) {
-    const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT p.received_at,p.request_id,u.full_name,u.school_id,pr.file_name,pr.print_type,pr.paper_size,pr.page_count,pr.number_of_copies,pr.total_sheets,p.amount_paid,staff.full_name received_by
-      FROM print_cash_payments p
+    const source=await this.collectionSource()
+    const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT p.received_at,p.request_id,u.full_name,u.school_id,pr.file_name,pr.print_type,pr.paper_size,pr.page_count,pr.number_of_copies,pr.total_sheets,p.amount_paid,
+      CASE WHEN p.confirmation_source='Xendit' THEN 'Xendit' ELSE staff.full_name END received_by,
+      p.payment_method,p.transaction_fee,p.gross,p.provider_reference,p.confirmation_source
+      FROM (${source}) p
       JOIN print_requests pr ON pr.request_id=p.request_id
       JOIN users u ON u.user_id=pr.user_id
       LEFT JOIN users staff ON staff.user_id=p.received_by_user_id
       WHERE p.received_at>=? AND p.received_at<${dayAfter()}
-      ORDER BY p.received_at DESC,p.print_cash_payment_id DESC`,[filters.from,filters.to])
+      ORDER BY p.received_at DESC,p.request_id DESC`,[filters.from,filters.to])
     return rows
   }
 
@@ -159,8 +184,9 @@ export class PrintingRepository {
   async *expenseReportRows(filters: FinanceFilters) { for(const row of await this.restockHistory(filters))yield row }
 
   async financeSummary(filters: FinanceFilters) {
+    const source=await this.collectionSource()
     const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT
-      (SELECT COALESCE(SUM(amount_paid),0) FROM print_cash_payments WHERE received_at>=? AND received_at<${dayAfter()}) revenue,
+      (SELECT COALESCE(SUM(amount_paid),0) FROM (${source}) collections WHERE received_at>=? AND received_at<${dayAfter()}) revenue,
       (SELECT COALESCE(SUM(expense_amount),0) FROM ink_stock_movements WHERE movement_type='Restock' AND created_at>=? AND created_at<${dayAfter()}) ink_expenses,
       (SELECT COALESCE(SUM(expense_amount),0) FROM paper_stock_movements WHERE movement_type='Restock' AND created_at>=? AND created_at<${dayAfter()}) paper_expenses`,
       [filters.from,filters.to,filters.from,filters.to,filters.from,filters.to])
@@ -170,13 +196,14 @@ export class PrintingRepository {
   }
 
   async financeEntries(filters: FinanceFilters) {
+    const source=await this.collectionSource()
     const values=[filters.from,filters.to,filters.from,filters.to,filters.from,filters.to]
     const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT * FROM (
       SELECT p.received_at entry_date,CONCAT('Print request #',p.request_id,' - ',pr.file_name) entry_name,'Revenue' entry_type,
         CONCAT(pr.total_sheets,' sheets') quantity,
         CASE WHEN pr.total_sheets>0 THEN ROUND(p.amount_paid/pr.total_sheets,2) ELSE p.amount_paid END unit_cost,
         p.amount_paid revenue,0 expense,p.amount_paid net_impact,u.full_name recorded_by
-      FROM print_cash_payments p JOIN print_requests pr ON pr.request_id=p.request_id LEFT JOIN users u ON u.user_id=p.received_by_user_id
+      FROM (${source}) p JOIN print_requests pr ON pr.request_id=p.request_id LEFT JOIN users u ON u.user_id=p.received_by_user_id
       WHERE p.received_at>=? AND p.received_at<${dayAfter()}
       UNION ALL
       SELECT m.created_at,CONCAT(i.cartridge_type,' ',i.color_variation),'Ink restock',CONCAT(m.quantity_bottles,' bottles'),m.unit_cost_per_bottle,

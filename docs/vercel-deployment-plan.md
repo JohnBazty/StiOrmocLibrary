@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Date created | 2026-09-25 |
-| Date last updated | 2026-11-10 |
+| Date last updated | 2026-11-13 |
 | Status | `inprogress` |
 
 ## Why
@@ -35,7 +35,7 @@ Deploy the React website and Express API at one HTTPS address while retaining Su
 | Announcement publishing | done; PostgreSQL parameter type fixed, rollback-only real-database publish passed, production updated |
 | Deployment audit | done for 98 read-only live checks, 284 automated tests, build, access controls, assets, and current logs; role and scheduled-job gaps remain below |
 | Phase 1 reported bug fixes | built; eight repairs deployed, 99 read-only production checks, controlled live writes, and student browser controls passed |
-| Scheduled jobs | pending |
+| Scheduled jobs | done 2026-11-13; single secure Cron, nine handlers healthy across two automatic cycles |
 
 ## Live verification
 
@@ -122,3 +122,7 @@ Deployment `dpl_HdKxDuSyxfFWZkNSFguAEsvuA1fU` replaced `dpl_6H2Foy8G6mjmLm6GUUAN
 | 2026-09-25 | Deployed the seven Phase 1 bug fixes; verified preview health, 99 production read-only routes, build and tests, and checked current HTTP 500 logs. Live write acceptance remains. |
 | 2026-09-26 | Deployed Category mutation repairs and the Admin lost-report worklist; passed rollback-only Supabase workflows, 293 automated tests, live Category create/read/delete, 99 route checks, and a current-log HTTP 500 check. Controlled write and browser acceptance remains. |
 | 2026-09-26 | Completed Phase 1 live acceptance with disposable Student/book/Category records: reservation, lost-report handoff, synthetic cash payment, Category CRUD/reassignment, and Student browser controls passed. All test records were removed; no HTTP 500 appeared in current logs. |
+
+### Circulation and durable scheduler release — 2026-11-13
+
+Owner-approved deployment dpl_8kRe8iq2oj9sWxpES8CTY8d9DMEe serves the reviewed 08da5c9 circulation fixes. After separate Vault and activation approvals, smartlib-jobs-all runs every minute and all nine jobs passed two automatic cycles. The API applies Manila business-calendar rules; no global database timezone change or migration was made. Production health, schema readiness, public catalog and unauthenticated access checks passed. See docs/plans/2026-11-13-circulation-audit-remediation.md for scope, evidence and remaining planned features.

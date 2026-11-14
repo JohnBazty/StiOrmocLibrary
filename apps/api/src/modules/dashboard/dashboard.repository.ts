@@ -22,6 +22,8 @@ import { HttpError } from '../../core/http-error.ts'
 import { createBorrowingPolicyService } from '../circulation/borrowing-policy.service.ts'
 import { roleBookLimit } from '../circulation/borrowing-policy.types.ts'
 import { createClearanceService } from '../clearance/clearance.service.ts'
+import { PrintingRepository } from '../printing/printing.repository.ts'
+import { localPaymentPreview } from '../payments/payments.preview.ts'
 
 type DashboardActor = { accountId: number; role: string }
 type IdentityRow = RowDataPacket & { account_id: number; user_id: number | null; school_id: string; full_name: string; program: string | null }
@@ -144,6 +146,7 @@ export class DashboardRepository {
     const userId = identity.user_id
     const profile = await this.libraryProfile()
     if (!userId) return await this.emptyUser(identity, actor.role, profile)
+    const printViews = this.pool === db && localPaymentPreview ? (await localPaymentPreview.moneyOut.printingProjection()).filter(row => row.user_id === Number(userId)) : []
     const last180Days = `NOW() - INTERVAL '180 day'`
     const [summaryResult, loanResult, reservationResult, printResult, noticeResult, announcementResult, historyResult, recommendationResult, occupancyResult] = await Promise.all([
       this.pool.execute<RowDataPacket[]>(`SELECT
@@ -166,8 +169,7 @@ export class DashboardRepository {
       this.pool.execute<RowDataPacket[]>(`SELECT r.reservation_id,${'r.request_kind,'}COALESCE(t.title,m.title) title,t.cover_image_path,r.queue_position,r.reservation_status,r.assigned_physical_copy_id,${formatDate('r.pickup_deadline', 'YYYY-MM-DD HH12:MI AM')} pickup_deadline
         FROM reservations r JOIN materials m ON m.material_id=r.material_id LEFT JOIN titles t ON t.title_id=r.book_title_id
         WHERE r.user_id=? AND r.reservation_status IN ('pending','approved','ready_for_pickup') ORDER BY (r.reservation_status='ready_for_pickup') DESC,r.reserved_at LIMIT 1`, [userId]),
-      this.pool.execute<RowDataPacket[]>(`SELECT request_id,file_name,number_of_copies,print_type,calculated_cost,job_status,${formatDate('created_at', 'YYYY-MM-DD HH12:MI AM')} created_at
-        FROM print_requests WHERE user_id=? AND job_status<>'Completed' ORDER BY created_at DESC,request_id DESC LIMIT 1`, [userId]),
+      new PrintingRepository(this.pool).latestOpenForUser(Number(userId), printViews),
       this.pool.execute<RowDataPacket[]>(`SELECT notification_id,message_title,message_body,trigger_type,action_path,${formatDate('notification_timestamp', 'YYYY-MM-DD HH12:MI AM')} created_at
         FROM notifications WHERE user_id=? AND deleted_at IS NULL AND (delivered_at IS NULL OR delivered_at<=NOW()) AND (expires_at IS NULL OR expires_at>NOW()) ORDER BY notification_timestamp DESC LIMIT 1`, [userId]),
       this.pool.execute<RowDataPacket[]>(`SELECT a.announcement_id,a.title,a.message_body,a.priority,${formatDate('COALESCE(a.published_at,a.publish_at)', 'YYYY-MM-DD HH12:MI AM')} published_at
@@ -192,10 +194,11 @@ export class DashboardRepository {
       this.pool.execute<RowDataPacket[]>(`SELECT ${sumCondition(`attendance_date=${currentDate()} AND time_out IS NULL`)} currently_inside FROM attendance_logs`),
     ])
     const state=await libraryState(this.pool)
-    const summary = summaryResult[0][0] ?? {}, loan = loanResult[0][0], reservation = reservationResult[0][0], print = printResult[0][0], notice = noticeResult[0][0], announcement = announcementResult[0][0], occupancy = occupancyResult[0][0] ?? {}
+    const summary = summaryResult[0][0] ?? {}, loan = loanResult[0][0], reservation = reservationResult[0][0], print = printResult, notice = noticeResult[0][0], announcement = announcementResult[0][0], occupancy = occupancyResult[0][0] ?? {}
     const policy = await createBorrowingPolicyService(this.pool).resolveActive(this.pool)
     const limit = roleBookLimit(policy, actor.role)
-    const standing = await createClearanceService(this.pool).compute(Number(userId), false)
+    // Share the owner's verified payment projection with Fines and Clearance, without cache writes.
+    const standing = await createClearanceService(this.pool).mine(actor, false)
     return {
       generatedAt: new Date().toISOString(), user: { name: identity.full_name, schoolId: identity.school_id, program: identity.program, role: actor.role }, profile,
       summary: { activeLoans: number(summary.active_loans), activeBookCount: number(summary.active_loans)+number(summary.pending_book_requests)+number(summary.active_reservations), borrowingLimit: limit, activeReservations: number(summary.active_reservations), unreadNotifications: number(summary.unread_notifications), outstandingFines: standing.summary.totalOutstanding, clearanceStatus: standing.status, clearanceComputedStatus: standing.computedStatus },

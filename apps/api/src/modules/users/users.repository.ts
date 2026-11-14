@@ -1,8 +1,11 @@
-import type { Pool, RowDataPacket } from '../../config/db.js'
+import { randomInt } from 'node:crypto'
+import bcrypt from 'bcrypt'
+import type { Pool, PoolConnection, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { requireLibraryActor } from '../../core/library-permissions.ts'
 import { currentRosterSql, enrollmentEnabled } from '../enrollment/enrollment-policy.ts'
+import { accountLockIdentifier } from '../auth/login-security.service.ts'
 
 const statuses = ['Active', 'Deactivated', 'Archived'] as const
 type Status = typeof statuses[number]
@@ -37,11 +40,66 @@ export function parseUserFilters(q: Record<string, unknown>): UserFilters {
     page: Number.isFinite(page) ? Math.max(1, Math.min(100000, Math.trunc(page))) : 1,
     limit: Number.isFinite(limit) ? Math.max(1, Math.min(100, Math.trunc(limit))) : 25 }
 }
+const TEMPORARY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
+const temporaryPassword = () => Array.from({ length: 16 }, () => TEMPORARY_ALPHABET[randomInt(TEMPORARY_ALPHABET.length)]).join('')
 export const parseActiveUserFilters = (q: Record<string, unknown>) => parseUserFilters({ ...q, status: 'Active' })
 
 export class UsersRepository {
   private readonly pool: Pool
-  constructor(pool: Pool = db) { this.pool = pool }
+  private readonly hasher: Pick<typeof bcrypt, 'hash'>
+  constructor(pool: Pool = db, hasher: Pick<typeof bcrypt, 'hash'> = bcrypt) { this.pool = pool; this.hasher = hasher }
+  /**
+   * Admin sign-in actions. Never the actor's own account. A Librarian may act only on Student, Faculty and Staff
+   * accounts; an Admin also on Librarians, and may unlock (never reset) another Admin.
+   */
+  private async signInTarget<T>(value: unknown, actorValue: unknown, body: Record<string, unknown>, allowAdminTarget: boolean,
+    work: (connection: PoolConnection, account: RowDataPacket, actor: number, auditReason: string, lock: RowDataPacket) => Promise<T>) {
+    const accountId = id(value), actor = id(actorValue), auditReason = reason(body.reason)
+    const connection = await this.pool.getConnection()
+    try {
+      await connection.beginTransaction()
+      const actorRole = await requireLibraryActor(connection, actor, 'accounts.manage')
+      // Same lock order as sign-in: the attempt row first, then the account (avoids a deadlock with login()).
+      const identifier = accountLockIdentifier(accountId)
+      await connection.execute('INSERT INTO login_attempt_windows(identifier_hash) VALUES (?) ON CONFLICT DO NOTHING', [identifier])
+      const [locks] = await connection.execute<RowDataPacket[]>('SELECT locked_until FROM login_attempt_windows WHERE identifier_hash=? FOR UPDATE', [identifier])
+      const [accounts] = await connection.execute<RowDataPacket[]>('SELECT account_id,user_id,role,account_status FROM accounts WHERE account_id=? FOR UPDATE', [accountId])
+      const account = accounts[0]
+      if (!account) throw new HttpError(404, 'USER_NOT_FOUND', 'Account not found.')
+      const allowed = accountId !== actor && (['Student', 'Faculty', 'Staff'].includes(account.role)
+        || (actorRole === 'Admin' && (account.role === 'Librarian' || (account.role === 'Admin' && allowAdminTarget))))
+      if (!allowed) throw new HttpError(403, 'USER_STATUS_PROTECTED', 'This account cannot be changed from User Management.')
+      const result = await work(connection, account, actor, auditReason, locks[0] ?? {})
+      await connection.commit()
+      return result
+    } catch (error) { await connection.rollback(); throw error }
+    finally { connection.release() }
+  }
+  private audit(connection: PoolConnection, account: RowDataPacket, actor: number, action: string, auditReason: string) {
+    return connection.execute(`INSERT INTO account_management_events(account_id,actor_account_id,action_code,previous_status,new_status,reason)
+      VALUES (?,?,?,?,?,?)`, [account.account_id, actor, action, account.account_status, account.account_status, auditReason])
+  }
+  async unlockSignIn(value: unknown, actorValue: unknown, body: Record<string, unknown>) {
+    return this.signInTarget(value, actorValue, body, true, async (connection, account, actor, auditReason, lock) => {
+      // App clock, as login() uses.
+      if (!lock.locked_until || new Date(lock.locked_until).getTime() <= Date.now()) throw new HttpError(409, 'USER_NOT_LOCKED', 'This account is not locked.')
+      await connection.execute('DELETE FROM login_attempt_windows WHERE identifier_hash=?', [accountLockIdentifier(Number(account.account_id))])
+      await this.audit(connection, account, actor, 'SignInUnlocked', auditReason)
+      return { id: Number(account.account_id), unlocked: true }
+    })
+  }
+  /** For accounts that cannot use the email reset. The password is returned once and never stored in plain text. */
+  async setTemporaryPassword(value: unknown, actorValue: unknown, body: Record<string, unknown>) {
+    const password = temporaryPassword(), hash = await this.hasher.hash(password, 12)
+    return this.signInTarget(value, actorValue, body, false, async (connection, account, actor, auditReason) => {
+      await connection.execute('UPDATE accounts SET password_hash=?,must_change_password=TRUE,auth_version=auth_version+1,updated_at=NOW() WHERE account_id=?', [hash, account.account_id])
+      if (account.user_id) await connection.execute('UPDATE users SET password_hash=?,auth_version=auth_version+1,updated_at=NOW() WHERE user_id=?', [hash, account.user_id])
+      await connection.execute('UPDATE library_login_sessions SET revoked_at=NOW() WHERE account_id=? AND revoked_at IS NULL', [account.account_id])
+      await connection.execute('DELETE FROM login_attempt_windows WHERE identifier_hash=?', [accountLockIdentifier(Number(account.account_id))])
+      await this.audit(connection, account, actor, 'TemporaryPasswordSet', auditReason)
+      return { id: Number(account.account_id), temporary_password: password }
+    })
+  }
   private base() { return 'FROM accounts a LEFT JOIN users u ON u.user_id=a.user_id LEFT JOIN student_profiles sp ON sp.account_id=a.account_id LEFT JOIN clearance_statuses cs ON cs.user_id=u.user_id' }
   private where(f: UserFilters) {
     const clauses = ['1=1'], values: Array<string | number> = []

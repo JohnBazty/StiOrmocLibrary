@@ -7,7 +7,7 @@ import { ProfileAvatarPage } from './ProfileAvatarPage'
 const render = (ui: ReactElement) => baseRender(<MemoryRouter>{ui}</MemoryRouter>)
 const api = vi.hoisted(() => ({ myProfile: vi.fn(), saveMyProfile: vi.fn() }))
 vi.mock('./users-api', () => ({ usersApi: api }))
-vi.mock('../auth/auth-storage', () => ({ getAccessToken: () => 'test-token' }))
+vi.mock('../auth/auth-storage', () => ({ getCsrfToken: () => 'test-token' }))
 
 beforeEach(() => {
   api.myProfile.mockResolvedValue({ id: 9, role: 'Student', account_status: 'Active', school_id: 'STI-9', email: 'student@ormoc.sti.edu.ph', first_name: 'Test', last_name: 'Student', program_strand: 'BSIT', year_grade_level: '2nd Year' })

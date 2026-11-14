@@ -14,12 +14,14 @@ import { parseCatalogSearchFilters } from '../catalog/catalog-search.repository.
 import { PrintingRepository } from '../printing/printing.repository.ts'
 import { createIntegrityProtectedCsvStream } from './csv-integrity.ts'
 import { createBrandedTablePdf } from './branded-table-pdf.ts'
+import {paymentReportSql,paymentReportMetrics,onlineReconciliationSql} from './payment-report.ts'
 
 export const reportKinds = {
   holdings: 'Active book and research holdings', circulation: 'Take-home borrowing', returns: 'Returned books',
   requests: 'Book requests and pickups', inlibrary: 'In-library use', attendance: 'Attendance and usage',
   fines: 'Fines and replacement obligations', payments: 'Fine payment records', printing: 'Printing requests',
-  printRevenue: 'Printing cash revenue', stockExpenses: 'Supply restock expenses', supplies: 'Current print supplies', clearance: 'Student clearance',
+  printRevenue: 'Printing payment records', stockExpenses: 'Supply restock expenses', supplies: 'Current print supplies', clearance: 'Student clearance',
+  onlinePayments:'Online payment reconciliation',
 } as const
 export type ReportKind = keyof typeof reportKinds
 export type ReportFilters = { kind: ReportKind; period: 'all'|'custom'|'semester'; from: string|null; to: string|null; termId: number|null; q: string; status: string; page: number }
@@ -90,6 +92,15 @@ export function createLiveReportsService(database: Pool = db) {
       }
       let rows: RecordRow[] = [], metrics: Record<string,unknown> = {}
       switch (f.kind) {
+        case 'onlinePayments': {
+          const [installed]=await q.execute<RowDataPacket[]>("SELECT to_regclass('online_payment_settlements') IS NOT NULL AS installed")
+          if(!installed[0]?.installed)throw new HttpError(503,'PAYMENT_REPORT_UNAVAILABLE','Online reconciliation needs the reviewed payment migrations.')
+          rows=await sqlRows(`SELECT records.* FROM (${onlineReconciliationSql}) records WHERE ${range('records.recorded_at')} ORDER BY records.recorded_at DESC,records.id`)
+          rows=rows.map(({recorded_at,...record})=>record)
+          metrics={...paymentReportMetrics(rows.map(row=>({...row,status:row.status==='Succeeded'?'Issued':'Pending'}))),
+            captured_needing_review:rows.filter(row=>row.captured_needing_review).reduce((sum,row)=>sum+Math.round(Number(row.gross)*100),0)/100}
+          break
+        }
         case 'holdings': rows = await collect(iterateInventoryRows(pool,parseCatalogSearchFilters({})), f); break
         case 'circulation': case 'returns': {
           const column = f.kind === 'returns' ? 'bt.returned_at' : 'COALESCE(bt.borrowed_at,bt.created_at)'
@@ -142,12 +153,15 @@ export function createLiveReportsService(database: Pool = db) {
         }
         case 'clearance': rows = (await createClearanceService(pool).exportRows({accountId,role:'Librarian'})).map(r=>({school_id:r.student.schoolId,name:r.student.name,program:r.student.program,account_status:r.student.accountStatus,status:r.status,unreturned:r.summary.activeLoans,outstanding:r.summary.totalOutstanding,reason:r.reason})); break
         case 'supplies': rows = await collect(new PrintingRepository(pool).supplyReportRows(), f); break
-        case 'payments': rows = await sqlRows(`SELECT r.fine_payment_receipt_id id,r.receipt_number,u.full_name name,u.school_id,r.amount_received,r.payment_method,r.receipt_status status,
-          to_char(r.received_at,'YYYY-MM-DD HH24:MI') received FROM fine_payment_receipts r JOIN users u ON u.user_id=r.user_id WHERE ${range('r.received_at')} ORDER BY r.received_at DESC`); break
+        case 'payments': case 'printRevenue': {
+          const [installed]=await q.execute<RowDataPacket[]>("SELECT to_regclass('online_payment_settlements') IS NOT NULL AS installed")
+          rows=await sqlRows(`SELECT records.* FROM (${paymentReportSql(f.kind,Boolean(installed[0]?.installed))}) records WHERE ${range('records.recorded_at')} ORDER BY records.recorded_at DESC,records.id`)
+          rows=rows.map(({recorded_at,...record})=>record)
+          metrics=paymentReportMetrics(rows)
+          break
+        }
         case 'printing': rows = await sqlRows(`SELECT p.request_id id,u.full_name name,u.school_id,p.file_name,p.page_count,p.number_of_copies,p.print_type,p.paper_size,p.calculated_cost,p.payment_status,p.job_status status,
           to_char(p.created_at,'YYYY-MM-DD HH24:MI') submitted FROM print_requests p JOIN users u ON u.user_id=p.user_id WHERE ${range('p.created_at')} ORDER BY p.created_at DESC`); break
-        case 'printRevenue': rows = await sqlRows(`SELECT c.print_cash_payment_id id,p.request_id,u.full_name name,u.school_id,p.file_name,c.amount_paid,
-          to_char(c.received_at,'YYYY-MM-DD HH24:MI') received FROM print_cash_payments c JOIN print_requests p ON p.request_id=c.request_id JOIN users u ON u.user_id=p.user_id WHERE ${range('c.received_at')} ORDER BY c.received_at DESC`); break
         case 'stockExpenses': rows = await sqlRows(`SELECT id,supply_type,supply,quantity,unit_cost,expense,to_char(created_at,'YYYY-MM-DD HH24:MI') recorded FROM (
           SELECT m.ink_stock_movement_id id,'Ink' supply_type,CONCAT(i.cartridge_type,' ',i.color_variation) supply,m.quantity_bottles quantity,m.unit_cost_per_bottle unit_cost,m.expense_amount expense,m.created_at
           FROM ink_stock_movements m JOIN ink_repository i ON i.ink_id=m.ink_id WHERE m.movement_type='Restock'
@@ -161,7 +175,7 @@ export function createLiveReportsService(database: Pool = db) {
       await q.commit()
       return { generatedAt:new Date().toISOString(), title:reportKinds[f.kind], kind:f.kind, label, timezone:'Asia/Manila',filters:f,
         columns: rows.length ? Object.keys(rows[0]) : [], rows, total:rows.length, metrics,terms,
-        note:f.kind==='attendance'?'Peak occupancy uses concurrent seat visits; printing-only visits do not occupy seats.':snapshot?'Current state, not historical state at a selected date.':f.kind==='returns'?'Date filter uses the return date.':f.kind==='requests'?'Date filter uses the request date.':f.kind==='circulation'?'Date filter uses borrowing date, or creation date for an uncollected request.':'Dates apply to the recorded transaction date.' }
+        note:f.kind==='onlinePayments'?'Sandbox PHP. Dates use attempt creation. Only Succeeded principal counts in successful totals. Captured amounts needing review are separate, even without a receipt. Settlement is library-recorded evidence.':['payments','printRevenue'].includes(f.kind)?'PHP. Issued principal is counted once; user-paid fees are separate. Provider cost and net settlement remain unknown until library evidence is recorded. Sandbox records belong only to the isolated test database. Legacy dates retain their recorded meaning.':f.kind==='attendance'?'Peak occupancy uses concurrent seat visits; printing-only visits do not occupy seats.':snapshot?'Current state, not historical state at a selected date.':f.kind==='returns'?'Date filter uses the return date.':f.kind==='requests'?'Date filter uses the request date.':f.kind==='circulation'?'Date filter uses borrowing date, or creation date for an uncollected request.':'Dates apply to the recorded transaction date.' }
     } catch (e) { await q.rollback(); throw e } finally { q.release() }
   }
   return { read }

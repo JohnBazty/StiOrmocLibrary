@@ -6,15 +6,17 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "concurrently -n WEB,API -c cyan,green \"npm run dev -w @sti-library/web\" \"npm run dev -w @sti-library/api\"",
-    "dev:stable": "concurrently -n WEB,API -c cyan,green \"npm run dev -w @sti-library/web\" \"npm run dev:stable -w @sti-library/api\"",
+    "dev": "node tools/dev-local.mjs",
+    "dev:stable": "node tools/dev-local.mjs",
     "dev:web": "npm run dev -w @sti-library/web",
     "dev:api": "npm run dev -w @sti-library/api",
     "dev:api:stable": "npm run dev:stable -w @sti-library/api",
     "build": "npm run build -w @sti-library/api && npm run build -w @sti-library/web",
     "test": "npm test -w @sti-library/api && npm test -w @sti-library/web",
     "typecheck": "npm run typecheck -w @sti-library/api && npm run typecheck -w @sti-library/web",
-    "coverage": "npm run test:coverage -w @sti-library/api && npm run test:coverage -w @sti-library/web"
+    "coverage": "npm run test:coverage -w @sti-library/api && npm run test:coverage -w @sti-library/web",
+    "dev:payments": "node tools/dev-local.mjs",
+    "qa:payments": "npm run build && node apps/api/scripts/verify-payment-app.mjs"
   },
   "devDependencies": {
     "concurrently": "latest",

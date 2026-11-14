@@ -3,7 +3,8 @@
   "git": {
     "deploymentEnabled": {
       "codex/phase2-phase6-updates": false,
-      "codex/job-runner-manila": false
+      "codex/job-runner-manila": false,
+      "codex/payment-updates": false
     }
   },
   "framework": "vite",
@@ -17,7 +18,7 @@
     }
   },
   "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/index?__api_route=:path*" },
+    { "source": "/api/:__api_route*", "destination": "/api/index?__api_route=:__api_route*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

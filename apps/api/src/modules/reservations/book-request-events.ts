@@ -16,7 +16,7 @@ export function requestInstructions(status: RequestEventStatus, deadline: Date |
     case 'received': return 'Your request was received. Check your book requests for progress.'
     case 'waiting': return 'You are on the ordered waiting list. We will notify you when a copy is being prepared.'
     case 'preparing': return 'Staff are preparing your copy. Wait for the Ready for pickup notice before travelling to collect it.'
-    case 'ready_for_pickup': return `Check in for Borrow books, show your QR and collect your copy within 24 hours.${deadline ? ` Pick up by ${new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' }).format(deadline)} (Philippine time).` : ''}`
+    case 'ready_for_pickup': return `Check in for Borrow books, show your QR and collect your copy within one open library day.${deadline ? ` Pick up by ${new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' }).format(deadline)} (Philippine time).` : ''}`
     case 'claimed': return 'Your copy has been checked out. See borrowing history for the return deadline.'
     case 'cancelled': return 'Your request is cancelled. Any held copy has been released to the waiting list.'
     case 'expired': return 'The pickup deadline passed. Your hold has been released; request again if you still need the book.'

@@ -22,16 +22,18 @@ function PdfPage({ document, page }: { document: PDFDocumentProxy; page: number 
     }).catch(() => { if (active) setState('error') })
     return () => { active = false; render?.cancel() }
   }, [document, page])
-  return <div className="max-h-96 overflow-auto rounded-lg border border-[#003399]/15 bg-white p-1">
-    {state === 'loading' ? <p role="status" className="p-3 text-sm text-[#003399]">Drawing page…</p> : null}
-    {state === 'error' ? <p role="status" className="p-3 text-sm text-[#003399]">This page could not be displayed. Try another page or open the original PDF.</p> : null}
+  return <div className="max-h-96 overflow-auto rounded-lg border border-[#0b5ea2]/15 bg-white p-1">
+    {state === 'loading' ? <p role="status" className="p-3 text-sm text-[#0b5ea2]">Drawing page…</p> : null}
+    {state === 'error' ? <p role="status" className="p-3 text-sm text-[#0b5ea2]">This page could not be displayed. Try another page or open the original PDF.</p> : null}
     <canvas ref={canvas} role="img" aria-label={`Preview of PDF page ${page}`} className={`mx-auto h-auto w-full max-w-full ${state === 'ready' ? '' : 'hidden'}`} />
   </div>
 }
 
 export default function PdfFilePreview({ file }: { file: File }) {
   const [loaded, setLoaded] = useState<{ file: File; document: PDFDocumentProxy } | null>(null)
-  const [error, setError] = useState(''), [page, setPage] = useState(1)
+  const [error, setError] = useState('')
+  const [page, setPage] = useState(1)
+
   useEffect(() => {
     let active = true, task: ReturnType<typeof getDocument> | undefined
     setLoaded(null); setError(''); setPage(1)
@@ -42,7 +44,7 @@ export default function PdfFilePreview({ file }: { file: File }) {
     }).then(document => { if (active && document) setLoaded({ file, document }) }).catch(() => {
       if (active) setError('This PDF cannot be previewed. It may need a password or be damaged. Open the original to check it.')
     })
-    return () => { active = false; void task?.destroy().catch(() => undefined) }
+    return () => { active = false; void Promise.resolve(task?.destroy()).catch(() => undefined) }
   }, [file])
   const document = loaded?.file === file ? loaded.document : null
   if (error) return <p role="status" className="text-sm">{error}</p>

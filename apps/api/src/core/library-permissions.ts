@@ -24,4 +24,5 @@ export async function requireLibraryActor(connection: Pick<PoolConnection, 'exec
     || !hasLibraryPermission(account.role as JwtRole, permission)) {
     throw new HttpError(403, 'JWT_ROLE_FORBIDDEN', 'Your account cannot perform this action.')
   }
+  return account.role as JwtRole
 }

@@ -17,15 +17,19 @@ const legacyPolicyRow = {
 test('cart reconciliation reads only the owner active loans and queue titles without writing',async()=>{
   let calls=0
   const database={execute:async(sql:string,args:unknown[])=>{
-    calls++;assert.deepEqual(args,[7]);assert.match(sql,/WHERE a.account_id=\?/)
+    calls++;assert.deepEqual(args,[7]);assert.doesNotMatch(sql,/\b(INSERT|UPDATE|DELETE)\b/)
+    if(sql.includes('SELECT user_id FROM accounts'))return [[{user_id:7}]]
+    if(sql.includes('FROM fines f'))return [[{fine_id:1,balance:'140.00'}]]
+    if(sql.includes('FROM lost_book_reports l'))return [[]]
+    assert.match(sql,/WHERE a.account_id=\?/)
     assert.match(sql,/transaction_status IN \('Pending','Borrowed','Overdue'\)/)
     assert.match(sql,/reservation_status IN \('pending','approved','ready_for_pickup'\)/)
     assert.doesNotMatch(sql,/\b(INSERT|UPDATE|DELETE)\b/)
     return [[{title_id:'12'},{title_id:20}]]
   }} as unknown as Pool
-  assert.deepEqual(await createCirculationService(database).cartState(7),{activeTitleIds:[12,20]})
+  assert.deepEqual(await createCirculationService(database).cartState(7),{activeTitleIds:[12,20],outstandingBalance:140})
   await assert.rejects(createCirculationService(database).cartState(0))
-  assert.equal(calls,1)
+  assert.equal(calls,4)
 })
 
 function checkoutPool(role: 'Student' | 'Faculty', activeCount = 0, readyClaim: boolean | 'cart' = false, condition = 'Good') {
@@ -33,6 +37,7 @@ function checkoutPool(role: 'Student' | 'Faculty', activeCount = 0, readyClaim: 
   const connection = {
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() {},
     async execute(sql: string) {
+      if (sql.includes('SELECT cc.* FROM circulation_cases cc')) return [[]]
       const eligible = borrowerEligibilityRows(sql, role, 7)
       if (eligible) return [eligible]
       if (sql.includes('AS commitments')) return [[{ commitments: activeCount }]]
@@ -119,6 +124,7 @@ test('return assigns the copy to the first waiting reservation atomically', asyn
   const connection = {
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() {},
     async execute(sql: string) {
+      if (sql.includes('SELECT cc.* FROM circulation_cases cc')) return [[]]
       if (sql.includes('SELECT user_id FROM accounts')) return [[{ user_id: 2 }]]
       const eligible = borrowerEligibilityRows(sql, 'Faculty', 11)
       if (eligible) return [eligible]
@@ -224,12 +230,15 @@ test('borrowing history exposes the normalized title cover path', async () => {
       if (sql.includes('COUNT(*) AS total FROM reservations')) return [[{ total: 0 }]]
       if (sql.includes('COUNT(*) AS total FROM borrow_transactions')) return [[{ total: 1 }]]
       if (sql.includes('AS active_loans')) return [[{ active_loans: 1, active_reservations: 0, next_due_at: null }]]
+      if (sql.includes('FROM circulation_cases')) { assert.match(sql, /borrower_user_id = \?/); return [[{ case_id: 5, transaction_id: 41, status: 'Open', opened_at: '2026-11-12' }]] }
       throw new Error(`Unexpected SQL: ${sql}`)
     },
   } as unknown as Pool
 
   const result = await createCirculationService(database).history(1, { page: 1, limit: 25 })
   assert.equal(result.items[0].coverImagePath, '/api/assets/covers/clean-code.png')
+  assert.equal(result.items[0].caseSummary?.status, 'Open')
+  assert.equal(result.items[0].caseSummary?.caseType, 'Damage')
   assert.equal(result.summary.loanLimit, 2)
   assert.equal(result.summary.dueCutoffLabel, 'See the exact due date and time for each loan')
 })

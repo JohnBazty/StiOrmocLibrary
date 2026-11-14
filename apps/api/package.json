@@ -12,9 +12,12 @@
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-exclude=\"**/*.test.*\" \"src/**/*.test.ts\" \"src/**/*.test.js\"",
     "auth:create-user": "node scripts/create-auth-user.js",
     "db:supabase": "node scripts/run-supabase-schema.js",
+    "payments:sandbox:prepare": "node scripts/prepare-xendit-sandbox.mjs",
+    "payments:sandbox:check": "node scripts/check-xendit-sandbox.mjs",
     "db:backfill:book-codes": "node scripts/backfill-book-asset-codes.js",
     "db:backfill:attendance-passes": "node scripts/backfill-attendance-passes.js",
     "reports:verify-csv": "node scripts/verify-csv.js",
+    "smoke:renewal": "node scripts/smoke-renewal-management.mjs",
     "db:check-rls": "node scripts/check-rls.ts",
     "start": "node dist/server.js"
   },
@@ -41,7 +44,7 @@
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.3.14",
+    "@electric-sql/pglite": "0.5.13",
     "@types/bcrypt": "^6.0.0",
     "@types/cors": "latest",
     "@types/express": "latest",

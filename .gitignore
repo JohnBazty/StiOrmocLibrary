@@ -37,3 +37,7 @@ tasks/*.log
 # Python bytecode generated while producing documentation
 __pycache__/
 *.pyc
+
+# Private local payment setup sheets
+/docs/local/xendit-sandbox-credentials.md
+/docs/local/xendit-credentials-blank.md

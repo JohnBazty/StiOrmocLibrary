@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { rememberedDeviceExpired, resolveSessionIdentity, resumeDeviceSession } from './auth-api'
+import { rememberedDeviceExpired, resolveSessionIdentity, restoreCookieSession, resumeDeviceSession } from './auth-api'
 import {
-  clearAccessToken, dashboardForRole, getCurrentIdentity, getCurrentClaims,
+  clearAuthSession, dashboardForRole, getCurrentIdentity, getCurrentClaims, passwordChangeRequired,
   type AuthenticatedIdentity, type AuthRole,
 } from './auth-storage'
 import { useMockAuth } from '../inventory/MockAuthContext'
 
 function LoadingAuthentication() {
-  return <main className="flex min-h-screen items-center justify-center bg-[#FFFFFF] text-[#003399]"><div className="text-center"><div className="mx-auto h-10 w-10 animate-pulse rounded-xl bg-[#FFF200]" /><p className="mt-4 text-sm font-bold">Opening your secure workspace…</p></div></main>
+  return <main className="flex min-h-screen items-center justify-center bg-[#FFFFFF] text-[#0b5ea2]"><div className="text-center"><div className="mx-auto h-10 w-10 animate-pulse rounded-xl bg-[#FFF200]" /><p className="mt-4 text-sm font-bold">Opening your secure workspace…</p></div></main>
 }
 
 function useResolvedIdentity() {
@@ -26,7 +26,7 @@ function useResolvedIdentity() {
     let active = true
     setChecking(true)
     setReconnectError(false)
-    resumeDeviceSession().then(device => device ?? resolveSessionIdentity()).then(resolved => {
+    resumeDeviceSession().then(device => device ?? restoreCookieSession()).then(cookie => cookie ?? resolveSessionIdentity()).then(resolved => {
       if (active) { setIdentity(resolved); setChecking(false) }
     }).catch(() => {
       if (active) { setReconnectError(true); setChecking(false) }
@@ -39,7 +39,7 @@ function useResolvedIdentity() {
 }
 
 function ReconnectAuthentication({ retry }: { retry: () => void }) {
-  return <main className="grid min-h-screen place-items-center p-6 text-center"><div><h1 className="text-xl font-bold">Your device could not reconnect</h1><p className="mt-2 text-sm">Check your connection and try again.</p><button type="button" onClick={retry} className="mt-4 min-h-11 rounded-xl bg-[#003399] px-5 font-bold text-white">Try again</button></div></main>
+  return <main className="grid min-h-screen place-items-center p-6 text-center"><div><h1 className="text-xl font-bold">Your device could not reconnect</h1><p className="mt-2 text-sm">Check your connection and try again.</p><button type="button" onClick={retry} className="mt-4 min-h-11 rounded-xl bg-[#0b5ea2] px-5 font-bold text-white">Try again</button></div></main>
 }
 
 export function ProtectedRoute({ roles }: { roles: AuthRole[] }) {
@@ -48,10 +48,11 @@ export function ProtectedRoute({ roles }: { roles: AuthRole[] }) {
   const { identity, checking, error, reconnect, rememberedExpired } = useResolvedIdentity()
   if (checking) return <LoadingAuthentication />
   if (reconnect) return <ReconnectAuthentication retry={reconnect} />
-  if (error) return <main className="flex min-h-screen items-center justify-center bg-[#FFFFFF] p-6 text-center text-[#003399]"><div><h1 className="text-xl font-bold">Inventory preview could not start</h1><p className="mt-2 text-sm text-[#003399]/65">{error}</p><a className="mt-5 inline-flex rounded-xl bg-[#003399] px-4 py-2 text-sm font-bold text-[#FFFFFF]" href="/login">Use normal sign in</a></div></main>
+  if (error) return <main className="flex min-h-screen items-center justify-center bg-[#FFFFFF] p-6 text-center text-[#0b5ea2]"><div><h1 className="text-xl font-bold">Inventory preview could not start</h1><p className="mt-2 text-sm text-[#0b5ea2]/65">{error}</p><a className="mt-5 inline-flex rounded-xl bg-[#0b5ea2] px-4 py-2 text-sm font-bold text-[#FFFFFF]" href="/login">Use normal sign in</a></div></main>
+  if (identity?.source === 'jwt' && passwordChangeRequired()) return <Navigate to="/change-password" replace />
   if (identity && !roles.includes(identity.role)) return <Navigate to={dashboardForRole(identity.role)} replace />
   if (!identity) {
-    if (tokenClaims) clearAccessToken()
+    if (tokenClaims) clearAuthSession()
     return <Navigate to={roles.some(role => ['Admin', 'Librarian', 'Staff'].includes(role)) ? '/staff' : '/login'} replace state={{ deniedPath: location.pathname + location.search + location.hash, rememberedExpired }} />
   }
   return <Outlet />

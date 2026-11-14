@@ -46,6 +46,8 @@ import { adminNotificationsRouter } from './modules/users/admin-notifications.ro
 import { archivedBorrowingPolicyRouter } from './modules/circulation/borrowing-policy-archive.routes.ts'
 import { publicCatalogRouter, catalogMaintenanceRouter } from './modules/catalog/catalog-enhancements.routes.ts'
 import { collectionReviewRouter } from './modules/catalog/collection-review.routes.ts'
+import { paymentRouters, paymentWebhookRouter } from './modules/payments/payments.routes.ts'
+import { sanitizeStackTrace } from './utils/error-sanitizer.ts'
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
 const publicDirectory = path.resolve(currentDirectory, '../public')
@@ -69,6 +71,7 @@ export function createApp() {
     },
   }))
   app.use(cors({ origin: env.webOrigin, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }))
+  app.use('/api/payments/xendit/webhook', paymentWebhookRouter)
   // D1: Supabase Cron only; before body parsing, the session, JWT and CSRF middleware, authorized by X-Job-Runner-Secret alone.
   app.use('/api/internal/jobs', createInternalJobRouter(jobRunner, () => env.jobRunner.secret))
   app.use(express.json({ limit: '3mb' }))
@@ -100,7 +103,9 @@ export function createApp() {
   app.use('/api/auth', authRouter)
   app.use('/api/v1/auth', jwtAuthRouter)
   app.use('/api/public/catalog', publicCatalogRouter)
-  app.use('/api/v1', authenticateJwt, ensureActiveJwtAccount)
+  app.use('/api/v1', authenticateJwt, ensureActiveJwtAccount, requireCsrfForStateChanges)
+  app.use('/api/v1/user/payments', paymentRouters.user)
+  app.use('/api/v1/admin/payments', paymentRouters.admin)
   app.use('/api/v1/admin/enrollment', enrollmentRouter)
   app.use('/api/v1/admin/borrowing-policies', requireLibraryPermission('library.manage'), archivedBorrowingPolicyRouter)
   app.use('/api/v1/admin/maintenance', requireLibraryPermission('library.manage'), catalogMaintenanceRouter)
@@ -200,7 +205,9 @@ export function createApp() {
       })
     }
     if (isDatabaseUnavailable(error)) {
-      console.error('[Database] Connection unavailable; request failed.')
+      // FIX: Use sanitized error message
+      const sanitized = sanitizeStackTrace(error)
+      console.error(`[Database] Connection unavailable; request failed.\n${sanitized}`)
       return response.status(503).json({
         success: false,
         code: 'DATABASE_UNAVAILABLE',
@@ -214,7 +221,9 @@ export function createApp() {
         message: 'This module is unavailable until the required database migrations are applied.',
       })
     }
-    console.error(error)
+    // FIX: Sanitize error before logging to prevent sensitive data leakage
+    const sanitized = sanitizeStackTrace(error)
+    console.error(`[Server] Uncaught error:\n${sanitized}`)
     return response.status(500).json({ success: false, message: 'An unexpected server error occurred.' })
   })
 

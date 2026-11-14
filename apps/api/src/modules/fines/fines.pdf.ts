@@ -11,6 +11,7 @@ type AuditRow = {
 
 type Receipt = ReceiptVerificationData & {
   documentLabel?: string
+  transactionFeeCentavos?: number; totalReceived?: number; confirmationSource?: string
   status: string; paymentMethod: string
   receivedBy: string; reversedBy: string | null; reversedAt: unknown; reversalReason: string | null; notes: string | null
   student: { name: string; schoolId: string }
@@ -49,8 +50,9 @@ export function createFineReceiptPdf(receipt: Receipt) {
   document.rect(0, 0, document.page.width, 94).fill(blue)
   document.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(12).text(SYSTEM_NAME, 42, 24, { width, lineBreak: false })
   const legacy = receipt.documentLabel !== 'Payment Record'
-  document.fillColor(yellow).fontSize(10).text(legacy ? 'OFFICIAL CASH FINE RECEIPT' : 'CASH PAYMENT RECORD — NOT A TAX INVOICE', 42, 53)
-  document.fillColor('#FFFFFF').font('Helvetica').fontSize(8).text('Cash payment recorded by authorized library personnel', 42, 70)
+  const online=receipt.confirmationSource==='Xendit'
+  document.fillColor(yellow).fontSize(10).text(online ? 'ONLINE PAYMENT RECORD — NOT A TAX INVOICE' : legacy ? 'OFFICIAL CASH FINE RECEIPT' : 'CASH PAYMENT RECORD — NOT A TAX INVOICE', 42, 53)
+  document.fillColor('#FFFFFF').font('Helvetica').fontSize(8).text(online?'Online payment verified through Xendit':'Cash payment recorded by authorized library personnel', 42, 70)
 
   let y = 120
   document.fillColor(blue).font('Helvetica-Bold').fontSize(15).text(receipt.receiptNumber, 42, y)
@@ -59,7 +61,7 @@ export function createFineReceiptPdf(receipt: Receipt) {
   y += 42
 
   const details: Array<[string,string]> = [
-    ['Student', receipt.student.name], ['School ID', receipt.student.schoolId], ['Payment method', 'Cash'],
+    ['Student', receipt.student.name], ['School ID', receipt.student.schoolId], ['Payment method', receipt.paymentMethod],
     ['Received', timestamp(receipt.receivedAt)], ['Received by', receipt.receivedBy], ['Verification code', receipt.verificationCode ?? receiptVerificationCode(receipt)],
   ]
   document.fontSize(9)
@@ -85,9 +87,11 @@ export function createFineReceiptPdf(receipt: Receipt) {
   }
 
   y+=18
+  if(online){document.fillColor(blue).font('Helvetica').fontSize(10).text(`Applied to fine: ${money(receipt.amountReceived)}`,42,y)
+    .text(`Transaction fee: ${money((receipt.transactionFeeCentavos??0)/100)}`,42,y+18);y+=45}
   document.roundedRect(document.page.width-252,y,210,54,10).fill(blue)
-  document.fillColor('#FFFFFF').font('Helvetica').fontSize(9).text('TOTAL CASH RECEIVED',document.page.width-235,y+11,{width:175})
-  document.fillColor(yellow).font('Helvetica-Bold').fontSize(17).text(money(receipt.amountReceived),document.page.width-235,y+27,{width:175})
+  document.fillColor('#FFFFFF').font('Helvetica').fontSize(9).text(online?'TOTAL PAID':'TOTAL CASH RECEIVED',document.page.width-235,y+11,{width:175})
+  document.fillColor(yellow).font('Helvetica-Bold').fontSize(17).text(money(receipt.totalReceived??receipt.amountReceived),document.page.width-235,y+27,{width:175})
   y+=76
   if(receipt.notes){document.fillColor(blue).font('Helvetica-Bold').fontSize(8).text('NOTES',42,y);document.font('Helvetica').text(receipt.notes,42,y+13,{width});y+=42}
   if(receipt.status==='Reversed'){
@@ -97,6 +101,6 @@ export function createFineReceiptPdf(receipt: Receipt) {
     y+=78
   }
   document.moveTo(42,document.page.height-92).lineTo(document.page.width-42,document.page.height-92).strokeColor(blue).strokeOpacity(0.3).stroke().strokeOpacity(1)
-  document.fillColor(blue).font('Helvetica').fontSize(8).text(legacy ? `This digital receipt is generated from the immutable ${SYSTEM_SHORT_NAME} cash-payment ledger. Reprints contain the same receipt number and verification code.` : `This payment record reflects the ${SYSTEM_SHORT_NAME} cash ledger and is not a tax invoice. Reprints retain the same number and verification code.`,42,document.page.height-76,{width,align:'center'})
+  document.fillColor(blue).font('Helvetica').fontSize(8).text(online?'This records verified online payment. Principal and transaction fees are shown separately.':legacy ? `This digital receipt is generated from the immutable ${SYSTEM_SHORT_NAME} cash-payment ledger. Reprints contain the same receipt number and verification code.` : `This payment record reflects the ${SYSTEM_SHORT_NAME} cash ledger and is not a tax invoice. Reprints retain the same number and verification code.`,42,document.page.height-76,{width,align:'center'})
   document.end(); return document
 }

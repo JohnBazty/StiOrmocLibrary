@@ -3,6 +3,8 @@ import { HttpError } from '../../core/http-error.ts'
 import { closeAttendanceAtCutoff, libraryState } from '../attendance/attendance-operations.service.ts'
 import { manilaDate, nextDate } from '../attendance/attendance-intervals.ts'
 import { exactLoanDeadline } from './exact-loan-deadline.ts'
+import { borrowerBalances, borrowerPaymentCredits } from '../payments/borrower-balances.ts'
+import type { PreviewCredit } from '../payments/preview-balances.ts'
 import { enrollmentDecision } from '../enrollment/enrollment-policy.ts'
 
 export async function borrowingPolicy(q: PoolConnection, now: Date) {
@@ -12,7 +14,7 @@ export async function borrowingPolicy(q: PoolConnection, now: Date) {
 }
 
 /** A not-yet-due loan affects end-of-term clearance, not the desk's explicit hold. */
-export async function borrowerEligibility(q: PoolConnection,userId:number,now:Date,mode='TakeHome') {
+export async function borrowerEligibility(q: PoolConnection,userId:number,now:Date,mode='TakeHome',credits?:PreviewCredit[]) {
   if(mode !== 'Online') await closeAttendanceAtCutoff(q,now)
   const [users]=await q.execute<RowDataPacket[]>(`SELECT u.user_id,u.full_name,u.school_id,u.user_role,u.account_status,u.course_or_strand,u.section,a.account_id,a.account_status AS login_status FROM users u LEFT JOIN accounts a ON a.user_id=u.user_id WHERE u.user_id=? ORDER BY a.account_id LIMIT 1 FOR UPDATE OF u`,[userId])
   const user=users[0]; const blockers:string[]=[]
@@ -27,9 +29,8 @@ export async function borrowerEligibility(q: PoolConnection,userId:number,now:Da
   const [loans]=await q.execute<RowDataPacket[]>(`SELECT transaction_id,physical_copy_id,reservation_id,transaction_status FROM borrow_transactions WHERE user_id=? AND transaction_status IN ('Pending','Borrowed','Overdue')`,[userId])
   const [overdue]=await q.execute<RowDataPacket[]>(`SELECT transaction_id FROM borrow_transactions WHERE user_id=? AND transaction_status IN ('Borrowed','Overdue') AND (transaction_status='Overdue' OR due_at < (?::timestamptz AT TIME ZONE 'Asia/Manila')) LIMIT 1`,[userId,now])
   if(overdue.length)blockers.push('Return overdue books before borrowing another material.')
-  const [fines]=await q.execute<RowDataPacket[]>(`SELECT SUM(GREATEST(f.fine_amount-COALESCE(p.paid,0)-COALESCE(x.adjusted,0),0)) AS balance FROM fines f LEFT JOIN (SELECT a.fine_id,SUM(a.amount_allocated) AS paid FROM fine_payment_allocations a JOIN fine_payment_receipts r ON r.fine_payment_receipt_id=a.fine_payment_receipt_id AND r.receipt_status='Issued' GROUP BY a.fine_id) p ON p.fine_id=f.fine_id LEFT JOIN (SELECT fine_id,SUM(amount_adjusted) AS adjusted FROM fine_adjustments GROUP BY fine_id) x ON x.fine_id=f.fine_id WHERE f.user_id=? AND f.payment_status IN ('Accruing','Unpaid','Partially Paid')`,[userId])
-  const [loss]=await q.execute<RowDataPacket[]>(`SELECT SUM(GREATEST(l.replacement_charge-COALESCE(p.paid,0),0)) AS balance FROM lost_book_reports l LEFT JOIN (SELECT a.lost_book_report_id,SUM(a.amount_allocated) AS paid FROM fine_payment_allocations a JOIN fine_payment_receipts r ON r.fine_payment_receipt_id=a.fine_payment_receipt_id AND r.receipt_status='Issued' GROUP BY a.lost_book_report_id) p ON p.lost_book_report_id=l.lost_book_report_id WHERE l.user_id=? AND l.report_status='Confirmed' AND l.payment_status NOT IN ('Paid','Waived')`,[userId])
-  const balance=Number(fines[0]?.balance??0)+Number(loss[0]?.balance??0)
+  const paymentCredits=credits ?? (user?.account_id ? await borrowerPaymentCredits(q,userId,Number(user.account_id)) : [])
+  const balance=(await borrowerBalances(q,userId,paymentCredits)).totalCentavos / 100
   if(balance>0)blockers.push(`Settle the outstanding library balance of ₱${balance.toFixed(2)} before borrowing.`)
   const [holds]=await q.execute<RowDataPacket[]>(`SELECT override_status,reason FROM clearance_overrides WHERE user_id=? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>(?::timestamptz AT TIME ZONE 'Asia/Manila')) ORDER BY applied_at DESC,clearance_override_id DESC LIMIT 1`,[userId,now])
   if(holds[0]?.override_status==='Not Cleared')blockers.push(`An explicit library hold is active: ${holds[0].reason}`)
