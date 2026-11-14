@@ -33,3 +33,7 @@ No credentials, dependency, migration, bill, fine, payment-history or school-dat
 ## Follow-up: signed-in failure after the first repair
 
 Owner screenshots and an actual authenticated browser capture confirmed both fine option requests still returned 422. The first regression modeled only a stable pre-parsed object. Added a fresh-object hosting query getter regression; it fails with the first correction. Remove the configurable own hosting query property entirely so Express uses its parser on the normalized URL. Keep unexpected client fields rejected. Targeted adapter/payment checks: 25 passed. Full checks and signed-in hosted verification are required before marking this follow-up complete. No payment is submitted during review.
+
+## Direct request-query boundary
+
+A signed-in Brave retry still showed the reported error after the helper-removal deployment. Add an HTTP regression with an immutable hosting helper containing routing metadata; it reproduces 422. Payment options now use a dedicated requestQuery reader from the client URL, excluding only internal __api_route. Duplicate keys remain arrays and unexpected client fields still fail strict validation. Targeted HTTP/payment checks: 27 passed. Verify the actual Brave review screen before claiming this repair complete.

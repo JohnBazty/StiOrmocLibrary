@@ -5,6 +5,7 @@ import { paymentError } from './payments.validation.ts'
 import {paymentOperations,type createPaymentOperations} from './payments.operations.ts'
 import { localPaymentPreview } from './payments.preview.ts'
 import { createTransactionsService } from './transactions.service.ts'
+import { requestQuery } from '../../core/request-query.ts'
 
 export function createPaymentsController(service: ReturnType<typeof createPaymentsService> = paymentsService,
   gateway?: ReturnType<typeof createPaymentGatewayService>,operations:ReturnType<typeof createPaymentOperations>=paymentOperations) {
@@ -51,7 +52,7 @@ export function createPaymentsController(service: ReturnType<typeof createPaymen
     readSettlement:handle((request,identity)=>operations.readSettlement(identity,request.params.id)),
     recover:handle(async(_request,identity)=>{await operations.status(identity);return operations.recover()}),
     settlement:handle((request,identity)=>operations.settlement(identity,request.params.id,request.body)),
-    options:handle((request,identity)=>localPaymentPreview ? localPaymentPreview.options(identity,request.query) : service.options(identity,request.query)),
+    options:handle((request,identity)=>localPaymentPreview ? localPaymentPreview.options(identity,requestQuery(request)) : service.options(identity,requestQuery(request))),
     quote:handle((request,identity)=>localPaymentPreview ? localPaymentPreview.quote(identity,request.body) : service.quote(identity,request.body)),
     prepare:handle((request,identity)=>localPaymentPreview ? localPaymentPreview.checkout(identity,request.body) : gateway ? gateway.checkout(identity,request.body) : service.prepare(identity,request.body),202),
     check:handle((request,identity)=>{
