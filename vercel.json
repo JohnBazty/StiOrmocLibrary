@@ -3,7 +3,8 @@
   "git": {
     "deploymentEnabled": {
       "codex/phase2-phase6-updates": false,
-      "codex/job-runner-manila": false
+      "codex/job-runner-manila": false,
+      "codex/payment-updates": false
     }
   },
   "framework": "vite",

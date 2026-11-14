@@ -30,10 +30,10 @@
 --   022_revision_phase4_attendance.sql        — attendance policy, events, scan receipts and checkout provenance (applied)
 --   023_revision_phase5_desk_circulation.sql   — in-library use and deduplicated desk confirmations (applied)
 --   024_revision_phase5_reading_materials.sql  — native physical thesis links for in-library use (applied)
--- Latest applied migration: 036_sign_in_hardening.sql (ledger/checksum verified 2026-11-11).
--- 033_rename_system_brand.sql, 040_online_payment_foundation.sql and
+-- Latest applied migration: 039_category_record_kind.sql (live ledger checked 2026-11-14).
+-- Unapplied payment drafts: 040_online_payment_foundation.sql and
 -- 041_xendit_checkout_confirmation.sql, 042_payment_counter_and_cancellation.sql and 043_payment_reconciliation.sql are pending review.
--- 033–035 are unapplied safety/branding files. Payment 038–041 passed disposable local PostgreSQL only. Next unused number: 042.
+-- 033–039 are applied. Payment drafts 040–043 remain unapplied. Next unused number: 044.
 -- 031_semester_enrollment.sql supersedes the removed, unapplied 028 draft.
 -- Preserve the original bytes of applied files. The 003 source still needs checksum reconciliation.
 -- Phase 7 local bootstrap corrected unapplied 033 to use library_profile_settings,

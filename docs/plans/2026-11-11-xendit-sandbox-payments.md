@@ -1,5 +1,8 @@
 # Library payments with Xendit — phased implementation plan
 
+> Current publication, 2026-11-14: live migration ledger is through 039. Payment drafts are now 040–043 and remain unapplied; next available number is 044. Earlier numbered summaries below are historical. No production deployment or database migration is authorized by publishing this branch.
+
+
 
 > Current local integration, November 12: sign-in 036 is already applied (checksum verified November 11). Payment drafts were renumbered to 038–041; 033–035 remain unapplied and the next local number is 042. Payment recovery uses the single durable 019 runner. Historical phase numbers below describe earlier work; the [local integration record](2026-11-11-local-payment-integration.md) supplies current startup and verification. No payment migration was applied to Supabase.
 
