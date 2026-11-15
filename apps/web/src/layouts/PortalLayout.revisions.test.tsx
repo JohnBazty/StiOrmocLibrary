@@ -9,6 +9,21 @@ vi.mock('../features/auth/SessionActivity',()=>({SessionActivity:()=>null}))
 vi.mock('./SidebarAccountCard',()=>({SidebarAccountCard:()=>null}))
 vi.mock('../features/attendance/AttendanceFab',()=>({AttendanceFab:()=>null}))
 afterEach(()=>{cleanup();vi.unstubAllGlobals()})
+it('uses grouped navigation for the combined Librarian/Admin workspace',()=>{
+ vi.stubGlobal('fetch',vi.fn(async()=>Response.json({success:true,data:{unreadCount:0,request:null}})))
+ render(<MemoryRouter initialEntries={['/librarian/funds']}><ThemeProvider><Routes><Route element={<PortalLayout role="librarian"/>}><Route path="/librarian/funds" element={<h1>Funds content</h1>}/></Route></Routes></ThemeProvider></MemoryRouter>)
+ const menu=screen.getByRole('list',{name:'Admin menu'})
+ expect(within(menu).getByText('Transaction',{exact:true}).closest('details')?.open).toBe(true)
+ expect(within(menu).getByRole('link',{name:'Library funds'}).getAttribute('aria-current')).toBe('page')
+ expect(screen.queryByText('Operations',{exact:true})).toBeNull()
+})
+it.each(['staff','admin'] as const)('retains the existing restricted %s navigation',role=>{
+ vi.stubGlobal('fetch',vi.fn(async()=>Response.json({success:true,data:{unreadCount:0,request:null}})))
+ render(<MemoryRouter initialEntries={[`/${role}/dashboard`]}><ThemeProvider><Routes><Route element={<PortalLayout role={role}/> }><Route path={`/${role}/dashboard`} element={<h1>Workspace content</h1>}/></Route></Routes></ThemeProvider></MemoryRouter>)
+ expect(screen.queryByRole('list',{name:'Admin menu'})).toBeNull()
+ expect(screen.queryByRole('link',{name:'Book register'})).toBeNull()
+ expect(screen.getByRole('link',{name:role==='staff'?'Printing queue':'Users'})).toBeTruthy()
+})
 it('previews notices, marks one read, and clears the shortcut and badge after deleting the inbox', async () => {
   const ready = { notificationId: 17, title: 'Book ready for pickup', body: 'Pick up your book at the counter.', type: 'Reservation Arrival', actionPath: '/student/reservations', isRead: false, createdAt: '2026-11-09T08:00:00Z' }
   const announcement = { ...ready, notificationId: 16, title: 'New library hours', type: 'Announcement', actionPath: null }

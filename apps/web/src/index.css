@@ -594,3 +594,6 @@ html.dark .portal-sidebar {
 /* Large scanner previews keep the full camera image visible. */
 .camera-preview { width: 100%; overflow: hidden; border-radius: 1rem; background: #0f172a; }
 .camera-preview video { display: block; width: 100% !important; height: auto !important; object-fit: contain; }
+
+/* Native disclosure state keeps each sidebar chevron in sync. */
+.sidebar-nav-group[open] > summary > .sidebar-nav-chevron { transform: rotate(180deg); }

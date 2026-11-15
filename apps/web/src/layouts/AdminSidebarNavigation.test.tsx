@@ -1,0 +1,58 @@
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter, useNavigate } from 'react-router-dom'
+import { afterEach, expect, it, vi } from 'vitest'
+import { AdminSidebarNavigation } from './AdminSidebarNavigation'
+import { librarianNav } from './admin-navigation'
+
+afterEach(cleanup)
+const group=(label:string,scope:HTMLElement=document.body)=>within(scope).getByText(label,{selector:'summary span'}).closest('details')!
+
+it('shows the requested four top-level entries and keeps every existing page exactly once',()=>{
+ render(<MemoryRouter initialEntries={['/librarian/dashboard']}><AdminSidebarNavigation onNavigate={()=>{}}/></MemoryRouter>)
+ const menu=screen.getByRole('list',{name:'Admin menu'})
+ expect(Array.from(menu.children).map(row=>row.querySelector(':scope > a, :scope > details > summary')?.textContent?.trim())).toEqual(['Dashboard','File maintenance','Transaction','Reports'])
+ expect(group('File maintenance').open).toBe(false)
+ expect(group('Transaction').open).toBe(false)
+ expect(group('Reports').open).toBe(false)
+ const routes=librarianNav.map(item=>item.to)
+ expect(routes).toHaveLength(24)
+ expect(new Set(routes).size).toBe(24)
+ expect(routes.map(route=>route.replace('/librarian/','')).sort()).toEqual(['dashboard','book-register','reports','book-archive','categories','circulation','reservations','fines','payments','funds','maintenance','inventory','collection-review','floor-plan','printing','supplies','attendance','clearance','announcements','accounts','users','user-archive','notifications','profile'].sort())
+})
+
+it('opens only the active payment branch and highlights the current page',()=>{
+ render(<MemoryRouter initialEntries={['/librarian/funds']}><AdminSidebarNavigation onNavigate={()=>{}}/></MemoryRouter>)
+ const transaction=group('Transaction')
+ expect(transaction.open).toBe(true)
+ expect(group('Payments',transaction).open).toBe(true)
+ expect(group('Books',transaction).open).toBe(false)
+ expect(group('File maintenance').open).toBe(false)
+ expect(screen.getByRole('link',{name:'Library funds'}).getAttribute('aria-current')).toBe('page')
+})
+
+it('toggles a group without navigating and closes mobile navigation only for a page link',()=>{
+ const close=vi.fn()
+ render(<MemoryRouter initialEntries={['/librarian/dashboard']}><AdminSidebarNavigation onNavigate={close}/></MemoryRouter>)
+ const file=group('File maintenance')
+ fireEvent.click(file.querySelector('summary')!)
+ expect(file.open).toBe(true)
+ const accounts=group('Accounts',file)
+ fireEvent.click(accounts.querySelector('summary')!)
+ expect(accounts.open).toBe(true)
+ expect(close).not.toHaveBeenCalled()
+ fireEvent.click(within(accounts).getByRole('link',{name:'Users'}))
+ expect(close).toHaveBeenCalledOnce()
+})
+
+it('keeps a manually closed group closed on rerender, then opens the destination branch on navigation',async()=>{
+ function View(){const navigate=useNavigate();return <><button onClick={()=>navigate('/librarian/book-register')}>Go to books</button><AdminSidebarNavigation onNavigate={()=>{}}/></>}
+ const view=render(<MemoryRouter initialEntries={['/librarian/funds']}><View/></MemoryRouter>)
+ fireEvent.click(group('Transaction').querySelector('summary')!)
+ expect(group('Transaction').open).toBe(false)
+ view.rerender(<MemoryRouter initialEntries={['/librarian/funds']}><View/></MemoryRouter>)
+ expect(group('Transaction').open).toBe(false)
+ fireEvent.click(screen.getByRole('button',{name:'Go to books'}))
+ await waitFor(()=>expect(group('File maintenance').open).toBe(true))
+ expect(group('Books',group('File maintenance')).open).toBe(true)
+ expect(group('Transaction').open).toBe(false)
+})

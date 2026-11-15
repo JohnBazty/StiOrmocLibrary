@@ -1,3 +1,5 @@
+import { AdminSidebarNavigation } from './AdminSidebarNavigation'
+import { librarianNav } from './admin-navigation'
 import { AttendanceConfirmationPrompt } from '../features/attendance/AttendanceConfirmationPrompt'
 import {
   Archive,
@@ -8,7 +10,6 @@ import {
   CalendarClock,
   CircleDollarSign,
   ClipboardCheck,
-  FileBarChart,
   FileText,
   LayoutDashboard,
   LibraryBig,
@@ -16,12 +17,9 @@ import {
   Menu,
   Map,
   Megaphone,
-  PackageOpen,
   Printer,
   QrCode,
-  Settings,
   ShoppingCart,
-  Tags,
   Users,
   UserRound,
   X,
@@ -70,32 +68,6 @@ const adminNav: NavItem[] = [
   { label: 'Clearance', to: '/admin/clearance', icon: ClipboardCheck },
   { label: 'Notifications', to: '/admin/notifications', icon: Bell },
 ]
-const librarianNav: NavItem[] = [
-  { label: 'Dashboard', to: '/librarian/dashboard', icon: LayoutDashboard, section: 'Operations' },
-  { label: 'Book register', to: '/librarian/book-register', icon: BookOpen },
-  { label: 'Book Reports', to: '/librarian/reports', icon: FileBarChart },
-  { label: 'Book archive', to: '/librarian/book-archive', icon: Archive },
-  { label: 'Categories', to: '/librarian/categories', icon: Tags },
-  { label: 'Borrow & return', to: '/librarian/circulation', icon: CalendarClock },
-  { label: 'Book queue', to: '/librarian/reservations', icon: BookMarked },
-  { label: 'Fines', to: '/librarian/fines', icon: CircleDollarSign },
-  { label: 'Online payments', to: '/librarian/payments', icon: CircleDollarSign },
-  { label: 'Library funds', to: '/librarian/funds', icon: CircleDollarSign },
-  { label: 'Maintenance', to: '/librarian/maintenance', icon: Settings },
-  { label: 'Inventory', to: '/librarian/inventory', icon: Archive, section: 'Resources' },
-  { label: 'Collection review', to: '/librarian/collection-review', icon: ClipboardCheck },
-  { label: 'Floor plan', to: '/librarian/floor-plan', icon: Map },
-  { label: 'Printing queue', to: '/librarian/printing', icon: Printer },
-  { label: 'Print supplies', to: '/librarian/supplies', icon: PackageOpen },
-  { label: 'Attendance', to: '/librarian/attendance', icon: QrCode, section: 'People & records' },
-  { label: 'Clearance', to: '/librarian/clearance', icon: ClipboardCheck },
-  { label: 'Announcements', to: '/librarian/announcements', icon: Megaphone },
-  { label: 'Account overview', to: '/librarian/accounts', icon: LayoutDashboard, section: 'Account administration' },
-  { label: 'Users', to: '/librarian/users', icon: Users },
-  { label: 'User archive', to: '/librarian/user-archive', icon: Archive },
-  { label: 'Notifications', to: '/librarian/notifications', icon: Bell },
-  { label: 'My profile', to: '/librarian/profile', icon: UserRound },
-]
 const staffNav: NavItem[] = [
   { label: 'Dashboard', to: '/staff/dashboard', icon: LayoutDashboard, section: 'My tasks' },
   { label: 'Borrow & return', to: '/staff/circulation', icon: CalendarClock },
@@ -107,7 +79,7 @@ const staffNav: NavItem[] = [
   { label: 'Notifications', to: '/staff/notifications', icon: Bell },
   { label: 'My profile', to: '/staff/profile', icon: UserRound },
 ]
-const navigation = (role: Role) => role === 'admin' ? adminNav : role === 'librarian' ? librarianNav : role === 'staff' ? staffNav : userNav(role)
+const navigation = (role: Role): NavItem[] => role === 'admin' ? adminNav : role === 'librarian' ? librarianNav : role === 'staff' ? staffNav : userNav(role)
 
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
@@ -137,7 +109,7 @@ function Sidebar({ role, open, onClose }: { role: Role; open: boolean; onClose: 
       <aside id="portal-navigation" aria-label="Portal navigation" inert={!open && mobile ? true : undefined} className={cn('portal-sidebar fixed inset-y-0 left-0 z-50 flex w-64 max-w-[calc(100vw-2rem)] flex-col bg-[#0b5ea2] text-white transition-transform duration-300 lg:max-w-none lg:translate-x-0', open ? 'translate-x-0' : '-translate-x-full')}>
         <div className="flex h-20 items-center justify-between border-b border-white/10 px-5"><Brand /><button onClick={onClose} aria-label="Close navigation menu" className="min-h-11 min-w-11 shrink-0 rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white lg:hidden"><X size={18} /></button></div>
         <nav className="flex-1 overflow-y-auto px-3 py-5">
-          {nav.map((item) => {
+          {role === 'librarian' ? <AdminSidebarNavigation onNavigate={onClose}/> : nav.map((item) => {
             const Icon = item.icon
             if (item.label === 'My profile' && (role === 'student' || role === 'faculty')) return <details key={item.to} className="mb-1 rounded-xl bg-white/5" open={location.pathname === item.to || undefined}><summary className="flex min-h-11 cursor-pointer items-center gap-3 px-3 py-3 text-sm"><Icon size={17} />My profile</summary><div className="pb-2 pl-6">{[['personal','Personal details'],['school','School details'],['photo','Profile photo']].map(([section,label]) => <NavLink key={section} to={`${item.to}?section=${section}`} onClick={onClose} className="block min-h-11 rounded-lg px-3 py-3 text-sm text-white hover:bg-white/10">{label}</NavLink>)}</div></details>
             return <div key={item.to}>{item.section ? <p className="mb-2 mt-4 px-3 text-[9px] font-bold uppercase tracking-[0.2em] text-white/40 first:mt-0">{item.section}</p> : null}<NavLink onClick={onClose} to={item.to} className={({ isActive }) => cn('mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition lg:py-2.5', isActive ? 'bg-white text-[#0b5ea2] shadow-sm dark:bg-[#FFF200]' : 'text-white/70 hover:bg-white/10 hover:text-white')}><Icon size={17} /><span>{item.label}</span></NavLink></div>
@@ -169,7 +141,7 @@ export function PortalLayout({ role }: { role: Role }) {
     const previousFocus = document.activeElement as HTMLElement | null
     document.body.style.overflow = 'hidden'
     const sidebar = document.getElementById('portal-navigation')
-    const controls = () => [...(sidebar?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])') ?? [])].filter(control => control.getClientRects().length)
+    const controls = () => [...(sidebar?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), summary') ?? [])].filter(control => control.getClientRects().length)
     controls()[0]?.focus()
     const keydown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setSidebarOpen(false)
