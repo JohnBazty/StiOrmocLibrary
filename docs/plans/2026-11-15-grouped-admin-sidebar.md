@@ -32,10 +32,27 @@ Latest applied migration 045; next unused 046.
 - [x] Grouped navigation with all existing destinations and active ancestors.
 - [x] Toggle, route-change, rerender, mobile close and other-role regressions.
 - [x] Full tests, typecheck, build, coverage and local/browser checks (screenshot limit below).
-- [ ] Owner-authorized GitHub push and Vercel deployment.
+- [x] Owner-authorized GitHub push and Vercel deployment.
 
 ## Change log
 
 - 2026-11-15: owner supplied the four-section order, requested Books/Payments/Accounts dropdowns, and approved pushing/hosting after verification. Changes are limited to the combined Librarian/Admin navigation and its mobile focus handling.
 - 2026-11-15: 724 API and 485 web tests passed (1,209 total), plus typecheck, build and full coverage. Web line coverage is 68.91%; overall repository coverage remains below 80%. Checks cover exact root ordering, all 24 destinations once, active payment ancestors, native toggles, mobile close callbacks, stable manual closure on rerender, destination expansion and preserved Student/Staff/legacy Admin navigation. Combined review checked native semantics, visible focus, mobile focus-loop inclusion, route boundaries and unchanged permissions.
 - 2026-11-15: synced seven scoped files into the existing local integration checkout, preserving unrelated edits. Chrome opened a local isolated preview; its accessibility tree showed Dashboard, File maintenance, Transaction and Reports, with groups initially collapsed. The selected browser became unavailable before the screenshot/interactive visual check, so no visual screenshot result is claimed. No school records or settings were changed. Latest remote main is already included, with no merge conflict. Source/package search contains no mysql/dbDriver references. Publishing follows the passed checks.
+
+## Publication — 2026-11-15 (Asia/Manila)
+
+Pushed source `a7e6aaa` to `codex/grouped-admin-sidebar`; main was not modified.
+Vercel initially refused the expired saved access token. The installed CLI's
+`whoami --scope ssl19` refreshed its existing login; project access then passed
+without creating credentials or changing permissions. Built a clean source archive
+and verified the candidate before promotion.
+
+Promoted `dpl_7nr5dfty59owGMSaZHEE8Rm2pvji` to
+https://sti-ormoc-smart-library.vercel.app. Verified the canonical production target,
+grouped sidebar bundle and disclosure styles, public health/catalog/research reads,
+research department/detail metadata and retained cover assets. Attendance/payment
+APIs still require authentication. Previous `dpl_AH2mMNsdE4uiPsciM7Pc9Mgh5YXt` remains
+available for rollback. No migration or library-record write was performed. Local
+source is synchronized; reload existing tabs to replace the old sidebar. The
+temporary isolated preview server was stopped after verification.
