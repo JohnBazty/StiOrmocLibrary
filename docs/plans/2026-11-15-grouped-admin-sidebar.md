@@ -34,7 +34,7 @@ Latest applied migration 045; next unused 046.
 - [x] Grouped navigation with all existing destinations and active ancestors.
 - [x] Toggle, route-change, rerender, mobile close and other-role regressions.
 - [x] Full checks and local verification of the visible-section correction.
-- [ ] Publish the correction to the same authorized branch and Vercel project.
+- [x] Publish the correction to the same authorized branch and Vercel project.
 
 ## Change log
 
@@ -61,3 +61,17 @@ APIs still require authentication. Previous `dpl_AH2mMNsdE4uiPsciM7Pc9Mgh5YXt` r
 available for rollback. No migration or library-record write was performed. Local
 source is synchronized; reload existing tabs to replace the old sidebar. The
 temporary isolated preview server was stopped after verification.
+
+## Visible-section correction publication — 2026-11-15 (Asia/Manila)
+
+Pushed correction `f008292` on the same `codex/grouped-admin-sidebar` branch.
+Deployed a clean archive and verified the always-visible heading renderer in the
+candidate bundle, alongside existing public catalog/research data, cover assets
+and protected APIs. Promoted `dpl_7f1CxEAc9uY5vHztP8Eer3zkm95a` to the canonical
+library domain and repeated those checks against its new production target.
+File maintenance, Transaction and Reports now have directly visible child links;
+only Books, Accounts and Payments remain disclosures. All 24 routes are retained.
+The earlier four-button release remains in deployment history; the prior flat
+sidebar release `dpl_AH2mMNsdE4uiPsciM7Pc9Mgh5YXt` is also retained as a fallback.
+No library record, schema, credential, permission or API behavior changed. Local
+files are synchronized. Reload open tabs to replace the four-button layout.
