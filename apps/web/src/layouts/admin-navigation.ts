@@ -1,14 +1,14 @@
 import { Archive, Bell, BookMarked, BookOpen, CalendarClock, CircleDollarSign, ClipboardCheck, FileBarChart, Folder, LayoutDashboard, Map, Megaphone, PackageOpen, Printer, QrCode, Settings, Tags, Users, UserRound, type LucideIcon } from 'lucide-react'
 
 export type AdminNavLink = { label: string; to: string; icon: LucideIcon }
-export type AdminNavGroup = { id: string; label: string; icon: LucideIcon; children: AdminNavItem[] }
+export type AdminNavGroup = { id: string; label: string; icon: LucideIcon; children: AdminNavItem[]; section?: boolean }
 export type AdminNavItem = AdminNavLink | AdminNavGroup
 
 const link=(label:string,path:string,icon:LucideIcon):AdminNavLink=>({label,to:`/librarian/${path}`,icon})
 
 export const adminNavigation: AdminNavItem[] = [
   link('Dashboard','dashboard',LayoutDashboard),
-  {id:'file-maintenance',label:'File maintenance',icon:Folder,children:[
+  {id:'file-maintenance',label:'File maintenance',icon:Folder,section:true,children:[
     {id:'book-records',label:'Books',icon:BookOpen,children:[
       link('Book register','book-register',BookOpen),
       link('Categories','categories',Tags),
@@ -22,18 +22,14 @@ export const adminNavigation: AdminNavItem[] = [
       link('Notifications','notifications',Bell),
       link('My profile','profile',UserRound),
     ]},
-    {id:'library-setup',label:'Library setup',icon:Settings,children:[
-      link('Floor plan','floor-plan',Map),
-      link('Maintenance','maintenance',Settings),
-      link('Print supplies','supplies',PackageOpen),
-      link('Announcements','announcements',Megaphone),
-    ]},
+    link('Floor plan','floor-plan',Map),
+    link('Maintenance','maintenance',Settings),
+    link('Print supplies','supplies',PackageOpen),
+    link('Announcements','announcements',Megaphone),
   ]},
-  {id:'transaction',label:'Transaction',icon:CalendarClock,children:[
-    {id:'book-transactions',label:'Books',icon:BookOpen,children:[
-      link('Borrow & return','circulation',CalendarClock),
-      link('Book queue','reservations',BookMarked),
-    ]},
+  {id:'transaction',label:'Transaction',icon:CalendarClock,section:true,children:[
+    link('Borrow & return','circulation',CalendarClock),
+    link('Book queue','reservations',BookMarked),
     {id:'payments',label:'Payments',icon:CircleDollarSign,children:[
       link('Fines','fines',CircleDollarSign),
       link('Online payments','payments',CircleDollarSign),
@@ -43,7 +39,7 @@ export const adminNavigation: AdminNavItem[] = [
     link('Attendance','attendance',QrCode),
     link('Clearance','clearance',ClipboardCheck),
   ]},
-  {id:'reports',label:'Reports',icon:FileBarChart,children:[
+  {id:'reports',label:'Reports',icon:FileBarChart,section:true,children:[
     link('Book Reports','reports',FileBarChart),
     link('Collection review','collection-review',ClipboardCheck),
   ]},

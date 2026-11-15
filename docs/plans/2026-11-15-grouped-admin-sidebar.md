@@ -7,10 +7,12 @@ Status: built
 
 ## How
 
-Use the exact top-level order Dashboard, File maintenance, Transaction, Reports.
-Dashboard stays a direct link. File maintenance groups Books, Accounts and Library
-setup. Transaction groups book circulation and Payments, with direct Printing queue,
-Attendance and Clearance links. Reports contains Book Reports and Collection review.
+Use the order Dashboard, File maintenance, Transaction, Reports. These are ordered
+sections, not four collapsible buttons. Dashboard stays a direct link; the other
+three labels are always-expanded headings. Only Books, Accounts and Payments use
+dropdowns. Floor plan, Maintenance, Print supplies, Announcements, Borrow & return,
+Book queue, Printing queue, Attendance, Clearance, Book Reports and Collection review
+are visible directly underneath their section without opening a parent menu.
 All 24 existing destinations stay available exactly once through the same routes.
 The same tree supplies the page header's flat destination list.
 
@@ -31,10 +33,13 @@ Latest applied migration 045; next unused 046.
 
 - [x] Grouped navigation with all existing destinations and active ancestors.
 - [x] Toggle, route-change, rerender, mobile close and other-role regressions.
-- [x] Full tests, typecheck, build, coverage and local/browser checks (screenshot limit below).
-- [x] Owner-authorized GitHub push and Vercel deployment.
+- [x] Full checks and local verification of the visible-section correction.
+- [ ] Publish the correction to the same authorized branch and Vercel project.
 
 ## Change log
+
+- 2026-11-15 owner correction: the four labels specify section order, not a four-button navigation. The earlier implementation hid too many pages. Removed the File maintenance/Transaction/Reports dropdown layer, the extra Library setup group and duplicate transaction Books group. Only the requested Books/Accounts/Payments dropdowns remain. New regressions failed against the old layout and pass against the correction; all 24 routes remain present. This corrects the same approved sidebar release.
+- 2026-11-15 correction verification: 724 API and 485 web tests passed (1,209 total), typecheck, full coverage and build passed. Web line coverage is 68.92%; overall coverage remains below 80%. Regression checks now require uncoupled section headings, directly reachable routine pages and exactly three dropdowns, while retaining all 24 routes and existing role boundaries. Chrome's local accessibility tree and screenshot showed the visible sections and direct links; browser debugging detached afterward, so further interaction and saving the screenshot were unavailable. Five scoped files were synchronized locally. No backend, route, dependency, permission or database change. Remote main remains included without conflict.
 
 - 2026-11-15: owner supplied the four-section order, requested Books/Payments/Accounts dropdowns, and approved pushing/hosting after verification. Changes are limited to the combined Librarian/Admin navigation and its mobile focus handling.
 - 2026-11-15: 724 API and 485 web tests passed (1,209 total), plus typecheck, build and full coverage. Web line coverage is 68.91%; overall repository coverage remains below 80%. Checks cover exact root ordering, all 24 destinations once, active payment ancestors, native toggles, mobile close callbacks, stable manual closure on rerender, destination expansion and preserved Student/Staff/legacy Admin navigation. Combined review checked native semantics, visible focus, mobile focus-loop inclusion, route boundaries and unchanged permissions.

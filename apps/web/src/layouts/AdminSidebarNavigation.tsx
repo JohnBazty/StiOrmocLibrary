@@ -21,10 +21,13 @@ function NavigationGroup({item,pathname,onNavigate}:{item:AdminNavGroup;pathname
   </details>
 }
 
-function NavigationList({items,pathname,onNavigate,root=false}:{items:AdminNavItem[];pathname:string;onNavigate:()=>void;root?:boolean}){
-  return <ul aria-label={root?'Admin menu':undefined} className={root?'space-y-1':'my-1 ml-4 space-y-1 border-l border-white/15 pl-2'}>
+function NavigationList({items,pathname,onNavigate,root=false,sectionLabel}:{items:AdminNavItem[];pathname:string;onNavigate:()=>void;root?:boolean;sectionLabel?:string}){
+  return <ul aria-label={root?'Admin menu':sectionLabel} className={root||sectionLabel?'space-y-1':'my-1 ml-4 space-y-1 border-l border-white/15 pl-2'}>
     {items.map(item=>{
-      if('children' in item)return <li key={item.id}><NavigationGroup item={item} pathname={pathname} onNavigate={onNavigate}/></li>
+      if('children' in item){
+        if(item.section)return <li key={item.id}><h2 className="px-3 pb-2 pt-5 text-xs font-bold uppercase text-white/65">{item.label}</h2><NavigationList items={item.children} pathname={pathname} onNavigate={onNavigate} sectionLabel={item.label}/></li>
+        return <li key={item.id}><NavigationGroup item={item} pathname={pathname} onNavigate={onNavigate}/></li>
+      }
       const Icon=item.icon
       return <li key={item.to}><NavLink to={item.to} onClick={onNavigate} end={item.to.endsWith('/dashboard')} className={({isActive})=>cn('flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white',isActive?'bg-white text-[#0b5ea2] shadow-sm dark:bg-[#FFF200]':'text-white/70 hover:bg-white/10 hover:text-white')}><Icon size={17} aria-hidden="true" className="shrink-0"/><span className="min-w-0 flex-1">{item.label}</span></NavLink></li>
     })}
