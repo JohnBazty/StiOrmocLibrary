@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { AdminPrintingQueuePage } from './AdminPrintingQueuePage'
 
-const api = vi.hoisted(() => ({ summary: vi.fn(), queue: vi.fn(), setServiceStatus: vi.fn() }))
+const api = vi.hoisted(() => ({ summary: vi.fn(), queue: vi.fn(), setServiceStatus: vi.fn(), status: vi.fn() }))
 vi.mock('./printing-api', () => ({ printingApi: api }))
 vi.mock('../payments/money-out-api',()=>({moneyOutApi:{recover:vi.fn(async()=>({}))}}))
 afterEach(() => { cleanup(); vi.resetAllMocks() })
@@ -33,7 +33,24 @@ it.each(['Refund pending','Refunded'])('hides cash and printing actions for %s j
   api.queue.mockResolvedValue({rows:[{request_id:1,file_name:'qa.pdf',full_name:'QA Borrower',calculated_cost:5,payment_status,
     job_status:payment_status==='Refunded'?'Cancelled':'Pending',refund_pending:payment_status==='Refund pending',created_at:'2026-11-12T01:00:00Z',page_count:1,number_of_copies:1,total_sheets:1}]})
   render(<AdminPrintingQueuePage/>);await screen.findAllByText('qa.pdf')
+  fireEvent.click(screen.getByLabelText('Actions for print request 1'))
   expect(screen.queryByRole('button',{name:'Mark cash paid'})).toBeNull()
   expect(screen.queryByRole('button',{name:'Start printing'})).toBeNull()
   expect(screen.queryByRole('button',{name:/^Cancel$/})).toBeNull()
+})
+
+it('starts a paid job from its dropdown and refreshes the available actions', async () => {
+  api.summary.mockResolvedValue({pending_jobs:1,printing_jobs:0,ready_jobs:0,unpaid_jobs:0,revenue_today:5,service_status:{accepting_requests:1}})
+  const row = {request_id:21,file_name:'chemistry.pdf',full_name:'QA Borrower',calculated_cost:40,payment_status:'Paid',job_status:'Pending',created_at:'2026-11-12T01:00:00Z',page_count:2,number_of_copies:10,total_sheets:20}
+  api.queue.mockResolvedValueOnce({rows:[row]}).mockResolvedValue({rows:[{...row,job_status:'Printing'}]})
+  api.status.mockResolvedValue({})
+  render(<AdminPrintingQueuePage />)
+  await screen.findAllByText('chemistry.pdf')
+  fireEvent.click(screen.getByLabelText('Actions for print request 21'))
+  expect(screen.queryByRole('button', {name:'Mark cash paid'})).toBeNull()
+  fireEvent.click(screen.getByRole('button', {name:'Start printing'}))
+  await screen.findByRole('button', {name:'Mark ready',hidden:true})
+  expect(api.status).toHaveBeenCalledWith(21, 'Printing')
+  expect(api.queue).toHaveBeenCalledTimes(2)
+  expect(screen.queryByRole('button', {name:'Start printing',hidden:true})).toBeNull()
 })

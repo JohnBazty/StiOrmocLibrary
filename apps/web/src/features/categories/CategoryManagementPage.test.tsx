@@ -40,6 +40,7 @@ describe('CategoryManagementPage', () => {
     expect(screen.getByText('7')).toBeTruthy()
     expect(screen.getByText('Sep 25, 2026')).toBeTruthy()
     expect(screen.getByText('Book copies')).toBeTruthy()
+    fireEvent.click(screen.getByLabelText('Actions for Programming'))
     expect((screen.getByRole('button', { name: /Cannot delete category/i }) as HTMLButtonElement).disabled).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: 'Edit Programming' }))
     expect((screen.getByLabelText('Description') as HTMLTextAreaElement).value).toBe('Software development books')
