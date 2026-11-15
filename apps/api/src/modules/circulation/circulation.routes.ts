@@ -32,7 +32,6 @@ export function createAdminCirculationRouter(controller: Controller = circulatio
   router.post('/borrowing/confirm-checkout', controller.confirmCheckout)
   router.put('/borrowing/:transactionId/return', controller.returnBook)
   router.post('/borrowing/:transactionId/calculate-penalty', controller.calculatePenalty)
-  router.get('/notifications', controller.notifications)
   return router
 }
 

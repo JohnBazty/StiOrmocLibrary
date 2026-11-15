@@ -664,12 +664,6 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         await connection.commit(); return { transactionId, amount:charge.amount, currency: 'PHP', basis:charge.basis, units:charge.units, rate:charge.rate,maximumPenalty:context.policy.maximumPenalty,capApplied:charge.capApplied }
       } catch (error) { await connection.rollback(); throw error } finally { connection.release() }
     },
-
-    async adminNotifications(limitValue: unknown = 20) {
-      const limit = Math.min(Number.isFinite(Number(limitValue)) ? Math.max(Math.trunc(Number(limitValue)), 1) : 20, 100)
-      const [rows] = await database.execute<RowDataPacket[]>(`SELECT admin_notification_id, event_type, message_title, message_body, created_at FROM admin_notifications ORDER BY created_at DESC, admin_notification_id DESC LIMIT ${limit}`)
-      return rows.map((row) => ({ id: Number(row.admin_notification_id), eventType: row.event_type, title: row.message_title, message: row.message_body, createdAt: row.created_at }))
-    },
   }
 }
 
