@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { rateLimit } from 'express-rate-limit'
-import type { NextFunction, Request, Response } from 'express'
+import type { NextFunction, Request, RequestHandler, Response } from 'express'
 import { jwtAuthService } from './jwt-auth.service.ts'
 import { authenticateJwt, bearerToken, ensureActiveJwtAccount, requireJwtRoles, verifyAccessToken } from './jwt-auth.middleware.ts'
 import { passwordRecoveryService } from './password-recovery.service.ts'
@@ -40,6 +40,41 @@ export function createRevokeHandler(service: Pick<typeof mobileRefreshService, '
       response.json({ success: true, data: { signedOut: true } })
     } catch (error) { next(error) }
   }
+}
+
+// S4 numbers, per IP per 10 minutes (John can tune): refresh 20 failures / 600 total; sign-in 60 failures / 300 total; verify and resend 30 failures. Successes never count toward a failure limit.
+const s4Window = { windowMs: 10 * 60_000, standardHeaders: 'draft-8', legacyHeaders: false } as const
+const s4Reply = (code: string, message: string) => ({ success: false, code, message })
+const refreshReply = s4Reply('REFRESH_RATE_LIMITED', 'Too many attempts. Please wait 10 minutes.')
+const loginReply = s4Reply('TOO_MANY_LOGIN_ATTEMPTS', 'Too many sign-in attempts. Please wait 10 minutes.')
+
+/** Fresh limiter instances on every call, so counters are never shared by accident. */
+export function refreshLimiters() {
+  return [
+    rateLimit({ ...s4Window, limit: 20, skipSuccessfulRequests: true, message: refreshReply }),
+    rateLimit({ ...s4Window, limit: 600, message: refreshReply }),
+  ]
+}
+
+/** Picks the chain on every request, so the dark deploy (flag unset) keeps origin/main's limiters. */
+export function byFlag(on: RequestHandler[], off: RequestHandler[]): RequestHandler {
+  const onRouter = Router().use(...on)
+  const offRouter = Router().use(...off)
+  return (request, response, next) => (mobileRefreshEnabled() ? onRouter : offRouter)(request, response, next)
+}
+
+export function loginLimiters() {
+  return [byFlag(
+    [rateLimit({ ...s4Window, limit: 60, skipSuccessfulRequests: true, message: loginReply }), rateLimit({ ...s4Window, limit: 300, message: loginReply })],
+    [rateLimit({ windowMs: 10 * 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false })],
+  )]
+}
+
+export function otpLimiters() {
+  return [byFlag(
+    [rateLimit({ ...s4Window, limit: 30, skipSuccessfulRequests: true, message: loginReply })],
+    [rateLimit({ windowMs: 10 * 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false })],
+  )]
 }
 
 export const jwtAuthRouter = Router()
@@ -143,17 +178,17 @@ jwtAuthRouter.post(['/register', '/register/resend', '/register/verify'], (_requ
     success: false, code: 'REGISTRATION_FLOW_REPLACED', message: 'Open the latest registration page to use Student roster signup. Staff accounts are set up by the library.',
   })
 })
-jwtAuthRouter.post('/refresh', createRefreshHandler()) // limiters arrive in plan 07-05
-jwtAuthRouter.post('/refresh/revoke', createRevokeHandler())
-jwtAuthRouter.post('/login', rateLimit({ windowMs: 10 * 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false }), async (request, response, next) => {
+jwtAuthRouter.post('/refresh', ...refreshLimiters(), createRefreshHandler())
+jwtAuthRouter.post('/refresh/revoke', ...refreshLimiters(), createRevokeHandler())
+jwtAuthRouter.post('/login', ...loginLimiters(), async (request, response, next) => {
   response.set('Cache-Control', 'no-store')
   try {
     if (loginDevicesEnabled() && !sameOrigin(request)) throw new HttpError(403, 'DEVICE_ORIGIN', 'Open the library website and try again.')
     sendLogin(request, response, await loginSecurityService.login(request.body, browserToken(request, request.body?.device_session_id)))
   } catch (error) { next(error) }
 })
-const otpLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false })
-for (const action of ['verify', 'resend'] as const) jwtAuthRouter.post(`/login/${action}`, otpLimiter, async (request, response, next) => {
+const otpLimiter = otpLimiters() // one array, so verify and resend share a counter as on origin/main
+for (const action of ['verify', 'resend'] as const) jwtAuthRouter.post(`/login/${action}`, ...otpLimiter, async (request, response, next) => {
   response.set('Cache-Control', 'no-store')
   try {
     if (loginDevicesEnabled() && !sameOrigin(request)) throw new HttpError(403, 'DEVICE_ORIGIN', 'Open the library website and try again.')
