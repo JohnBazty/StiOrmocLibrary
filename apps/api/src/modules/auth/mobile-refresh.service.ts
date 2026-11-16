@@ -37,7 +37,7 @@ export function createMobileRefreshService(database: Pool = db, now = Date.now, 
   /** Fixed deadline, then the locked account and session state (D-04, D-07). Returns the account row to sign for, or the rejection. */
   async function checkAccess(c: PoolConnection, row: RowDataPacket): Promise<{ account: RowDataPacket } | { error: HttpError }> {
     if (new Date(row.expires_at).getTime() <= now()) return { error: new HttpError(401, 'REFRESH_TOKEN_EXPIRED', 'Sign in again to continue.') }
-    const [accounts] = await c.execute<RowDataPacket[]>('SELECT a.*,u.account_status AS linked_status FROM accounts a LEFT JOIN users u ON u.user_id=a.user_id WHERE a.account_id=? FOR UPDATE OF a', [row.account_id])
+    const [accounts] = await c.execute<RowDataPacket[]>('SELECT a.account_status,a.auth_version,a.role,a.school_id,u.account_status AS linked_status FROM accounts a LEFT JOIN users u ON u.user_id=a.user_id WHERE a.account_id=? FOR UPDATE OF a', [row.account_id])
     const account = accounts[0]
     if (!account || account.account_status !== 'Active' || (account.linked_status && account.linked_status !== 'Active')
       || Number(account.auth_version) !== Number(row.auth_version)
