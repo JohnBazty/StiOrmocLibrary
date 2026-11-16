@@ -9,9 +9,10 @@ import { sendSchoolEmail } from './school-email.sender.ts'
 import { isInstitutionalEmail } from './auth.validation.js'
 import { enrollmentEnabled, linkSemesterMember, lockEnrollment, restorationEvidence, semesterAccessEnded } from '../enrollment/enrollment-policy.ts'
 import {
-  DEVICE_DEADLINE_SQL, LIVE_DEVICE_SQL, LOGIN_IDLE_MS, REMEMBER_DEVICE_MS, SWITCH_DEVICE_MS,
-  deviceTokenHash, isDeviceToken, loginDevicesEnabled, makeDeviceToken,
+  DEVICE_DEADLINE_SQL, LIVE_DEVICE_SQL, LOGIN_IDLE_MS, MOBILE_REFRESH_MS, REMEMBER_DEVICE_MS, SWITCH_DEVICE_MS,
+  deviceTokenHash, isDeviceToken, loginDevicesEnabled, makeDeviceToken, mobileRefreshEnabled,
 } from './login-device-policy.ts'
+import { mobileRefreshService } from './mobile-refresh.service.ts'
 
 export { LOGIN_IDLE_MS } from './login-device-policy.ts'
 const UUID = /^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i
@@ -20,7 +21,7 @@ const failCode = () => new HttpError(422, 'LOGIN_CODE_INVALID', 'The code is inc
 const pausedCode = () => new HttpError(429, 'LOGIN_CODE_PAUSED', 'Three incorrect codes were entered. Wait 10 minutes before starting login again.')
 const semesterEnded = () => new HttpError(403, 'SEMESTER_ACCESS_ENDED', 'Your semester has ended. You can sign in again once your enrollment is listed for the next semester.')
 export type VerifiedLogin = { accountId: number; userId: number | null; schoolId: string; role: JwtRole; authVersion: number; fullName: string | null; email: string }
-type DeviceOptions = { browserToken?: string; remember?: boolean; replacedSessionId?: string }
+type DeviceOptions = { browserToken?: string; remember?: boolean; replacedSessionId?: string; client?: 'web' | 'mobile'; trustedSince?: Date }
 type BrowserIdentity = { accountId: number; authVersion: number; sessionId?: string }
 const deviceExpired = () => new HttpError(401, 'DEVICE_EXPIRED', 'This device’s sign-in has ended. Sign in again to continue.')
 const switchExpired = () => new HttpError(409, 'DEVICE_SWITCH_EXPIRED', 'This sign-in changed or timed out. Sign in again to continue.')
@@ -46,11 +47,40 @@ export function createLoginSecurityService(database: Pool = db,
     return { token, tokenType: 'Bearer', expiresIn, redirect: dashboardForJwtRole(verified.role), user }
   }
 
+  /** Student/Faculty with the flag on keep the account's auth_version at sign-in and revoke per client (D-14); everyone else bumps as on origin/main. */
+  async function startSession(c: PoolConnection, account: RowDataPacket, verified: VerifiedLogin, coexist: boolean, client: 'web' | 'mobile') {
+    const sessionId = randomUUID()
+    if (coexist) {
+      if (client === 'web' && account.user_id) await c.execute("DELETE FROM auth_sessions WHERE (session_data::json->'user'->>'id')::int=?", [account.user_id])
+      await c.execute('UPDATE library_login_sessions SET revoked_at=NOW() WHERE account_id=? AND revoked_at IS NULL AND client=?', [verified.accountId, client])
+      return { version: Number(account.auth_version), sessionId }
+    }
+    const version = Number(account.auth_version) + 1
+    await c.execute('UPDATE accounts SET auth_version=?,updated_at=NOW() WHERE account_id=?', [version, verified.accountId])
+    if (account.user_id) {
+      await c.execute('UPDATE users SET auth_version=auth_version+1,updated_at=NOW() WHERE user_id=?', [account.user_id])
+      await c.execute("DELETE FROM auth_sessions WHERE (session_data::json->'user'->>'id')::int=?", [account.user_id])
+    }
+    await c.execute('UPDATE library_login_sessions SET revoked_at=NOW() WHERE account_id=? AND revoked_at IS NULL', [verified.accountId])
+    return { version, sessionId }
+  }
+
+  /** A phone sign-in: one 30-day deadline for the session row and the refresh family, and earlier phones lose device trust (D-16). */
+  async function completeMobileSignIn(c: PoolConnection, verified: VerifiedLogin, version: number, sessionId: string, options: DeviceOptions) {
+    const timestamp = now(), deadline = new Date(timestamp + MOBILE_REFRESH_MS), token = makeDeviceToken()
+    await c.execute("UPDATE library_login_sessions SET trusted_since=NULL WHERE account_id=? AND client='mobile' AND trusted_since IS NOT NULL", [verified.accountId])
+    await c.execute("INSERT INTO library_login_sessions(session_id,account_id,auth_version,last_activity_at,device_token_hash,remembered_until,client,trusted_since) VALUES (?,?,?,?,?,?,'mobile',?)",
+      [sessionId, verified.accountId, version, new Date(timestamp), deviceTokenHash('browser', token), deadline, options.trustedSince ?? new Date(timestamp)])
+    const refresh = await mobileRefreshService.issue(c, { accountId: verified.accountId, authVersion: version, sessionId, expiresAt: deadline })
+    return { ...loginResult(verified, version, sessionId), ...refresh, deviceCookie: { token, sessionId, deadline: deadline.getTime() } }
+  }
+
   async function complete(c: PoolConnection, verified: VerifiedLogin, restorationSemesterId: number | null = null, options: DeviceOptions = {}) {
     const [accounts] = await c.execute<RowDataPacket[]>('SELECT a.*,u.account_status AS linked_status,u.email,u.full_name FROM accounts a LEFT JOIN users u ON u.user_id=a.user_id WHERE a.account_id=? FOR UPDATE OF a', [verified.accountId])
     const account = accounts[0]
     if (!account || Number(account.auth_version) !== verified.authVersion || account.role !== verified.role || account.school_id !== verified.schoolId) throw new HttpError(401, 'LOGIN_CHANGED', 'Account access changed. Start login again.')
-    const device = devicesEnabled()
+    const device = devicesEnabled(), client = options.client ?? 'web'
+    const coexist = mobileRefreshEnabled() && ['Student', 'Faculty'].includes(verified.role)
     const remember = device && options.remember === true && ['Student', 'Faculty'].includes(verified.role)
     if (account.account_status !== 'Active' || (account.linked_status && account.linked_status !== 'Active')) {
       const restore=account.role==='Student' && await restorationEvidence(c,verified.accountId,verified.schoolId,String(account.email??''))
@@ -59,10 +89,10 @@ export function createLoginSecurityService(database: Pool = db,
       await c.execute("UPDATE users SET account_status='Active',updated_at=NOW() WHERE user_id=?",[account.user_id])
       await linkSemesterMember(c,restore.semesterId,verified.accountId,verified.schoolId,restore.name)
     } else if (verified.role==='Student' && await semesterAccessEnded(c,verified.accountId)) throw semesterEnded()
-    if (device) {
+    if (device && client === 'web') {
       const [sessions] = await c.execute<RowDataPacket[]>(
         `SELECT session_id,device_token_hash FROM library_login_sessions
-         WHERE account_id=? AND auth_version=? AND revoked_at IS NULL AND ${LIVE_DEVICE_SQL}
+         WHERE account_id=? AND auth_version=? AND revoked_at IS NULL AND ${LIVE_DEVICE_SQL}${coexist ? " AND client='web'" : ''}
          ORDER BY created_at DESC LIMIT 1`, [verified.accountId, verified.authVersion],
       )
       const active = sessions[0]
@@ -76,13 +106,8 @@ export function createLoginSecurityService(database: Pool = db,
         return { deviceSwitchRequired: true as const, switchToken }
       }
     }
-    const version = Number(account.auth_version) + 1, sessionId = randomUUID()
-    await c.execute('UPDATE accounts SET auth_version=?,updated_at=NOW() WHERE account_id=?', [version, verified.accountId])
-    if (account.user_id) {
-      await c.execute('UPDATE users SET auth_version=auth_version+1,updated_at=NOW() WHERE user_id=?', [account.user_id])
-      await c.execute("DELETE FROM auth_sessions WHERE (session_data::json->'user'->>'id')::int=?", [account.user_id])
-    }
-    await c.execute('UPDATE library_login_sessions SET revoked_at=NOW() WHERE account_id=? AND revoked_at IS NULL', [verified.accountId])
+    const { version, sessionId } = await startSession(c, account, verified, coexist, client)
+    if (client === 'mobile') return completeMobileSignIn(c, verified, version, sessionId, options)
     if (!device) {
       await c.execute('INSERT INTO library_login_sessions(session_id,account_id,auth_version,last_activity_at) VALUES (?,?,?,?)', [sessionId, verified.accountId, version, new Date(now())])
       return loginResult(verified, version, sessionId)
@@ -194,7 +219,7 @@ export function createLoginSecurityService(database: Pool = db,
           return { error: Number(row.failed_count) >= 2 ? pausedCode() : failCode() }
         }
         await c.execute('UPDATE login_otp_challenges SET consumed_at=NOW(),code_hash=NULL WHERE challenge_id=?', [challengeId])
-        return { data: await complete(c, verifiedAccount(account, Number(row.auth_version)), row.restoration_semester_id == null ? null : Number(row.restoration_semester_id), { browserToken, remember: row.remember_device === true }) }
+        return { data: await complete(c, verifiedAccount(account, Number(row.auth_version)), row.restoration_semester_id == null ? null : Number(row.restoration_semester_id), { browserToken, remember: row.remember_device === true, client: mobileRefreshEnabled() && body?.client === 'mobile' ? 'mobile' : 'web' }) }
       })
       if (result.error) throw result.error
       return result.data
@@ -218,6 +243,7 @@ export function createLoginSecurityService(database: Pool = db,
       return tx(async c => {
         const { account, session } = await lockBrowser(c, token)
         if (expectedSessionId != null && expectedSessionId !== session.session_id) throw deviceExpired()
+        if (mobileRefreshEnabled() && session.client === 'mobile') throw deviceExpired() // a phone cookie never mints tokens without rotation
         const timestamp = now()
         const deadline = session.remembered_until == null ? undefined : new Date(session.remembered_until).getTime()
         let lastActivity = new Date(session.last_activity_at).getTime()

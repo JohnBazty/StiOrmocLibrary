@@ -7,7 +7,7 @@ import { toPgPlaceholders } from '../../config/sql.js'
 const migration = (name: string) => readFileSync(new URL(`../../../../../database/supabase/${name}`, import.meta.url), 'utf8')
 
 /** A real Postgres (PGlite) with the login-session tables, behind the app's `?`-placeholder Pool shape. */
-export async function createAuthTestDatabase() {
+export async function createAuthTestDatabase({ mobileMigration = true } = {}) {
   const pg = new PGlite()
   await pg.exec('CREATE ROLE anon; CREATE ROLE authenticated;')
   // Minimal stand-ins for the tables 029 references; only the columns the auth code reads.
@@ -15,8 +15,9 @@ export async function createAuthTestDatabase() {
     full_name TEXT, auth_version INTEGER NOT NULL DEFAULT 1, updated_at TIMESTAMPTZ);
     CREATE TABLE accounts (account_id BIGSERIAL PRIMARY KEY, user_id BIGINT REFERENCES users(user_id), school_id TEXT NOT NULL,
     role TEXT NOT NULL, account_status TEXT NOT NULL DEFAULT 'Active', auth_version INTEGER NOT NULL DEFAULT 1, updated_at TIMESTAMPTZ);
-    CREATE TABLE academic_terms (academic_term_id BIGSERIAL PRIMARY KEY);`)
-  for (const file of ['029_october16_revisions.sql', '032_login_devices.sql', '039_mobile_refresh_tokens.sql']) await pg.exec(migration(file))
+    CREATE TABLE academic_terms (academic_term_id BIGSERIAL PRIMARY KEY);
+    CREATE TABLE auth_sessions (sid TEXT PRIMARY KEY, session_data TEXT);`)
+  for (const file of ['029_october16_revisions.sql', '032_login_devices.sql', ...(mobileMigration ? ['039_mobile_refresh_tokens.sql'] : [])]) await pg.exec(migration(file))
   const execute = async (sql: string, values: unknown[] = []) => {
     const result = await pg.query(toPgPlaceholders(sql), values)
     const write = /^\s*(INSERT|UPDATE|DELETE)/i.test(sql)

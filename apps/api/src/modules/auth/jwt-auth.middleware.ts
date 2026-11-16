@@ -5,7 +5,7 @@ import { db } from '../../config/db.js'
 import type { JwtRole } from './jwt-auth.service.ts'
 import { hasLibraryPermission, type LibraryPermission } from '../../core/library-permissions.ts'
 import { semesterAccessEnded } from '../enrollment/enrollment-policy.ts'
-import { DEVICE_DEADLINE_SQL, DEVICE_IDLE_SQL, loginDevicesEnabled } from './login-device-policy.ts'
+import { DEVICE_DEADLINE_SQL, DEVICE_IDLE_SQL, loginDevicesEnabled, mobileRefreshEnabled } from './login-device-policy.ts'
 
 export type AuthenticatedJwtUser = { id: number; accountId: number; schoolId: string; role: JwtRole; authVersion: number; sessionId?: string; deviceSession?: boolean; rememberedUntil?: number }
 
@@ -61,7 +61,8 @@ export function createActiveJwtAccountGuard(database: Pick<typeof db, 'execute'>
         return
       }
       const deadline = devices ? ` AND ${DEVICE_DEADLINE_SQL}` : ''
-      const [sessions] = await database.execute(`SELECT 1 FROM library_login_sessions WHERE session_id=? AND account_id=? AND auth_version=? AND revoked_at IS NULL AND ${DEVICE_IDLE_SQL}${deadline}`, [identity.sessionId, identity.accountId, identity.authVersion])
+      const idle = mobileRefreshEnabled() ? `(client='mobile' OR ${DEVICE_IDLE_SQL})` : DEVICE_IDLE_SQL
+      const [sessions] = await database.execute(`SELECT 1 FROM library_login_sessions WHERE session_id=? AND account_id=? AND auth_version=? AND revoked_at IS NULL AND ${idle}${deadline}`, [identity.sessionId, identity.accountId, identity.authVersion])
       if (!(sessions as unknown[]).length) { response.status(401).json({ success: false, code: 'SESSION_EXPIRED', message: 'Your session expired after 10 minutes of inactivity. Sign in again.' }); return }
     }
     next()
