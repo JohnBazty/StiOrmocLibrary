@@ -10,7 +10,7 @@ import { isInstitutionalEmail } from './auth.validation.js'
 import { enrollmentEnabled, linkSemesterMember, lockEnrollment, restorationEvidence, semesterAccessEnded } from '../enrollment/enrollment-policy.ts'
 import {
   DEVICE_DEADLINE_SQL, LIVE_DEVICE_SQL, LOGIN_IDLE_MS, MOBILE_REFRESH_MS, REMEMBER_DEVICE_MS, SWITCH_DEVICE_MS,
-  deviceTokenHash, isDeviceToken, loginDevicesEnabled, makeDeviceToken, mobileRefreshEnabled,
+  MOBILE_TRUST_MAX_MS, deviceTokenHash, isDeviceToken, loginDevicesEnabled, makeDeviceToken, mobileRefreshEnabled,
 } from './login-device-policy.ts'
 import { mobileRefreshService } from './mobile-refresh.service.ts'
 
@@ -182,6 +182,8 @@ export function createLoginSecurityService(database: Pool = db,
         const ended = verified.role === 'Student' && await semesterAccessEnded(c, verified.accountId)
         const restoration = ended ? await restorationEvidence(c, verified.accountId, verified.schoolId, verified.email) : null
         if (ended && !restoration) throw semesterEnded()
+        const trustedSince = !ended && mobileRefreshEnabled() && body?.client === 'mobile' && browserToken ? await trustedPhone(c, verified, browserToken, timestamp) : null
+        if (trustedSince) return { data: await complete(c, verified, null, { browserToken, client: 'mobile', trustedSince }) }
         const [recent] = await c.execute<RowDataPacket[]>('SELECT sent_at,failed_count,expires_at FROM login_otp_challenges WHERE account_id=? ORDER BY sent_at DESC LIMIT 1', [verified.accountId])
         if (Number(recent[0]?.failed_count) >= 3 && new Date(recent[0].expires_at).getTime() > timestamp) return { error: pausedCode() }
         if (recent[0] && timestamp - new Date(recent[0].sent_at).getTime() < 60_000) return { error: new HttpError(429, 'LOGIN_CODE_WAIT', 'Wait one minute before requesting another login code.') }
@@ -297,6 +299,16 @@ export function createLoginSecurityService(database: Pool = db,
       return { message: 'A new code was sent. Previous codes no longer work.', resendAfter: 60 }
     },
   }
+}
+/** D-11/D-16: when the cookie is the account's most recent phone (trust not cleared by a later phone), its trusted_since, else null. Revoked and past-deadline rows still match on purpose; 07-07 clears trust on a replaced phone. */
+export async function trustedPhone(c: PoolConnection, verified: VerifiedLogin, browserToken: string, timestamp: number, maxMs = MOBILE_TRUST_MAX_MS) {
+  const [rows] = await c.execute<RowDataPacket[]>(
+    `SELECT s.trusted_since FROM library_login_sessions s JOIN accounts a ON a.account_id=s.account_id LEFT JOIN users u ON u.user_id=a.user_id
+     WHERE s.account_id=? AND s.client='mobile' AND s.auth_version=? AND s.device_token_hash=? AND s.trusted_since IS NOT NULL
+     AND a.account_status='Active' AND (u.account_status IS NULL OR u.account_status='Active')${maxMs == null ? '' : ' AND s.trusted_since>?'}`,
+    [verified.accountId, verified.authVersion, deviceTokenHash('browser', browserToken), ...(maxMs == null ? [] : [new Date(timestamp - maxMs)])],
+  )
+  return rows[0] ? new Date(rows[0].trusted_since) : null
 }
 export function deviceAccessLifetime(lastActivity: number, deadline?: number, timestamp = Date.now()) {
   return Math.min(env.jwt.expiresInSeconds, Math.floor((Math.min(lastActivity + LOGIN_IDLE_MS, deadline ?? Infinity) - timestamp) / 1000))
