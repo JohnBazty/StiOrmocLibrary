@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-11-16 |
-| **Date last updated** | 2026-11-16 (draft PR prepared, migration 039 not applied, nothing deployed) |
+| **Date last updated** | 2026-11-16 (row retention purge built; draft PR prepared, migration 039 not applied, nothing deployed) |
 | **Status** | inprogress |
 
 ## Why
@@ -27,7 +27,15 @@ Migration `039_mobile_refresh_tokens.sql`:
 
 Each call rotates the token: the old row gets `rotated_at` and `replaced_by`, the new row copies the family deadline (`expires_at`) unchanged. Every timestamp comes from the service's injected clock, so tests move time by moving the clock.
 
-Follow-up (accepted): rotated and expired `mobile_refresh_tokens` rows are not purged in this branch; plan 07-10 carries the line into the draft PR body with the suggested job-runner purge, so John decides the retention.
+Row retention (built): the job runner job `mobile-refresh-purge` (module `apps/api/src/modules/auth/mobile-refresh-purge.service.ts`, last in `JOB_NAMES`) runs inside the existing `smartlib-jobs-all` call, so it runs every minute with no new Cron schedule. It does nothing unless `MOBILE_REFRESH_ENABLED=true`, and with the flag on but migration 039 missing it reports `tableMissing` and deletes nothing.
+
+- **Deletes:** rows whose family deadline `expires_at` has passed, and rows whose `library_login_sessions.revoked_at` is older than 7 days (`REVOKED_FAMILY_KEEP_MS`).
+- **Keeps:** every row of a live family, including rotated ones (`rotated_at` set). Reuse detection needs them: a rotated token presented again must find its row to revoke the family, and deleting it would make that replay look like an unknown token (`REFRESH_TOKEN_INVALID`) and turn reuse detection off. A recently revoked session's rows also stay for the 7 day margin.
+- **Clock:** cut-offs use the job's passed-in clock, not SQL `NOW()`, like the refresh service.
+- **Batching:** `DELETE ... WHERE token_hash IN (SELECT ... LIMIT 500)`, at most 10 batches (5000 rows) per run, so no statement holds a lock for long; a bigger backlog drains over the next runs. The scan has no index on `expires_at`; the table is small, so no migration was added. If it grows large, John can add one.
+- Effect for a phone whose family already expired or was purged: it gets `REFRESH_TOKEN_INVALID` instead of `REFRESH_TOKEN_EXPIRED`; both are 401 and both mean sign in again.
+
+Tests: `mobile-refresh-purge.service.test.ts`.
 
 ## Implementation tracking
 
@@ -37,6 +45,7 @@ Follow-up (accepted): rotated and expired `mobile_refresh_tokens` rows are not p
 - [x] 07-07 sign-in issues the refresh token (`client: "mobile"`), option-a sign-in changes, web logout keeps the phone: `session-coexistence.test.ts`
 - [x] 07-09 trusted-device handling: `trusted-device.test.ts`
 - [x] 07-10 Bearer-only access to every Student/Faculty `/api/v1` route (S3): `api-v1-bearer-only.test.ts`
+- [x] Row retention: `mobile-refresh-purge` job: `mobile-refresh-purge.service.test.ts`
 - [ ] Draft PR opened for John (Ethan pushes; the migration is not applied and nothing is deployed)
 
 ## Change log
@@ -44,3 +53,4 @@ Follow-up (accepted): rotated and expired `mobile_refresh_tokens` rows are not p
 - 2026-11-16: created with the tracer (migration 039, `createMobileRefreshService`, `POST /api/v1/auth/refresh`).
 - 2026-11-16: with MOBILE_REFRESH_ENABLED on, a Student/Faculty web logout through `/api/auth/logout` ends only that session's `library_login_sessions` row and no longer bumps `auth_version`, so it cannot kill the same account's phone refresh family (D-14). Staff and flag-off logouts still bump.
 - 2026-11-16: sign-in, trusted phone, replace-by-second-phone, revoke endpoint, readiness gate, S4 limits and the S3 Bearer-only test are in; the full api and web suites and the typecheck pass. Status stays inprogress: draft PR for John, migration 039 not applied, nothing deployed.
+- 2026-11-16: added the `mobile-refresh-purge` job-runner job (expired and long-revoked families only; rotated rows of a live family are kept for reuse detection), flag-gated and batched.

@@ -14,6 +14,7 @@ const JOB_LABELS: Record<string, string> = {
   notifications: 'Notifications',
   'book-request-emails': 'Book request emails',
   'collection-review-refresh': 'Collection review',
+  'mobile-refresh-purge': 'Phone sign-in token cleanup',
 }
 
 // Status is always written out; the icon and the yellow highlight only repeat it.
