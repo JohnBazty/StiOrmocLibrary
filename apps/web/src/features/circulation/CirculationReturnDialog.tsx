@@ -56,7 +56,7 @@ export function CirculationReturnDialog({ barcode, onClose, onReturned }: {
     saving.current = true; setBusy(true); setError('')
     try {
       const result = await deskCirculationApi.returnCopy(preview, key.current, assessment ? condition : '', assessment ? note : '')
-      onReturned(`${result.title} returned.${result.assessmentNeeded ? ' Condition assessment is required; this copy is unavailable.' : ''}`)
+      onReturned(`${result.title} returned.${result.damageCaseId ? ` Damage case #${result.damageCaseId} opened; the copy is held for review.` : result.assessmentNeeded ? ' Condition assessment is required; this copy is unavailable.' : ''}`)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Return could not be saved. Please retry.')
     } finally { saving.current = false; setBusy(false) }

@@ -79,3 +79,35 @@ test('unified circulation cancellation route forwards the authenticated actor', 
   assert.equal(response.body.data.copyAvailability, 'Available')
   assert.deepEqual(received, { actor: { accountId: 3, role: 'Librarian' }, id: '12' })
 })
+
+test('damage case routes reach the case service for desk staff and are refused for students', async () => {
+  const calls: string[] = []
+  const caseService = {
+    listCases: async () => { calls.push('list'); return { items: [] } },
+    getCaseDetail: async (id: string) => { calls.push(`detail:${id}`); return {} },
+    addNote: async (_a: unknown, id: string) => { calls.push(`note:${id}`); return {} },
+    recordDisposition: async (accountId: unknown, id: string, body: { disposition: string }) => { calls.push(`disposition:${accountId}:${id}:${body.disposition}`); return {} },
+    closeCase: async (_a: unknown, id: string, _b: unknown, status: string) => { calls.push(`${status}:${id}`); return {} },
+    reopenCase: async (_a: unknown, id: string) => { calls.push(`reopen:${id}`); return {} },
+  }
+  const service = {}
+  function appFor(role: string) {
+    const app = express(); app.use(express.json())
+    app.use((_request, response, next) => { response.locals.authenticatedUser = { accountId: 3, role }; next() })
+    app.use('/api/v1/admin', requireJwtRoles('Librarian', 'Staff'), createAdminCirculationRouter(createCirculationController(service as never, caseService as never)))
+    withHttpErrorHandler(app)
+    return app
+  }
+  const staff = appFor('Staff')
+  assert.equal((await request(staff).get('/api/v1/admin/circulation/cases')).status, 200)
+  assert.equal((await request(staff).get('/api/v1/admin/circulation/cases/4')).status, 200)
+  assert.equal((await request(staff).post('/api/v1/admin/circulation/cases/4/notes').send({ notes: 'n' })).status, 200)
+  assert.equal((await request(staff).post('/api/v1/admin/circulation/cases/4/dispositions').send({ disposition: 'lost' })).status, 200)
+  assert.equal((await request(staff).post('/api/v1/admin/circulation/cases/4/resolve').send({ reason: 'r' })).status, 200)
+  assert.equal((await request(staff).post('/api/v1/admin/circulation/cases/4/dismiss').send({ reason: 'r' })).status, 200)
+  assert.equal((await request(staff).post('/api/v1/admin/circulation/cases/4/reopen').send({ reason: 'r' })).status, 200)
+  assert.deepEqual(calls, ['list', 'detail:4', 'note:4', 'disposition:3:4:lost', 'Resolved:4', 'Dismissed:4', 'reopen:4'])
+  const student = await request(appFor('Student')).post('/api/v1/admin/circulation/cases/4/dispositions').send({ disposition: 'lost' })
+  assert.equal(student.status, 403)
+  assert.equal(calls.length, 7)
+})

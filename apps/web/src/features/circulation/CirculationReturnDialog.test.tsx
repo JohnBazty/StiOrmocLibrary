@@ -70,6 +70,19 @@ describe('Return review dialog', () => {
     expect(api.returnCopy.mock.calls[0].slice(2)).toEqual(['Damaged', 'Cover torn'])
   })
 
+  it('tells desk staff when a damaged return opened a damage case', async () => {
+    api.returnCopy.mockResolvedValue({ title: 'Test Book', assessmentNeeded: true, damageCaseId: 55 })
+    const onReturned = vi.fn()
+    render(<CirculationReturnDialog barcode="COPY-7" onClose={() => {}} onReturned={onReturned} />)
+    await screen.findByText('Test Book')
+    fireEvent.click(screen.getByLabelText('Record damage or a condition change'))
+    fireEvent.change(screen.getByLabelText('Condition'), { target: { value: 'Damaged' } })
+    fireEvent.change(screen.getByLabelText(/Assessment note/), { target: { value: 'Cover torn' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm return' }))
+    await waitFor(() => expect(onReturned).toHaveBeenCalled())
+    expect(onReturned.mock.calls[0][0]).toContain('Damage case #55 opened')
+  })
+
   it('keeps Tab and Shift+Tab inside the dialog', async () => {
     render(<CirculationReturnDialog barcode="COPY-7" onClose={() => {}} onReturned={() => {}} />)
     await screen.findByText('Test Book')

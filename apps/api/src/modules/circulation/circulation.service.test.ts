@@ -224,12 +224,15 @@ test('borrowing history exposes the normalized title cover path', async () => {
       if (sql.includes('COUNT(*) AS total FROM reservations')) return [[{ total: 0 }]]
       if (sql.includes('COUNT(*) AS total FROM borrow_transactions')) return [[{ total: 1 }]]
       if (sql.includes('AS active_loans')) return [[{ active_loans: 1, active_reservations: 0, next_due_at: null }]]
+      if (sql.includes('FROM circulation_cases')) { assert.match(sql, /borrower_user_id = \?/); return [[{ case_id: 5, transaction_id: 41, status: 'Open', opened_at: '2026-11-12' }]] }
       throw new Error(`Unexpected SQL: ${sql}`)
     },
   } as unknown as Pool
 
   const result = await createCirculationService(database).history(1, { page: 1, limit: 25 })
   assert.equal(result.items[0].coverImagePath, '/api/assets/covers/clean-code.png')
+  assert.equal(result.items[0].caseSummary?.status, 'Open')
+  assert.equal(result.items[0].caseSummary?.caseType, 'Damage')
   assert.equal(result.summary.loanLimit, 2)
   assert.equal(result.summary.dueCutoffLabel, 'See the exact due date and time for each loan')
 })

@@ -8,6 +8,7 @@ import type { CirculationMonitorData } from './types'
 import { CancelBorrowRequestDialog } from './CancelBorrowRequestDialog'
 import { ReportLostDialog } from './ReportLostDialog'
 import { CirculationDesk } from './CirculationDesk'
+import { DamageCasesPanel } from './DamageCasesPanel'
 
 function formatDate(value: string | null) {
   if (!value) return '—'
@@ -126,6 +127,7 @@ export function AdminCirculationMonitor() {
         </div>
       </article>) : <p className="p-8 text-center text-sm opacity-65">{(filter === 'all' || filter === 'pending') && pickups.length ? 'Borrowed books will appear here after handover.' : query ? 'No loans match your search.' : 'No loans in this view.'}</p>}</div>}
     </SectionCard>
+    <DamageCasesPanel />
     {cancelTarget ? <CancelBorrowRequestDialog title={cancelTarget.title} busy={busyId === cancelTarget.transactionId} error={cancelError} onCancel={() => { if (busyId === null) setCancelTarget(null) }} onConfirm={reason => void cancelPending(reason)} /> : null}
     {lostTarget ? <ReportLostDialog title={lostTarget.title} busy={busyId === lostTarget.transactionId} error={lostError} onCancel={() => { if (busyId === null) setLostTarget(null) }} onConfirm={() => void reportLost()} /> : null}
   </>
