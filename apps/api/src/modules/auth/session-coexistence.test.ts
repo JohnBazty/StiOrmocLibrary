@@ -3,6 +3,8 @@ import test from 'node:test'
 import type { NextFunction, Request, Response } from 'express'
 import { createAuthTestDatabase } from './auth-pglite.test.helper.ts'
 import { createActiveJwtAccountGuard, verifyAccessToken } from './jwt-auth.middleware.ts'
+import { createAuthSessionRepository } from './auth-session.repository.ts'
+import { createLogoutController } from './authController.js'
 import { createLoginSecurityService, type VerifiedLogin } from './login-security.service.ts'
 import { createMobileRefreshService } from './mobile-refresh.service.ts'
 
@@ -139,4 +141,41 @@ test('flag off on a database without migration 039: sign-in, guard and sign-out 
   assert.equal(await version(), 4) // origin/main still bumps
   assert.deepEqual(await guard(pool, reply.token), { passed: true })
   assert.equal(await service.revokeDevice(reply.deviceCookie.token), true)
+}))
+
+/** The real logout controller over the PGlite pool, called the way /api/auth/logout calls it for a bearer token. */
+async function webLogout(pool: any, token: string) {
+  const request = { session: { destroy: (done: (error?: Error) => void) => done() } }
+  const response = { locals: { authenticationType: 'jwt', authenticatedUser: verifyAccessToken(token) }, clearCookie() {}, redirect() {} }
+  await createLogoutController({ sessions: createAuthSessionRepository(pool) })(request, response, (error?: unknown) => { if (error) throw error })
+}
+
+test('a Student web logout with the flag on ends only that web session and keeps the phone (D-14, A3 item 6)', () => withFlags({ MOBILE_REFRESH_ENABLED: 'true', LOGIN_DEVICES_ENABLED: 'false' }, async () => {
+  const { pool, refresh, signIn, row, version } = await setup()
+  const phone = await signIn({ client: 'mobile' })
+  const web = await signIn()
+  assert.equal(await version(), 3)
+  await webLogout(pool, web.token)
+  assert.equal(await version(), 3)
+  assert.ok((await row(verifyAccessToken(web.token).sessionId!)).revoked_at)
+  assert.equal((await row(phone.deviceCookie.sessionId)).revoked_at, null)
+  assert.deepEqual(await guard(pool, web.token), { passed: false, status: 401, code: 'SESSION_EXPIRED' })
+  assert.deepEqual(await guard(pool, phone.token), { passed: true })
+  assert.ok((await refresh.refresh(phone.refreshToken)).token)
+}))
+
+test('staff web logout still bumps auth_version with the flag on (A3 item 6)', () => withFlags({ MOBILE_REFRESH_ENABLED: 'true', LOGIN_DEVICES_ENABLED: 'false' }, async () => {
+  const { pool, signIn, version } = await setup({ role: 'Librarian' })
+  const web = await signIn()
+  const signedIn = await version()
+  await webLogout(pool, web.token)
+  assert.equal(await version(), signedIn + 1)
+}))
+
+test('a Student web logout with the flag off still bumps auth_version (dark deploy, A3 item 6)', () => withFlags({ MOBILE_REFRESH_ENABLED: undefined, LOGIN_DEVICES_ENABLED: 'false' }, async () => {
+  const { pool, signIn, version } = await setup({ mobileMigration: false })
+  const web = await signIn()
+  const signedIn = await version()
+  await webLogout(pool, web.token)
+  assert.equal(await version(), signedIn + 1)
 }))

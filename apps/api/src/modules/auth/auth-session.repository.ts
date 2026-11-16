@@ -1,4 +1,4 @@
-import type { Pool, PoolConnection, RowDataPacket } from '../../config/db.js'
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 
 const clearOtherSessionsSql = `DELETE FROM auth_sessions
@@ -13,6 +13,7 @@ export type AuthSessionRepository = {
   incrementAuthVersionForUser(userId: number): Promise<number>
   clearOtherSessions(userId: number, currentSessionId: string): Promise<void>
   clearAllSessionsForUser(userId: number): Promise<void>
+  revokeSession(identity: { accountId: number; authVersion: number; sessionId: string }): Promise<boolean>
   revokeCurrentVersion(identity: { accountId: number; authVersion: number } | { userId: number; authVersion: number }): Promise<boolean>
 }
 
@@ -124,6 +125,15 @@ export function createAuthSessionRepository(database: Pool = db): AuthSessionRep
 
     async clearAllSessionsForUser(userId: number): Promise<void> {
       await database.execute(clearAllSessionsSql, [userId])
+    },
+
+    /** Ends one library_login_sessions row and leaves auth_version alone, so the account's other sessions stay alive. */
+    async revokeSession({ accountId, authVersion, sessionId }): Promise<boolean> {
+      const [result] = await database.execute<ResultSetHeader>(
+        'UPDATE library_login_sessions SET revoked_at=NOW() WHERE session_id=? AND account_id=? AND auth_version=? AND revoked_at IS NULL',
+        [sessionId, accountId, authVersion],
+      )
+      return result.affectedRows > 0
     },
 
     async revokeCurrentVersion(identity): Promise<boolean> {

@@ -16,6 +16,7 @@ const createJwtAuthService: typeof createService = (database, hasher, signer) =>
   clearOtherSessions: async () => {},
   clearAllSessionsForUser: async () => {},
   revokeCurrentVersion: async () => true,
+  revokeSession: async () => true,
 })
 
 const redirects: Record<JwtRole, string> = {
@@ -32,6 +33,7 @@ test('a second successful login revokes the prior JWT through the stored account
     incrementAuthVersionForUser: async () => ++version,
     clearAllSessionsForUser: async () => { clears++ }, clearOtherSessions: async () => {},
     revokeCurrentVersion: async () => true,
+    revokeSession: async () => true,
   }
   const service = createService(database, { compare: async () => true } as never, jwt, sessions)
   const body = { portal: 'staff', school_id: 'TEST-8', password: 'test-only-password' }

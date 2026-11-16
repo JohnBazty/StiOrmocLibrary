@@ -4,6 +4,7 @@ import { env } from '../../config/env.js'
 import { ALL_ROLES, dashboardForRole, toEffectiveRole, webDashboardForRole } from './auth.constants.js'
 import { createCsrfToken, sessionCookie } from './auth.middleware.js'
 import { createAuthSessionRepository } from './auth-session.repository.ts'
+import { mobileRefreshEnabled } from './login-device-policy.ts'
 import { validateLoginInput } from './auth.validation.js'
 
 const DUMMY_BCRYPT_HASH = '$2b$12$k1Pc4Uvw2o.7wwBZ1hQwHu5vTfEfRPRgRhhcaawYWpPJez0o7gaCq'
@@ -103,7 +104,10 @@ export function createLogoutController({ sessions = createAuthSessionRepository(
       const identity = response.locals.authenticationType === 'jwt'
         ? { accountId: response.locals.authenticatedUser.accountId, authVersion: response.locals.authenticatedUser.authVersion }
         : { userId: request.session.user.id, authVersion: Number(request.session.authVersion ?? 1) }
-      await sessions.revokeCurrentVersion(identity)
+      // With the phone-refresh flag a Student/Faculty web logout ends only its own session row; a bump would kill the phone's refresh family (D-14).
+      const user = response.locals.authenticatedUser
+      if (identity.accountId && mobileRefreshEnabled() && ['Student', 'Faculty'].includes(user?.role) && user.sessionId) await sessions.revokeSession({ ...identity, sessionId: user.sessionId })
+      else await sessions.revokeCurrentVersion(identity)
       await new Promise((resolve, reject) => request.session.destroy(error => error ? reject(error) : resolve()))
       response.clearCookie(env.session.name, {
         httpOnly: sessionCookie.httpOnly,

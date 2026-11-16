@@ -41,3 +41,4 @@ Follow-up (accepted): rotated and expired `mobile_refresh_tokens` rows are not p
 ## Change log
 
 - 2026-11-16: created with the tracer (migration 039, `createMobileRefreshService`, `POST /api/v1/auth/refresh`).
+- 2026-11-16: with MOBILE_REFRESH_ENABLED on, a Student/Faculty web logout through `/api/auth/logout` ends only that session's `library_login_sessions` row and no longer bumps `auth_version`, so it cannot kill the same account's phone refresh family (D-14). Staff and flag-off logouts still bump.
