@@ -1,7 +1,7 @@
 import type { Pool, RowDataPacket } from '../config/db.js'
 import { db } from '../config/db.js'
 import { enrollmentEnabled } from '../modules/enrollment/enrollment-policy.ts'
-import { loginDevicesEnabled } from '../modules/auth/login-device-policy.ts'
+import { loginDevicesEnabled, mobileRefreshEnabled } from '../modules/auth/login-device-policy.ts'
 
 const REQUIRED_COLUMNS: Record<string, string[]> = {
   categories: ['category_id', 'category_name', 'shelf_location', 'created_at', 'updated_at'],
@@ -69,7 +69,9 @@ export async function checkSchemaReadiness(database: Pool = db as Pool): Promise
     ...REQUIRED_COLUMNS,
     login_attempt_windows: ['identifier_hash', 'failed_count', 'window_started_at', 'locked_until'],
     login_otp_challenges: ['challenge_id', 'account_id', 'auth_version', 'code_hash', 'failed_count', 'expires_at', 'sent_at', 'consumed_at', 'resend_count', ...(enrollmentEnabled() ? ['restoration_semester_id'] : []), ...(loginDevicesEnabled() ? ['remember_device'] : [])],
-    library_login_sessions: ['session_id', 'account_id', 'auth_version', 'last_activity_at', 'revoked_at', ...(loginDevicesEnabled() ? ['device_token_hash', 'remembered_until'] : [])],
+    library_login_sessions: ['session_id', 'account_id', 'auth_version', 'last_activity_at', 'revoked_at', ...(loginDevicesEnabled() ? ['device_token_hash', 'remembered_until'] : []), ...(mobileRefreshEnabled() ? ['client', 'trusted_since'] : [])],
+    // Required only with the flag on, so the code can deploy dark before migration 039 (Pitfall 8).
+    ...(mobileRefreshEnabled() ? { mobile_refresh_tokens: ['token_hash', 'session_id', 'account_id', 'auth_version', 'issued_at', 'expires_at', 'rotated_at', 'replaced_by'] } : {}),
     ...(loginDevicesEnabled() ? { login_device_switches: ['token_hash', 'account_id', 'auth_version', 'replaced_session_id', 'remember_device', 'expires_at'] } : {}),
     clearance_semester_schedules: ['academic_term_id', 'deadline_at', 'row_version', 'updated_by', 'updated_at'],
     clearance_schedule_events: ['event_id', 'academic_term_id', 'previous_deadline', 'deadline_at', 'actor_id', 'created_at'],
