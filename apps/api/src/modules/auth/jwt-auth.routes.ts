@@ -5,7 +5,8 @@ import { jwtAuthService } from './jwt-auth.service.ts'
 import { authenticateJwt, bearerToken, ensureActiveJwtAccount, requireJwtRoles, verifyAccessToken } from './jwt-auth.middleware.ts'
 import { passwordRecoveryService } from './password-recovery.service.ts'
 import { deviceAccessLifetime, loginSecurityService, signSessionToken } from './login-security.service.ts'
-import { DEVICE_DEADLINE_SQL, DEVICE_IDLE_SQL, LOGIN_IDLE_MS, isDeviceSessionId, isDeviceToken, loginDevicesEnabled } from './login-device-policy.ts'
+import { DEVICE_DEADLINE_SQL, DEVICE_IDLE_SQL, LOGIN_IDLE_MS, isDeviceSessionId, isDeviceToken, loginDevicesEnabled, mobileRefreshEnabled } from './login-device-policy.ts'
+import { mobileRefreshService } from './mobile-refresh.service.ts'
 import { db } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
@@ -17,6 +18,16 @@ export function createJwtLoginController(service: Service = jwtAuthService) {
   return async (request: Request, response: Response, next: NextFunction) => {
     try { response.json({ success: true, message: 'Login successful.', data: await service.login(request.body) }) }
     catch (error) { next(error) }
+  }
+}
+
+export function createRefreshHandler(service: Pick<typeof mobileRefreshService, 'refresh'> = mobileRefreshService) {
+  return async (request: Request, response: Response, next: NextFunction) => {
+    response.set('Cache-Control', 'no-store')
+    try {
+      if (!mobileRefreshEnabled()) throw new HttpError(404, 'REFRESH_DISABLED', 'Mobile sign-in renewal is unavailable.')
+      response.json({ success: true, data: await service.refresh(request.body?.refresh_token) })
+    } catch (error) { next(error) }
   }
 }
 
@@ -121,6 +132,7 @@ jwtAuthRouter.post(['/register', '/register/resend', '/register/verify'], (_requ
     success: false, code: 'REGISTRATION_FLOW_REPLACED', message: 'Open the latest registration page to use Student roster signup. Staff accounts are set up by the library.',
   })
 })
+jwtAuthRouter.post('/refresh', createRefreshHandler()) // limiters arrive in plan 07-05
 jwtAuthRouter.post('/login', rateLimit({ windowMs: 10 * 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false }), async (request, response, next) => {
   response.set('Cache-Control', 'no-store')
   try {
