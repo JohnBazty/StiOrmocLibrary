@@ -3,6 +3,7 @@ import { Check, Clipboard, MapPin, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { AuthRole } from '../auth/auth-storage'
 import { fetchBookOverview } from './book-catalog-api'
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape'
 import { validateBookCartAddition } from './book-cart'
 import { buildApaBookReference } from './book-citation'
 import type { BookCatalogItem } from './book-catalog-types'
@@ -35,6 +36,7 @@ export function BookOverview({ titleId, role, activeBookCount, bookLimit, select
   const [error, setError] = useState('')
   const [citationVisible, setCitationVisible] = useState(false)
   const [copied, setCopied] = useState(false)
+  useCloseOnEscape(onClose)
 
   useEffect(() => {
     const controller = new AbortController()

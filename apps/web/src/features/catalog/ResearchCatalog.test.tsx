@@ -19,13 +19,13 @@ describe('ResearchCatalog view-only UI', () => {
     api.fetchResearchOverview.mockResolvedValue(paper)
     render(<ResearchCatalog />)
 
-    expect(await screen.findByRole('button', { name: 'View' })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'View SmartLib Research' })).toBeTruthy()
     expect(screen.getAllByText('SmartLib Research').length).toBeGreaterThan(0)
     expect(screen.getByPlaceholderText('Search research...')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /borrow/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /add to cart/i })).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: 'View' }))
+    fireEvent.click(screen.getByRole('button', { name: 'View SmartLib Research' }))
     expect(await screen.findByText('This is the complete research abstract.')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /borrow/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /add to cart/i })).toBeNull()
@@ -37,7 +37,7 @@ describe('ResearchCatalog view-only UI', () => {
     api.fetchResearchOverview.mockRejectedValue(new Error('Research details could not be loaded.'))
     render(<ResearchCatalog />)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'View' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'View SmartLib Research' }))
     expect(await screen.findByText('Research details unavailable')).toBeTruthy()
     expect(screen.getByText('Research details could not be loaded.')).toBeTruthy()
     expect(screen.getByRole('dialog')).toBeTruthy()
