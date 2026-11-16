@@ -7,6 +7,10 @@ export const SWITCH_DEVICE_MS = 2 * 60_000
 export const loginDevicesEnabled = () => process.env.LOGIN_DEVICES_ENABLED === 'true'
 export const MOBILE_REFRESH_MS = 30 * 24 * 60 * 60_000
 export const mobileRefreshEnabled = () => process.env.MOBILE_REFRESH_ENABLED === 'true'
+// Ethan's 07-03 checkpoint (option-b, 2026-11-16): a lost refresh reply may be retried with the old token for 10 s; 0 means strict reuse.
+export const REFRESH_REUSE_GRACE_MS = 10_000
+// Same checkpoint: null = a trusted phone stays trusted until a password reset or a newer phone replaces it; else days * 24 * 60 * 60_000.
+export const MOBILE_TRUST_MAX_MS: number | null = null
 
 export const DEVICE_IDLE_SQL = "last_activity_at>NOW()-INTERVAL '10 minutes'"
 export const DEVICE_DEADLINE_SQL = '(remembered_until IS NULL OR remembered_until>NOW())'
