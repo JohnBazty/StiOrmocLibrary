@@ -80,7 +80,16 @@ export function createMobileRefreshService(database: Pool = db, now = Date.now, 
     return outcome.value
   }
 
-  return { issue, refresh }
+  /** Sign-out by refresh token alone, so it works after the access token expired. True when a live session was revoked. */
+  async function revoke(token: unknown) {
+    if (!isDeviceToken(token)) return false
+    const [result] = await database.execute<{ affectedRows: number }>(
+      'UPDATE library_login_sessions SET revoked_at=NOW() WHERE revoked_at IS NULL AND session_id=(SELECT session_id FROM mobile_refresh_tokens WHERE token_hash=?)',
+      [deviceTokenHash('refresh', token)])
+    return Boolean(result.affectedRows)
+  }
+
+  return { issue, refresh, revoke }
 }
 
 export const mobileRefreshService = createMobileRefreshService()

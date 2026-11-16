@@ -31,6 +31,17 @@ export function createRefreshHandler(service: Pick<typeof mobileRefreshService, 
   }
 }
 
+/** Always the same 200, so the reply says nothing about whether the token was valid (D-10). */
+export function createRevokeHandler(service: Pick<typeof mobileRefreshService, 'revoke'> = mobileRefreshService) {
+  return async (request: Request, response: Response, next: NextFunction) => {
+    response.set('Cache-Control', 'no-store')
+    try {
+      await service.revoke(request.body?.refresh_token)
+      response.json({ success: true, data: { signedOut: true } })
+    } catch (error) { next(error) }
+  }
+}
+
 export const jwtAuthRouter = Router()
 const deviceCookieName = env.isProduction ? '__Host-library-device' : 'library-device'
 const deviceCookieOptions = { httpOnly: true, secure: env.isProduction, sameSite: 'strict' as const, path: '/' }
@@ -133,6 +144,7 @@ jwtAuthRouter.post(['/register', '/register/resend', '/register/verify'], (_requ
   })
 })
 jwtAuthRouter.post('/refresh', createRefreshHandler()) // limiters arrive in plan 07-05
+jwtAuthRouter.post('/refresh/revoke', createRevokeHandler())
 jwtAuthRouter.post('/login', rateLimit({ windowMs: 10 * 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false }), async (request, response, next) => {
   response.set('Cache-Control', 'no-store')
   try {
