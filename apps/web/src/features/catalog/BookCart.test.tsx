@@ -83,6 +83,14 @@ describe('BookCart', () => {
     await waitFor(()=>expect(api.fetchCartState).toHaveBeenCalled())
     expect(screen.getByRole('heading',{name:'Clean Code'})).toBeTruthy()
   })
+  it('shows the current loan and request when the cart reaches the borrowing limit',async()=>{
+    api.submitBorrowRequest.mockRejectedValueOnce(new BookCartApiError('You have 1 active loan and 1 book request. That fills the limit of 2. Return a borrowed book or cancel a request, then try again.','STUDENT_BORROW_LIMIT_REACHED'))
+    render(<><AddFixture/><BookCart/></>)
+    fireEvent.click(screen.getByRole('button',{name:'Add fixture'}))
+    fireEvent.click(screen.getByRole('button',{name:'Check Out'}))
+    await screen.findByText('You have 1 active loan and 1 book request. That fills the limit of 2. Return a borrowed book or cancel a request, then try again. Your cart has been kept.')
+    expect(screen.getByText('Clean Code')).toBeTruthy()
+  })
   it('keeps a prepared cart when the server rejects submission at the active limit',async()=>{
     api.submitBorrowRequest.mockRejectedValueOnce(new BookCartApiError('The approved borrowing limit is 2 active books or requests.','STUDENT_BORROW_LIMIT_REACHED'))
     render(<><AddFixture/><BookCart/></>)

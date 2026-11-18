@@ -1,4 +1,4 @@
-import type { Pool } from '../../config/db.js'
+import type { Pool, PoolConnection } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import {
@@ -7,6 +7,7 @@ import {
   synchronizeLegacyAvailability, type InventoryActor,
 } from './inventory.repository.ts'
 import type { InventoryCondition, InventoryListFilters, ManualAvailability } from './inventory.validation.ts'
+import { allocateWaitingRequests } from '../reservations/book-request.service.ts'
 
 export const inventorySummary = (database: Pool = db) => getInventorySummary(database)
 export const inventoryCopies = (filters: InventoryListFilters, database: Pool = db) => listInventoryCopies(database, filters)
@@ -109,6 +110,7 @@ export async function setInventoryAvailability(
   availabilityStatus: ManualAvailability,
   actor: InventoryActor,
   database: Pool = db,
+  allocateWaiting: (connection: PoolConnection, titleId: number) => Promise<number[]> = allocateWaitingRequests,
 ) {
   const connection = await database.getConnection()
   try {
@@ -139,6 +141,12 @@ export async function setInventoryAvailability(
        WHERE physical_copy_id = ?`, [availabilityStatus, copy.physical_copy_id])
     await synchronizeLegacyAvailability(connection, copy.material_id, availabilityStatus)
     await recordInventoryAudit(connection, copy, 'Availability Changed', actor, copy.condition_status, availabilityStatus)
+    if (availabilityStatus === 'Available') await allocateWaiting(connection, copy.title_id)
+    const [saved] = await connection.execute<Array<{ availability_status: string }>>(
+      'SELECT availability_status FROM physical_copies WHERE physical_copy_id = ?',
+      [copy.physical_copy_id],
+    )
+    const savedStatus = saved[0]?.availability_status ?? availabilityStatus
     await connection.commit()
     return {
       physical_copy_id: copy.physical_copy_id,
@@ -146,8 +154,8 @@ export async function setInventoryAvailability(
       accession_number: copy.accession_number,
       barcode: copy.barcode,
       condition_status: copy.condition_status,
-      availability_status: availabilityStatus,
-      reservations_blocked: availabilityStatus === 'Unavailable',
+      availability_status: savedStatus,
+      reservations_blocked: savedStatus === 'Unavailable',
     }
   } catch (error) {
     await connection.rollback()

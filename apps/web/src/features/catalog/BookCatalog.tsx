@@ -21,6 +21,7 @@ import { useBookCart } from './book-cart-store'
 import { validateBookCartAddition } from './book-cart'
 import { fetchCartState } from './book-cart-api'
 import { TitleAlreadyActiveDialog } from './TitleAlreadyActiveDialog'
+import { ConfirmBookActionDialog } from './ConfirmBookActionDialog'
 
 import type { BookCartItem } from './book-cart-store'
 
@@ -52,6 +53,9 @@ export function BookCatalog() {
   const [activeTitleIds, setActiveTitleIds] = useState<number[] | null>(null)
 
   const [heldTitle, setHeldTitle] = useState<string | null>(null)
+
+  const [waitingTitle, setWaitingTitle] = useState<string | null>(null)
+  const [confirmBook, setConfirmBook] = useState<{ kind: 'borrow' | 'reserve'; book: CatalogRecord } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -104,15 +108,20 @@ export function BookCatalog() {
 
   }
 
+  async function reserveBook(book: { titleId: number; title: string }) {
+    if (holdIfAlreadyActive(book.titleId, book.title)) return
+    if (await reservations.reserve(book)) setWaitingTitle(book.title)
+  }
+
   function addBook(book: CatalogRecord) {
     selectBook({titleId:Number(book.id),title:book.title,author:book.author || 'Author not recorded',isbn:book.isbn ?? null,coverImagePath:book.coverImagePath ?? null,shelfLocation:null,callNumber:null,previewBarcode:null})
   }
 
   function bookAction(book: CatalogRecord) {
     const id = Number(book.id), selected = cartBooks.has(id), unavailable = Number(book.available) === 0
-    return <div className="space-y-2"><button onClick={() => holdIfAlreadyActive(id, book.title) ? undefined : unavailable ? void reservations.reserve({titleId:id,title:book.title}) : addBook(book)} disabled={Number(book.copyCount) === 0 || reservations.pending.has(id) || reservations.reserved.has(id) || (!unavailable && selected)} className="min-h-11 rounded-full bg-[#0b5ea2] px-3 py-2 text-white disabled:opacity-50">
+    return <div className="space-y-2"><button onClick={() => { if (holdIfAlreadyActive(id, book.title)) return; setConfirmBook({ kind: unavailable ? 'reserve' : 'borrow', book }) }} disabled={Number(book.copyCount) === 0 || reservations.pending.has(id) || reservations.reserved.has(id) || (!unavailable && selected)} className="min-h-11 rounded-full bg-[#0b5ea2] px-3 py-2 text-white disabled:opacity-50">
       {Number(book.copyCount) === 0 ? 'Digital only' : reservations.reserved.has(id) ? 'Reserved' : reservations.pending.has(id) ? 'Reserving…' : unavailable ? 'Reserve book' : selected ? 'In cart' : 'Borrow book'}
-    </button>{reservations.errors.has(id) && <p role="alert" className="text-xs text-red-700">{reservations.errors.get(id)}</p>}{reservations.reserved.has(id) && <p role="status" className="text-xs text-green-700">On the waiting list. We will notify you when a copy is ready.</p>}</div>
+    </button>{reservations.errors.has(id) && <p role="alert" className="text-xs text-red-700">{reservations.errors.get(id)}</p>}</div>
   }
 
   return <>
@@ -130,8 +139,10 @@ export function BookCatalog() {
 
     <PublicCatalogPage embedded refreshKey={refreshKey} onViewBook={openBook} renderBookAction={bookAction}/>
 
-    {selectedTitleId !== null && <BookOverview titleId={selectedTitleId} role={viewer.role} activeBookCount={viewerReady ? viewer.activeBookCount : 0} bookLimit={viewer.bookLimit} selectedBookCount={cart.length} alreadySelected={cartBooks.has(selectedTitleId)} alreadyReserved={reservations.reserved.has(selectedTitleId)} onAddToCart={selectBook} onReserve={book => { if (!holdIfAlreadyActive(book.titleId, book.title)) void reservations.reserve(book) }} requestDisabled={reservations.pending.has(selectedTitleId)} onClose={closeBook} requestError={reservations.errors.get(selectedTitleId) ?? error} requestNotice={reservations.reserved.has(selectedTitleId) ? 'Reserved. We will notify you when a copy is ready.' : notice}/>}
+    {selectedTitleId !== null && <BookOverview titleId={selectedTitleId} role={viewer.role} activeBookCount={viewerReady ? viewer.activeBookCount : 0} bookLimit={viewer.bookLimit} selectedBookCount={cart.length} alreadySelected={cartBooks.has(selectedTitleId)} alreadyReserved={reservations.reserved.has(selectedTitleId)} onAddToCart={selectBook} onReserve={book => void reserveBook(book)} requestDisabled={reservations.pending.has(selectedTitleId)} onClose={closeBook} requestError={reservations.errors.get(selectedTitleId) ?? error} requestNotice={notice}/>}
+    {confirmBook ? <ConfirmBookActionDialog kind={confirmBook.kind} title={confirmBook.book.title} onCancel={() => setConfirmBook(null)} onConfirm={() => { const choice = confirmBook; setConfirmBook(null); if (choice.kind === 'borrow') addBook(choice.book); else void reserveBook({ titleId: Number(choice.book.id), title: choice.book.title }) }} /> : null}
     {heldTitle ? <TitleAlreadyActiveDialog titles={[heldTitle]} onClose={() => setHeldTitle(null)} /> : null}
+    {waitingTitle ? <div className="fixed inset-0 z-[130] flex items-center justify-center bg-[#0b5ea2]/60 p-4"><section role="dialog" aria-modal="true" aria-labelledby="waiting-list-title" className="w-full max-w-md rounded-2xl bg-white p-6 text-[#0b5ea2] shadow-2xl"><h2 id="waiting-list-title" className="font-display text-xl font-bold">On the waiting list</h2><p className="mt-3 text-sm leading-6">We will notify you when a copy of {waitingTitle} is ready.</p><div className="mt-5 flex justify-end"><button type="button" autoFocus onClick={() => setWaitingTitle(null)} className="h-11 rounded-xl bg-[#0b5ea2] px-5 text-sm font-bold text-white">OK</button></div></section></div> : null}
 
   </>
 

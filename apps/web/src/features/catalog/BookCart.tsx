@@ -92,9 +92,10 @@ export function BookCart() {
       if(Array.isArray(blockers)&&blockers.every(value=>typeof value==='string')){
         // The authoritative standing banner owns balance warnings. Keep other holds.
         setError(blockers.filter(value=>!value.startsWith('Settle the outstanding library balance of ')).join(' '))
-      }else setError(reason instanceof BookCartApiError && reason.code === 'STUDENT_BORROW_LIMIT_REACHED'
-        ? `${reason.message} Return a book or cancel an existing request, then try again. Your cart has been kept.`
-        : reason instanceof Error ? reason.message : 'The borrow request could not be submitted.')
+      }else if(reason instanceof BookCartApiError && reason.code === 'STUDENT_BORROW_LIMIT_REACHED') {
+        const specific = reason.message.startsWith('You have ')
+        setError(specific ? `${reason.message} Your cart has been kept.` : `${reason.message} Return a book or cancel an existing request, then try again. Your cart has been kept.`)
+      }else setError(reason instanceof Error ? reason.message : 'The borrow request could not be submitted.')
     } finally {
       saving.current=false; setSubmitting(false); void refreshCart()
     }

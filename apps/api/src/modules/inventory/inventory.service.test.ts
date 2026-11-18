@@ -23,6 +23,9 @@ function fakeDatabase(scenario: Scenario = {}) {
       if (sql.includes('FROM physical_copies pc')) return [[copy]]
       if (sql.includes('FROM borrow_transactions')) return [scenario.activeLoan ? [{ transaction_id: 9, transaction_status: 'Borrowed' }] : []]
       if (sql.includes('FROM reservations')) return [scenario.activeReservation ? [{ reservation_id: 11, reservation_status: 'ready_for_pickup' }] : []]
+      if (sql.includes('SELECT availability_status FROM physical_copies WHERE physical_copy_id')) {
+        return [[{ availability_status: state.copyUpdates.at(-1)?.[0] ?? copy.availability_status }]]
+      }
       if (sql.includes('UPDATE physical_copies')) { state.copyUpdates.push(parameters); return [{ affectedRows: 1 }] }
       if (sql.includes('UPDATE materials')) { state.materialUpdates.push(parameters); return [{ affectedRows: 1 }] }
       if (sql.includes('UPDATE reservations')) { state.reservationReleases += 1; return [{ affectedRows: 1 }] }
@@ -76,6 +79,19 @@ test('borrowed copy must use the circulation lost-report workflow', async () => 
   await assert.rejects(overrideInventoryCondition('BC-42', 'Lost', { userId: 1, label: 'Librarian' }, database),
     (error: unknown) => error instanceof HttpError && error.code === 'PHYSICAL_COPY_HAS_ACTIVE_LOAN')
   assert.equal(state.copyUpdates.length, 0)
+})
+
+test('making a copy available offers it to the next waiting request before the change is saved', async () => {
+  const { database, state } = fakeDatabase({ availability: 'Unavailable' })
+  const offered: number[] = []
+  const result = await setInventoryAvailability('BC-42', 'Available', { userId: 1, label: 'Librarian' }, database, async (_connection, titleId) => {
+    offered.push(titleId)
+    assert.equal(state.committed, 0)
+    return [2]
+  })
+  assert.deepEqual(offered, [3])
+  assert.equal(result.availability_status, 'Available')
+  assert.equal(state.committed, 1)
 })
 
 test('manual availability synchronizes legacy row and writes audit history', async () => {

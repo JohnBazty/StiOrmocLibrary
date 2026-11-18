@@ -17,14 +17,59 @@ function requestKey(v: unknown) {
   if (typeof v !== 'string' || !/^[A-Za-z0-9_-]{16,64}$/.test(v)) throw fail('REQUEST_KEY_INVALID','The request confirmation ID is invalid.')
   return v
 }
+type AccountHold = { total: number; loans: number | null; requests: number | null }
+
+async function accountHold(q: PoolConnection, userId: number): Promise<AccountHold> {
+  const [rows] = await q.execute<RowDataPacket[]>(`SELECT
+    (SELECT COUNT(*) AS total FROM (
+      SELECT DISTINCT COALESCE(pc.title_id,-bt.material_id) AS title_id FROM borrow_transactions bt
+        LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id
+        WHERE bt.user_id=? AND bt.transaction_status IN ('Pending','Borrowed','Overdue')
+      UNION SELECT COALESCE(book_title_id,-material_id) FROM reservations WHERE user_id=? AND reservation_status IN ${active}
+    ) commitments) AS total,
+    (SELECT COUNT(*) FROM (
+      SELECT DISTINCT COALESCE(pc.title_id,-bt.material_id) AS title_id FROM borrow_transactions bt
+        LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id
+        WHERE bt.user_id=? AND bt.transaction_status IN ('Pending','Borrowed','Overdue')
+    ) loan_titles) AS loans,
+    (SELECT COUNT(*) FROM (
+      SELECT DISTINCT COALESCE(r.book_title_id,-r.material_id) AS title_id FROM reservations r
+      WHERE r.user_id=? AND r.reservation_status IN ${active}
+        AND NOT EXISTS (
+          SELECT 1 FROM borrow_transactions bt
+          LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id
+          WHERE bt.user_id=r.user_id AND bt.transaction_status IN ('Pending','Borrowed','Overdue')
+            AND COALESCE(pc.title_id,-bt.material_id)=COALESCE(r.book_title_id,-r.material_id)
+        )
+    ) request_titles) AS requests`,[userId,userId,userId,userId])
+  const row = rows[0] ?? {}
+  const loans = Number(row.loans)
+  const requests = Number(row.requests)
+  return { total: Number(row.total ?? 0), loans: Number.isFinite(loans) ? loans : null, requests: Number.isFinite(requests) ? requests : null }
+}
+
+function countLabel(count: number, singular: string, plural: string) {
+  return `${count} ${count === 1 ? singular : plural}`
+}
+
+export function borrowLimitMessage(limit: number, hold: AccountHold, cartSize = 0) {
+  if (hold.loans === null || hold.requests === null) return `The approved borrowing limit is ${limit} active books or requests.`
+  const parts = []
+  if (hold.loans > 0) parts.push(countLabel(hold.loans, 'active loan', 'active loans'))
+  if (hold.requests > 0) parts.push(countLabel(hold.requests, 'book request', 'book requests'))
+  const held = parts.length ? parts.join(' and ') : 'no active loans or requests'
+  const room = Math.max(0, limit - hold.total)
+  const next = hold.loans > 0 && hold.requests > 0
+    ? 'Return a borrowed book or cancel a request'
+    : hold.loans > 0 ? 'Return a borrowed book' : 'Cancel a request'
+  if (hold.total < limit && cartSize > room) {
+    return `You have ${held}. This cart has ${countLabel(cartSize, 'book', 'books')}, which would make ${hold.total + cartSize}. The limit is ${limit}. Remove ${cartSize - room === 1 ? 'a book' : 'books'} from the cart${hold.loans > 0 ? ' or return a borrowed book' : ''}, then try again.`
+  }
+  return `You have ${held}. That fills the limit of ${limit}. ${next}, then try again.`
+}
+
 async function commitments(q: PoolConnection, userId: number) {
-  const [rows] = await q.execute<RowDataPacket[]>(`SELECT COUNT(*) AS total FROM (
-    SELECT DISTINCT COALESCE(pc.title_id,-bt.material_id) AS title_id FROM borrow_transactions bt
-      LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id
-      WHERE bt.user_id=? AND bt.transaction_status IN ('Pending','Borrowed','Overdue')
-    UNION SELECT COALESCE(book_title_id,-material_id) FROM reservations WHERE user_id=? AND reservation_status IN ${active}
-    ) commitments`,[userId,userId])
-  return Number(rows[0]?.total ?? 0)
+  return (await accountHold(q, userId)).total
 }
 async function lock(q: PoolConnection) {
   // Consistent lock order with attendance, Phase 5 returns and desk receipts.
@@ -137,7 +182,8 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
       UNION ALL SELECT bt.transaction_id FROM borrow_transactions bt JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id
       WHERE bt.user_id=? AND pc.title_id=? AND bt.transaction_status IN ('Pending','Borrowed','Overdue')`,[userId,titleId,userId,titleId])
     if(duplicates.length) throw fail('BOOK_ALREADY_IN_ACCOUNT','You already have this title in a book request or active loan.')
-    if(eligible.limit!==null && await commitments(q,userId)>=eligible.limit) throw fail('STUDENT_BORROW_LIMIT_REACHED',`The approved borrowing limit is ${eligible.limit} active books or requests.`)
+    const hold=await accountHold(q,userId)
+    if(eligible.limit!==null && hold.total>=eligible.limit) throw fail('STUDENT_BORROW_LIMIT_REACHED',borrowLimitMessage(eligible.limit,hold))
     const policy=await createBorrowingPolicyService(database,clock).resolveActive(q,now)
     const reservationLimit=roleReservationLimit(policy,String(eligible.user?.user_role))
     const [counts]=await q.execute<RowDataPacket[]>(`SELECT COUNT(*) AS n FROM reservations WHERE user_id=? AND request_kind='Reservation' AND reservation_status IN ${active}`,[userId])
@@ -199,6 +245,11 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
       return transaction(async q=> {
         const userId=await linkedUser(q,positiveId(accountId,'accountId'))
         const sorted=[...titleIds].sort((a,b)=>a-b)
+        const eligible=await borrowerEligibility(q,userId,clock(),'Online');requireEligible(eligible)
+        if(eligible.limit!==null) {
+          const hold=await accountHold(q,userId)
+          if(hold.total+sorted.length>eligible.limit) throw fail('STUDENT_BORROW_LIMIT_REACHED',borrowLimitMessage(eligible.limit,hold,sorted.length))
+        }
         const [prior]=await q.execute<RowDataPacket[]>(`SELECT book_title_id FROM reservations
           WHERE user_id=? AND LEFT(client_request_id,?)=? ORDER BY book_title_id`,[userId,key.length+1,`${key}_`])
         if(prior.length && JSON.stringify(prior.map(r=>Number(r.book_title_id)))!==JSON.stringify(sorted))

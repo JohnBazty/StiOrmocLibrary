@@ -53,7 +53,9 @@ describe('InventoryDashboard', () => {
       expect(dropdown.open).toBe(false)
       fireEvent.click(trigger)
       expect(dropdown.open).toBe(true)
-      return { trigger, dropdown, actions: within(dropdown) }
+      const actions = within(screen.getByRole('group', { name: `Actions for ${accession}` }))
+      expect(trigger.closest('tr')?.contains(actions.getByRole('button', { name: 'Move copies' }))).toBe(false)
+      return { trigger, dropdown, actions }
     }
 
     const borrowed = await openActions('ACC-1')
@@ -78,14 +80,15 @@ describe('InventoryDashboard', () => {
 
     fireEvent.keyDown(lostThesis.trigger, { key: 'Escape' })
     expect(lostThesis.dropdown.open).toBe(false)
-    available.dropdown.open = true
-    fireEvent.click(available.actions.getByRole('button', { name: 'Make unavailable' }))
+    fireEvent.click(available.trigger)
+    fireEvent.click(screen.getByRole('button', { name: 'Make unavailable' }))
     expect(available.dropdown.open).toBe(false)
     expect(screen.getByRole('alertdialog', { name: 'Make copy unavailable?' })).toBeTruthy()
+    expect(screen.getByText('Students cannot borrow this copy. They can still reserve the title and wait. This copy is not set aside for anyone until you make it available again.')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
     fireEvent.click(available.trigger)
-    fireEvent.click(available.actions.getByRole('button', { name: 'Report lost' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Report lost' }))
     const reportLost = within(screen.getByRole('dialog', { name: 'Update physical condition' }))
     expect((reportLost.getByRole('radio', { name: 'lost' }) as HTMLInputElement).checked).toBe(true)
   })

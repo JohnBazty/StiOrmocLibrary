@@ -8,6 +8,7 @@ import { buildApaBookReference } from './book-citation'
 import type { BookCatalogItem } from './book-catalog-types'
 import { BookCoverThumbnail } from './BookCoverThumbnail'
 import { CatalogDetailsPanel } from './CatalogDetailsPanel'
+import { ConfirmBookActionDialog } from './ConfirmBookActionDialog'
 
 type Props = {
   titleId: number
@@ -35,6 +36,7 @@ export function BookOverview({ titleId, role, activeBookCount, bookLimit, select
   const [error, setError] = useState('')
   const [citationVisible, setCitationVisible] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [pending, setPending] = useState<'borrow' | 'reserve' | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -65,6 +67,7 @@ export function BookOverview({ titleId, role, activeBookCount, bookLimit, select
   }
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex justify-end bg-[#0b5ea2]/45" role="dialog" aria-modal="true" aria-labelledby="book-overview-title">
       <button className="absolute inset-0" aria-label="Close book overview" onClick={onClose} />
       <aside className="relative z-10 h-full w-full max-w-2xl overflow-y-auto bg-[#FFFFFF] shadow-2xl">
@@ -119,12 +122,14 @@ export function BookOverview({ titleId, role, activeBookCount, bookLimit, select
             <div className="mt-5 flex flex-col gap-3 border-t border-[#0b5ea2]/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2 text-xs font-semibold text-[#0b5ea2]/65"><MapPin size={15} />{book.shelfLocation ?? book.callNumber ?? 'Shelf not recorded'}</div>
               {['Student','Faculty'].includes(role) && onRequest && book.totalCopiesCount>0 ? <button onClick={()=>onRequest(book)} disabled={alreadySelected||requestDisabled} className="h-11 rounded-xl bg-[#0b5ea2] px-5 text-sm font-bold text-white disabled:opacity-50">{alreadySelected?'Requested / selected':requestDisabled?'Please wait…':book.availableCopiesCount>0?'Borrow book':'Reserve book'}</button> : null}
-              {!onRequest && ['Student', 'Faculty'].includes(role) && book.availableCopiesCount > 0 ? <button onClick={addToCart} disabled={alreadySelected || requestDisabled} className="h-11 rounded-xl bg-[#0b5ea2] px-5 text-sm font-bold text-[#FFFFFF] disabled:opacity-50">{alreadySelected ? 'In borrow cart' : 'Borrow book'}</button> : null}
-              {!onRequest && ['Student', 'Faculty'].includes(role) && book.totalCopiesCount > 0 && book.availableCopiesCount === 0 && onReserve ? <button onClick={() => onReserve(book)} disabled={requestDisabled || alreadyReserved} className="h-11 rounded-xl bg-[#FFF200] px-5 text-sm font-bold text-[#0b5ea2] disabled:opacity-50">{alreadyReserved ? 'Reserved' : requestDisabled ? 'Please wait…' : 'Reserve book'}</button> : null}
+              {!onRequest && ['Student', 'Faculty'].includes(role) && book.availableCopiesCount > 0 ? <button onClick={() => setPending('borrow')} disabled={alreadySelected || requestDisabled} className="h-11 rounded-xl bg-[#0b5ea2] px-5 text-sm font-bold text-[#FFFFFF] disabled:opacity-50">{alreadySelected ? 'In borrow cart' : 'Borrow book'}</button> : null}
+              {!onRequest && ['Student', 'Faculty'].includes(role) && book.totalCopiesCount > 0 && book.availableCopiesCount === 0 && onReserve ? <button onClick={() => setPending('reserve')} disabled={requestDisabled || alreadyReserved} className="h-11 rounded-xl bg-[#FFF200] px-5 text-sm font-bold text-[#0b5ea2] disabled:opacity-50">{alreadyReserved ? 'Reserved' : requestDisabled ? 'Please wait…' : 'Reserve book'}</button> : null}
             </div>
           </> : null}
         </div>
       </aside>
     </div>
+    {pending && book ? <ConfirmBookActionDialog kind={pending} title={book.title} onCancel={() => setPending(null)} onConfirm={() => { const choice = pending; setPending(null); if (choice === 'borrow') addToCart(); else onReserve?.(book) }} /> : null}
+    </>
   )
 }

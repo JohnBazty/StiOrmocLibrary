@@ -4,7 +4,8 @@ import {
   AlertTriangle, Barcode, BookCopy, CheckCircle2, ChevronDown, Download, PackageSearch,
   FileText, GraduationCap, RefreshCw, ScanBarcode, Search, ShieldAlert, X, XCircle,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { PageHeader, SectionCard, StatCard, cn } from '../../components/ui'
 import { inventoryApi, InventoryApiError } from './inventory-api'
 import type { InventoryCopy, InventoryFilters, InventoryPagination, InventoryRemovalTarget, InventorySummary, ThesisInventoryFilters, ThesisInventoryRow, ThesisInventorySummary } from './types'
@@ -37,27 +38,74 @@ type InventoryAction = {
 function InventoryActions({ accession, actions }: { accession: string; actions: InventoryAction[] }) {
   const dropdown = useRef<HTMLDetailsElement>(null)
   const trigger = useRef<HTMLElement>(null)
-  function close() {
+  const menu = useRef<HTMLDivElement>(null)
+  const [open, setOpen] = useState(false)
+  const [position, setPosition] = useState({ top: 0, left: 0 })
+  function close(restoreFocus = false) {
     if (dropdown.current) dropdown.current.open = false
-    trigger.current?.focus()
+    setOpen(false)
+    if (restoreFocus) trigger.current?.focus()
   }
+  function toggle(event: MouseEvent) {
+    event.preventDefault()
+    const next = !open
+    if (next) window.dispatchEvent(new CustomEvent('inventory-actions-open', { detail: dropdown.current }))
+    if (dropdown.current) dropdown.current.open = next
+    setOpen(next)
+  }
+  useEffect(() => {
+    function closeForAnother(event: Event) {
+      if ((event as CustomEvent<HTMLDetailsElement>).detail !== dropdown.current) close()
+    }
+    window.addEventListener('inventory-actions-open', closeForAnother)
+    return () => window.removeEventListener('inventory-actions-open', closeForAnother)
+  }, [])
+  function place() {
+    const rect = trigger.current?.getBoundingClientRect()
+    if (!rect) return
+    const width = 176
+    const height = menu.current?.offsetHeight ?? 0
+    const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8)
+    const below = rect.bottom + 4
+    const top = height > 0 && below + height > window.innerHeight - 8 ? Math.max(8, rect.top - height - 4) : below
+    setPosition({ top, left })
+  }
+  useLayoutEffect(() => { if (open) place() }, [open, actions.length])
+  useEffect(() => {
+    if (!open) return
+    function dismiss(event: PointerEvent) {
+      const target = event.target
+      if (!(target instanceof Node) || dropdown.current?.contains(target) || menu.current?.contains(target)) return
+      close()
+    }
+    document.addEventListener('pointerdown', dismiss)
+    window.addEventListener('resize', place)
+    document.addEventListener('scroll', place, true)
+    return () => {
+      document.removeEventListener('pointerdown', dismiss)
+      window.removeEventListener('resize', place)
+      document.removeEventListener('scroll', place, true)
+    }
+  }, [open])
 
-  return <details ref={dropdown} name="inventory-row-actions" className="group w-44 max-w-full" onKeyDown={event => {
-    if (event.key === 'Escape' && dropdown.current?.open) { event.stopPropagation(); close() }
-  }}>
-    <summary ref={trigger} aria-label={`Actions for ${accession}`} className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg border border-[#0b5ea2]/20 px-3 py-2 text-sm font-semibold text-[#0b5ea2] hover:bg-[#0b5ea2]/5 dark:border-white/20 dark:text-white dark:hover:bg-white/10 [&::-webkit-details-marker]:hidden">
-      Actions <ChevronDown size={16} aria-hidden="true" className="shrink-0 group-open:rotate-180" />
-    </summary>
-    <div className="mt-1 space-y-1 rounded-lg border border-[#0b5ea2]/15 bg-white p-1 shadow-sm dark:border-white/15 dark:bg-[#001a4d]">
+  return <>
+    <details ref={dropdown} className="group w-44 max-w-full" onKeyDown={event => {
+      if (event.key === 'Escape' && open) { event.stopPropagation(); close(true) }
+    }}>
+      <summary ref={trigger} aria-label={`Actions for ${accession}`} onClick={toggle} className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg border border-[#0b5ea2]/20 px-3 py-2 text-sm font-semibold text-[#0b5ea2] hover:bg-[#0b5ea2]/5 dark:border-white/20 dark:text-white dark:hover:bg-white/10 [&::-webkit-details-marker]:hidden">
+        Actions <ChevronDown size={16} aria-hidden="true" className="shrink-0 group-open:rotate-180" />
+      </summary>
+    </details>
+    {open ? createPortal(<div ref={menu} role="group" aria-label={`Actions for ${accession}`} style={{ top: position.top, left: position.left }} className="fixed z-40 w-44 space-y-1 rounded-lg border border-[#0b5ea2]/15 bg-white p-1 shadow-lg dark:border-white/15 dark:bg-[#001a4d]">
       {actions.map(action => <button key={action.label} type="button" disabled={action.disabled} title={action.description}
         aria-label={action.destructive ? `Delete ${accession}` : undefined}
-        onClick={() => { close(); action.onSelect() }}
+        onClick={() => { close(true); action.onSelect() }}
         className="block min-h-11 w-full rounded-md px-2 py-2 text-left text-sm text-[#0b5ea2] hover:bg-[#0b5ea2]/5 disabled:cursor-not-allowed disabled:opacity-45 dark:text-white dark:hover:bg-white/10">
         {action.label}
         {action.disabled && action.destructive && action.description && <span className="mt-1 block text-xs">{action.description}</span>}
       </button>)}
-    </div>
-  </details>
+    </div>, document.body) : null}
+  </>
 }
 
 function ConditionBadge({ condition }: { condition: string }) {
@@ -143,7 +191,7 @@ function AvailabilityConfirmationDialog({
         <div className="rounded-xl bg-[#0b5ea2]/5 p-4 text-[#0b5ea2]"><p className="font-bold">{copy.item_title}</p><p className="mt-1 text-xs text-[#0b5ea2]/65">Accession {copy.accession_number} · Barcode {copy.barcode}</p><p className="mt-2 text-xs">Current availability: <strong>{copy.availability_status}</strong></p></div>
         <div id="availability-dialog-description" className="flex gap-3 rounded-xl border border-[#0b5ea2]/20 bg-[#FFF200]/45 p-4 text-sm leading-6 text-[#0b5ea2]">
           {becomingUnavailable ? <ShieldAlert className="mt-0.5 shrink-0" size={19} /> : <CheckCircle2 className="mt-0.5 shrink-0" size={19} />}
-          <p>{becomingUnavailable ? <>This copy will be hidden from student search availability and cannot be assigned to new reservations.</> : <>This copy will return to active search results and may be assigned to a student reservation.</>}</p>
+          <p>{becomingUnavailable ? <>Students cannot borrow this copy. They can still reserve the title and wait. This copy is not set aside for anyone until you make it available again.</> : <>Students can borrow this copy again. It can also be set aside for someone on the waiting list.</>}</p>
         </div>
         {error ? <div className="rounded-xl bg-[#FFF200] p-3 text-sm font-semibold text-[#0b5ea2]" role="alert">{error}</div> : null}
       </div>
