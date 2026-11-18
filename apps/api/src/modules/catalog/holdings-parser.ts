@@ -9,7 +9,7 @@ export const holdingsFields = [...legacyHoldingsFields, 'categoryName', 'shelfLo
 export type HoldingsField = typeof holdingsFields[number]
 export type SheetMapping = { sheet: string; headerRow: number; columns: Partial<Record<HoldingsField, number>>; categoryId?: number; location?: string; programId?: number }
 export type HoldingsSheet = { name: string; rows: string[][]; mapping: SheetMapping; headers: string[] }
-export type HoldingsData = { summary?: string; title: string; author: string; isbn: string; edition: string; publisher: string; publicationYear: string; copyrightYear: string; pages: string; copies: string; missingCopies: string; accessions: string; barcodes: string; callNumber: string; categoryId: number | null; location: string; programId: number | null; generateAccessions: boolean; categoryName?: string; shelfLocation?: string; autoCorrections?: ImportCorrection[] }
+export type HoldingsData = { summary?: string; title: string; author: string; isbn: string; edition: string; publisher: string; publicationYear: string; copyrightYear: string; pages: string; copies: string; missingCopies: string; accessions: string; barcodes: string; callNumber: string; categoryId: number | null; location: string; locationId?: number; shelfColumn?: number; shelfRow?: number; programId: number | null; generateAccessions: boolean; categoryName?: string; shelfLocation?: string; autoCorrections?: ImportCorrection[] }
 const bad = (message: string) => new HttpError(422,'HOLDINGS_FILE_INVALID',message)
 export const clean = (value: unknown) => String(value ?? '').trim().replace(/\s+/g,' ')
 export const key = (value: unknown) => clean(value).normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim()
@@ -175,6 +175,7 @@ export function validateHoldingsData(data:HoldingsData, needsCopies=true){
   }
   if(data.pages && (!/^\d+$/.test(data.pages) || !Number.isSafeInteger(Number(data.pages)) || Number(data.pages)<1))errors.push('Pages must be a positive whole number or blank.')
   if(needsCopies){
+    for(const field of ['locationId','shelfColumn','shelfRow'] as const)if(data[field]!==undefined&&(!Number.isSafeInteger(data[field])||Number(data[field])<1))errors.push('Choose a valid shelf, column and row.')
     const copies=Number(data.copies), missing=Number(data.missingCopies||0)
     if(!/^\d+$/.test(data.copies)||!Number.isInteger(copies)||copies<1||copies>100)errors.push('Copies must be a whole number from 1 to 100.')
     if((data.missingCopies && !/^\d+$/.test(data.missingCopies))||!Number.isInteger(missing)||missing<0||missing>copies)errors.push('Missing copies must be a whole number between zero and the copy count.')

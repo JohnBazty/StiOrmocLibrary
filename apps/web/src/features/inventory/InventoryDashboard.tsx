@@ -1,3 +1,4 @@
+import { MoveCopiesDialog, type MovableCopy } from '../shelves/MoveCopiesDialog'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import {
   AlertTriangle, Barcode, BookCopy, CheckCircle2, ChevronDown, Download, PackageSearch,
@@ -170,6 +171,7 @@ export function InventoryDashboard() {
   const [notice, setNotice] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
   const [exportingPdf, setExportingPdf] = useState(false)
+  const [moving, setMoving] = useState<{kind:'Book'|'Research/Thesis';copies:MovableCopy[]} | null>(null)
   const [selected, setSelected] = useState<InventoryCopy | null>(null)
   const [lostTarget, setLostTarget] = useState<InventoryCopy | null>(null)
   const [availabilityTarget, setAvailabilityTarget] = useState<InventoryCopy | null>(null)
@@ -220,7 +222,7 @@ export function InventoryDashboard() {
     catch (reason) { setError(reason instanceof Error ? reason.message : 'The scanned barcode could not be verified.') }
     finally { setScanning(false) }
   }, [filters, load, scanning, thesisRows])
-  useDesktopScanner(scan, !selected && !lostTarget && !availabilityTarget && !selectedThesis && !thesisAvailabilityTarget)
+  useDesktopScanner(scan, !moving && !selected && !lostTarget && !availabilityTarget && !selectedThesis && !thesisAvailabilityTarget)
 
   const downloadPdf = async () => {
     setExportingPdf(true); setError(null)
@@ -317,6 +319,7 @@ export function InventoryDashboard() {
           {thesisLoading && thesisRows.length === 0 ? <tr><td colSpan={7} className="px-5 py-12 text-center text-[#0b5ea2]/65"><RefreshCw className="mx-auto mb-3 animate-spin" size={22} />Loading research inventory…</td></tr> : null}
           {!thesisLoading && thesisRows.length === 0 ? <tr><td colSpan={7} className="px-5 py-12 text-center"><GraduationCap className="mx-auto text-[#0b5ea2]/45" size={28} /><p className="mt-3 font-bold text-[#0b5ea2]">No bound research papers found</p></td></tr> : null}
           {thesisRows.map((thesis) => { const activeCirculation = thesis.availability_status === 'borrowed' || thesis.availability_status === 'reserved'; const availabilityLocked = activeCirculation || thesis.condition_state === 'lost'; const removalLocked = activeCirculation || thesis.condition_state !== 'lost'; const removalTitle = activeCirculation ? 'Resolve the active allocation before removing this research copy.' : thesis.condition_state !== 'lost' ? 'Mark this research copy as Lost before removing it.' : 'Remove this Lost research copy from active inventory.'; return <tr key={thesis.research_inventory_id} className="hover:bg-[#0b5ea2]/5"><td className="px-4 py-4"><p className="font-bold text-[#0b5ea2]">{thesis.title}</p><p className="mt-1 text-xs text-[#0b5ea2]/60">{thesis.authors}</p></td><td className="px-4 py-4 text-[#0b5ea2]"><p>{thesis.adviser}</p><p className="mt-1 text-xs text-[#0b5ea2]/60">{thesis.publication_year}</p></td><td className="px-4 py-4 font-mono text-xs text-[#0b5ea2]"><p className="font-bold">{thesis.accession_number}</p><p className="mt-1 text-[#0b5ea2]/60">{thesis.barcode}</p></td><td className="px-4 py-4 text-[#0b5ea2]">{thesis.shelf_location}</td><td className="px-4 py-4"><ConditionBadge condition={displayThesisCondition(thesis.condition_state)} /></td><td className="px-4 py-4"><AvailabilityBadge status={displayThesisAvailability(thesis.availability_status)} /></td><td className="px-4 py-4"><InventoryActions accession={thesis.accession_number} actions={[
+            { label: 'Move copies', description: 'Choose another shelf compartment', onSelect: () => setMoving({kind:'Research/Thesis',copies:[{id:thesis.research_inventory_id,accession:thesis.accession_number,shelfLocation:thesis.shelf_location,shelfColumn:thesis.shelf_column ?? 1,shelfRow:thesis.shelf_row ?? 1}]}) },
             { label: 'Audit condition', onSelect: () => setSelectedThesis(thesis) },
             { label: thesis.availability_status === 'available' ? 'Make unavailable' : 'Make available', disabled: availabilityLocked,
               description: availabilityLocked ? 'Borrowed, reserved, or lost papers cannot be manually toggled.' : 'Toggle thesis availability',
@@ -335,6 +338,7 @@ export function InventoryDashboard() {
         {loading && copies.length === 0 ? <tr><td colSpan={8} className="px-5 py-14 text-center text-[#0b5ea2]/65"><RefreshCw className="mx-auto mb-3 animate-spin" size={22} />Loading physical inventory…</td></tr> : null}
         {!loading && copies.length === 0 ? <tr><td colSpan={8} className="px-5 py-14 text-center"><Barcode className="mx-auto text-[#0b5ea2]/45" size={28} /><p className="mt-3 font-bold text-[#0b5ea2]">No physical copies found</p></td></tr> : null}
           {copies.map((copy) => { const activeCirculation = copy.availability_status === 'Borrowed' || copy.availability_status === 'Reserved'; const availabilityLocked = activeCirculation || copy.condition_status === 'Lost'; const removalLocked = activeCirculation || copy.condition_status !== 'Lost'; const removalTitle = activeCirculation ? 'Process the return or cancel the reservation before removing this copy.' : copy.condition_status !== 'Lost' ? 'Mark this copy as Lost before removing it.' : 'Remove this Lost copy from active inventory.'; return <tr key={copy.physical_copy_id} className="hover:bg-[#0b5ea2]/5"><td className="px-5 py-4"><p className="font-bold text-[#0b5ea2]">{copy.item_title}</p><p className="mt-1 text-xs text-[#0b5ea2]/60">{copy.authors.join(', ') || copy.category_name || 'No author metadata'}</p></td><td className="px-5 py-4 font-mono text-xs font-bold text-[#0b5ea2]">{copy.accession_number}</td><td className="px-5 py-4 font-mono text-xs text-[#0b5ea2]/70">{copy.barcode}</td><td className="px-5 py-4 text-[#0b5ea2]"><p className="font-bold">{copy.shelf_location} · C{copy.shelf_column} · R{copy.shelf_row}</p><p className="mt-1 font-mono text-[10px] text-[#0b5ea2]/60">{copy.call_number||'Call number pending'}</p></td><td className="px-5 py-4"><ConditionBadge condition={copy.condition_status} /></td><td className="px-5 py-4"><AvailabilityBadge status={copy.availability_status} /></td><td className="px-5 py-4 text-xs text-[#0b5ea2]/70">{formatDate(copy.last_verified_at)}</td><td className="px-5 py-4"><InventoryActions accession={copy.accession_number} actions={[
+            { label: 'Move copies', description: 'Choose another shelf compartment', onSelect: () => setMoving({kind:'Book',copies:[{id:copy.physical_copy_id,accession:copy.accession_number,shelfLocation:copy.shelf_location,shelfColumn:copy.shelf_column,shelfRow:copy.shelf_row}]}) },
             { label: 'Condition', description: 'Change physical condition', onSelect: () => setSelected(copy) },
             ...(copy.condition_status !== 'Lost' ? [{ label: 'Report lost', disabled: copy.availability_status === 'Borrowed',
               description: copy.availability_status === 'Borrowed' ? 'Report a borrowed copy from Circulation.' : 'Record this copy as lost.',
@@ -348,6 +352,7 @@ export function InventoryDashboard() {
       </tbody></table></ResponsiveTable>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-[#0b5ea2]/15 p-4 text-xs text-[#0b5ea2]/70"><span>{pagination.total} physical {pagination.total === 1 ? 'copy' : 'copies'}</span><div className="flex items-center gap-2"><button disabled={pagination.page <= 1} onClick={() => setFilters((current) => ({ ...current, page: current.page - 1 }))} className="rounded-lg border border-[#0b5ea2]/20 px-3 py-2 font-bold disabled:opacity-35">Previous</button><span className="font-bold text-[#0b5ea2]">Page {pagination.page} of {Math.max(pagination.total_pages, 1)}</span><button disabled={pagination.page >= pagination.total_pages} onClick={() => setFilters((current) => ({ ...current, page: current.page + 1 }))} className="rounded-lg border border-[#0b5ea2]/20 px-3 py-2 font-bold disabled:opacity-35">Next</button></div></div>
     </SectionCard>
+    {moving ? <MoveCopiesDialog kind={moving.kind} copies={moving.copies} onClose={() => setMoving(null)} onMoved={async () => { await Promise.all([load(filters),loadThesis(thesisFilters)]) }} /> : null}
     {selected ? <ConditionModal copy={selected} onClose={() => setSelected(null)} onSaved={() => load(filters)} saveCondition={inventoryApi.changeCondition} /> : null}
     {lostTarget ? <ConditionModal copy={lostTarget} initialCondition="lost" onClose={() => setLostTarget(null)} onSaved={() => load(filters)} saveCondition={inventoryApi.changeCondition} /> : null}
     {selectedThesis ? <ConditionModal copy={selectedThesis} onClose={() => setSelectedThesis(null)} onSaved={() => loadThesis(thesisFilters)} saveCondition={inventoryApi.auditThesis} /> : null}

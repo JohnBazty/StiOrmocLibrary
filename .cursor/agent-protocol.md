@@ -101,8 +101,8 @@ Always know and document:
 | --- | --- |
 | Migrations directory | `database/supabase/` (Postgres only; MySQL was retired 2026-11-10) |
 | Latest applied migration | `045_attendance_user_confirmation.sql` (live checksum and protections verified 2026-11-15) |
-| Files pending review | Payment drafts `040`–`043`; none applied by this publication |
-| **Next available number** | **`046`** (045 attendance user confirmation applied with owner approval) |
+| Files pending review | Payment drafts `040`–`043`; `046_shelf_capacity.sql` is a local, unapplied shelf-capacity draft |
+| **Next available number** | **`047`** (046 reserved for shelf dimensions/capacity; unapplied) |
 
 Applied enrollment 031 supersedes the removed 028 draft. Keep applied filenames and source bytes, including line endings. The 003 source still needs checksum reconciliation. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set.
 
@@ -173,3 +173,5 @@ Prefer simple, readable scripts under a clear folder (for example `tools/` or `s
 Applied `044_hosted_payment_preview.sql`: API-only durable practice ledger, RLS enabled, browser-role grants revoked, fenced leases. Latest live migration 044; next available 045. Applied 033-037 source checksums matched the live ledger. External applied 038/039 are preserved; unapplied payment gateway drafts 040-043 remain reserved and are not replayed. School bills/receipts are unchanged. See `docs/plans/2026-11-15-vercel-payment-release.md`.
 
 2026-11-15 attendance user confirmation: applied `045_attendance_user_confirmation.sql` individually after owner approval. Latest applied 045; next unused 046. Checksum, API ownership, RLS and denied browser grants verified; existing accounts, users, attendance and QR credentials match before/after fingerprints. Earlier applied migrations are unchanged. See `docs/plans/2026-11-15-attendance-user-confirmation.md`.
+
+2026-11-18 shelf capacity: drafted `046_shelf_capacity.sql` for authoritative managed-shelf dimensions and API-only compartment limits. Latest applied remains 045; next unused is 047. Existing assignments are preserved, capacities remain unconfigured until staff review, and hosted application requires separate owner approval. See `docs/plans/2026-11-18-shelf-capacity.md`.

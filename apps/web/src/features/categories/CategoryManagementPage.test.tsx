@@ -1,8 +1,8 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CategoryManagementPage } from './CategoryManagementPage'
 
-const api = vi.hoisted(() => ({ list: vi.fn(), listShelves: vi.fn(), addShelf: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), reassign: vi.fn() }))
+const api = vi.hoisted(() => ({ list: vi.fn(), listShelves: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), reassign: vi.fn() }))
 vi.mock('./category-api', () => ({ categoryApi: api, CategoryApiError: class extends Error {} }))
 const catalog = vi.hoisted(() => ({ searchSubjects: vi.fn() }))
 vi.mock('../catalog/catalog-api', () => ({ catalogApi: catalog }))
@@ -10,26 +10,57 @@ vi.mock('../catalog/catalog-api', () => ({ catalogApi: catalog }))
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('CategoryManagementPage', () => {
-  it('marks shelf creation as success, allows dismissal, and reports a failed attempt as an error', async () => {
+  it('edits the shelf through Edit category and refreshes the directory', async () => {
+    const category = { categoryId: 7, categoryName: 'Programming', description: 'Software development books', shelfLocation: 'Shelf A', shelfColumn: 1, shelfRow: 2, totalBooksCount: 3, totalThesisCount: 1, createdAt: '2026-09-25T00:00:00Z', updatedAt: null }
+    const moved = { ...category, shelfLocation: 'Shelf B', shelfColumn: 2, shelfRow: 3 }
+    api.list.mockResolvedValueOnce([category]).mockResolvedValue([moved])
+    api.listShelves.mockResolvedValue([{ id: 1, label: 'Shelf A', columnCount: 3, rowCount: 5 }, { id: 2, label: 'Shelf B', columnCount: 2, rowCount: 3 }])
+    api.update.mockResolvedValue({ ...moved, bookCopies: 3, researchCopies: 1 })
+    render(<CategoryManagementPage />)
+    await screen.findByText('Programming')
+    fireEvent.click(screen.getByLabelText('Actions for Programming'))
+    expect(screen.queryByRole('button', { name: /Edit shelf location/i })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Programming' }))
+    const dialog = within(screen.getByRole('dialog', { name: 'Edit category' }))
+    expect((dialog.getByLabelText(/Category name/i) as HTMLInputElement).value).toBe(category.categoryName)
+    expect((dialog.getByLabelText('Description') as HTMLTextAreaElement).value).toBe(category.description)
+    expect((dialog.getByLabelText(/Shelf location/i) as HTMLSelectElement).value).toBe('Shelf A')
+    expect((dialog.getByLabelText(/Row \*/i) as HTMLSelectElement).value).toBe('2')
+    fireEvent.change(dialog.getByLabelText(/Shelf location/i), { target: { value: 'Shelf B' } })
+    fireEvent.change(dialog.getByLabelText(/Column \*/i), { target: { value: '2' } })
+    fireEvent.change(dialog.getByLabelText(/Row \*/i), { target: { value: '3' } })
+    fireEvent.click(dialog.getByRole('button', { name: 'Save category' }))
+    await waitFor(() => expect(api.update).toHaveBeenCalledWith(7, { categoryName: category.categoryName, description: category.description, shelfLocation: 'Shelf B', shelfColumn: 2, shelfRow: 3 }))
+    expect((await screen.findByRole('status')).textContent).toContain('Existing copies keep their assigned locations.')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByText('Shelf B · C2 · R3')).toBeTruthy()
+    expect(api.create).not.toHaveBeenCalled()
+    expect(api.reassign).not.toHaveBeenCalled()
+  })
+
+  it('keeps a failed shelf edit open and allows cancellation without another save', async () => {
+    api.list.mockResolvedValue([{ categoryId: 8, categoryName: 'Science', description: '', shelfLocation: 'Shelf A', shelfColumn: 1, shelfRow: 1, totalBooksCount: 0, totalThesisCount: 0, createdAt: '2026-09-25T00:00:00Z', updatedAt: null }])
+    api.listShelves.mockResolvedValue([{ id: 1, label: 'Shelf A', columnCount: 3, rowCount: 5 }])
+    api.update.mockRejectedValueOnce(new Error('Shelf location could not be saved.'))
+    render(<CategoryManagementPage />)
+    await screen.findByText('Science')
+    fireEvent.click(screen.getByLabelText('Actions for Science'))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Science' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save category' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('Shelf location could not be saved.')
+    expect(screen.getByRole('dialog', { name: 'Edit category' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(api.update).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not show managed shelves on the categories screen', async () => {
     api.list.mockResolvedValue([])
-    api.listShelves.mockResolvedValue([])
-    api.addShelf.mockResolvedValueOnce({ id: 1, label: 'TH1A' }).mockRejectedValueOnce(new Error('A shelf with this label already exists.'))
+    api.listShelves.mockResolvedValue([{ id: 1, label: 'Shelf A', status: 'Active', columnCount: 1, rowCount: 1 }])
     render(<CategoryManagementPage />)
     await screen.findByText('No categories have been registered.')
-    fireEvent.change(screen.getByLabelText('New shelf label'), { target: { value: 'TH1A' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Add shelf' }))
-    const saved = await screen.findByRole('status')
-    expect(saved.textContent).toContain('Shelf TH1A is ready for category assignments.')
-    expect(saved.getAttribute('data-tone')).toBe('success')
-    expect(screen.queryByRole('alert')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss alert' }))
-    expect(screen.queryByRole('status')).toBeNull()
-    fireEvent.change(screen.getByLabelText('New shelf label'), { target: { value: 'TH1A' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Add shelf' }))
-    const failed = await screen.findByRole('alert')
-    expect(failed.textContent).toContain('A shelf with this label already exists.')
-    expect(failed.getAttribute('data-tone')).toBe('error')
-    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Managed shelves' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Add shelf' })).toBeNull()
   })
 
   it('shows the canonical category details and keeps assigned categories out of direct delete', async () => {

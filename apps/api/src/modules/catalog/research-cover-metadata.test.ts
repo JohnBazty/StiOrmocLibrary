@@ -18,10 +18,10 @@ test('public research covers receive the active department in search and details
    CREATE TABLE catalog_programs(program_id BIGINT,name TEXT,code TEXT);
    CREATE TABLE catalog_title_courses(title_id BIGINT,course_id BIGINT);
    CREATE TABLE catalog_courses(course_id BIGINT,name TEXT,program_id BIGINT,code TEXT);
-   CREATE TABLE physical_copies(physical_copy_id BIGINT,title_id BIGINT,material_id BIGINT,lifecycle_status TEXT,availability_status TEXT,condition_status TEXT,accession_number TEXT,barcode TEXT,shelf_location TEXT);
+   CREATE TABLE physical_copies(physical_copy_id BIGINT,title_id BIGINT,material_id BIGINT,lifecycle_status TEXT,availability_status TEXT,condition_status TEXT,accession_number TEXT,barcode TEXT,shelf_location TEXT,shelf_column INT DEFAULT 1,shelf_row INT DEFAULT 1,row_version INT DEFAULT 1);
    CREATE TABLE materials(material_id BIGINT,availability_status TEXT);
    CREATE TABLE research_records(research_record_id BIGINT,title_id BIGINT,department_or_program TEXT,abstract_text TEXT,viewing_status TEXT);
-   CREATE TABLE research_inventory(research_inventory_id BIGINT,title_id BIGINT,accession_number TEXT,barcode TEXT,shelf_location TEXT,condition_state TEXT,availability_status TEXT,lifecycle_status TEXT);
+   CREATE TABLE research_inventory(research_inventory_id BIGINT,title_id BIGINT,accession_number TEXT,barcode TEXT,shelf_location TEXT,shelf_column INT DEFAULT 1,shelf_row INT DEFAULT 1,row_version INT DEFAULT 1,condition_state TEXT,availability_status TEXT,lifecycle_status TEXT);
    CREATE TABLE catalog_digital_files(file_id BIGINT,title_id BIGINT,original_name TEXT,byte_size INT,created_at TIMESTAMPTZ,lifecycle_status TEXT);
    INSERT INTO titles(title_id,title,record_type,publication_year,lifecycle_status) VALUES
     (1,'Coastal Study','Research/Thesis',2026,'Active'),(2,'Sample Book','Book',2025,'Active'),(3,'Archived Study','Research/Thesis',2024,'Active');

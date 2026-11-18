@@ -3,6 +3,9 @@ import { QrCode, X } from 'lucide-react'
 import { ApiError, catalogApi } from './catalog-api'
 import type { BulkBookResult } from './types'
 import { BookLabelSheet } from './BookLabelSheet'
+import { ShelfPlacementFields, placementFits } from '../shelves/ShelfPlacementFields'
+import { useManagedShelves } from '../shelves/useManagedShelves'
+import type { PlacementValue } from '../shelves/types'
 import { confirmLeave, UnsavedGuard } from '../../components/UnsavedChanges'
 
 const fieldClass = 'h-11 w-full rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] px-3 text-sm text-[#0b5ea2] outline-none focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/10'
@@ -12,12 +15,15 @@ function Input({ label, name, required }: { label: string; name: string; require
 }
 
 export function AddResearchModal({ locations, onCreated, onClose }: { locations: string[]; onCreated: () => Promise<void> | void; onClose: () => void }) {
+  const shelfData = useManagedShelves()
+  const [placement, setPlacement] = useState<PlacementValue>({ shelfLocation: '', shelfColumn: 1, shelfRow: 1 })
+  const canPlace = placementFits(shelfData.shelves, placement, 1)
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [message, setMessage] = useState('')
   const [batch, setBatch] = useState<BulkBookResult | null>(null)
   async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (saving || batch) return
+    event.preventDefault(); if (saving || batch || !canPlace) return
     const data = Object.fromEntries(new FormData(event.currentTarget).entries())
     setSaving(true); setErrors({}); setMessage('')
     try {
@@ -25,7 +31,7 @@ export function AddResearchModal({ locations, onCreated, onClose }: { locations:
         title: data.title, authors: [data.author], adviser: data.adviser, year: data.year,
         abstract: data.abstract, researchCode: data.researchCode,
         departmentOrProgram: data.departmentOrProgram, keywords: data.keywords,
-        copy: { shelfLocation: data.shelfLocation },
+        copy: { shelfLocation: data.shelfLocation, locationId: data.locationId, shelfColumn: Number(data.shelfColumn), shelfRow: Number(data.shelfRow) },
       })
       setBatch(result); setMessage('Research inventory record and unique QR/barcode label created.')
       await onCreated()
@@ -43,10 +49,10 @@ export function AddResearchModal({ locations, onCreated, onClose }: { locations:
       <Input label="Research code" name="researchCode" required /><Input label="Year" name="year" required />
       <Input label="Adviser" name="adviser" required /><Input label="Department / program" name="departmentOrProgram" required />
       <Input label="Keywords" name="keywords" />
-      <label><span className={labelClass}>Shelf location *</span><select name="shelfLocation" required className={fieldClass}><option value="">Select existing shelf location</option>{locations.map((location) => <option key={location} value={location}>{location}</option>)}</select></label>
+      <ShelfPlacementFields shelves={shelfData.shelves} value={placement} onChange={setPlacement} quantity={1} disabled={saving || Boolean(batch)} loading={shelfData.loading} error={shelfData.error} />
       <div className="rounded-xl border border-[#0b5ea2]/15 bg-[#FFF200] p-3 text-xs font-semibold text-[#0b5ea2] sm:col-span-2">New publications start in Good condition. Accession number, inventory barcode, and QR code are generated automatically.</div>
       <label className="sm:col-span-2"><span className={labelClass}>Abstract *</span><textarea name="abstract" required minLength={20} rows={6} className={`${fieldClass} h-auto py-3`} /></label>
-      <div className="flex justify-end gap-2 sm:col-span-2">{!batch ? <><button type="button" disabled={saving} onClick={() => confirmLeave(onClose)} className="h-11 rounded-xl border border-[#0b5ea2] bg-[#FFFFFF] px-5 font-bold text-[#0b5ea2]">Cancel</button><button disabled={saving || !locations.length} type="submit" className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#0b5ea2] px-5 font-bold text-[#FFFFFF] disabled:opacity-50"><QrCode size={17} />{saving ? 'Publishing and generating codes…' : 'Publish and generate codes'}</button></> : <button type="button" onClick={() => confirmLeave(onClose)} className="h-11 rounded-xl bg-[#0b5ea2] px-5 font-bold text-[#FFFFFF]">Close and view inventory</button>}</div>
+      <div className="flex justify-end gap-2 sm:col-span-2">{!batch ? <><button type="button" disabled={saving} onClick={() => confirmLeave(onClose)} className="h-11 rounded-xl border border-[#0b5ea2] bg-[#FFFFFF] px-5 font-bold text-[#0b5ea2]">Cancel</button><button disabled={saving || !locations.length || !canPlace} type="submit" className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#0b5ea2] px-5 font-bold text-[#FFFFFF] disabled:opacity-50"><QrCode size={17} />{saving ? 'Publishing and generating codes…' : 'Publish and generate codes'}</button></> : <button type="button" onClick={() => confirmLeave(onClose)} className="h-11 rounded-xl bg-[#0b5ea2] px-5 font-bold text-[#FFFFFF]">Close and view inventory</button>}</div>
     </form></UnsavedGuard>
     {batch ? <div className="border-t border-[#0b5ea2]/15 p-5"><BookLabelSheet batch={batch} /></div> : null}
   </div></div>

@@ -1,11 +1,15 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AddMultipleCopiesModal } from './AddMultipleCopiesModal'
 
 const api = vi.hoisted(() => ({ createBulkBook: vi.fn(), lookupIsbn: vi.fn(), searchTitles: vi.fn(), fetchCover: vi.fn() }))
 vi.mock('./catalog-api', () => ({ catalogApi: api, ApiError: class extends Error {} }))
 vi.mock('./BookLabelSheet', () => ({ BookLabelSheet: () => null }))
 vi.mock('../../components/SelectedFilePreview', () => ({ SelectedFilePreview: ({ file, onRemove }: { file: File | null; onRemove: () => void }) => file ? <div><span>Preview {file.name}</span><button type="button" onClick={onRemove}>Remove cover</button></div> : null }))
+
+const shelves = vi.hoisted(() => ({listShelves:vi.fn()}))
+vi.mock('../categories/category-api', () => ({categoryApi:shelves,CategoryApiError:class extends Error {}}))
+beforeEach(()=>shelves.listShelves.mockResolvedValue([{id:1,label:'Cabinet 4-B',status:'Active',version:1,columnCount:1,rowCount:1,defaultCapacity:10,capacityConfigured:true,used:0,capacity:10,remaining:10,compartments:[{column:1,row:1,capacity:10,used:0,remaining:10,status:'Available'}]}]))
 
 const categories = [{ categoryId: 1, categoryName: 'Programming', shelfLocation: 'Cabinet 4-B' }]
 const isbn = '9780132350884'

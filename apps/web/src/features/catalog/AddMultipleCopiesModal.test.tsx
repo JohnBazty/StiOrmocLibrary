@@ -1,10 +1,14 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AddMultipleCopiesModal } from './AddMultipleCopiesModal'
 
 const api = vi.hoisted(() => ({ createBulkBook: vi.fn(), lookupIsbn: vi.fn() }))
 vi.mock('./catalog-api', () => ({ catalogApi: api, ApiError: class extends Error {} }))
 vi.mock('./BookLabelSheet', () => ({ BookLabelSheet: () => <div data-testid="inline-label-preview">Generated labels</div> }))
+
+const shelfApi = vi.hoisted(() => ({ listShelves: vi.fn() }))
+vi.mock('../categories/category-api', () => ({ categoryApi: shelfApi, CategoryApiError: class extends Error {} }))
+beforeEach(() => shelfApi.listShelves.mockResolvedValue(['Cabinet 4-B', 'Aisle 3'].map((label,index) => ({id:index+1,label,columnCount:1,rowCount:1,defaultCapacity:50,capacityConfigured:true,status:'Active',version:1,used:0,capacity:50,remaining:50,compartments:[{column:1,row:1,capacity:50,used:0,remaining:50,status:'Available'}]}))))
 
 const categories = [
   { categoryId: 1, categoryName: 'Programming', shelfLocation: 'Cabinet 4-B' },
@@ -12,6 +16,23 @@ const categories = [
 ]
 
 describe('AddMultipleCopiesModal', () => {
+  it('blocks a full default compartment and sends a manually chosen compartment', async () => {
+    shelfApi.listShelves.mockResolvedValueOnce([{id:1,label:'Cabinet 4-B',columnCount:2,rowCount:1,defaultCapacity:5,capacityConfigured:true,status:'Active',version:1,used:6,capacity:10,remaining:4,compartments:[{column:1,row:1,capacity:5,used:5,remaining:0,status:'Full'},{column:2,row:1,capacity:5,used:1,remaining:4,status:'Available'}]}])
+    api.lookupIsbn.mockResolvedValue({isbn:'9780132350884',title:'Clean Code',author:'Robert C. Martin',publisher:'',publicationYear:2008,source:'local_catalog'})
+    api.createBulkBook.mockResolvedValue({ titleId: 8, createdTitle: false, numberOfCopies: 2, copies: [] })
+    render(<AddMultipleCopiesModal categories={categories} onCreated={vi.fn()} onClose={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText(/Category \*/i),{target:{value:'1'}})
+    fireEvent.change(screen.getByLabelText(/Title \*/i),{target:{value:'Clean Code'}})
+    fireEvent.change(screen.getByLabelText(/Author \*/i),{target:{value:'Robert C. Martin'}})
+    fireEvent.change(screen.getByLabelText(/ISBN \*/i),{target:{value:'9780132350884'}})
+    await screen.findByRole('option',{name:'Column 2'})
+    expect(screen.getByText(/Only 0 spaces remain/)).toBeTruthy()
+    expect((screen.getByRole('button',{name:/Create copy and generate codes/i}) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText('Column'),{target:{value:'2'}})
+    fireEvent.click(screen.getByRole('button',{name:/Create copy and generate codes/i}))
+    await waitFor(()=>expect(api.createBulkBook).toHaveBeenCalledWith(expect.objectContaining({locationId:'1',shelfColumn:2,shelfRow:1,shelf_location:'Cabinet 4-B'})))
+  })
+
   it('autofills bibliographic metadata while preserving librarian-managed fields', async () => {
     api.lookupIsbn.mockResolvedValue({ isbn: '9780132350884', title: 'Clean Code', author: 'Robert C. Martin', publisher: 'Prentice Hall', publicationYear: 2008, source: 'google_books' })
     render(<AddMultipleCopiesModal categories={categories} onCreated={() => undefined} onClose={() => undefined} />)
@@ -45,6 +66,7 @@ describe('AddMultipleCopiesModal', () => {
     fireEvent.change(screen.getByLabelText(/Title \*/i), { target: { value: 'Clean Code' } })
     fireEvent.change(screen.getByLabelText(/Author \*/i), { target: { value: 'Robert C. Martin' } })
     fireEvent.change(screen.getByLabelText(/ISBN \*/i), { target: { value: '9780132350884' } })
+    await waitFor(() => expect((screen.getByRole('button', { name: /Create copy and generate codes/i }) as HTMLButtonElement).disabled).toBe(false))
     fireEvent.click(screen.getByRole('button', { name: /Create copy and generate codes/i }))
     await waitFor(() => expect(api.createBulkBook).toHaveBeenCalledWith(expect.objectContaining({ category_id: '1', shelf_location: 'Cabinet 4-B', number_of_copies: '2' })))
     expect(api.createBulkBook.mock.calls[0][0]).not.toHaveProperty('purchase_price')
@@ -66,6 +88,7 @@ describe('AddMultipleCopiesModal', () => {
 
     fireEvent.change(screen.getByLabelText(/ISBN \*/i), { target: { value: 'ISBN-10: 0-13-235088-2' } })
     expect(screen.getByText('Valid ISBN-10 checksum')).toBeTruthy()
+    await waitFor(() => expect((screen.getByRole('button', { name: /Create copy and generate codes/i }) as HTMLButtonElement).disabled).toBe(false))
     fireEvent.click(screen.getByRole('button', { name: /Create copy and generate codes/i }))
     await waitFor(() => expect(api.createBulkBook).toHaveBeenCalledWith(expect.objectContaining({ isbn: '0132350882' })))
   })
@@ -86,6 +109,7 @@ describe('AddMultipleCopiesModal', () => {
     fireEvent.change(screen.getByLabelText(/^Cost price/i), { target: { value: '450' } })
     fireEvent.change(screen.getByLabelText(/^Date received/i), { target: { value: '2026-11-02' } })
     fireEvent.change(screen.getByLabelText(/^Remarks/i), { target: { value: 'Donated set' } })
+    await waitFor(() => expect((screen.getByRole('button', { name: /Create copy and generate codes/i }) as HTMLButtonElement).disabled).toBe(false))
     fireEvent.click(screen.getByRole('button', { name: /Create copy and generate codes/i }))
     await waitFor(() => expect(api.createBulkBook).toHaveBeenLastCalledWith(expect.objectContaining({
       classification: '005.1', edition: '1st ed.', volumes: '1 vol.', pages: '464', remarks: 'Donated set',

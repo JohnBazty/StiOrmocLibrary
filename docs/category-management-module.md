@@ -1,5 +1,12 @@
 # Category Management Module
 
+## Current shelf workflow — 2026-11-18
+
+Shelf configuration is shared between Category Management → Managed shelves and Maintenance → Locations. Staff set columns, rows, usual copies per compartment, and compartment exceptions. Usage is calculated from active physical books and research copies, including borrowed/damaged copies. Initial configuration may reveal existing overfilling; additional placements are blocked until space is available.
+
+Edit category changes its default shelf/column/row for future copies. Existing copies retain their individually assigned locations when a category is edited, reassigned, or changed on a title. Use Move copies in inventory details for explicit physical relocation. This amendment supersedes historical category-wide shelf synchronization below. Migration 046 is drafted locally and remains unapplied to the hosted database.
+
+
 ## 1. DDL and relational contract
 
 The canonical structure is maintained in `database/supabase/`. It originally shipped as `20260816_003_category_management.sql`, a retired MySQL migration (removed 2026-11-10; restore with `git show a767d88:database/migrations/<file>`).

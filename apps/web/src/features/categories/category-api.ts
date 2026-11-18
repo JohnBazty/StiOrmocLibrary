@@ -1,4 +1,5 @@
 import type { Category, CategoryPayload, CategorySaveResult, CategoryShelfSync } from './types'
+import type { ManagedShelf, ShelfPayload } from '../shelves/types'
 import { getCsrfToken } from '../auth/auth-storage'
 
 export class CategoryApiError extends Error {
@@ -20,7 +21,7 @@ async function decodeResponse<T>(response: Response): Promise<T> {
   return payload.data as T
 }
 
-async function request<T>(url: string, options: RequestInit = {}) {
+export async function categoryRequest<T>(url: string, options: RequestInit = {}) {
   const method = options.method?.toUpperCase() ?? 'GET'
   const headers = new Headers(options.headers)
   headers.set('Accept', 'application/json')
@@ -40,13 +41,14 @@ async function request<T>(url: string, options: RequestInit = {}) {
 }
 
 export const categoryApi = {
-  list: () => request<Category[]>('/api/categories'),
-  listShelves: () => request<Array<{ id: number; label: string; columnCount: number; rowCount: number }>>('/api/categories/shelves'),
-  addShelf: (label: string) => request<{ id: number; label: string }>('/api/categories/shelves', { method: 'POST', body: JSON.stringify({ label }) }),
-  create: (payload: CategoryPayload) => request<CategorySaveResult>('/api/categories', { method: 'POST', body: JSON.stringify(payload) }),
-  update: (categoryId: number, payload: CategoryPayload) => request<CategorySaveResult>(`/api/categories/${categoryId}`, { method: 'PUT', body: JSON.stringify(payload) }),
-  remove: (categoryId: number) => request(`/api/categories/${categoryId}`, { method: 'DELETE' }),
-  reassign: (oldCategoryId: number, targetCategoryId: number) => request<CategoryShelfSync>('/api/categories/reassign', {
+  list: () => categoryRequest<Category[]>('/api/categories'),
+  listShelves: (includeArchived = false) => categoryRequest<ManagedShelf[]>(`/api/categories/shelves${includeArchived ? '?includeArchived=true' : ''}`),
+  addShelf: (payload: ShelfPayload) => categoryRequest<ManagedShelf>('/api/categories/shelves', { method: 'POST', body: JSON.stringify(payload) }),
+  updateShelf: (id: number, payload: ShelfPayload) => categoryRequest<ManagedShelf>(`/api/categories/shelves/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  create: (payload: CategoryPayload) => categoryRequest<CategorySaveResult>('/api/categories', { method: 'POST', body: JSON.stringify(payload) }),
+  update: (categoryId: number, payload: CategoryPayload) => categoryRequest<CategorySaveResult>(`/api/categories/${categoryId}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  remove: (categoryId: number) => categoryRequest(`/api/categories/${categoryId}`, { method: 'DELETE' }),
+  reassign: (oldCategoryId: number, targetCategoryId: number) => categoryRequest<CategoryShelfSync>('/api/categories/reassign', {
     method: 'POST', body: JSON.stringify({ oldCategoryId, targetCategoryId }),
   }),
 }

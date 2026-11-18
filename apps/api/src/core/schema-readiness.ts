@@ -5,6 +5,8 @@ import { loginDevicesEnabled } from '../modules/auth/login-device-policy.ts'
 import { env } from '../config/env.js'
 
 const REQUIRED_COLUMNS: Record<string, string[]> = {
+  catalog_locations: ['location_id', 'name', 'column_count', 'row_count', 'default_capacity', 'row_version'],
+  catalog_location_capacities: ['location_id', 'shelf_column', 'shelf_row', 'capacity'],
   categories: ['category_id', 'category_name', 'shelf_location', 'created_at', 'updated_at'],
   titles: ['title_id', 'category_id', 'record_type', 'title', 'cover_image_path', 'purchase_price', 'classification', 'volumes', 'remarks', 'lifecycle_status'],
   authors: ['author_id', 'title_id', 'author_name'],

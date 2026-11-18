@@ -6,7 +6,7 @@ import { blankImportCsv, canReviewTogether, importFileReady, importRowLabel, imp
 import type { Batch, ImportRow, Options, Sheet } from './enhanced-catalog-api'
 const api = vi.hoisted(() => ({ options: vi.fn(), inspect: vi.fn(), stage: vi.fn(), batch: vi.fn(), batches: vi.fn(), review: vi.fn(), commit: vi.fn(), fillFromLookup: vi.fn() }))
 vi.mock('./enhanced-catalog-api', () => ({ enhancedCatalog: api }))
-const options: Options = { categories: [{ id: 1, name: 'Literature', status: 'Active', version: 1 }], locations: [{ id: 2, name: 'Shelf A', status: 'Active', version: 1 }], programs: [], courses: [], types: [] }
+const options: Options = { categories: [{ id: 1, name: 'Literature', status: 'Active', version: 1 }], locations: [{ id: 2, name: 'Shelf A', status: 'Active', version: 1, columnCount:1,rowCount:1,defaultCapacity:100,capacityConfigured:true,used:0,capacity:100,remaining:100,compartments:[{column:1,row:1,capacity:100,used:0,remaining:100,status:'Available'}] }], programs: [], courses: [], types: [] }
 const sheet: Sheet = { name: 'Books', rowCount: 3, headers: ['Title', 'Author', 'Copies'], mapping: { sheet: 'Books', headerRow: 1, columns: { title: 1, author: 2, copies: 3 } }, preview: [['Title', 'Author', 'Copies'], ['First Book', 'A Writer', '3'], ['Second Book', 'B Writer', '2']] }
 function row(id: number, patch: Partial<ImportRow> = {}): ImportRow {
  return { id, sheet: 'Books', sourceRow: id + 1, source: [], data: { title: id === 1 ? 'First Book' : 'Second Book', author: 'A Writer', isbn: '', edition: '', publisher: '', publicationYear: '', copyrightYear: '', pages: '', copies: id === 1 ? '3' : '2', missingCopies: '', accessions: '', barcodes: '', callNumber: '', categoryId: 1, location: 'Shelf A', programId: null, generateAccessions: false }, status: 'Review', decision: null, targetTitleId: null, reuseRowId: null, version: 1, overlaps: [], errors: [], error: null, matches: [], ...patch }
@@ -28,6 +28,15 @@ async function upload() {
 }
 
 describe('Simple book import', () => {
+ it('checks the combined copy count before allowing an upload to fill one compartment', async () => {
+  api.options.mockResolvedValue({...options,locations:[{...options.locations[0],defaultCapacity:5,capacity:5,used:3,remaining:2,compartments:[{column:1,row:1,capacity:5,used:3,remaining:2,status:'Available'}]}]})
+  await upload()
+  expect(screen.getByText(/Shelf A, Column 1, Row 1: 5 copies to add/)).toBeTruthy()
+  expect((screen.getByRole('button',{name:'Add 5 copies'}) as HTMLButtonElement).disabled).toBe(true)
+  expect(api.review).not.toHaveBeenCalled()
+  expect(api.commit).not.toHaveBeenCalled()
+ })
+
  it('shows before/after cleanup and remaining questions without approving or committing', async () => {
   const cleaned = row(1)
   cleaned.data.autoCorrections = [{ field: 'title', before: ' First   Book ', after: 'First Book', reason: 'spaces' }, { field: 'copies', before: '003.00', after: '3', reason: 'number' }]
@@ -57,11 +66,11 @@ describe('Simple book import', () => {
   api.batch.mockResolvedValue({ ...initial, rows: [uncertain] })
   await upload()
   expect((screen.getByLabelText('Category') as HTMLSelectElement).value).toBe('')
-  expect((screen.getByLabelText('Shelf') as HTMLSelectElement).value).toBe('')
+  expect((screen.getByLabelText(/^Shelf \*/) as HTMLSelectElement).value).toBe('')
   fireEvent.click(screen.getByRole('button', { name: 'Use Literature' }))
   fireEvent.click(screen.getByRole('button', { name: 'Use Shelf A' }))
   expect((screen.getByLabelText('Category') as HTMLSelectElement).value).toBe('1')
-  expect((screen.getByLabelText('Shelf') as HTMLSelectElement).value).toBe('Shelf A')
+  expect((screen.getByLabelText(/^Shelf \*/) as HTMLSelectElement).value).toBe('Shelf A')
   expect(api.review).not.toHaveBeenCalled(); expect(api.commit).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: 'Save this choice' }))
   await waitFor(() => expect(api.review).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ categoryId: 1, location: 'Shelf A' }) })))

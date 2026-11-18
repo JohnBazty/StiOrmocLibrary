@@ -6,7 +6,7 @@ This guide explains how to prepare a Windows development computer, run and test 
 
 ## AI agents — read this first
 
-1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) (start-session protocol, plan statuses, Supabase migration tracker: latest applied **045**, gateway drafts **040–043** remain unapplied, next unused **046**).
+1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) (start-session protocol, plan statuses, Supabase migration tracker: latest applied **045**, gateway drafts **040–043** remain unapplied, shelf-capacity draft **046** remains unapplied, next unused **047**).
 2. Read [AGENTS.md](AGENTS.md) and [agent.md](agent.md).
 3. Database history: [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md) and [docs/mysql-removal-plan.md](docs/mysql-removal-plan.md).
 

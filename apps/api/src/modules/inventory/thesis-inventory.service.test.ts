@@ -15,6 +15,7 @@ function fakeDatabase(options: { loan?: boolean; condition?: string; availabilit
   const connection = {
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() {},
     async execute(sql: string, parameters: unknown[] = []) {
+      if (sql.includes('pg_advisory_xact_lock')) return [[]]
       if (sql.includes('FROM research_inventory WHERE')) return [[thesis]]
       if (sql.includes('FROM materials WHERE')) return [[{ material_id: 42, availability_status: options.availability ?? 'Available' }]]
       if (sql.includes('FROM borrow_transactions')) return [options.loan ? [{ transaction_id: 77, transaction_status: 'Borrowed', user_id: 3 }] : []]

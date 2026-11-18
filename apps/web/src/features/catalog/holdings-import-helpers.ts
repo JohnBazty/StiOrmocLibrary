@@ -1,4 +1,4 @@
-import type { Batch, ImportRow, Mapping, Option, Sheet } from './enhanced-catalog-api'
+import type { Batch, ImportRow, Mapping, Option, Options, Sheet } from './enhanced-catalog-api'
 
 export const importFields = ['title', 'author', 'isbn', 'edition', 'publisher', 'publicationYear', 'copyrightYear', 'pages', 'copies', 'missingCopies', 'accessions', 'barcodes', 'callNumber', 'categoryName', 'shelfLocation', 'summary'] as const
 export const importFieldNames: Record<string, string> = { summary: 'Summary (optional)', title: 'Book title', author: 'Author', isbn: 'ISBN', edition: 'Edition', publisher: 'Publisher', publicationYear: 'Publication year', copyrightYear: 'Copyright year', pages: 'Pages', copies: 'Number of copies', missingCopies: 'Missing copies', accessions: 'Accession numbers', barcodes: 'Book barcodes', callNumber: 'Call number', categoryName: 'Category in this file', shelfLocation: 'Shelf in this file' }
@@ -77,4 +77,11 @@ export function importSummary(batch: Batch) {
     skipped: batch.rows.filter(row => row.status === 'Skipped'),
     failedReady: batch.rows.some(row => row.status === 'Ready' && (Boolean(row.error) || row.errors.length > 0)),
   }
+}
+
+/** A category supplies a default only on its own shelf; staff's explicit placement always wins. */
+export function importPlacement(row: ImportRow, options: Options) {
+  const category = options.categories.find(item => Number(item.id) === Number(row.data.categoryId))
+  const shelf = options.locations.find(item => item.name === row.data.location && item.status === 'Active')
+  return { shelfLocation: row.data.location, locationId: shelf?.id, shelfColumn: row.data.shelfColumn ?? (category?.shelfLocation === row.data.location ? category.shelfColumn ?? 1 : 1), shelfRow: row.data.shelfRow ?? (category?.shelfLocation === row.data.location ? category.shelfRow ?? 1 : 1) }
 }

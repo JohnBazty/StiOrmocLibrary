@@ -1,5 +1,5 @@
 import { HttpError } from '../../core/http-error.ts'
-import { isbnValidationMessage, normalizeIsbn } from './catalog.validation.ts'
+import { isbnValidationMessage, normalizeIsbn, placementFields } from './catalog.validation.ts'
 
 export type BulkBookInput = {
   title: string
@@ -7,6 +7,9 @@ export type BulkBookInput = {
   isbn: string
   categoryId: number
   shelfLocation: string
+  locationId?: number
+  shelfColumn?: number
+  shelfRow?: number
   numberOfCopies: number
   publicationYear: number | null
   publisher: string | null
@@ -89,6 +92,7 @@ function registerFields(input: Record<string, unknown>, now: Date, errors: Recor
 export function validateBulkBookInput(body: unknown, now: Date = new Date()): BulkBookInput {
   const input = body && typeof body === 'object' ? body as Record<string, unknown> : {}
   const errors: Record<string, string> = {}
+  const placement = placementFields(input, errors)
   const title = clean(input.title, 255)
   const author = clean(input.author ?? (Array.isArray(input.authors) ? input.authors[0] : ''), 255)
   const isbn = normalizeIsbn(input.isbn)
@@ -117,7 +121,7 @@ export function validateBulkBookInput(body: unknown, now: Date = new Date()): Bu
     throw new HttpError(422, 'BULK_BOOK_VALIDATION_FAILED', 'The bulk book entry contains invalid fields.', { errors })
   }
   return {
-    title, author, isbn, categoryId: categoryId!, shelfLocation, numberOfCopies: numberOfCopies!, publicationYear,
+    ...placement, title, author, isbn, categoryId: categoryId!, shelfLocation, numberOfCopies: numberOfCopies!, publicationYear,
     publisher: clean(input.publisher, 255) || null,
     callNumber: clean(input.call_number ?? input.callNumber, 100) || null,
     coverImageData,

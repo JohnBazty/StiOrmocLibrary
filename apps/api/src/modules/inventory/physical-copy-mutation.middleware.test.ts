@@ -21,7 +21,8 @@ function fakeDatabase(activeLoan: Record<string, unknown> | null, activeReservat
     async beginTransaction() { state.began += 1 },
     async rollback() { state.rolledBack += 1 },
     release() { state.released += 1 },
-    async execute() {
+    async execute(sql: string) {
+      if (sql.includes('pg_advisory_xact_lock')) return [[]]
       state.queryCount += 1
       if (state.queryCount === 1) {
         return [[{

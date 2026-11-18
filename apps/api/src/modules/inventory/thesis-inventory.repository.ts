@@ -29,6 +29,8 @@ export function thesisInventoryDto(row: RowDataPacket) {
     condition_state: String(row.condition_state ?? ''),
     availability_status: String(row.availability_status ?? ''),
     shelf_location: String(row.shelf_location ?? ''),
+    shelf_column: Number(row.shelf_column ?? 1),
+    shelf_row: Number(row.shelf_row ?? 1),
     last_audited_at: row.last_audited_at ?? null,
     row_version: Number(row.row_version ?? 1),
   }
@@ -69,7 +71,7 @@ export async function listThesisInventory(database: Pool, filters: ThesisInvento
   const [[rows], [countRows]] = await Promise.all([
     database.execute<RowDataPacket[]>(`
       SELECT research_inventory_id, title, authors, adviser, publication_year, accession_number,
-             barcode, condition_state, availability_status, lifecycle_status, shelf_location, last_audited_at, row_version
+             barcode, condition_state, availability_status, lifecycle_status, shelf_location, shelf_column, shelf_row, last_audited_at, row_version
         FROM research_inventory ${where.sql}
        ORDER BY title ASC, research_inventory_id ASC
        LIMIT ${filters.limit} OFFSET ${offset}`, where.parameters),
@@ -171,7 +173,7 @@ export async function* iterateThesisInventoryRows(database: Pool, batchSize = 25
   for (;;) {
     const [rows] = await database.execute<RowDataPacket[]>(`
       SELECT research_inventory_id, title, authors, adviser, publication_year, accession_number,
-             barcode, condition_state, availability_status, lifecycle_status, shelf_location, last_audited_at
+             barcode, condition_state, availability_status, lifecycle_status, shelf_location, shelf_column, shelf_row, last_audited_at
         FROM research_inventory
        WHERE lifecycle_status = 'Active' AND research_inventory_id > ?
        ORDER BY research_inventory_id ASC LIMIT ${safeBatchSize}`, [cursor])

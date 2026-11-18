@@ -1,3 +1,4 @@
+import { lockShelfCapacity } from './shelf-capacity.service.ts'
 import type { Pool } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
@@ -57,6 +58,7 @@ export function createCatalogManagementService(database: Pool = db) {
     const connection = await database.getConnection()
     try {
       await connection.beginTransaction()
+      await lockShelfCapacity(connection)
       const result = await operation(connection)
       await connection.commit()
       return result

@@ -1,3 +1,4 @@
+import { lockShelfCapacity } from '../catalog/shelf-capacity.service.ts'
 import type { Pool, PoolConnection, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
@@ -59,6 +60,7 @@ export async function auditThesisCondition(
   const connection = await database.getConnection()
   try {
     await connection.beginTransaction()
+    await lockShelfCapacity(connection)
     const thesis = requireActiveThesis(await lockThesisInventory(connection, barcode))
     const circulation = await lockThesisCirculationMaterial(connection, thesis.barcode)
     const materialId = circulation ? Number(circulation.material_id) : null
@@ -107,6 +109,7 @@ export async function setThesisAvailability(
   const connection = await database.getConnection()
   try {
     await connection.beginTransaction()
+    await lockShelfCapacity(connection)
     const thesis = requireActiveThesis(await lockThesisInventory(connection, barcode))
     const circulation = await lockThesisCirculationMaterial(connection, thesis.barcode)
     const materialId = circulation ? Number(circulation.material_id) : null
@@ -177,6 +180,7 @@ export async function archiveThesisInventory(
   const connection = await database.getConnection()
   try {
     await connection.beginTransaction()
+    await lockShelfCapacity(connection)
     const thesis = requireActiveThesis(await lockThesisInventoryById(connection, researchInventoryId))
     const materialId = await assertThesisNotActivelyAllocated(connection, thesis)
     await connection.execute(`
@@ -208,6 +212,7 @@ export async function deleteThesisInventory(
   const connection = await database.getConnection()
   try {
     await connection.beginTransaction()
+    await lockShelfCapacity(connection)
     const thesis = requireActiveThesis(await lockThesisInventoryById(connection, researchInventoryId))
     const materialId = await assertThesisNotActivelyAllocated(connection, thesis)
     if (thesis.condition_state !== 'lost') {

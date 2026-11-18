@@ -1,3 +1,4 @@
+import { assertShelfCapacity, lockShelfCapacity } from './shelf-capacity.service.ts'
 import type { Pool } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
@@ -24,13 +25,21 @@ export function createBulkBookService(database: Pool = db, clock: () => Date = (
       let storedCoverPath: string | null = null
       try {
         await connection.beginTransaction()
+        await lockShelfCapacity(connection)
         const category = await lockCategoryShelf(connection, validated.categoryId)
         if (!category) throw new HttpError(422, 'CATEGORY_NOT_FOUND', 'The selected category does not exist.', { category_id: validated.categoryId })
         {
           if (!await ensureBookLocationExists(connection,validated.shelfLocation)) throw new HttpError(422,'BOOK_LOCATION_NOT_MANAGED','Choose an active location from Maintenance.')
         }
-        const input = { ...validated, shelfLocation: validated.shelfLocation, shelfColumn: category.shelfColumn, shelfRow: category.shelfRow }
+        const sameShelf = validated.shelfLocation === category.shelfLocation
+        const placement = await assertShelfCapacity(connection, {
+          ...validated,
+          shelfColumn: validated.shelfColumn ?? (sameShelf ? category.shelfColumn : 1),
+          shelfRow: validated.shelfRow ?? (sameShelf ? category.shelfRow : 1),
+        }, validated.numberOfCopies)
+        const input = { ...validated, ...placement }
         const existingTitle = await lockBookTitleByIsbn(connection, input.isbn)
+        if (existingTitle?.lifecycleStatus === 'Archived') throw new HttpError(409, 'CATALOG_TITLE_ARCHIVED', 'Restore this archived book title before adding more copies.')
         if (existingTitle && (
           identity(existingTitle.title) !== identity(input.title)
           || identity(existingTitle.author) !== identity(input.author)

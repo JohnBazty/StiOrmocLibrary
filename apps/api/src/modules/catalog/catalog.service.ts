@@ -1,3 +1,4 @@
+import { assertShelfCapacity, lockShelfCapacity } from './shelf-capacity.service.ts'
 import type { Pool } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
@@ -17,7 +18,7 @@ import {
   insertTitle,
 } from './catalog.repository.ts'
 import { validateBookEntry, validateThesisEntry } from './catalog.validation.ts'
-import { ensureBookLocationExists, reserveBarcodeSequence } from './bulk-book.repository.ts'
+import { ensureBookLocationExists, lockCategoryShelf, reserveBarcodeSequence } from './bulk-book.repository.ts'
 import { renderBookLabel } from './book-label.renderer.ts'
 
 function validationError(errors: Record<string, string>) {
@@ -38,6 +39,15 @@ export function createCatalogService(database: Pool = db) {
 
       try {
         await connection.beginTransaction()
+        await lockShelfCapacity(connection)
+        if (input.categoryId !== null) {
+          const category = await lockCategoryShelf(connection, input.categoryId)
+          if (category && category.shelfLocation === input.copy.shelfLocation) {
+            input.copy.shelfColumn ??= category.shelfColumn
+            input.copy.shelfRow ??= category.shelfRow
+          }
+        }
+        Object.assign(input.copy, await assertShelfCapacity(connection, input.copy, 1))
 
         if (!await ensureCategoryExists(connection, input.categoryId)) {
           throw new HttpError(422, 'CATEGORY_NOT_FOUND', 'The selected category does not exist.', {
@@ -55,6 +65,7 @@ export function createCatalogService(database: Pool = db) {
         }
 
         const existingTitle = await findBookTitleByIsbnForUpdate(connection, input.isbn)
+        if (existingTitle?.lifecycle_status === 'Archived') throw new HttpError(409, 'CATALOG_TITLE_ARCHIVED', 'Restore this archived book title before adding more copies.')
         const createdTitle = !existingTitle
         const titleId = existingTitle?.title_id ?? await insertTitle(connection, {
           categoryId: input.categoryId,
@@ -96,6 +107,15 @@ export function createCatalogService(database: Pool = db) {
 
       try {
         await connection.beginTransaction()
+        await lockShelfCapacity(connection)
+        if (input.categoryId !== null) {
+          const category = await lockCategoryShelf(connection, input.categoryId)
+          if (category && category.shelfLocation === input.copy.shelfLocation) {
+            input.copy.shelfColumn ??= category.shelfColumn
+            input.copy.shelfRow ??= category.shelfRow
+          }
+        }
+        Object.assign(input.copy, await assertShelfCapacity(connection, input.copy, 1))
 
         if (!await ensureBookLocationExists(connection, input.copy.shelfLocation)) {
           throw new HttpError(422, 'RESEARCH_LOCATION_NOT_FOUND', 'Shelf location must match an existing managed location.', {

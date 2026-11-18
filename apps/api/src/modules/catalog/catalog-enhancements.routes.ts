@@ -6,6 +6,7 @@ import { exportFoundRows, fillFoundRows, readFoundRows } from './find-book-detai
 import * as service from './catalog-enhancements.service.ts'
 import type { SheetMapping } from './holdings-parser.ts'
 import { HttpError } from '../../core/http-error.ts'
+import { moveShelfCopies, restoreShelfCopies } from './shelf-copy-placement.service.ts'
 
 const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:4194304,files:1,fields:4,fieldSize:32768}})
 const run=(fn:(request:Request,response:Response)=>Promise<unknown>)=>(request:Request,response:Response,next:NextFunction)=>{response.set('Cache-Control','no-store');void fn(request,response).then(data=>response.json({success:true,data})).catch(next)}
@@ -17,6 +18,8 @@ publicCatalogRouter.get('/titles',run((req,res)=>service.publicCatalog(req.query
 publicCatalogRouter.get('/titles/:id',run((req,res)=>service.publicDetail(req.params.id)))
 publicCatalogRouter.get('/files/:id',async(req,res,next)=>{try{const file=await service.digitalDownload(req.params.id);res.set({'Content-Type':'application/pdf','Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}).send(file.bytes)}catch(e){next(e)}})
 export const catalogMaintenanceRouter=Router()
+catalogMaintenanceRouter.post('/copies/move',run((req,res)=>moveShelfCopies(req.body,Number(res.locals.authenticatedUser.accountId))))
+catalogMaintenanceRouter.post('/copies/restore',run((req,res)=>restoreShelfCopies(req.body,Number(res.locals.authenticatedUser.accountId))))
 catalogMaintenanceRouter.get('/options',run(()=>service.catalogOptions()))
 catalogMaintenanceRouter.post('/foundation/:kind',run((req,res)=>service.saveFoundation(String(req.params.kind),null,req.body,Number(res.locals.authenticatedUser.accountId))))
 catalogMaintenanceRouter.patch('/foundation/:kind/:id',run((req,res)=>service.saveFoundation(String(req.params.kind),req.params.id,req.body,Number(res.locals.authenticatedUser.accountId))))
