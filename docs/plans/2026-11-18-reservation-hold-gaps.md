@@ -2,7 +2,7 @@
 
 - **Date created:** 2026-11-18
 - **Date last updated:** 2026-11-18
-- **Status:** inprogress
+- **Status:** built
 - **Branch:** `fix/reservation-hold-gaps`, cut from `fix/lost-copy-reservation-release` (gap 1). It reuses `releaseLostCopyHolds`, which is not on `main` yet. Rebase onto `main` once gap 1 merges.
 - **Migration:** `042_reservation_skip_and_audit.sql` (next free number; `041` is on the gap 1 branch and not applied).
 - **Spec method:** GSD spec-phase interview, 3 rounds plus the edge and prohibition probes. Final ambiguity 0.13 (gate 0.20 or lower).
