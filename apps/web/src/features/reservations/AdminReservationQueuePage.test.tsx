@@ -2,7 +2,7 @@ import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react'
 import {MemoryRouter} from 'react-router-dom'
 import {afterEach,beforeEach,expect,it,vi} from 'vitest'
 import {AdminReservationQueuePage} from './AdminReservationQueuePage'
-const api=vi.hoisted(()=>({queue:vi.fn(),adjustStatus:vi.fn()}))
+const api=vi.hoisted(()=>({queue:vi.fn(),adjustStatus:vi.fn(),swapCandidates:vi.fn(),swapCopy:vi.fn(),moveInQueue:vi.fn()}))
 vi.mock('./reservation-api',()=>({reservationApi:api}))
 vi.mock('../auth/auth-storage',()=>({getCurrentIdentity:()=>({role:'Staff'})}))
 const row={reservationId:81,userId:7,userName:'Sample Student',institutionalId:'SAMPLE-7',userRole:'Student',materialTitle:'Waiting title',materialType:'Book',status:'pending',queuePosition:2,reservedAt:'2026-10-16T01:00:00Z',pickupDeadline:null,assignedCopyId:null,barcode:null,accessionNumber:null,shelfLocation:null}
@@ -31,4 +31,52 @@ it('lets Staff change between waiting pickups and all history without creating a
  fireEvent.change(screen.getByLabelText('Request status'),{target:{value:''}})
  await waitFor(()=>expect(api.queue).toHaveBeenLastCalledWith(expect.objectContaining({status:''}),1))
  expect(api.adjustStatus).not.toHaveBeenCalled()
+})
+const cart={...row,reservationId:90,materialTitle:'Cart title',status:'approved',requestKind:'CartHandover',queuePosition:null,assignedCopyId:5,barcode:'CART-COPY',pickupDeadline:'2026-11-18T09:00:00Z'}
+it('lists cart handovers under the kind filter with their auto-cancel time',async()=>{
+ open();await screen.findByText('Waiting title')
+ api.queue.mockResolvedValue({items:[cart],pagination:{pages:1,total:1}})
+ fireEvent.change(screen.getByLabelText('Request kind'),{target:{value:'CartHandover'}})
+ await waitFor(()=>expect(api.queue).toHaveBeenLastCalledWith(expect.objectContaining({kind:'CartHandover'}),1))
+ await screen.findByText('Cart title')
+ expect(screen.getByText(/Auto-cancels Nov 18, 2026, 5:00 PM/)).toBeTruthy()
+ expect(screen.queryByRole('button',{name:'Mark ready'})).toBeNull()
+ expect(screen.queryByText(/Queue position/)).toBeNull()
+})
+it('shows the empty state for an empty cart list',async()=>{
+ open();await screen.findByText('Waiting title')
+ api.queue.mockResolvedValue({items:[],pagination:{pages:1,total:0}})
+ fireEvent.change(screen.getByLabelText('Request kind'),{target:{value:'CartHandover'}})
+ await screen.findByText('No active cart handovers.')
+})
+it('shows why a waiting request was skipped',async()=>{
+ api.queue.mockResolvedValue({items:[{...row,lastSkipReason:'Over borrowing limit',lastSkippedAt:'2026-11-18T02:00:00Z'}],pagination:{pages:1,total:1}})
+ open();await screen.findByText(/Skipped: Over borrowing limit, Nov 18, 2026, 10:00 AM/)
+})
+it('moves a waiting request only with a reason and closes on Escape',async()=>{
+ api.moveInQueue.mockResolvedValue({})
+ open();await screen.findByText('Waiting title')
+ fireEvent.click(screen.getByRole('button',{name:'Move up'}))
+ const dialog=screen.getByRole('dialog')
+ const confirm=[...dialog.querySelectorAll('button')].find(b=>b.textContent==='Move up') as HTMLButtonElement
+ expect(confirm.disabled).toBe(true)
+ fireEvent.change(screen.getByLabelText(/Reason/),{target:{value:'Dean asked'}})
+ fireEvent.click(confirm)
+ await waitFor(()=>expect(api.moveInQueue).toHaveBeenCalledWith(81,'up','Dean asked'))
+ await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull())
+ fireEvent.click(screen.getByRole('button',{name:'Move down'}))
+ fireEvent.keyDown(document,{key:'Escape'})
+ expect(screen.queryByRole('dialog')).toBeNull()
+})
+it('swaps the copy from the list of eligible copies',async()=>{
+ api.queue.mockResolvedValue({items:[{...row,status:'approved',assignedCopyId:4,barcode:'SAMPLE-COPY'}],pagination:{pages:1,total:1}})
+ api.swapCandidates.mockResolvedValue([{physicalCopyId:4,barcode:'SAMPLE-COPY',accessionNumber:'A-1',shelfLocation:null},{physicalCopyId:6,barcode:'OTHER-COPY',accessionNumber:'A-2',shelfLocation:'Shelf 3'}])
+ api.swapCopy.mockResolvedValue({})
+ open();fireEvent.click(await screen.findByRole('button',{name:'Swap copy'}))
+ await screen.findByText('OTHER-COPY')
+ expect(screen.queryByText('A-1',{exact:false})).toBeNull()
+ const dialog=screen.getByRole('dialog')
+ fireEvent.click(screen.getByRole('radio'))
+ fireEvent.click([...dialog.querySelectorAll('button')].find(b=>b.textContent==='Swap copy') as HTMLElement)
+ await waitFor(()=>expect(api.swapCopy).toHaveBeenCalledWith(81,6))
 })
