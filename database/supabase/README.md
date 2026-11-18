@@ -34,7 +34,7 @@
 -- 034_job_runner_hardening.sql (job table RLS in the repo, open-loan cursor index) was applied 2026-11-11.
 -- 033_rename_system_brand.sql is pending review. 035 is reserved by PR #20, not applied.
 -- 037_book_register.sql (register columns, per-copy cost) was applied 2026-11-13 from feat/book-register, for Ethan's test.
--- Next unused number: 040 (`038_fine_policy_maintenance.sql` drafted 2026-11-18, not applied; `039` reserved for the mobile refresh token).
+-- Next unused number: 040 (`038_fine_policy_maintenance.sql` applied 2026-11-18 from feat/fines-maintenance; `039` reserved for the mobile refresh token).
 -- 031_semester_enrollment.sql supersedes the removed, unapplied 028 draft.
 -- Preserve the original bytes of applied files. The 003 source still needs checksum reconciliation.
 -- See docs/main-branch-integration.md for the live ledger audit.

@@ -2,7 +2,7 @@
 
 - Date created: 2026-11-18
 - Date last updated: 2026-11-18
-- Status: built (2026-11-18, branch `feat/fines-maintenance`; migration `038` not applied)
+- Status: built (2026-11-18, branch `feat/fines-maintenance`; migration `038` applied 2026-11-18)
 
 ## Why
 Librarians cannot change the overdue fine rules without a code or database change. Ethan wants a Librarian page where the fine rules can be viewed and changed.
@@ -67,9 +67,11 @@ Versioned rules, the same pattern as borrowing policies (`borrowing-policy.servi
 - No new environment variables.
 
 ## Database boundary
+**Applied 2026-11-18.** Text below is the original plan.
 One additive migration, `038`. It is not applied to the live database without Ethan's go-ahead. Until it is applied, the live calculator keeps working, because the new columns are only read by the new page.
 
 ## Change log
 - 2026-11-18: Plan drafted after reading the fines, circulation and job code and the migrations.
+- 2026-11-18: On Ethan's go-ahead, applied `038` to the live database. The read-only check first found one row (the 2 / 10 / 500 seed), which passed every check. Verified afterwards: `change_reason` and the three checks exist, RLS is on, and anon and authenticated have no table or sequence access.
 - 2026-11-18: Reviews: no CRITICAL. Fixed the HIGH notification overflow (body sliced to 500), the far-future start date (365-day limit), `loadFineContext` now returns only `policyFor`, review with no saved rule, constraint lookup scoped to the table, and sequence grants revoked. LOW fixes: dialog Tab trap, focus on first invalid field, rollback keeps the original error. Accepted gaps: no 401 test for this route (covered by the global `/api/v1` guard tests), and scheduled versions cannot be cancelled.
 - 2026-11-18: Ethan approved with the due-date rule and the PHP 500 cap ceiling. A new version must start after the latest saved one (409 otherwise); a change made for today starts at the moment it is saved. Scheduled versions cannot be cancelled from the page yet.
