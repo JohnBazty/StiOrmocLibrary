@@ -169,6 +169,6 @@ Migration tracker in `.cursor/agent-protocol.md` and `docs/schema-context.md`. T
 - [x] 2. Cart deadline on submit, cart expiry plus notice
 - [x] 3. Damaged or For Repair release and reallocation
 - [x] 4. Migration 042 (skip columns plus `reservation_audit_events`), skip reason write and clear, `kind` parameter on the staff query
-- [ ] 5. swap-copy and move endpoints plus audit plus RBAC
+- [x] 5. swap-copy and move endpoints plus audit plus RBAC
 - [ ] 6. Book queue UI
 - [ ] 7. Trackers updated, `npm test` / typecheck / build green
