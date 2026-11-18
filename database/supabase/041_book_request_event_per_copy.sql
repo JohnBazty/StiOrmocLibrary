@@ -6,8 +6,10 @@
 -- on (reservation_id, event_status), so the new constraint cannot fail on current data.
 -- One DO block is one statement, so the swap is atomic even though the runner does not
 -- wrap files in a transaction, and a rerun is a no-op. The old 025 rule is found by its
--- columns, not its generated name. Deploy order does not matter: recordRequestEvent uses
--- ON CONFLICT DO NOTHING.
+-- columns, not its generated name.
+-- APPLY ONLY AFTER the code from fix/lost-copy-reservation-release is live on Vercel.
+-- Older code names the 025 rule in ON CONFLICT and fails (42P10) once it is dropped.
+-- See docs/runbooks/lost-copy-041-rollout.md.
 DO $$
 DECLARE
   old_name name;

@@ -32,7 +32,7 @@ export async function recordRequestEvent(q: PoolConnection, id: number, status: 
     LEFT JOIN titles t ON t.title_id=r.book_title_id WHERE r.reservation_id=?`, [id])
   const r = rows[0]
   if (!r) return
-  // No conflict target: works with the 025 and the 041 uniqueness rule, so deploy order does not matter.
+  // No conflict target: works with the 025 and the 041 uniqueness rule (older code only works with 025).
   const [insert] = await q.execute<ResultSetHeader>(`INSERT INTO book_request_events
     (reservation_id,event_status,physical_copy_id,occurred_at,pickup_deadline) VALUES (?,?,?,?,?)
     ON CONFLICT DO NOTHING`, [id,status,r.assigned_physical_copy_id,now,r.deadline])

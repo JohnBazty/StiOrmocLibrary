@@ -39,7 +39,7 @@ Marking `NMT-001` Lost ran `WHERE accession_id = 12`. That missed Maria (340) an
 
 **Second Ready notice** (migration `041_book_request_event_per_copy.sql`):
 - Events are unique per reservation, status **and assigned copy** (`UNIQUE NULLS NOT DISTINCT`). Stages without a copy, such as Received and Waiting, still cannot repeat.
-- `recordRequestEvent` uses `ON CONFLICT DO NOTHING` with no target, so it works with both the 025 and the 041 rule and **deploy order does not matter**.
+- `recordRequestEvent` uses `ON CONFLICT DO NOTHING` with no target, so the **new** code works with both the 025 and the 041 rule. The code live now does not: it names the 025 rule (`ON CONFLICT (reservation_id,event_status)`), which 041 drops. **Publish this code on Vercel first, then apply 041.** See [the rollout runbook](runbooks/lost-copy-041-rollout.md).
 - Preparing and Ready notice keys carry the copy id for the borrower and the librarian. Other stages keep their old keys.
 - The migration is a single `DO` block, so it applies all or nothing (the runner does not wrap files in a transaction) and a rerun changes nothing. It finds the old 025 rule by its columns, not its generated name.
 
@@ -71,16 +71,21 @@ Marking `NMT-001` Lost ran `WHERE accession_id = 12`. That missed Maria (340) an
 - [x] New code against the old 025 rule on PGlite: no error, same behaviour as before
 - [x] The runner (`apply-supabase-file.js`) reads 041 as one statement
 - [x] Security review: no CRITICAL or HIGH. MEDIUM "silent demotion" fixed, LOW re-mark repair and cart test added.
-- [x] Database review: HIGH deploy-order outage, MEDIUM non-atomic runner and LOW constraint name all fixed
+- [x] Database review: MEDIUM non-atomic runner and LOW constraint name fixed. HIGH deploy-order outage fixed for the new code only; the code live now still breaks if 041 runs first, so the rollout order is code, then 041.
 - [ ] Not run against the live Supabase database
 - [ ] Not checked in the web app (no UI change; the borrower and librarian screens read the same fields)
 
 ## To merge (JohnBazty)
 
-1. Review the four commits.
-2. Apply `041` with `npm run db:supabase -w @sti-library/api -- 041_book_request_event_per_copy.sql`. It can go before or after the deploy.
-3. Deploy.
-4. Optional: re-mark any copy that is already Lost and still shows a held request, to release the hold the old bug left.
+> **Order matters: code first, database second.** Applying `041` while the old code is live breaks every book request action (reserve, Mark ready, cancel, desk pickup, expiry job) with Postgres error 42P10 until the new code is published.
+
+1. Review the commits.
+2. Merge into `main`.
+3. Publish a Vercel production deployment that includes this merge, and confirm it is the one serving https://sti-ormoc-smart-library.vercel.app.
+4. Only then apply `041` with `npm run db:supabase -w @sti-library/api -- 041_book_request_event_per_copy.sql`.
+5. Optional: re-mark any copy that is already Lost and still shows a held request, to release the hold the old bug left.
+
+Step-by-step checks and rollback: [docs/runbooks/lost-copy-041-rollout.md](runbooks/lost-copy-041-rollout.md).
 
 ## Known limits (not in this PR)
 
