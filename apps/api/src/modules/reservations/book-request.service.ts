@@ -10,6 +10,7 @@ import { positiveId, validateMove } from './reservation.validation.ts'
 import { recordRequestEvent, requestEventStatus, requestLabels, requestInstructions } from './book-request-events.ts'
 import { loadOpeningHours, pickupDeadline, nextCloseAfter } from './pickup-deadline.ts'
 import { notifyLibrarians } from '../notifications/library-alerts.ts'
+import { dayCount, readReservationSettings, waitingExpiryCutoff } from './reservation-settings.service.ts'
 
 const active = "('pending','approved','ready_for_pickup')"
 const fail = (code: string, message: string) => new HttpError(422,code,message)
@@ -102,7 +103,7 @@ export async function releaseBookRequest(q: PoolConnection,r:RowDataPacket,statu
   if(!['pending','approved','ready_for_pickup'].includes(String(r.reservation_status))) return false
   // Keep the assignment and fixed deadline as history; terminal states no longer own the copy.
   await q.execute('UPDATE reservations SET reservation_status=?,last_skip_reason=NULL,last_skipped_at=NULL,updated_at=NOW() WHERE reservation_id=?',[status,r.reservation_id])
-  await cancelPendingCounterClaim(q,Number(r.reservation_id),actor,status==='expired'?(r.request_kind==='CartHandover'?'Cart handover expired at closing.':'Pickup deadline expired.'):'Book request cancelled.')
+  await cancelPendingCounterClaim(q,Number(r.reservation_id),actor,status==='expired'?(r.request_kind==='CartHandover'?'Cart handover expired at closing.':r.assigned_physical_copy_id?'Pickup deadline expired.':'Waiting-list limit passed.'):'Book request cancelled.')
   if(r.assigned_physical_copy_id) {
     await q.execute(`UPDATE physical_copies SET availability_status=CASE WHEN lifecycle_status='Active' AND condition_status NOT IN ('Lost','Damaged','For Repair') THEN 'Available' ELSE 'Unavailable' END,
       row_version=row_version+1,updated_at=NOW() WHERE physical_copy_id=? AND availability_status='Reserved'`,[r.assigned_physical_copy_id])
@@ -144,6 +145,27 @@ export async function releaseLostCopyHolds(q: PoolConnection,physicalCopyId:numb
   const titles=new Set(rows.filter(r=>r.request_kind!=='CartHandover'&&r.book_title_id).map(r=>Number(r.book_title_id)))
   for(const titleId of titles) await allocateWaitingRequests(q,titleId,now)
   return rows.length
+}
+
+/** Waiting-list limit (SPEC R4). The caller holds the shared circulation lock, so Mark ready and allocation cannot race this. */
+async function expireWaiting(q: PoolConnection,now:Date,limit:number) {
+  const cutoff=waitingExpiryCutoff(now,await readReservationSettings(q))
+  if(!cutoff) return 0
+  const [rows]=await q.execute<RowDataPacket[]>(`SELECT * FROM reservations WHERE request_kind='Reservation' AND reservation_status IN ('pending','approved')
+    AND assigned_physical_copy_id IS NULL AND reserved_at<=(?::timestamptz AT TIME ZONE 'Asia/Manila')
+    -- A copy freed since the last allocation run goes to this queue first; advanceWaiting assigns it.
+    AND NOT EXISTS (SELECT 1 FROM physical_copies pc WHERE pc.title_id=reservations.book_title_id AND pc.lifecycle_status='Active'
+      AND pc.availability_status='Available' AND pc.condition_status NOT IN ('Lost','Damaged','For Repair'))
+    ORDER BY reserved_at,reservation_id LIMIT ? FOR UPDATE`,[cutoff,limit])
+  let expired=0
+  for(const candidate of rows) {
+    // An earlier release in this run may have given it a copy or moved its queue position.
+    const [fresh]=await q.execute<RowDataPacket[]>('SELECT * FROM reservations WHERE reservation_id=? FOR UPDATE',[candidate.reservation_id])
+    const r=fresh[0]
+    if(!r || r.request_kind!=='Reservation' || !['pending','approved'].includes(String(r.reservation_status)) || r.assigned_physical_copy_id) continue
+    if(await releaseBookRequest(q,r,'expired',null,now)) expired++
+  }
+  return expired
 }
 
 export function createBookRequestService(database:Pool=db,clock=()=>new Date()) {
@@ -257,7 +279,7 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
       const input=object(body)
       if(input.status==='cancelled') return this.cancel(accountId,id,true)
       if(!['approved','ready_for_pickup'].includes(String(input.status))) throw fail('RESERVATION_STATUS_INVALID','Choose Mark ready or Cancel request.')
-      if(input.pickupDeadline) throw fail('PICKUP_DEADLINE_FIXED','Pickup deadlines are fixed at 24 hours from Mark ready.')
+      if(input.pickupDeadline) throw fail('PICKUP_DEADLINE_FIXED',`Pickup deadlines are fixed at ${dayCount((await readReservationSettings(database)).pickupWindowDays)} from Mark ready.`)
       return transaction(async q=> {
         await linkedUser(q,positiveId(accountId,'accountId'),true)
         let r=await requestRow(q,positiveId(id,'reservationId'))
@@ -280,10 +302,12 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
           AND pc.availability_status='Reserved' AND pc.condition_status NOT IN ('Lost','Damaged','For Repair') FOR UPDATE OF pc,t`,[r.assigned_physical_copy_id])
         if(!copies.length) throw fail('DESK_COPY_BLOCKED','The assigned copy is unavailable. Review its physical condition before marking ready.')
         if(input.status==='approved') return result(r) // Compatible legacy Prepare action, never another approval gate.
-        const now=clock(),hoursOpen=await loadOpeningHours(q,now),deadline=pickupDeadline(now,hoursOpen.schedule,hoursOpen.closedDates)
+        // One settings read: the stored deadline and the notice wording use the same window.
+        const now=clock(),settings=await readReservationSettings(q),hoursOpen=await loadOpeningHours(q,now,settings.pickupWindowDays)
+        const deadline=pickupDeadline(now,hoursOpen.schedule,hoursOpen.closedDates,settings.pickupWindowDays)
         await q.execute(`UPDATE reservations SET reservation_status='ready_for_pickup',ready_at=?,
           pickup_deadline=(?::timestamptz AT TIME ZONE 'Asia/Manila'),updated_at=NOW() WHERE reservation_id=?`,[now,deadline,r.reservation_id])
-        await recordRequestEvent(q,Number(r.reservation_id),'ready_for_pickup',now)
+        await recordRequestEvent(q,Number(r.reservation_id),'ready_for_pickup',now,settings.pickupWindowDays)
         return result(await requestRow(q,Number(r.reservation_id)))
       })
     },
@@ -342,15 +366,16 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
       })
     },
     async expire(now:Date,batchSize=100) {
+      const limit=Math.min(500,Math.max(1,batchSize))
       return transaction(async q=> {
         const [rows]=await q.execute<RowDataPacket[]>(`SELECT r.* FROM reservations r WHERE ((reservation_status='ready_for_pickup' OR (request_kind='CartHandover' AND reservation_status='approved'))
             AND pickup_deadline<=(?::timestamptz AT TIME ZONE 'Asia/Manila'))
           -- Carts made before cart deadlines existed have none; release them after 24 hours so their copy is not held forever.
           OR (request_kind='CartHandover' AND reservation_status='approved' AND pickup_deadline IS NULL
             AND reserved_at<=(?::timestamptz AT TIME ZONE 'Asia/Manila')-INTERVAL '24 hours')
-          ORDER BY pickup_deadline NULLS LAST,reservation_id LIMIT ? FOR UPDATE`,[now,now,Math.min(500,Math.max(1,batchSize))])
+          ORDER BY pickup_deadline NULLS LAST,reservation_id LIMIT ? FOR UPDATE`,[now,now,limit])
         for(const r of rows) await releaseBookRequest(q,r,'expired',null,now)
-        return {expiredCount:rows.length,releasedAccessions:rows.filter(r=>r.accession_id).map(r=>Number(r.accession_id))}
+        return {expiredCount:rows.length+await expireWaiting(q,now,limit),releasedAccessions:rows.filter(r=>r.accession_id).map(r=>Number(r.accession_id))}
       })
     },
     async advanceWaiting(now:Date) {

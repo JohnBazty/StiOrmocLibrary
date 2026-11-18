@@ -22,7 +22,8 @@ it('marks the assigned copy ready only on staff action and keeps a route to chec
  api.queue.mockResolvedValue({items:[{...row,status:'approved',assignedCopyId:4,barcode:'SAMPLE-COPY'}],pagination:{pages:1,total:1}})
  open();fireEvent.click(await screen.findByRole('button',{name:'Mark ready'}))
  await waitFor(()=>expect(api.adjustStatus).toHaveBeenCalledWith(81,'ready_for_pickup'))
- await screen.findByText(/24-hour pickup timer has started/)
+ await screen.findByText('Waiting title is ready. Its pickup timer has started.')
+ expect(document.body.textContent).not.toMatch(/\d+-hour|\d+ hours?/)
 })
 it('lets Staff change between waiting pickups and all history without creating a loan',async()=>{
  open();await screen.findByText('Waiting title')

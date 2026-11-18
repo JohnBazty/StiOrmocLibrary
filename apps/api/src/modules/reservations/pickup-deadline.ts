@@ -38,9 +38,9 @@ export const nextClose = (t: Date, schedule: OpeningSchedule, closedDates: Set<s
 /** First closing time strictly after t on an open day. */
 export const nextCloseAfter = (t: Date, schedule: OpeningSchedule, closedDates: Set<string>) => firstClose(t, schedule, closedDates, true)
 
-/** 24 hours after ready; if that is outside open hours, the next closing time. Never earlier than 24 hours. */
-export function pickupDeadline(readyAt: Date, schedule: OpeningSchedule, closedDates: Set<string>) {
-  const t = new Date(readyAt.getTime() + DAY)
+/** N days (N x 24 h) after ready; if that is outside open hours, the next closing time. Never earlier than N days. */
+export function pickupDeadline(readyAt: Date, schedule: OpeningSchedule, closedDates: Set<string>, windowDays = 1) {
+  const t = new Date(readyAt.getTime() + windowDays * DAY)
   return isOpenAt(t, schedule, closedDates) ? t : nextClose(t, schedule, closedDates)
 }
 
@@ -49,11 +49,11 @@ const localDate = (value: unknown) => {
   return String(value).slice(0, 10)
 }
 
-export async function loadOpeningHours(q: PoolConnection, from: Date) {
+export async function loadOpeningHours(q: PoolConnection, from: Date, windowDays = 1) {
   const [days] = await q.execute<RowDataPacket[]>('SELECT day_of_week,is_open,opens_at,closes_at FROM library_operating_schedule')
   const schedule: OpeningSchedule = new Map()
   for (const d of days) if (Number(d.is_open) && d.opens_at && d.closes_at) schedule.set(Number(d.day_of_week), { opensAt: String(d.opens_at), closesAt: String(d.closes_at) })
-  const start = dateKey(dayIndex(from) - 1), end = dateKey(dayIndex(from) + HORIZON_DAYS + 2)
+  const start = dateKey(dayIndex(from) - 1), end = dateKey(dayIndex(from) + windowDays + HORIZON_DAYS + 1)
   const [closed] = await q.execute<RowDataPacket[]>('SELECT closed_date FROM library_closed_days WHERE closed_date >= DATE(?) AND closed_date <= DATE(?)', [start, end])
   return { schedule, closedDates: new Set(closed.map((r) => localDate(r.closed_date))) }
 }

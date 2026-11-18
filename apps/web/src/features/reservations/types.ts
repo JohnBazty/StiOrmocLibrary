@@ -1,5 +1,5 @@
 export type ReservationStatus = 'pending' | 'approved' | 'ready_for_pickup' | 'claimed' | 'cancelled' | 'expired'
-export type RequestHistoryItem = { requestKind?:'Reservation'|'CartHandover'; reservationId:number;title:string;titleId?:number|null;coverImagePath:string|null;queuePosition:number;status:ReservationStatus;reservedAt:string;pickupDeadline:string|null;accessionNumber:string|null;barcode:string|null;conditionStatus:string|null;statusLabel?:string;instructions?:string;emailStatus?:string|null;events?:Array<{status:string;at:string}> }
+export type RequestHistoryItem = { requestKind?:'Reservation'|'CartHandover'; reservationId:number;title:string;titleId?:number|null;coverImagePath:string|null;queuePosition:number;status:ReservationStatus;reservedAt:string;pickupDeadline:string|null;accessionNumber:string|null;barcode:string|null;conditionStatus:string|null;statusLabel?:string;instructions?:string;emailStatus?:string|null;events?:Array<{status:string;at:string}>;waitingExpiresAt?:string|null }
 export type ReservationQueueItem = {
   reservationId: number; userId: number; userName: string; institutionalId: string; email: string
   userRole: 'Student' | 'Faculty'; materialId: number; materialTitle: string; materialType: string

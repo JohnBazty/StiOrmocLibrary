@@ -141,6 +141,7 @@ test('student reservation listing exposes the normalized title cover path', asyn
   const database = {
     async execute(sql: string) {
       if (sql.includes('SELECT user_id FROM accounts')) return [[{ user_id: 4 }]]
+      if (sql.includes('to_regclass')) return [[{ present: false }]]
       if (sql.includes('FROM reservations r INNER JOIN materials')) return [[{
         reservation_id: 501, title: 'Clean Code', cover_image_path: '/api/assets/covers/clean-code.png',
         queue_position: 1, reservation_status: 'approved', reserved_at: new Date('2026-08-24T08:00:00+08:00'),
@@ -153,4 +154,49 @@ test('student reservation listing exposes the normalized title cover path', asyn
   const result = await createReservationService(database).listForAccount(1)
   assert.equal(result[0].coverImagePath, '/api/assets/covers/clean-code.png')
   assert.equal(result[0].conditionStatus, 'Damaged')
+})
+
+// ---- Waiting-list expiry date on the student list (SPEC R6)
+const S = new Date('2026-11-16T10:00:00+08:00')
+const DAY = 86_400_000
+function listPool(limitDays: number | null, rows: Record<string, unknown>[]) {
+  return {
+    async execute(sql: string) {
+      if (sql.includes('SELECT user_id FROM accounts')) return [[{ user_id: 4 }]]
+      if (sql.includes('to_regclass')) return [[{ present: true }]]
+      if (sql.includes('FROM reservation_settings')) return [[{ pickup_window_days: 3, waiting_expiry_days: limitDays, waiting_expiry_saved_at: limitDays == null ? null : S, pickup_by: 'Maria Librarian', waiting_by: 'Maria Librarian' }]]
+      if (sql.includes('FROM reservations r INNER JOIN materials')) {
+        assert.match(sql, /r\.assigned_physical_copy_id/)
+        return [rows]
+      }
+      throw new Error(`Unexpected SQL: ${sql}`)
+    },
+  } as unknown as Pool
+}
+const listRow = (id: number, extra: Record<string, unknown>) => ({ reservation_id: id, title: 'Clean Code', queue_position: 1, reservation_status: 'pending', request_kind: 'Reservation',
+  requested_iso: new Date(S.getTime() - 2 * DAY), deadline_iso: null, assigned_physical_copy_id: null, barcode: null, ...extra })
+
+test('waiting reservations carry waitingExpiresAt = max(reserved, saved) + L; assigned, ready and cart rows do not (AC 14)', async () => {
+  const later = new Date(S.getTime() + 3 * DAY)
+  const rows = [listRow(1, {}), listRow(2, { requested_iso: later }), listRow(3, { reservation_status: 'approved', assigned_physical_copy_id: 31, barcode: 'B-31' }),
+    listRow(4, { reservation_status: 'ready_for_pickup', assigned_physical_copy_id: 31, barcode: 'B-31', deadline_iso: new Date(S.getTime() + DAY) }),
+    listRow(5, { request_kind: 'CartHandover', reservation_status: 'approved' }), listRow(6, { reservation_status: 'approved' })]
+  const result = await createReservationService(listPool(14, rows)).listForAccount(1)
+  assert.deepEqual(result.map((r) => r.waitingExpiresAt), [
+    new Date(S.getTime() + 14 * DAY).toISOString(), new Date(later.getTime() + 14 * DAY).toISOString(), null, null, null, new Date(S.getTime() + 14 * DAY).toISOString()])
+})
+test('with the limit off no row carries an expiry date (AC 14)', async () => {
+  const result = await createReservationService(listPool(null, [listRow(1, {}), listRow(2, { reservation_status: 'approved' })])).listForAccount(1)
+  assert.deepEqual(result.map((r) => r.waitingExpiresAt), [null, null])
+})
+test('an expired waiting reservation reads the waiting-list text; an expired ready hold reads the pickup text', async () => {
+  const rows = [listRow(1, { reservation_status: 'expired' }),
+    listRow(2, { reservation_status: 'expired', assigned_physical_copy_id: 31, barcode: 'B-31', deadline_iso: new Date(S.getTime() + DAY) })]
+  const result = await createReservationService(listPool(14, rows)).listForAccount(1)
+  assert.match(String(result[0].instructions), /waiting-list limit/)
+  assert.match(String(result[1].instructions), /The pickup deadline passed/)
+})
+test('the student list never carries a librarian name or changedBy field', async () => {
+  const result = await createReservationService(listPool(14, [listRow(1, {})])).listForAccount(1)
+  assert.doesNotMatch(JSON.stringify(result), /Maria Librarian|changedBy|ChangedBy/)
 })

@@ -142,3 +142,47 @@ test('ending a request clears its skip reason', async () => {
   await releaseBookRequest(await database.getConnection(), { reservation_id: 501, reservation_status: 'pending', request_kind: 'Reservation', book_title_id: 9, queue_position: 1 } as never, 'cancelled', 1, new Date())
   assert.match(calls.find((c) => c.sql.startsWith('UPDATE reservations SET reservation_status=?'))!.sql, /last_skip_reason=NULL/)
 })
+
+// ---- Pickup window from the saved settings (SPEC R1, R2, R8)
+function windowPool(windowDays: number | null) {
+  return fakePool((sql) => {
+    if (windowDays != null && sql.includes('to_regclass')) return [{ present: true }]
+    if (windowDays != null && sql.includes('FROM reservation_settings')) return [{ pickup_window_days: windowDays, waiting_expiry_days: null, waiting_expiry_saved_at: null }]
+    if (sql.includes('SELECT r.user_id,r.request_kind')) return [{ user_id: 4, request_kind: 'Reservation', assigned_physical_copy_id: 31, deadline: null, email: null, user_role: 'Student', title: 'Clean Code' }]
+    if (sql.includes('SELECT user_id,role,account_status FROM accounts')) return [{ user_id: 1, role: 'Librarian', account_status: 'Active' }]
+    if (sql.includes('SELECT r.*,t.title')) return [heldRow]
+    if (sql.includes('COUNT(*) AS total FROM (')) return [{ total: 1 }]
+    if (sql.includes('SELECT pc.* FROM physical_copies pc JOIN titles')) return [{ physical_copy_id: 31 }]
+    return undefined
+  })
+}
+async function markReady(windowDays: number | null) {
+  const { database, calls } = windowPool(windowDays)
+  await createBookRequestService(database, () => at('2026-11-16T10:00')).adjustStatus(1, 501, { status: 'ready_for_pickup' })
+  const update = calls.find((c) => c.sql.includes("SET reservation_status='ready_for_pickup'"))!
+  const notice = calls.find((c) => c.sql.includes('INTO notifications') && String(c.params.at(-1)).startsWith('book-request:'))!
+  return { deadline: (update.params[1] as Date).getTime(), body: String(notice.params[2]) }
+}
+
+test('Mark ready with window 3 stores the deadline three days later and the notice says within 3 days (AC 1, AC 19)', async () => {
+  const { deadline, body } = await markReady(3)
+  assert.equal(deadline, at('2026-11-19T10:00').getTime())
+  assert.match(body, /within 3 days/)
+  assert.doesNotMatch(body, /24 hours/)
+})
+test('Mark ready with no settings row keeps one day and says within 1 day (AC 2, AC 19)', async () => {
+  const { deadline, body } = await markReady(null)
+  assert.equal(deadline, at('2026-11-17T10:00').getTime())
+  assert.match(body, /within 1 day\b/)
+  assert.doesNotMatch(body, /1 days|24 hours/)
+})
+test('the next Mark ready after saving window 5 uses five days (R2)', async () => {
+  assert.equal((await markReady(5)).deadline, at('2026-11-21T10:00').getTime())
+})
+test('a supplied pickup deadline is rejected with the saved window in the message', async () => {
+  for (const [windowDays, text] of [[3, '3 days'], [null, '1 day']] as const) {
+    const { database } = windowPool(windowDays)
+    await assert.rejects(createBookRequestService(database).adjustStatus(1, 501, { status: 'ready_for_pickup', pickupDeadline: '2026-12-01T10:00:00Z' }),
+      (e: any) => e.code === 'PICKUP_DEADLINE_FIXED' && e.message.includes(`fixed at ${text} from Mark ready`))
+  }
+})
