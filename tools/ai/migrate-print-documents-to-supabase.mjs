@@ -6,7 +6,7 @@ import pg from 'pg'
 import { createClient } from '@supabase/supabase-js'
 import { env } from '../../apps/api/src/config/env.js'
 
-if (env.db.driver !== 'postgres' || !env.supabase.url || !env.supabase.secretKey) {
+if (!env.supabase.url || !env.supabase.secretKey) {
   throw new Error('Supabase database and server storage credentials are required.')
 }
 

@@ -2,7 +2,7 @@
 
 ## 1. DDL schema and identifier contract
 
-Apply `database/migrations/20260816_004_reservation_borrowing_management.sql` to upgrade the legacy reservation queue. It is MySQL 5.6 compatible, uses InnoDB and `utf8mb4_unicode_ci`, preserves existing rows, and maps legacy statuses as follows:
+The reservation queue was upgraded by `20260816_004_reservation_borrowing_management.sql`, a retired MySQL migration (removed 2026-11-10; restore with `git show a767d88:database/migrations/<file>`); its Postgres form is in `database/supabase/`. It preserved existing rows and mapped legacy statuses as follows:
 
 - `Waiting` to `pending`
 - `Fulfilled` to `claimed`

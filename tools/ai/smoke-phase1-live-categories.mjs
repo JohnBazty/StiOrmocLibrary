@@ -6,7 +6,6 @@ import { randomBytes } from 'node:crypto'
 
 dotenv.config({ path: new URL('../../apps/api/.env', import.meta.url), quiet: true })
 const { env } = await import('../../apps/api/src/config/env.js')
-if (env.db.driver !== 'postgres') throw new Error('Supabase Postgres required')
 const url = new URL(env.db.connectionString)
 url.port = '6543'
 const db = new pg.Client({ connectionString: url.toString() })

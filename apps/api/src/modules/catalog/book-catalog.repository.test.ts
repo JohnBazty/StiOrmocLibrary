@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Pool } from 'mysql2/promise'
+import type { Pool } from '../../config/db.js'
 import { buildBookCatalogQuery, queryViewerActiveBookCount } from './book-catalog.repository.ts'
 import { parseBookCatalogFilters } from './book-catalog.validation.ts'
 
@@ -13,14 +13,15 @@ test('book catalog query combines prepared title, author, ISBN, category, and ye
 
   assert.match(query.dataSql, /t\.category_id = \?/)
   assert.match(query.dataSql, /t\.publication_year = \?/)
-  assert.match(query.dataSql, /author_filter\.normalized_name LIKE \?/)
+  assert.match(query.dataSql, /CAST\(t\.publication_year AS TEXT\) = \?/)
+  assert.match(query.dataSql, /author_filter\.normalized_name ILIKE \?/)
   assert.match(query.dataSql, /physical_copies pc/)
   assert.match(query.dataSql, /available_copies_count/)
   assert.match(query.dataSql, /current_condition_status/)
   assert.match(query.dataSql, /active_waiting_count/)
-  assert.match(query.dataSql, /THEN 0 ELSE COALESCE\(stock\.available_copies_count/)
+  assert.match(query.dataSql, /COALESCE\(stock\.available_copies_count, 0\) AS available_copies_count/)
   assert.match(query.dataSql, /pc\.material_id IS NOT NULL/)
-  assert.doesNotMatch(query.dataSql, /condition_status NOT IN/)
+  assert.match(query.dataSql, /condition_status NOT IN \('Lost','Damaged','For Repair'\)/)
   assert.match(query.dataSql, /pc\.availability_status = 'Available' AND pc\.material_id IS NOT NULL/)
   assert.match(query.dataSql, /visible_copy\.availability_status IN \('Available', 'Borrowed', 'Reserved'\)/)
   assert.match(query.countSql, /visible_copy\.lifecycle_status = 'Active'/)

@@ -1,4 +1,4 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise'
+import type { Pool, RowDataPacket } from '../../config/db.js'
 import type { AttendanceFilters } from './attendance.validation.ts'
 import type { AttendanceRange } from './attendance.repository.ts'
 import { concurrentPeak, localTimestamp, manilaInstant, nextDate } from './attendance-intervals.ts'
@@ -9,7 +9,7 @@ export async function concurrentAttendanceReport(pool:Pick<Pool,'execute'>,filte
  const clauses=['COALESCE(al.checked_in_at,al.attendance_date+al.time_in) < (?::timestamptz AT TIME ZONE \'Asia/Manila\')',
   '(al.time_out IS NULL OR COALESCE(al.checked_out_at,al.attendance_date+al.time_out) > (?::timestamptz AT TIME ZONE \'Asia/Manila\'))']
  const values:any[]=[to,from]
- if(filters.q){clauses.push('(u.full_name LIKE ? OR u.school_id LIKE ? OR u.email LIKE ?)');values.push(...Array(3).fill(`%${filters.q}%`))}
+ if(filters.q){clauses.push('(u.full_name ILIKE ? OR u.school_id ILIKE ? OR u.email ILIKE ?)');values.push(...Array(3).fill(`%${filters.q}%`))}
  if(filters.role){clauses.push('u.user_role=?');values.push(filters.role)}
  if(filters.purpose){clauses.push('al.reason_for_visit=?');values.push(filters.purpose)}
  if(filters.presence){clauses.push(filters.presence==='inside'?'al.time_out IS NULL':'al.time_out IS NOT NULL')}

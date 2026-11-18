@@ -1,0 +1,2 @@
+# Migration checksums include the original line endings.
+/database/supabase/*.sql -text

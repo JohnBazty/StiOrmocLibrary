@@ -1,6 +1,6 @@
-import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
-import { currentDate, isPostgres } from '../../config/sql-dialect.js'
+import { currentDate } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import type { AnnouncementInput } from './notification.validation.ts'
 
@@ -24,22 +24,14 @@ function actorAccountId(actor: NotificationActor) {
 export function createNotificationRepository(database: Pool = db) {
   async function fanOutAnnouncement(connection: PoolConnection, announcement: RowDataPacket) {
     await connection.execute(
-      isPostgres
-        ? `INSERT INTO notifications
+      `INSERT INTO notifications
              (user_id, message_title, message_body, trigger_type, source_type, source_id,
               action_path, priority, dedupe_key, scheduled_for, delivered_at, expires_at)
            SELECT u.user_id, ?, ?, 'Announcement', 'Announcement', ?, '/student/notifications', ?,
                   CONCAT('announcement:', CAST(? AS text)), ?, NOW(), ?
              FROM users u
             WHERE u.account_status = 'Active'
-           ON CONFLICT (user_id, dedupe_key) DO NOTHING`
-        : `INSERT IGNORE INTO notifications
-             (user_id, message_title, message_body, trigger_type, source_type, source_id,
-              action_path, priority, dedupe_key, scheduled_for, delivered_at, expires_at)
-           SELECT u.user_id, ?, ?, 'Announcement', 'Announcement', ?, '/student/notifications', ?,
-                  CONCAT('announcement:', ?), ?, NOW(), ?
-             FROM users u
-            WHERE u.account_status = 'Active'`,
+           ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
       [announcement.title, announcement.message_body, announcement.announcement_id,
         announcement.priority, announcement.announcement_id,
         announcement.publish_at ?? new Date(), announcement.expires_at ?? null],
@@ -60,7 +52,7 @@ export function createNotificationRepository(database: Pool = db) {
           `SELECT n.notification_id, n.message_title, n.message_body, n.trigger_type,
                   n.source_type, n.source_id, n.action_path, n.priority, n.is_read,
                   n.notification_timestamp, n.read_at, n.expires_at
-                  ${isPostgres ? ", CASE WHEN n.source_type='Library Operations' THEN n.notification_timestamp AT TIME ZONE 'UTC' END AS operation_created_at" : ''}
+                  , CASE WHEN n.source_type='Library Operations' THEN n.notification_timestamp AT TIME ZONE 'UTC' END AS operation_created_at
              FROM notifications n
             WHERE n.user_id = ?${unreadSql}
               AND n.deleted_at IS NULL

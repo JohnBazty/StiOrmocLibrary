@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Pool, RowDataPacket } from 'mysql2/promise'
+import type { Pool, RowDataPacket } from '../../config/db.js'
 import { receiptVerificationCode } from './fine-receipt-verification.ts'
 import { createFinesService } from './fines.service.ts'
 

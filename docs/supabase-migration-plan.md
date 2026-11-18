@@ -4,15 +4,12 @@
 
 ## November 10 browser sign-in migration
 
-Applied **032_login_devices.sql** individually on 2026-11-10 after matching the production database target. Verified the migration checksum, row-level security, and browser-role access restrictions on the three authentication tables. The next unused number is **033**. The API requires **032** before enabling `LOGIN_DEVICES_ENABLED`. See the [device sign-in plan](plans/2026-11-10-remember-this-device.md).
+Applied **032_login_devices.sql** individually on 2026-11-10 after matching the production database target. Verified the migration checksum, row-level security, and browser-role access restrictions on the three authentication tables. Branding migration **033** is pending review. The next unused number is **034**. The API requires **032** before enabling `LOGIN_DEVICES_ENABLED`. See the [device sign-in plan](plans/2026-11-10-remember-this-device.md).
 
-## November 9 enrollment migration status
 
-Applied **031_semester_enrollment.sql** individually on 2026-11-09 after confirming the Vercel production database target. It supersedes the unapplied enrollment draft **028**. The production API enables enrollment using `ENROLLMENT_ROSTER_ENABLED`. Verify school email delivery and scheduled processing before starting an actual term. See the [enrollment plan](plans/2026-11-09-student-roster-registration-and-login.md).
+## Historical cutover plan
 
-## October 22 current migration update
-
-Applied product migration **030_october17_maintenance.sql**, next unused **031**. Enrollment **028** remains an unapplied draft and Dewey is deferred. The single reviewed file was tested in a disposable schema, then applied atomically after local hash/count snapshots of 12 existing tables. Afterward those records matched exactly; seven new ledgers were empty and their RLS/grants verified. The migration runner now qualifies the public ledger and sets the transaction-local product search path to avoid pooler session drift. MySQL reference **048**, next **049**, is unchanged. See [implementation, evidence and pending acceptance](revision-oct17-remaining-implementation.md).
+The sections below record the original transition. MySQL was retired on 2026-11-10. See [the removal plan](mysql-removal-plan.md) for the current PostgreSQL-only setup.
 
 ## Why
 
@@ -23,8 +20,8 @@ Product PDFs and `agent.md` historically name MySQL as the baseline; those docs 
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-10-22 |
-| **Status** | `inprogress` |
+| **Date last updated** | 2026-11-10 |
+| **Status** | `built` |
 
 Allowed status values: `planned` → `inprogress` → `built`.
 
@@ -89,7 +86,7 @@ Custom `MySqlSessionStore` (`apps/api/src/core/mysql-session-store.js`) on table
 | --- | --- |
 | MySQL baseline | `database/mysql56-schema.sql` |
 | MySQL reference migrations | **48** (`001`…`048`); next MySQL number **`049`**; `043`–`048` are prepared locally and unapplied; the active database remains Supabase Postgres |
-| Postgres drafts | Revision product files through applied `025`; next unused `026`. Remote branding `017` source integrated; reconcile with existing ledger before replay. |
+| Postgres drafts | See the current tracker and the live ledger audit in [main branch integration](main-branch-integration.md). |
 | Views | `borrow_records`, `book_titles` |
 | Seed files | None |
 
@@ -283,34 +280,9 @@ The deployed app URL and its production `DATABASE_URL` have not been verified he
 | 2026-09-25 | Migrated the four retained historical print PDFs to private Supabase Storage, kept local originals, and verified production downloads for every retained print document. | Agent Alpha |
 | 2026-09-25 | Corrected PostgreSQL admin checkout and bulk book row-lock queries and added public Supabase Storage for new covers; checked rollback-only database flows and a live image upload. | Agent Alpha |
 
+| 2026-11-10 | Status → built. The MySQL rollback path was retired; see `docs/mysql-removal-plan.md`. | Agent Alpha |
 ---
 
 ## Approval gate
 
-Build is **approved**. The local MySQL history has been transferred. Keep local credentials out of Git and verify the deployed app's connection and flows before retiring MySQL or the pre-cutover backup.
-
-## Revision Phase 1 schema addition — 2026-10-10
-
-The live ledger was inspected before authoring DDL: it contains externally managed files through `019`, including a pre-existing OTP/history schema. Applied only reviewed `020_revision_phase1_password_recovery.sql` using the single-file runner. The new table is additive, server-only and protected by RLS/revoked browser privileges. Existing accounts, schemas and credentials were preserved. Next Postgres file **021**; MySQL rollback reference remains **047**, next **048**. No push or application deployment. See [acceptance record](revision-phase1-local-implementation.md).
-
-## Revision Phase 3 schema addition — 2026-10-11
-
-Applied reviewed additive `021_revision_phase3_catalog.sql` individually after inspecting the current ledger. Added private catalog foundations, title metadata/program/course links, digital-file metadata and import review/provenance tables with RLS and revoked browser-role privileges. The `catalog-digital-files` bucket is private; permitted public PDF downloads are mediated by the API and withdrawn on title/file archival. Existing title, copy, material, loan and account identities were preserved. Local Supabase integration and browser acceptance passed using fixtures that were removed afterward. The real workbook was only previewed. Next Postgres number **022**; MySQL reference **047** remains unapplied, next **048**. No push or application deployment; see [acceptance record](revision-phase3-local-implementation.md).
-
-| 2026-10-11 | Integrated branch branding/login commits without database execution; MySQL reference now 048/next 049, applied Postgres remains 024/next unused 025. See `docs/github-update-integration.md`. |
-
-
-## Main integration — 2026-10-11
-
-The main branch was reconciled with the current revision permission model and phase workflows. Borrowing policy management uses the Librarian workspace; prior login sessions are invalidated when a new login succeeds. Competing upstream SQL identities are retained as non-executable references under `database/upstream-main/`; no migration was applied. Existing phase statuses and applied migration identities remain unchanged. See `docs/main-branch-integration.md`.
-
-Revision Phase 6 file 025 applied individually on 2026-10-11 after a private snapshot and isolated acceptance. Next Postgres file: 026. MySQL reference: 048/next 049. Existing accounts and operational history are preserved.
-
-## Cart and reservation separation — 2026-10-16
-
-Applied only reviewed `027_cart_handover_reservation_split.sql` after a disposable-schema acceptance run and an ignored private local snapshot. The existing reservations ledger gains a constrained request kind; original request fields matched their pre-migration SHA-256 fingerprint. Counts remained 7 accounts, 19 titles, 31 copies and 17 loan records at verification. No user passwords or existing operational statuses were changed. Readiness is healthy after local API restart. Next Postgres file 028; MySQL rollback reference 048/next 049 remains unchanged. No push or deployment. See [work record](cart-handover-reservation-split-20261016.md).
-
-
-## October revision additions — 2026-10-17
-
-Applied only `029_october16_revisions.sql` after disposable-schema acceptance and private, ignored before/after fingerprints of accounts, users, titles, copies, loans, reservations and printing requests. All seven existing-table fingerprints matched. The five new RLS tables support account login throttles, login OTPs, human-activity sessions and semester clearance schedules/history. Readiness is healthy. Enrollment `028_revision_phase2_enrollment.sql` remains unapplied. Next unused Postgres number `030`; MySQL reference `048` / next `049` is unchanged. Existing passwords, loan deadlines and financial records are preserved. See `docs/october16-revisions-implementation.json` for tests and remaining device/email verification limits.
+Build is **approved**. The local MySQL history has been transferred. MySQL was retired on 2026-11-10 (`docs/mysql-removal-plan.md`). Keep local credentials out of Git; the pre-cutover backup schema stays until that plan's gate drops it.

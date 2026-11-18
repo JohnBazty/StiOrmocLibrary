@@ -44,3 +44,8 @@ test('manual availability route validates before database access', async () => {
   assert.equal(response.status, 422)
   assert.ok(response.body.details.errors.availability_status)
 })
+
+test('the mock GET /api/inventory/supplies route is gone', async () => {
+  const response = await request(appForRole('Admin')).get('/api/inventory/supplies')
+  assert.equal(response.status, 404)
+})

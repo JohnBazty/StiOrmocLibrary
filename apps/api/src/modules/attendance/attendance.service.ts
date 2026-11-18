@@ -1,8 +1,7 @@
 import { attendanceTodaySql as currentDate } from './attendance-calendar.ts'
-import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import {
-  isPostgres,
   formatDate,
   formatTime,
   currentTime,
@@ -46,10 +45,10 @@ export function createAttendanceService(pool: Pool = db) {
              FROM users WHERE user_id=? LIMIT 1`, [userId],
         ),
         pool.execute<RowDataPacket[]>(
-          `SELECT log_id,${formatDate('attendance_date', '%Y-%m-%d', 'YYYY-MM-DD')} attendance_date,
+          `SELECT log_id,${formatDate('attendance_date', 'YYYY-MM-DD')} attendance_date,
                   ${formatTime('time_in')} time_in,
                   CASE WHEN time_out IS NULL THEN NULL ELSE ${formatTime('time_out')} END time_out,
-                  ${isPostgres?'checkout_source,':''}reason_for_visit purpose,CASE WHEN time_out IS NULL THEN 'Inside' ELSE 'Exited' END presence
+                  ${'checkout_source,'}reason_for_visit purpose,CASE WHEN time_out IS NULL THEN 'Inside' ELSE 'Exited' END presence
              FROM attendance_logs WHERE user_id=? ORDER BY attendance_date DESC,time_in DESC LIMIT 50`, [userId],
         ),
         pool.execute<RowDataPacket[]>(
@@ -128,9 +127,9 @@ export function createAttendanceService(pool: Pool = db) {
         await connection.execute('UPDATE attendance_qr_credentials SET last_used_at=NOW(),updated_at=NOW() WHERE credential_id=?',[visitor.credentialId])
         const actionPath=visitor.role==='Faculty'?'/faculty/attendance':visitor.role==='Student'?'/student/attendance':'/admin/attendance'
         await connection.execute(
-          `INSERT ${isPostgres ? '' : 'IGNORE '}INTO notifications
+          `INSERT INTO notifications
              (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,delivered_at)
-           VALUES (?,'Library check-in',?,'Attendance','Attendance',?,?,'Normal',?,NOW())${isPostgres ? ' ON CONFLICT (user_id, dedupe_key) DO NOTHING' : ''}`,
+           VALUES (?,'Library check-in',?,'Attendance','Attendance',?,?,'Normal',?,NOW()) ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
           [visitor.userId,`Your library entry was recorded for ${input.purpose}.`,insert.insertId,actionPath,`attendance:checkin:${insert.insertId}`],
         )
         await connection.commit()
@@ -190,11 +189,11 @@ export function createAttendanceService(pool: Pool = db) {
           `INSERT INTO library_capacity_changes(previous_capacity,new_capacity,change_reason,changed_by_user_id,changed_at)
            VALUES (?,?,?,?,NOW())`,[previous,input.capacity,input.reason,staffUserId],
         )
-        const [occupancy]=await connection.execute<RowDataPacket[]>(`SELECT COUNT(*) current_occupancy FROM attendance_logs WHERE attendance_date=${currentDate()} AND time_out IS NULL`)
-        const state=isPostgres?await libraryState(connection):null
+
+        const state=await libraryState(connection)
         await connection.commit()
-        const current=Number(occupancy[0]?.current_occupancy??0)
-        return {previousCapacity:previous,current,capacity:input.capacity,available:Math.max(0,input.capacity-current),percentage:Math.round(current/input.capacity*100),overCapacity:current>input.capacity,reason:input.reason,...state}
+
+        return { previousCapacity: previous, reason: input.reason, ...state }
       } catch(error){await connection.rollback();throw error}finally{connection.release()}
     },
   }

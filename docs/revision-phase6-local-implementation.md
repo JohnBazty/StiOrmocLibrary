@@ -2,8 +2,8 @@
 
 **Why:** Connect catalog requests, existing cart claims and waitlists to one physical-copy allocation and verified desk checkout.
 
-**Date created:** 2026-10-11  
-**Date last updated:** 2026-11-10  
+**Date created:** 2026-10-11\
+**Date last updated:** 2026-10-16\
 **Status:** `built`
 
 ## How

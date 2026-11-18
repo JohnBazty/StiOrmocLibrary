@@ -1,6 +1,6 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise'
+import type { Pool, RowDataPacket } from '../../config/db.js'
 import { fileURLToPath } from 'node:url'
-import { db, dbDriver } from '../../config/db.js'
+import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { requireLibraryActor } from '../../core/library-permissions.ts'
 import { createClearanceService } from '../clearance/clearance.service.ts'
@@ -51,9 +51,9 @@ export function filterReportRows(rows: RecordRow[], f: Pick<ReportFilters,'q'|'s
   const search = f.q.toLocaleLowerCase()
   return rows.filter(r => (!search || Object.values(r).some(v => String(v ?? '').toLocaleLowerCase().includes(search))) && (!f.status || String(r.status ?? r.availability ?? '').toLocaleLowerCase() === f.status.toLocaleLowerCase()))
 }
-export function createLiveReportsService(database: Pool = db, driver = dbDriver) {
+export function createLiveReportsService(database: Pool = db, driver = 'postgres') {
   async function read(accountId: number, f: ReportFilters) {
-    if (driver !== 'postgres') throw new HttpError(503, 'REPORTS_UNAVAILABLE', 'Live reports require the Postgres revision schema.')
+
     const q = await database.getConnection()
     try {
       await q.beginTransaction()

@@ -1,5 +1,5 @@
 import pg from 'pg'
-import { stripBackticks, toPgPlaceholders } from './sql.js'
+import { toPgPlaceholders } from './sql.js'
 
 const { Pool } = pg
 
@@ -51,7 +51,7 @@ function wrapResult(sql, result) {
 }
 
 function prepareSql(sql) {
-  return toPgPlaceholders(stripBackticks(sql))
+  return toPgPlaceholders(sql)
 }
 
 async function runOnClient(client, sql, values = []) {
@@ -85,7 +85,7 @@ function wrapClient(client) {
 }
 
 /**
- * mysql2-shaped pool over node-postgres for gradual repository migration.
+ * Pool over node-postgres with a `?`-placeholder execute (see config/db.d.ts).
  * Supports execute/query/getConnection with `?` placeholders and insertId/affectedRows.
  */
 export function createPgPool(connectionString, connectionLimit) {

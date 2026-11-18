@@ -1,4 +1,4 @@
-import type { Pool, PoolConnection, RowDataPacket, ResultSetHeader } from 'mysql2/promise'
+import type { Pool, PoolConnection, RowDataPacket, ResultSetHeader } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { authorsAgg } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
@@ -100,7 +100,7 @@ export function createFloorPlanRepository(database: Pool = db) {
     async books(query:Record<string,unknown>){
       const clauses=["pc.lifecycle_status='Active'","t.lifecycle_status='Active'","t.record_type='Book'"],params:(string|number)[]=[]
       const q=String(query.q??'').trim().slice(0,150)
-      if(q){clauses.push('(t.title LIKE ? OR t.isbn LIKE ? OR s.label LIKE ? OR pc.shelf_location LIKE ? OR EXISTS (SELECT 1 FROM authors a WHERE a.title_id=t.title_id AND a.author_name LIKE ?))');params.push(...Array(5).fill(`%${q}%`))}
+      if(q){clauses.push('(t.title ILIKE ? OR t.isbn ILIKE ? OR s.label ILIKE ? OR pc.shelf_location ILIKE ? OR EXISTS (SELECT 1 FROM authors a WHERE a.title_id=t.title_id AND a.author_name ILIKE ?))');params.push(...Array(5).fill(`%${q}%`))}
       for(const [key,col] of [['titleId','t.title_id'],['shelfId','s.id'],['categoryId','t.category_id'],['copyId','pc.physical_copy_id']])if(query[key]){const id=Number(query[key]);if(!Number.isSafeInteger(id)||id<1)throw new HttpError(422,'FILTER_INVALID','Invalid map filter.');clauses.push(`${col}=?`);params.push(id)}
       if(query.barcode){clauses.push('pc.barcode=?');params.push(String(query.barcode).slice(0,100))}
       if(query.available==='true')clauses.push("pc.availability_status='Available'")

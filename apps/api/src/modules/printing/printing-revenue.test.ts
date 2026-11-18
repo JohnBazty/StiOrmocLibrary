@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { RowDataPacket } from 'mysql2/promise'
+import type { RowDataPacket } from '../../config/db.js'
 import { revenueSnapshot } from './printing-revenue.ts'
 import { parseFinanceFilters } from './printing.validation.ts'
 

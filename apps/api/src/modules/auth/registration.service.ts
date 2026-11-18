@@ -1,8 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import bcrypt from 'bcrypt'
-import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
-import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
 import { requireLibraryActor } from '../../core/library-permissions.ts'
 import { issueAttendanceCredential } from '../attendance/attendance-credential.service.ts'
@@ -60,8 +59,7 @@ export async function createActiveAccount(connection: PoolConnection, row: Pick<
   return accountId
 }
 
-export async function createStaffAccount(actor: number, body: unknown, database: Pool = db, driver = env.db.driver) {
-  if (driver !== 'postgres') throw new HttpError(503, 'SUPABASE_REQUIRED', 'Staff account setup requires Postgres.')
+export async function createStaffAccount(actor: number, body: unknown, database: Pool = db) {
   const supplied = body && typeof body === 'object' ? body as Record<string, unknown> : {}
   if (supplied.role !== undefined && supplied.role !== 'Staff') throw new HttpError(422, 'STAFF_ROLE_REQUIRED', 'This form creates Staff accounts.')
   // Staff use their school mailbox to set their own password. This random credential is never shared.

@@ -1,4 +1,4 @@
-import type { Pool,RowDataPacket } from 'mysql2/promise'
+import type { Pool,RowDataPacket } from '../../config/db.js'
 import type { FinanceFilters } from './printing.validation.ts'
 import { printingRevenueSource } from './printing-revenue.ts'
 const bounds='>=?::date AND '

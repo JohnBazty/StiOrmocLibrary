@@ -1,4 +1,4 @@
-import type { PoolConnection, RowDataPacket } from 'mysql2/promise'
+import type { PoolConnection, RowDataPacket } from '../../config/db.js'
 import { allocateWaitingRequests } from '../reservations/book-request.service.ts'
 
 /** A returned usable copy enters preparation, never automatic readiness. */

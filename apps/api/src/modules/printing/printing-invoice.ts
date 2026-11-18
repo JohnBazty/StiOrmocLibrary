@@ -1,5 +1,5 @@
 import PDFDocument from 'pdfkit'
-import type { Pool, RowDataPacket } from 'mysql2/promise'
+import type { Pool, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { SYSTEM_NAME } from '../../config/branding.ts'

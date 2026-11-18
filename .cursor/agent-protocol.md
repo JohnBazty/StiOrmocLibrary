@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-11-10 (MySQL 048/next 049, Postgres device sign-in 032 applied, next unused 033) |
+| **Date last updated** | 2026-11-11 (Supabase `032`, `034` and `036` applied, `033` pending, `035` reserved by PR #20, next unused `038`; `037` applied 2026-11-13) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---
@@ -31,6 +31,8 @@ When Ethan says **start session** (or a clear equivalent such as “start the se
 5. **Do not start building** until Ethan gives the next explicit command after the briefing.
 
 Purpose: make every new chat session fast to resume without Ethan re-explaining context.
+
+**Wiki first (token saving):** before steps 2–3, read the Obsidian wiki (`wiki/hot.md` "Active Threads" and `wiki/entities/StiOrmocLibrary.md`). Then scan only what the wiki does not already cover; skip transcripts and diffs it summarises. The step-by-step version is the `start-session` skill (`.claude/skills/start-session/SKILL.md`, mirrored in `.agents/skills/start-session/`).
 
 ---
 
@@ -97,32 +99,20 @@ Always know and document:
 
 | Item | Value |
 | --- | --- |
-| Migrations directory | `database/migrations/` |
-| Latest migration | `20261009_048_rename_system_brand.sql` (reference file integrated; not applied in this session) |
-| Latest number | `048` |
-| **Next available number** | **`049`** |
-| Supabase / Postgres files | Tracked product files through `016` plus Revision Phase 1 `020_revision_phase1_password_recovery.sql` are applied. The live ledger contains externally managed files through `019`, including `009_password_reset_otp.sql`, advisor files `011`/`012`, `014_circulation_preflight_overrides.sql`, `016_configurable_borrowing_policies.sql`, two `017` files, `018_stocktake_sessions.sql`, and `019_durable_job_runner.sql`; some sources remain absent here. Remote `017_rename_system_brand.sql` is now present; reconcile its identity with the existing ledger before any replay. Device sign-in migration 032 was applied individually on 2026-11-10 after disposable-schema testing and production-target verification. **Next unused Postgres number: 033.** Enrollment migration 031 was applied individually on 2026-11-09 after isolated acceptance and production-target verification. It supersedes the unapplied 028 draft. Additive `030_october17_maintenance.sql` applied on 2026-10-22 after isolated-schema acceptance and local before/after hashes for 12 existing tables. Existing records matched exactly; new ledgers were empty with RLS and browser grants verified. Adds historical printing, supply metadata, other printing materials and merchandise stock. Dewey remains deferred; see `docs/revision-oct17-remaining-implementation.md`. October 16 revision migration `029_october16_revisions.sql` is applied on 2026-10-17 after disposable-schema acceptance and before/after fingerprints of seven existing tables; existing records matched exactly. Enrollment `028_revision_phase2_enrollment.sql` remains an unapplied draft. MySQL 048/next 049 is unchanged. Additive `027_cart_handover_reservation_split.sql` is applied after isolated acceptance and a private snapshot; existing request fields and account/title/copy/loan counts matched afterward. Revision Phase 7 `026_revision_phase7_collection_review.sql` applied individually after private snapshot and isolated acceptance; append-only review history, approved starting reference year 2026, RLS and preserved holdings/accounts. Revision Phase 6 `025_revision_phase6_book_requests.sql` applied individually after private snapshot and isolated acceptance; request IDs, accounts and loan history retained. Revision Phase 5 `023_revision_phase5_desk_circulation.sql` and `024_revision_phase5_reading_materials.sql` are applied; existing records retained. Revision Phase 4 `022_revision_phase4_attendance.sql` is applied with owner-confirmed printing-only service occupancy, per-event access decisions and five-minute pre-closing checkout. Revision Phase 3 `021_revision_phase3_catalog.sql` is applied. Preserve those schemas and reconcile sources before whole-directory replay. Apply only reviewed individual files via `npm run db:supabase -w @sti-library/api -- filename.sql`. |
+| Migrations directory | `database/supabase/` (Postgres only; MySQL was retired 2026-11-10) |
+| Latest applied migration | `037_book_register.sql` (2026-11-13, from feat/book-register; also applied: `034_job_runner_hardening.sql`, 2026-11-11; `036` lives on PR #19's branch) |
+| Latest file pending review | `033_rename_system_brand.sql`; `035` reserved by PR #20 (circulation RLS), not applied |
+| **Next available number** | **`038`** |
 
-Naming pattern in this repo:
+Applied enrollment 031 supersedes the removed 028 draft. Keep applied filenames and source bytes, including line endings. The 003 source still needs checksum reconciliation. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set.
 
-```text
-YYYYMMDD_NNN_short_snake_description.sql
-```
+Naming pattern: `NNN_short_snake_description.sql`, hand-written Postgres with row-level security as in earlier files. Never regenerate or edit `002_from_migrations.sql`.
 
-Example next file (date prefix chosen on authoring day):
+When a new migration lands:
 
-```text
-20261011_049_example_change.sql
-```
-
-When a new **MySQL** migration lands:
-
-1. Update this table’s **Latest** and **Next available** values in this file.
-2. Mention the new number in the related work doc’s change log / How section.
+1. Update this table's **Latest** and **Next available** values in this file.
+2. Mention the new number in the related work doc's change log / How section.
 3. Do not reuse or renumber an already-applied migration; add a new file instead.
-4. Re-run `python tools/ai/mysql_to_pg.py --migrations -o database/supabase/002_from_migrations.sql` (or add a new numbered Supabase file) and review before applying to Supabase.
-
-Note: Supabase / PostgreSQL conversion is **in progress** (`docs/supabase-migration-plan.md`). Until cutover is trusted, the MySQL tree above remains authoritative for numbering additive MySQL fixes. After cutover, prefer new DDL under `database/supabase/`.
 
 ---
 
@@ -163,22 +153,7 @@ Prefer simple, readable scripts under a clear folder (for example `tools/` or `s
 | 2026-09-26 | Phase 3 archive and image migration added: MySQL reference `041` / next `042`, Supabase applied `010` / next `011`. Phase 3 P1–P3, A9, and F1 deployed; R1 excluded as requested. |
 | 2026-10-09 | Added branding migrations MySQL `048` and Supabase `017`; tracker advanced to MySQL next `049` and Supabase next `018`. |
 | 2026-09-26 | Phase 2 item 1 account management deployed: MySQL reference `042` / next `043`, Supabase applied `011` / next `012`. Student lifecycle and audit flows passed production acceptance. Item 2 awaits user approval. |
-| 2026-09-26 | Phase 2 items 2–3 built and tested locally without pushing or deploying. MySQL rollback reference `043` adds category description; Supabase already has that column from applied migration `008`, so no new Postgres migration was needed. Next MySQL number `044`, next Postgres number `012`. |
-| 2026-09-27 | Remaining Phase 2 work prepared locally without pushing or deploying. MySQL rollback references `044`–`046` and Supabase `012`–`014` are unapplied. Next MySQL number `047`, next Postgres file `015`; latest hosted Supabase applied migration remains `011`. See `docs/phase2-local-implementation.md`. |
-| 2026-09-27 | Phase 6 role registration migration prepared locally: MySQL reference `047`, Supabase `015`; both unapplied. Next numbers `048` and `016`. No push or deployment. |
-| 2026-09-28 | Applied reviewed Supabase product files `012`–`015` individually after taking private snapshots of affected rows. Local API schema health is ready; a disposable Staff request passed real-Postgres registration/code verification and was removed. MySQL `047` remains a rollback reference; next numbers remain `048` and `016`. The live ledger has two advisor-named files absent from this checkout. No GitHub push or Vercel deployment. |
-| 2026-09-28 | Applied Supabase `016` to link seven existing Student users to missing sign-in accounts without replacing their operational user IDs or password hashes. Next Postgres file number is `017`; MySQL reference remains `047` / next `048`. |
-
-| 2026-10-10 | Revision Phase 1 added and applied Supabase `020` for private account recovery. Existing externally managed files through `019` were inspected and preserved. Next Postgres `021`; MySQL reference remains `047` unapplied / next `048`. |
-| 2026-10-11 | Revision Phase 3 applied additive Supabase `021` and completed local holdings-import/public-catalog/Maintenance acceptance. Existing catalog/account/loan data retained; test fixtures removed; no real workbook import, push or deployment. Next Postgres `022`; MySQL reference remains `047` unapplied / next `048`. |
-
-| 2026-10-11 | Revision Phase 5 built locally: Postgres 023/024 applied for scan confirmation receipts and in-library book/native-thesis usage. Temporary Active-account enrollment policy approved; missing handbacks flagged at closing. 298 API/129 web tests, build, isolated Postgres concurrency/returns and local HTTP/browser checks passed. Next Postgres 025; MySQL 047 unapplied/next 048 unchanged. No push/deployment. |
-
-| 2026-10-11 | Integrated branch branding/login commits without database execution; MySQL reference now 048/next 049, applied Postgres remains 024/next unused 025. See `docs/github-update-integration.md`. |
-
-
-## Main integration — 2026-10-11
-
-The main branch was reconciled with the current revision permission model and phase workflows. Borrowing policy management uses the Librarian workspace; prior login sessions are invalidated when a new login succeeds. Competing upstream SQL identities are retained as non-executable references under `database/upstream-main/`; no migration was applied. Existing phase statuses and applied migration identities remain unchanged. See `docs/main-branch-integration.md`.
-
-| 2026-10-16 | Applied additive Postgres 027 after owner confirmed unavailable-books-only reservations. Cart handovers use a separate request kind, never enter the queue, and create no loan before staff confirmation. Legacy requests retained; next Postgres 028, MySQL reference 048/next 049 unchanged. |
+| 2026-10-09 | Added branding migrations `045` and Supabase `015`; tracker advanced to MySQL `045` / next `046` and Supabase next `016`. |
+| 2026-10-09 | Configurable borrowing policies: MySQL `046` / Supabase `016`; tracker advanced to MySQL next `047` and Supabase next `017`. |
+| 2026-11-10 | Start session now reads the Obsidian wiki first and scans only what it does not cover; added the `start-session` skill. Migration numbers unchanged. |
+| 2026-11-10 | MySQL retired (`docs/mysql-removal-plan.md`): tracker is Supabase only, `016` / next `017`; MySQL rows and the `mysql_to_pg.py` step removed. |

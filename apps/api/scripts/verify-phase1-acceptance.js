@@ -7,12 +7,12 @@ import { fileURLToPath } from 'node:url'
 import bcrypt from 'bcrypt'
 import request from 'supertest'
 import { createClient } from '@supabase/supabase-js'
-import { db, dbDriver } from '../src/config/db.js'
+import { db } from '../src/config/db.js'
 import { env } from '../src/config/env.js'
 import { createApp } from '../src/app.js'
 import { createJwtAuthService } from '../src/modules/auth/jwt-auth.service.ts'
 
-assert.equal(dbDriver, 'postgres')
+
 const statePath = fileURLToPath(new URL('../../../output/phase1-acceptance-fixtures.json', import.meta.url))
 const storage = createClient(env.supabase.url, env.supabase.secretKey, { auth: { persistSession: false, autoRefreshToken: false } }).storage.from('profile-avatars')
 let state

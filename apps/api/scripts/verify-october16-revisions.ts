@@ -7,7 +7,7 @@ import bcrypt from 'bcrypt'
 import { env } from '../src/config/env.js'
 import { db } from '../src/config/db.js'
 import { toPgPlaceholders } from '../src/config/sql.js'
-import type { Pool } from 'mysql2/promise'
+import type { Pool } from '../src/config/db.js'
 import { createJwtAuthService } from '../src/modules/auth/jwt-auth.service.ts'
 import { createLoginSecurityService } from '../src/modules/auth/login-security.service.ts'
 import { createActiveJwtAccountGuard, verifyAccessToken } from '../src/modules/auth/jwt-auth.middleware.ts'
@@ -17,7 +17,7 @@ import { exactLoanDeadline } from '../src/modules/circulation/exact-loan-deadlin
 import { createCirculationService } from '../src/modules/circulation/circulation.service.ts'
 
 const schema = `oct16_check_${randomUUID().replaceAll('-', '')}`
-if (env.db.driver !== 'postgres' || !/^oct16_check_[a-f0-9]{32}$/.test(schema)) throw new Error('Isolated Postgres configuration required.')
+if (!/^oct16_check_[a-f0-9]{32}$/.test(schema)) throw new Error('Isolated Postgres configuration required.')
 const admin = new pg.Client({connectionString:env.db.connectionString}); await admin.connect()
 const native = new pg.Pool({connectionString:env.db.connectionString,max:12,options:`-c timezone=Asia/Manila -c search_path=${schema}`})
 const wrap = (q: Pick<pg.PoolClient,'query'>) => ({ async execute(sql: string,args:any[] = []) { let text=toPgPlaceholders(sql); const write=/^\s*(INSERT|UPDATE|DELETE)/i.test(text); if (/^\s*INSERT/i.test(text) && !/\bRETURNING\b/i.test(text)) text+=' RETURNING *'; const result=await q.query(text,args); return [write ? {affectedRows:result.rowCount,insertId:0} : result.rows,result] } })

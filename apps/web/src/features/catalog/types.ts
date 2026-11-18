@@ -89,7 +89,16 @@ export type IsbnMetadata = {
   author: string
   publisher: string | null
   publicationYear: number | null
+  subjects?: string[]
   source: 'local_catalog' | 'google_books' | 'open_library'
+}
+
+/** GET /api/v1/admin/books/title-lookup: outside matches for a title, plus titles already in the catalog. */
+export type TitleCandidate = { title: string; author: string; publisher: string | null; publicationYear: number | null; isbn: string | null; subjects?: string[]; inCatalog: boolean }
+export type TitleLookupResult = {
+  source: 'google_books' | 'open_library' | null
+  candidates: TitleCandidate[]
+  localMatches: Array<{ titleId: number; title: string; author: string; isbn: string | null }>
 }
 
 export type CatalogFilters = {
@@ -99,4 +108,12 @@ export type CatalogFilters = {
   author: string
   publicationYear: string
   availability: string
+}
+
+/** One row of the book register (GET /api/v1/admin/catalog/register). */
+export type RegisterRow = {
+  physicalCopyId: number; titleId: number; accessionNumber: string; receivedOn: string | null; classification: string | null
+  authors: string; title: string; edition: string | null; volumes: string | null; pages: number | null
+  fundSource: string | null; fundDetail: string | null; costPhp: string | null; publisher: string | null; publicationYear: number | null
+  remarks: string | null; availability: string
 }

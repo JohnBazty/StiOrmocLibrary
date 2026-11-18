@@ -35,16 +35,14 @@ React + Vite + Tailwind web application (port 5173)
                          |
                  Node.js + Express API (port 4000)
                          |
-                  MySQL relational database
+              Supabase Postgres database
 ```
 
 - `apps/web` owns the current React web interface.
 - `apps/api` owns the modular-monolith REST API.
-- The current database is MySQL and uses `mysql2`.
-- The canonical MySQL baseline is `database/mysql56-schema.sql`.
-- Ordered migrations are in `database/migrations/`.
-- Database migrations are tracked through the `schema_migrations` ledger.
-- Uploaded print files and other file-backed assets are not stored in MySQL.
+- The database is Supabase Postgres, accessed with `pg` (MySQL was retired on 2026-11-10; see `docs/mysql-removal-plan.md`).
+- The schema is the ordered set of files in `database/supabase/`.
+- Uploaded print files and other file-backed assets are not stored in the database.
 
 ## 4. Visual and UX rules
 
@@ -97,10 +95,9 @@ git push origin main
 
 ## 7. Database duplication and account preservation
 
-- GitHub contains the database **structure**, not the running MySQL database.
+- GitHub contains the database **structure**, not the running database.
 - Included:
-  - `database/mysql56-schema.sql`
-  - all versioned files in `database/migrations/`
+  - all numbered files in `database/supabase/`
 - Not included:
   - live accounts
   - password hashes
@@ -109,9 +106,8 @@ git push origin main
   - transactions
   - printing uploads
   - runtime storage
-- To preserve existing SmartLib accounts on another computer, privately export and import the MySQL database.
-- The recommended export method is MySQL Workbench **Server → Data Export → Dump Structure and Data → Export to Self-Contained File**.
-- The SQL backup must remain private.
+- To preserve existing SmartLib accounts elsewhere, use a private Supabase backup or `pg_dump`.
+- The backup must remain private.
 - Preserve the existing `ATTENDANCE_QR_SECRET` privately if downloaded permanent attendance QR passes must remain valid.
 - Preserve `REPORT_INTEGRITY_SECRET` privately if existing report integrity validation must remain valid.
 - Copy file-backed runtime assets privately, including `apps/storage/` and controlled cover-image storage.
@@ -268,64 +264,9 @@ Do not introduce this deferred scan-to-reshelve step without a new explicit requ
 - Do not change the bibliographic title's category just to move one copy.
 - Define how a copy override interacts with category defaults, floor-plan shelf grids, future relayouts, and audit history before implementation.
 
-## 10. Supabase/PostgreSQL migration direction
+## 10. Supabase/PostgreSQL migration (done)
 
-### Current intention
-
-The user is considering migrating the current MySQL database to Supabase.
-
-### Critical fact
-
-Supabase uses PostgreSQL. The existing application cannot migrate by changing only the database URL because it currently depends on:
-
-- `mysql2`
-- MySQL `?` query placeholders
-- MySQL result shapes such as `[rows]`, `insertId`, and `affectedRows`
-- `INSERT IGNORE`
-- `ON DUPLICATE KEY UPDATE`
-- `DATE_FORMAT`, `CURDATE`, `IFNULL`, `HOUR`, `WEEKDAY`, and other MySQL functions
-- MySQL `AUTO_INCREMENT`, `UNSIGNED`, `TINYINT`, `ENUM`, trigger syntax, and engine/charset clauses
-- a custom MySQL-backed Express session store
-
-### Recommended target
-
-```text
-React frontend
-      |
-Existing Express API and existing JWT/login rules
-      |
-Supabase-hosted PostgreSQL
-```
-
-- Keep the existing accounts, password hashes, roles, JWT authentication, and API authorization during the first migration.
-- Do not migrate to Supabase Auth at the same time as the database engine.
-- Convert and test one backend module at a time.
-- Keep MySQL available for rollback until Supabase passes full verification.
-
-### Supabase guide
-
-- A full staged guide exists at `docs/supabase-migration-guide.md`.
-- At the time this handoff was created, that guide was **untracked** and had not yet been committed or pushed.
-
-### Current local Supabase state
-
-- Supabase CLI was installed as a project npm development dependency (`supabase` approximately version `2.117.0`).
-- `package.json` and `package-lock.json` contain uncommitted changes from that installation.
-- `npx supabase init` has been run.
-- An untracked `supabase/` directory with `config.toml` exists.
-- Because the CLI was installed locally through npm, use `npx supabase ...`, not a bare `supabase ...` command.
-- Docker Desktop could not start because virtualization was not detected.
-- Windows inspection indicated that WSL was not installed at that time.
-- Hosted Supabase can be used without running the local Docker stack.
-- Do not run `npx supabase db push` until the MySQL schema has been converted to reviewed PostgreSQL migrations.
-
-### Using a friend's Supabase project
-
-- This is possible only if the friend invites the user to the Supabase organization/project.
-- Use the user's own Supabase account; do not share the friend's login.
-- Developer access may be enough for ordinary work; temporary Administrator access may be required for migration activities.
-- The friend remains in control of billing, deletion, backups, and access unless the project is transferred.
-- For real school data, prefer a Supabase organization owned by the user/school or transfer the project before production.
+The API moved from MySQL to Supabase Postgres (cutover 2026-09-25) and MySQL support was removed on 2026-11-10. See `docs/supabase-migration-plan.md` and `docs/mysql-removal-plan.md`. The Express API keeps its own JWT/login rules; Supabase Auth is not used.
 
 ## 11. Current uncommitted local changes
 
@@ -355,23 +296,7 @@ The Supabase CLI installation and documentation additions occurred afterward and
 
 ## 13. Recommended next actions
 
-1. Decide whether Supabase migration should actually begin or remain planning-only.
-2. If proceeding, create or obtain authorized access to a hosted Supabase project.
-3. Link using:
-
-   ```powershell
-   npx supabase login
-   npx supabase link --project-ref PROJECT_REFERENCE
-   ```
-
-4. Do not push the MySQL schema to Supabase unchanged.
-5. Create a migration branch and PostgreSQL baseline.
-6. Convert the API database adapter and SQL one module at a time.
-7. Add real PostgreSQL integration tests.
-8. Run a trial import with non-production data.
-9. Reconcile all counts, identities, money totals, relationships, dates, and sequences.
-10. Preserve MySQL and a private backup until cutover validation is complete.
-11. Commit and push the Supabase CLI initialization and guide only after reviewing that no secrets or generated local files are included.
+The Supabase move is finished. Pick the next work from the plan docs in `docs/` (see the `.cursor/agent-protocol.md` tracker and each plan's Status).
 
 ## 14. Safety reminders for any future AI
 
@@ -382,4 +307,3 @@ The Supabase CLI installation and documentation additions occurred afterward and
 - Never assume a visual-only frontend restriction is sufficient; enforce authorization in the API.
 - Never use a Supabase service-role/secret key in the React frontend.
 - Never run destructive commands such as `supabase db reset --linked` against production.
-- Never claim the Supabase migration is complete until the application has been converted from MySQL SQL semantics and all critical workflows pass against PostgreSQL.

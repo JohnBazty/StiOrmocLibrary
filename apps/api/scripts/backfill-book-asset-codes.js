@@ -1,5 +1,6 @@
 import { db } from '../src/config/db.js'
 import { renderBookLabel } from '../src/modules/catalog/book-label.renderer.ts'
+import { reserveBarcodeSequence } from '../src/modules/catalog/bulk-book.repository.ts'
 
 const APPLY_FLAG = '--apply'
 const shouldApply = process.argv.includes(APPLY_FLAG)
@@ -23,35 +24,17 @@ async function loadBookCopies(connection, lockRows) {
   return rows
 }
 
-async function reserveSequences(connection, count) {
-  if (count === 0) return null
-  await connection.execute(
-    `INSERT INTO barcode_sequences (\`sequence_year\`, \`last_value\`)
-     VALUES (?, 0)
-     ON DUPLICATE KEY UPDATE \`last_value\` = \`last_value\``,
-    [year],
-  )
-  const [rows] = await connection.execute(
-    'SELECT `last_value` FROM barcode_sequences WHERE `sequence_year` = ? FOR UPDATE',
-    [year],
-  )
-  const first = Number(rows[0]?.last_value ?? 0) + 1
-  const final = first + count - 1
-  if (final > 999999) throw new Error(`The ${year} institutional barcode sequence is exhausted.`)
-  await connection.execute(
-    'UPDATE barcode_sequences SET `last_value` = ?, `updated_at` = NOW() WHERE `sequence_year` = ?',
-    [final, year],
-  )
-  return first
-}
-
 async function backfill() {
   const connection = await db.getConnection()
-  let namedLockHeld = false
   try {
-    const [lockRows] = await connection.execute('SELECT GET_LOCK(?, 15) AS acquired', [lockName])
-    namedLockHeld = Number(lockRows[0]?.acquired) === 1
-    if (!namedLockHeld) throw new Error('Another asset-code backfill is already running.')
+    if (shouldApply) {
+      await connection.beginTransaction()
+      const [locks] = await connection.execute(
+        'SELECT pg_try_advisory_xact_lock(hashtextextended(?::text, 0)) AS acquired',
+        [lockName],
+      )
+      if (!locks[0]?.acquired) throw new Error('Another asset-code backfill is already running.')
+    }
 
     const previewRows = await loadBookCopies(connection, false)
     const preview = {
@@ -66,10 +49,9 @@ async function backfill() {
       return
     }
 
-    await connection.beginTransaction()
     const copies = await loadBookCopies(connection, true)
     const replacements = copies.filter((copy) => !institutionalBarcodePattern.test(String(copy.barcode)))
-    let nextSequence = await reserveSequences(connection, replacements.length)
+    let nextSequence = replacements.length ? await reserveBarcodeSequence(connection, year, replacements.length) : 0
     let replacedBarcodes = 0
     let generatedQrCodes = 0
 
@@ -121,9 +103,6 @@ async function backfill() {
     try { await connection.rollback() } catch {}
     throw error
   } finally {
-    if (namedLockHeld) {
-      try { await connection.execute('SELECT RELEASE_LOCK(?)', [lockName]) } catch {}
-    }
     connection.release()
     await db.end()
   }

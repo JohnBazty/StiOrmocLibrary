@@ -1,7 +1,7 @@
 import { AlertCircle, Settings2 } from 'lucide-react'
 import type { Mapping, Options, Sheet } from './enhanced-catalog-api'
 import { catalogInput } from './CatalogDetailsPanel'
-import { importFields, importFieldNames, requiredImportFields, unrecognizedImportHeadings } from './holdings-import-helpers'
+import { importFields, importFieldNames, missingImportFields, unrecognizedImportHeadings } from './holdings-import-helpers'
 
 type Props = { sheets: Sheet[]; mapping: Mapping[]; options: Options; category: string; shelf: string; disabled: boolean;
   onCategory: (value: string) => void; onShelf: (value: string) => void;
@@ -27,7 +27,7 @@ export function HoldingsFileQuestions({ sheets, mapping, options, category, shel
     </div> : null}
     {sheets.map(sheet => {
       const selected = mapping.find(item => item.sheet === sheet.name)
-      const missing = selected ? requiredImportFields.filter(field => !selected.columns[field]) : []
+      const missing = selected ? missingImportFields(selected.columns) : []
       return missing.length && selected ? <section key={sheet.name} className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100"><h3 className="flex items-center gap-2 font-semibold"><AlertCircle aria-hidden size={18} />A few details need your help{sheet.name && sheets.length > 1 ? ` — ${sheet.name}` : ''}</h3><p className="text-sm">We could not recognize these headings. Choose the matching column. We will not guess a copy count.</p><div className="grid gap-3 sm:grid-cols-3">{missing.map(field => <label key={field} className="text-sm font-semibold">{field === 'copies' ? 'Which column shows the number of copies?' : `Which column shows the ${field === 'title' ? 'book title' : 'author'}?`}{columns(sheet, selected, field)}</label>)}</div></section> : null
     })}
     {sheets.length > 1 ? <fieldset disabled={disabled} className="rounded-xl border border-slate-200 p-4 dark:border-white/15"><legend className="px-1 text-sm font-semibold">Sheets included from your file</legend><p className="mb-3 text-xs text-slate-600 dark:text-slate-300">Uncheck a sheet only if you do not want its books included.</p><div className="flex flex-wrap gap-4">{sheets.map(sheet => <label key={sheet.name} className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={mapping.some(item => item.sheet === sheet.name)} onChange={event => onInclude(sheet, event.target.checked)} />{sheet.name}</label>)}</div></fieldset> : null}

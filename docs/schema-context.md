@@ -1,10 +1,9 @@
 # Database Schema Context
 
-## October 17 revision Phases 5–7 - October 22, 2026
+## Maintenance schema integrated on November 18, 2026
 
-Applied additive Postgres **030_october17_maintenance.sql**; next unused **031**.
-Draft enrollment **028** and MySQL **048**/next **049** remain unchanged. Dewey is
-deferred. Before/after count/hash snapshots of 12 existing operational tables
+Applied additive Postgres **030_october17_maintenance.sql** on October 22.
+This historical record does not supersede the current migration tracker. Dewey remains deferred. Before/after count/hash snapshots of 12 existing operational tables
 matched exactly; seven new ledgers were empty after migration.
 
 Historical previews resolve optional Student/Faculty IDs before review and duplicate checks. Exact duplicates sort before the bounded similar-entry warning list, including older entries; linked user IDs remain recognized after name changes. This is service logic and adds no schema migration.
@@ -29,78 +28,19 @@ uses the explicit public ledger and transaction-local search path; disposable
 acceptance schemas likewise use transaction-local paths and exact-name cleanup.
 See [implementation and remaining human acceptance](revision-oct17-remaining-implementation.md).
 
-## October 17 revision Phase 4 report reads - October 22, 2026
 
-No schema or migration changes. Librarian report definitions, preview and CSV/PDF
-share one label/filter contract. Report reads use repeatable-read, read-only
-transactions and retain `library.manage` authorization. Search/status apply before
-the 20,000-matching-row ceiling; exports include all matching preview pages.
-Fine reporting reads existing allocation/adjustment ledgers without the operational
-5,000-row shortlist. Active holdings exclude archived copies and account for the
-existing material availability bridge. Current stock, holdings and clearance remain
-explicit current snapshots; they do not reconstruct historical balances.
+## Engine note (updated 2026-11-11)
 
-Periods require confirmed semester dates or explicit ranges. UTC audit fields are
-converted to Philippine time; existing campus wall-time service fields retain their
-semantics. No historical values are rewritten. Recorded applied Postgres remains
-029, next unused 030; draft enrollment 028 and MySQL 048/next 049 are unchanged.
-See [implementation and verification](revision-oct17-phase4-implementation.md).
-
-## October 17 revision Phase 3 activity - October 22, 2026
-
-No schema or migration changes. The owner deferred Phase 2 Dewey work and approved
-Phase 3. Librarian-only `GET /api/v1/notifications/activity` reads bounded existing
-administrative circulation events, request events, attendance visits, printing
-status history and payment receipts. Routine reads create no notices or loans.
-Operational alerts reuse `notifications`, stable `library:` dedupe keys and each
-recipient's existing read/deleted state. Printing submission and reservation
-readiness/expiry write alerts in their original transactions; the minute worker
-recovers currently overdue loans, pending print work and ready reservations.
-Recipients are distinct active Librarian account/profile pairs. Existing browser
-role revocations and RLS remain intact; no Staff privilege is added.
-
-Hosted pooler inspection confirmed UTC server audit timestamps; attendance and
-Date-bound receipt service times retain explicit Philippine wall-time semantics.
-The activity DTO converts these sources to ISO instants. New operational notice
-delivery/creation fields explicitly store UTC; their API creation time is converted
-on read. No existing dates are rewritten. Current applied product file remains
-029, next unused 030; draft enrollment 028 and MySQL 048/next 049 are unchanged.
-See [implementation, source coverage and verification](revision-oct17-phase3-implementation.md).
-
-## October 17 revision Phase 1 reads - October 22, 2026
-
-No new tables, columns or migrations. Public stock polling uses a parameterized,
-bounded read over active titles, physical copies and their existing material bridge.
-`GET /api/public/catalog/availability?ids=...` accepts at most 25 unique positive
-title IDs and exposes IDs, active flags and stock counts. An optional `detailId`
-within that list also returns already-public fields for that title's active copies,
-without reloading authors, digital files or other metadata. Identical pending
-public reads coalesce and completed counts cache for 250 ms. The endpoint has its
-own bounded polling budget; existing full catalog and authentication limits remain.
-
-Protected `GET /api/v1/catalog/books?viewer_only=1` returns current viewer policy
-and commitment counts without loading full catalog metadata. The owner clearance
-read computes current standing without updating its derived cache; automatic
-polling must not create repeated writes. Authorization, copy IDs, account versions,
-reservation/loan meanings and operational ledgers are unchanged.
-
-Tracker for this work: recorded applied Postgres **029**, enrollment **028** still
-an unapplied draft, next unused **030**; MySQL reference **048**, next **049**.
-See [implementation and verification](revision-oct17-phase1-implementation.json).
-
-## Engine note (updated 2026-09-28)
-
-The API is mid-cutover to Supabase PostgreSQL. See [supabase-migration-plan.md](supabase-migration-plan.md).
+The API runs on Supabase PostgreSQL only (`DATABASE_URL`, `pg`). MySQL was retired on 2026-11-10; see [mysql-removal-plan.md](mysql-removal-plan.md). History of the move: [supabase-migration-plan.md](supabase-migration-plan.md).
 
 - When `DATABASE_URL` (postgresql://…) is set, the runtime uses `pg` against drafts under [database/supabase/](../database/supabase/).
-- When unset, the runtime uses local MySQL via `mysql2` and the MySQL tree below (rollback / offline path).
-- The MySQL baseline and ordered migrations remain the historical product contract. Latest MySQL reference migration: `20261009_048_rename_system_brand.sql`. Next MySQL number: **`049`**. MySQL is not the active database.
+- Device sign-in migration 032 is the latest applied Postgres file. Branding 033 and job runner hardening 034 are pending review. The next unused number is 035.
 - Additive MAIN product tables for Postgres land in `database/supabase/005_main_product_gapfill.sql` (033–040).
-- Applied Supabase Phase 2 files `012`–`014` add `book_quotations`, lost-report charge resolution, `library_job_runs`, `invoice_setup`, and `customer_invoices`. Existing payment rows now have `document_label='Legacy Receipt'`; future rows default to `Payment Record`.
-- Branding source `017_rename_system_brand.sql` changes only the default public library name and preserves customized names. It was integrated from GitHub without applying SQL; reconcile it with the existing hosted ledger before replay.
+- Applied Supabase Phase 2 files `012`–`014` add `book_quotations`, lost-report charge resolution, `library_job_runs`, `invoice_setup`, and `customer_invoices`. Since 2026-11-11 the scheduled jobs use `scheduled_job_state` and `scheduled_job_runs` from `019` (one row per job, created on first claim; leases, cursor, 30-day history); `library_job_runs` is no longer read or written. Existing payment rows now have `document_label='Legacy Receipt'`; future rows default to `Payment Record`.
+- Branding 033 changes the default public library name and updates the former stock name. It preserves customized names.
 - Invoice setup and ledger tables are retained but the invoice module is archived as of 2026-09-28. They remain in the schema health check because Admin account history and fine-payment reversal can refer to existing invoice records. The active app does not expose invoice pages or operations. Printing and fine payment records remain active and retain their original labels.
 - Applied Supabase Phase 6 file `015` adds `registration_requests` with hashed one-time codes and password hashes pending approval, the Library Staff role, a private `profile-avatars` Storage bucket, and `profile_avatar_submissions`. Current local registration puts every public role in `PendingApproval` after email verification; Admin review creates an Active account or marks the request Rejected. The API supplies standard decision notes and records the reviewer/time without a typed Audit reason. Completed/rejected requests clear their extra password hash. Applied Supabase file `016` backfills missing `accounts` links for existing Student/Faculty `users`, retaining their school ID, password hash, role, status, and operational user ID. The MySQL rollback reference `047` also extends account/user role enums with Staff but remains unapplied.
-- The 2026-09-25 historical data cutover copied local MySQL rows into Supabase after applying Postgres 008–009. Hosted users/accounts were preserved, and the pre-cutover hosted snapshot is in schema `mysql_cutover_backup_20260925100301`. Postgres 010 adds book archive actor and floor image version metadata. Postgres 011 adds account authentication versions and management audit events. Product files 012–016 are now applied; the private pre-migration snapshot of affected rows for 012–015 is `migration_backup_20260927154637`. Next unused Postgres file number: **028** (Phase 7 file 026 applied; Phase 6 file 025 applied; Phase 5 files 023/024 applied; Phase 4 file 022 applied; Revision Phase 3 file `021` and Revision Phase 1 file `020` applied; externally managed `017`–`019` preserved). The live ledger also contains two advisor-named files not present in this checkout; reconcile their sources before a whole-directory replay. See the cutover record in the migration plan.
+- The 2026-09-25 historical data cutover copied local MySQL rows into Supabase after applying Postgres 008–009. Hosted users/accounts were preserved, and the pre-cutover hosted snapshot is in schema `mysql_cutover_backup_20260925100301`. Postgres 010 adds book archive actor and floor image version metadata. Postgres 011 adds account authentication versions and management audit events. Product files 012–016 are now applied; the private pre-migration snapshot of affected rows for 012–015 is `migration_backup_20260927154637`. The current tracker above supersedes historical numbering. See the cutover record in the migration plan.
 
 ## Borrowing policy management archive — 2026-10-17
 
@@ -174,20 +114,13 @@ The target product requirements are the preserved PDFs indexed by [source-of-tru
 
 Known target gaps include Library Staff/Student Assistant authorization, renewals, expanded reservation states, richer catalog/research data, and the future time-synchronized dynamic QR mode. Permanent offline attendance passes, cash fine collection, fine caps and infractions, operating-calendar calculation, print revenue/supply history, and archive/clearance audit trails now have additive schema support. Add remaining gaps through versioned, backward-safe migrations before depending on them in application code.
 
-The structural catalog migration [20260816_002_book_research_management.sql](../database/migrations/20260816_002_book_research_management.sql) supplies the active four-table `titles`, `authors`, `research_records`, and `physical_copies` model used by the API. `physical_copies.material_id` is the explicit compatibility mapping to the existing `materials.material_id` value. Deployments with legacy material rows still require a separately reconciled data backfill.
+The structural catalog migration `20260816_002_book_research_management.sql` (retired MySQL migration (removed 2026-11-10; restore with `git show a767d88:database/migrations/<file>`); its tables are in `database/supabase/001_from_baseline.sql`) supplies the active four-table `titles`, `authors`, `research_records`, and `physical_copies` model used by the API. `physical_copies.material_id` is the explicit compatibility mapping to the existing `materials.material_id` value. Deployments with legacy material rows still require a separately reconciled data backfill.
 
 ## Canonical executable schema
 
-The authoritative database baseline is [database/mysql56-schema.sql](../database/mysql56-schema.sql). It is deliberately compatible with MySQL 5.6 and newer versions and uses:
+The authoritative schema is the ordered set of files in [database/supabase/](../database/supabase/) (Postgres): explicit primary and foreign keys, named indexes and constraints, and triggers for rules `CHECK` constraints cannot express.
 
-- InnoDB tables
-- `DEFAULT CHARSET=utf8`
-- Explicit primary and foreign keys
-- Named indexes and relationship constraints
-- MySQL 5.6-compatible `ENUM`, numeric, date/time, and text types
-- Triggers for rules that MySQL 5.6 cannot enforce with `CHECK` constraints
-
-When this context and the SQL script differ about what is currently executable, the SQL script is authoritative. When the SQL script differs from the preserved product PDFs, the PDFs define the target and the difference is migration work.
+When this context and the applied SQL differ about what is currently executable, the applied SQL is authoritative. When the SQL script differs from the preserved product PDFs, the PDFs define the target and the difference is migration work.
 
 ## Modeling decision
 
@@ -245,10 +178,10 @@ Category shelf locations are trimmed, non-empty administrator-defined labels up 
 
 The additive Book and Research/Thesis target model is defined by migration `20260816_002_book_research_management.sql`:
 
-- `titles`: one bibliographic title/edition or research work, linked to `categories`.
+- `titles`: one bibliographic title/edition or research work, linked to `categories`. Migration `037_book_register.sql` adds the register fields `classification`, `volumes` and `remarks`; edition and pages stay in `catalog_title_details`.
 - `authors`: ordered, normalized author credits owned by a title.
 - `research_records`: one-to-one thesis metadata including adviser, abstract, program, code, and viewing state.
-- `physical_copies`: accession, barcode, shelf, condition, availability, scan timestamp, and lifecycle per copy.
+- `physical_copies`: accession, barcode, shelf, condition, availability, scan timestamp, and lifecycle per copy. Migration `037_book_register.sql` adds the register fields `fund_source`, `fund_detail` and `cost_php` (cost per copy, backfilled from `titles.purchase_price`); `acquired_at` is the date received.
 - `book_titles`: a read-only compatibility view added by migration `20260823_013_book_catalog_compatibility.sql`. It exposes the requested `id`, `title`, aggregated `author`, `isbn`, `publisher`, `publication_year`, and `category_id` contract while keeping `titles`, `authors`, and `physical_copies` authoritative. Catalog-focused composite indexes are added to the normalized source tables; application writes must never target this view.
 - `inventory_audit_events`: append-only barcode verification, condition-change, manual availability-change, and lost-override history, including before/after condition and availability values, the physical copy, verifier, barcode snapshot, and timestamp. Migration `20260820_006_inventory_audit_events.sql` creates the table; migration `20260820_008_inventory_condition_availability_policy.sql` expands the audited event and condition contracts without changing `physical_copies.material_id` compatibility.
 
@@ -263,7 +196,7 @@ Migration `20260820_009_research_thesis_inventory.sql` adds the independent phys
 
 Migration `20260821_012_inventory_removal_lifecycle.sql` adds an Active/Archived lifecycle to bound research inventory and extends both book-copy and thesis audit histories with Archived/Deleted events and action reasons. Hard deletion is limited to never-used inventory rows; audit snapshots survive deletion through nullable `ON DELETE SET NULL` parent references. Any circulation, reservation, or audit history requires archive fallback, while active loans and reservations block both operations.
 
-Research conditions use lowercase `good`, `fair`, `for_repair`, `damaged`, and `lost`. Non-Lost changes preserve availability. Lost alone is forced to `unavailable` by both the transactional service and MySQL triggers. Manual availability accepts only `available` or `unavailable`; a Lost record cannot be republished until its condition is changed. Before any condition or availability mutation, the service resolves and locks the optional legacy `materials` row through the unique barcode, then blocks Borrowed/Overdue transactions with 422. Migration `20260820_010_research_inventory_circulation_sync.sql` synchronizes Lost/manual availability to that circulation row without adding a title-table foreign key; Lost also cancels pending/approved/ready pickup assignments. Student catalog reads use `availability_status='available'`. Thesis summaries, registers, CSV, and PDF reports query only `research_inventory`; book reports remain separate.
+Research conditions use lowercase `good`, `fair`, `for_repair`, `damaged`, and `lost`. Non-Lost changes preserve availability. Lost alone is forced to `unavailable` by both the transactional service and database triggers. Manual availability accepts only `available` or `unavailable`; a Lost record cannot be republished until its condition is changed. Before any condition or availability mutation, the service resolves and locks the optional legacy `materials` row through the unique barcode, then blocks Borrowed/Overdue transactions with 422. Migration `20260820_010_research_inventory_circulation_sync.sql` synchronizes Lost/manual availability to that circulation row without adding a title-table foreign key; Lost also cancels pending/approved/ready pickup assignments. Student catalog reads use `availability_status='available'`. Thesis summaries, registers, CSV, and PDF reports query only `research_inventory`; book reports remain separate.
 
 New publication requests now write `titles`, `authors`, `research_records`, and one independently accessioned `research_inventory` row in the same transaction. Migration `20260820_011_backfill_published_research_inventory.sql` makes older publications visible by retaining their unique `research_code` as the initial accession and barcode; it does not delete or reinterpret their normalized catalog metadata.
 
@@ -271,11 +204,12 @@ Migration `20260823_014_research_catalog_search.sql` adds the nullable `research
 
 Category deletion is blocked while active physical copies, research records, or unbackfilled legacy materials remain assigned. The category reassignment service updates normalized `titles.category_id` and transitional `materials.category_id` in one transaction before deleting the old category.
 
-Phase 3 migration MySQL `041` / Supabase `010` adds nullable `titles.archived_by_account_id` for new book archive actions; legacy archived titles keep a null actor. The Admin Book archive reads retained `titles`, `physical_copies`, `inventory_audit_events`, and `borrow_transactions`. Archiving a title blocks active requests, loans, and reservations, and makes linked legacy `materials` unavailable. `floor_plan_images` stores versioned image metadata and one current version; image bytes are in the Supabase `floor-plan-images` Storage bucket. The old `floor_plan_state`, `floor_plan_versions`, `floor_plan_events`, and `floor_plan_shelves` tables remain intact for possible future use. Category shelf labels remain managed through the category API.
+Phase 3 migration Supabase `010` adds nullable `titles.archived_by_account_id` for new book archive actions; legacy archived titles keep a null actor. The Admin Book archive reads retained `titles`, `physical_copies`, `inventory_audit_events`, and `borrow_transactions`. Archiving a title blocks active requests, loans, and reservations, and makes linked legacy `materials` unavailable. `floor_plan_images` stores versioned image metadata and one current version; image bytes are in the Supabase `floor-plan-images` Storage bucket. The old `floor_plan_state`, `floor_plan_versions`, `floor_plan_events`, and `floor_plan_shelves` tables remain intact for possible future use. Category shelf labels remain managed through the category API.
 
 ### Circulation
 
 - `borrow_transactions`: pending, borrowed, returned, and overdue activity.
+- `circulation_override_events`: append-only staff confirmation audit for checkout warnings (Supabase `014`). Does not alter `borrow_transactions`.
 - `reservations`: material waiting list and expiry status.
 - `fines`: one fine record per borrowing transaction.
 - `clearance_statuses`: one current standing row per user.
@@ -349,7 +283,7 @@ Migration `20260923_039_static_attendance_qr_and_capacity.sql` adds permanent do
 - `paper_replenishments`: normalized history of quantities and expenses.
 - `paper_stock_movements`: append-only restock and manual ream-opening records with activity codes and before/after balances. Historical fractional print allocations remain preserved as legacy audit rows.
 
-Migration `20260828_025_printing_service_and_bottle_supplies.sql` supplies this contract. Uploaded PDF/DOCX binaries remain outside the relational database; only the sanitized original name and generated storage path are stored. New hosted uploads use the private Supabase `printing-documents` bucket, while local MySQL development can use local file storage. Ink is updated manually by bottle and paper by ream. The application does not estimate ink remaining inside an opened bottle and never changes printer status from imagined consumable telemetry.
+Migration `20260828_025_printing_service_and_bottle_supplies.sql` supplies this contract. Uploaded PDF/DOCX binaries remain outside the relational database; only the sanitized original name and generated storage path are stored. New hosted uploads use the private Supabase `printing-documents` bucket. Ink is updated manually by bottle and paper by ream. The application does not estimate ink remaining inside an opened bottle and never changes printer status from imagined consumable telemetry.
 
 Migration `20260828_027_manual_printing_workflow.sql` removes printer hardware from the active request workflow without destructively dropping legacy printer references. `printing_service_settings` is the single administrative switch for accepting student requests and defaults to enabled, so a deployment with zero printer rows remains operational. Librarians download protected request files and print them manually; every download is recorded in `print_file_download_audit`. Ink remains manual whole-bottle inventory, and paper restocks are explicit whole-ream input movements. Legacy `print_requests.printer_id`, `printers`, and optional `ink_repository.printer_id` remain nullable compatibility fields and are not shown in the active interface.
 
@@ -386,7 +320,7 @@ Migration `20260904_033_dashboard_library_profile.sql` adds only the configurabl
 ## Money, dates, and booleans
 
 - Money uses `DECIMAL(10,2) UNSIGNED`; never use floating-point types.
-- Event timestamps use `DATETIME` or `TIMESTAMP` supported by MySQL 5.6.
+- Event timestamps use Postgres `TIMESTAMP`.
 - Store one application timezone policy consistently. The current campus display timezone is Asia/Manila.
 - Booleans use `TINYINT(1) UNSIGNED` with `0` and `1`.
 
@@ -415,14 +349,12 @@ Migration `20260902_032_infraction_fine_trigger_compatibility.sql` updates the l
 
 ## Schema-change procedure
 
-1. Update `database/mysql56-schema.sql` with MySQL 5.6-compatible syntax.
+1. Write one new hand-written Postgres file in `database/supabase/` with the next number (see the tracker in `.cursor/agent-protocol.md`). Never edit an applied file.
 2. Preserve table and column meanings used by the API.
-3. Add a migration script for existing databases instead of asking users to rerun the complete baseline.
-4. Test the migration against a disposable database.
-5. Update this context and the API documentation.
-6. If Prisma is introduced later, confirm that the selected Prisma version still supports the project's required MySQL server version before making it the migration authority.
+3. Test it against a disposable database before applying it to Supabase.
+4. Update the tracker, `database/supabase/README.md`, this context and the API documentation.
 
-Applied migrations are tracked in `schema_migrations` by filename, SHA-256 checksum, and application timestamp. Run `npm run db:migrate -w @sti-library/api`; never edit an already-applied migration—add a new versioned file instead.
+Apply a reviewed file with `npm run db:supabase -w @sti-library/api -- <file>`; never edit an already-applied migration—add a new numbered file instead.
 
 Migration `20260824_020_borrow_request_cancellation.sql` extends pending online-cart transactions with the terminal `Cancelled` state, cancellation timestamp, cancelling operational user, and reason. Student/Faculty owners and Admin/Librarian staff share `PUT /api/v1/circulation/requests/:id/cancel`; the service locks the request and copy, verifies ownership or staff authority, permits cancellation only from `Pending`, and restores usable copies in both `physical_copies` and `materials` within the same transaction.
 
@@ -434,7 +366,7 @@ Migration `20260824_023_research_asset_qr.sql` adds `research_inventory.qr_code_
 
 Physical book and research/thesis removal requires the copy condition to be `Lost`. Borrowed/Overdue transactions and active reservations remain stronger locks and must be resolved first. A Lost copy with circulation or inventory audit history is archived rather than hard-deleted so its historical references remain intact; the student catalog and active inventory queries exclude the archived row. Student-safe catalog, cart/history detail, and reservation payloads expose condition text without exposing administrative QR data. Reservation condition follows the specifically assigned physical copy when available and otherwise reports the source copy condition while assignment is pending.
 
-Book title covers remain file-backed metadata through `titles.cover_image_path`. Administrative bulk entry accepts a validated JPEG, PNG, or WebP image up to 2 MB. Hosted uploads use the public Supabase `book-covers` bucket, while local MySQL development uses the controlled API assets directory; student catalog responses expose the public image URL or path.
+Book title covers remain file-backed metadata through `titles.cover_image_path`. Administrative bulk entry accepts a validated JPEG, PNG, or WebP image up to 2 MB. Hosted uploads use the public Supabase `book-covers` bucket. Student catalog responses expose the public image URL or path.
 
 Migration `20260906_035_floor_plans.sql` adds the editable library floor-plan contract:
 
@@ -443,7 +375,7 @@ Migration `20260906_035_floor_plans.sql` adds the editable library floor-plan co
 - `floor_plan_versions` stores an immutable snapshot for each publication. Restoring a version creates a new draft and retains current shelf labels and book assignments.
 - `floor_plan_events` records the staff actor and event details for draft saves, publications, shelf creation, restores, category shelf synchronization, and permitted copy transfers.
 
-The visual layout is validated application-side and stored as bounded JSON text because the supported MySQL 5.6 baseline has no native JSON type. Areas contain dimensions and an optional controlled image path; objects contain type, position, size, rotation, label, note, and an optional stable shelf ID. Physical-copy location remains backward-compatible through `physical_copies.shelf_location`. Publishing a renamed managed shelf updates that label in `floor_plan_shelves`, `physical_copies`, `materials`, `research_inventory`, and category defaults in one transaction. A populated shelf cannot be removed from a published layout until its assigned items are transferred.
+The visual layout is validated application-side and stored as bounded JSON text as text (the original MySQL 5.6 baseline had no native JSON type). Areas contain dimensions and an optional controlled image path; objects contain type, position, size, rotation, label, note, and an optional stable shelf ID. Physical-copy location remains backward-compatible through `physical_copies.shelf_location`. Publishing a renamed managed shelf updates that label in `floor_plan_shelves`, `physical_copies`, `materials`, `research_inventory`, and category defaults in one transaction. A populated shelf cannot be removed from a published layout until its assigned items are transferred.
 
 Migration `20260906_036_reconcile_category_floor_plan_shelves.sql` safely imports category locations created after the first floor-plan migration as managed, unplaced shelves. Category creation and editing now require an existing managed shelf; they never create arbitrary location strings.
 
@@ -467,7 +399,7 @@ Migration `20260907_038_shelf_grid_locations.sql` adds the first detailed shelf-
 
 ## Main integration — 2026-10-11
 
-The main branch was reconciled with the current revision permission model and phase workflows. Borrowing policy management uses the Librarian workspace; prior login sessions are invalidated when a new login succeeds. Competing upstream SQL identities are retained as non-executable references under `database/upstream-main/`; no migration was applied. Existing phase statuses and applied migration identities remain unchanged. See `docs/main-branch-integration.md`.
+The main branch was reconciled with the current revision permission model and phase workflows. Borrowing policy management uses the Librarian workspace; prior login sessions are invalidated when a new login succeeds. The former reference directory is preserved in Git history. Checksum-matched applied sources now live under `database/supabase/`. See `docs/main-branch-integration.md`.
 
 
 ## October 16 revisions — applied contract (2026-10-17)
@@ -500,9 +432,10 @@ Applied Postgres migration `031_semester_enrollment.sql` supersedes draft 028. E
 - Public signup uses the active Student roster. Existing Faculty accounts continue to sign in with a password and school email code. New Faculty signup is paused.
 - Admin and Librarian can create Staff accounts from Users. Setup records a `StaffAccountCreated` audit event and generates a private random credential. The Staff member sets a password through the personnel login page. Existing password-recovery challenges also handle this Staff flow, limited to active Staff accounts created through the new setup.
 - New profile pictures publish on save. The storage bucket remains private, and the existing `Approved` storage status marks the published image for compatibility. Previously submitted pictures remain in history. Users can select and save an older pending picture again.
+
 ## Remembered browser sign-in (2026-11-10)
 
-Postgres migration `032_login_devices.sql` was applied individually on 2026-11-10. The next unused Postgres number is 033. The API reads the new fields only when `LOGIN_DEVICES_ENABLED=true` on Postgres.
+Postgres migration `032_login_devices.sql` was applied individually on 2026-11-10. Branding 033 is pending review. The API reads the new fields only when `LOGIN_DEVICES_ENABLED=true` on Postgres.
 
 - `library_login_sessions` stores the browser token hash and optional seven-day deadline alongside the existing account version, last activity and revocation time. A browser-session cookie identifies an ordinary sign-in. It can resume within the existing ten-minute inactivity limit.
 - `login_otp_challenges.remember_device` binds the Student or Faculty choice to the verified challenge.

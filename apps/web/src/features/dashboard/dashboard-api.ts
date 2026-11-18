@@ -1,5 +1,5 @@
 import { getAccessToken } from '../auth/auth-storage'
-import type { AdminDashboardData, UserDashboardData } from './types'
+import type { AdminDashboardData, ScheduledJobsData, UserDashboardData } from './types'
 
 async function request<T>(url:string){
   const headers = new Headers({ Accept:'application/json' }); const token=getAccessToken(); if(token) headers.set('Authorization',`Bearer ${token}`)
@@ -11,6 +11,7 @@ async function request<T>(url:string){
 export const dashboardApi={
   admin:()=>request<AdminDashboardData>('/api/v1/admin/dashboard'),
   user:()=>request<UserDashboardData>('/api/v1/dashboard'),
+  jobs:()=>request<ScheduledJobsData>('/api/v1/admin/jobs'),
   async downloadAdminSummary(){
     const headers=new Headers();const token=getAccessToken();if(token)headers.set('Authorization',`Bearer ${token}`)
     const response=await fetch('/api/v1/admin/dashboard/summary.pdf',{headers,credentials:'include'});if(!response.ok)throw new Error('The dashboard PDF could not be generated.')

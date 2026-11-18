@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { Pool, PoolConnection, RowDataPacket, ResultSetHeader } from 'mysql2/promise'
+import type { Pool, PoolConnection, RowDataPacket, ResultSetHeader } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { borrowerEligibility, requireEligible } from '../circulation/desk-circulation.policy.ts'
@@ -127,9 +127,10 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
     const eligible=await borrowerEligibility(q,userId,now,'Online');requireEligible(eligible)
     if(!['Student','Faculty'].includes(String(eligible.user?.user_role))) throw new HttpError(403,'REQUEST_ROLE_FORBIDDEN','Only Student and Faculty accounts can request books online.')
     const [titles]=await q.execute<RowDataPacket[]>(`SELECT t.*,MIN(pc.material_id) AS material_id FROM titles t
-      JOIN physical_copies pc ON pc.title_id=t.title_id WHERE t.title_id=? AND t.record_type='Book' AND t.lifecycle_status='Active'
+      JOIN physical_copies pc ON pc.title_id=t.title_id WHERE t.title_id=? AND t.lifecycle_status='Active'
       AND pc.lifecycle_status='Active' AND pc.material_id IS NOT NULL GROUP BY t.title_id`,[titleId])
     if(!titles[0]) throw fail('BOOK_RESERVATION_UNAVAILABLE','This title has no active physical copy for requests.')
+    if(titles[0].record_type!=='Book') throw fail('RESEARCH_VIEW_ONLY','Research and thesis records cannot be borrowed.')
     const [rules]=await q.execute<RowDataPacket[]>('SELECT is_borrowable FROM borrowing_policy_material_rules WHERE borrowing_policy_version_id=? AND material_type=\'Book\'',[eligible.policy.borrowing_policy_version_id])
     if(!rules[0]?.is_borrowable) throw fail('RESEARCH_VIEW_ONLY','The approved policy does not allow take-home borrowing of this material.')
     const [duplicates]=await q.execute<RowDataPacket[]>(`SELECT reservation_id FROM reservations WHERE user_id=? AND book_title_id=? AND reservation_status IN ${active}
@@ -223,6 +224,11 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
         if(r.request_kind==='CartHandover') throw fail('CART_HANDOVER_USE_DESK','This cart is awaiting handover. Open Borrow & return and choose Start checkout.')
         if(r.reservation_status==='ready_for_pickup') return {...result(r),replayed:true}
         if(!['pending','approved'].includes(r.reservation_status)) throw fail('RESERVATION_TRANSITION_INVALID','This request can no longer be prepared.')
+        const [conflictingLoans] = await q.execute<RowDataPacket[]>(`SELECT bt.transaction_id FROM borrow_transactions bt
+          JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id OR (bt.physical_copy_id IS NULL AND pc.material_id=bt.material_id)
+          WHERE bt.user_id=? AND pc.title_id=? AND bt.transaction_status IN ('Pending','Borrowed','Overdue')
+          AND bt.reservation_id IS DISTINCT FROM ? LIMIT 1`,[r.user_id,r.book_title_id,r.reservation_id])
+        if(conflictingLoans.length) throw fail('BOOK_ALREADY_IN_ACCOUNT','The borrower already has an active loan or checkout for this title.')
         await allocateWaitingRequests(q,Number(r.book_title_id),clock());r=await requestRow(q,Number(r.reservation_id))
         if(!r.assigned_physical_copy_id) throw fail('NO_AVAILABLE_ACCESSION','This request is waiting for an eligible copy or borrower. Review the account and waitlist.')
         const eligible=await borrowerEligibility(q,Number(r.user_id),clock(),'Online');requireEligible(eligible)

@@ -1,8 +1,4 @@
-/**
- * Shared SQL helpers for the Postgres-first driver (mysql2-compatible call sites).
- */
-
-/** Convert MySQL `?` placeholders to Postgres `$1…$n`. Ignores `?` inside quoted strings. */
+/** Convert SQL `?` placeholders to Postgres `$1…$n`. Ignores `?` inside quoted strings. */
 export function toPgPlaceholders(sql) {
   let out = ''
   let index = 0
@@ -33,9 +29,4 @@ export function toPgPlaceholders(sql) {
     out += ch
   }
   return out
-}
-
-/** Strip MySQL identifier backticks. */
-export function stripBackticks(sql) {
-  return sql.replace(/`/g, '')
 }

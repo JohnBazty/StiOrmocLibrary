@@ -1,4 +1,4 @@
-import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import type { PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import type { BookEntryInput, PhysicalCopyInput, ThesisEntryInput, ThesisMetadataInput } from './catalog.validation.ts'
 
 type IdRow = RowDataPacket & { title_id: number }

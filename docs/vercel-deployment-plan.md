@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Date created | 2026-09-25 |
-| Date last updated | 2026-11-11 |
+| Date last updated | 2026-11-10 |
 | Status | `inprogress` |
 
 ## Why
@@ -101,62 +101,9 @@ Two additional disposable categories passed Add, Edit, Reassign, and Delete thro
 
 The current production log query found no HTTP 500. Four error-level entries inspected after acceptance were Node `DEP0169` deprecation warnings on successful GET requests. Phase 1 is marked `built` in the system plan. The deployment still needs a durable scheduler for the later reservation and attendance phases; that work is not part of the eight reported Phase 1 repairs.
 
-### October 17 revision release (2026-11-08, Asia/Manila)
-
-Production at <https://sti-ormoc-smart-library.vercel.app> serves deployment `dpl_3ic7NzaWKkea7oXNmDcVBxCWMMM8`. The uploaded source snapshot (`ef3070a36ee09183076f76bf2a3b43e82f9c7a41b704c59e2f3dd932a07894e1`) combined base commit `a4b770a` and the approved local Round 3 runtime changes. It excluded local environment files, uploads, generated QA files and draft migration files. Round 3 Dewey work remains deferred. The prior production deployment is `dpl_BBJWxovm3tm5cEwrshazbXEuuj5Z`.
-
-The first staged build confirmed application health and access boundaries. With the owner's explicit approval, the existing library Gmail account was configured for production verification codes. Vercel stores its credentials as secrets. A second staged build verified Gmail SMTP authentication without sending a message, checked the exact Supabase migration 030 checksum and four report views using production settings, then passed health and static bundle checks. No migrations ran. No Git push was performed.
-
-After promotion, the live domain resolved to the verified deployment. Eight checks passed: the home page, personnel entry, API health, two public catalog endpoints, expected 401 responses on two protected endpoints, and the new browser bundle. All 415 API and 286 web tests passed before promotion. Gmail authentication passed; delivery to a real Student or Faculty inbox was not tested. The minute job scheduler remains inactive and Librarian usability acceptance remains separate.
-
 ### Remembered device sign-in release (2026-11-10, Asia/Manila)
 
 Deployment `dpl_HdKxDuSyxfFWZkNSFguAEsvuA1fU` replaced `dpl_6H2Foy8G6mjmLm6GUUANGvedtWit` at the public alias. The release used the previous production snapshot and the device files. Migration 032 was applied individually, and `LOGIN_DEVICES_ENABLED` was enabled for Vercel Production. Staged and live health, the sign-in pages, public catalog and resume access checks passed. The browser showed the unchecked seven-day checkbox. Physical-device and real email delivery checks remain pending.
-
-## Local preview aligned with production (2026-11-11, Asia/Manila)
-
-**Superseded by the owner's correction later on 2026-11-11.** Localhost must run
-the newest local work, including payments, rather than be held to the older live
-release. Both local servers now run from
-`C:/Users/JOHN/Documents/SSL/StiOrmocLibrary-main-sync` on
-`feat/xendit-sandbox-setup` at `3d16f04`. The two newer activation messages in this
-checkout were restored from the verified backups. The following alignment record
-is historical evidence, not the current local startup instruction. Production was
-not changed in either step.
-
-The owner requested that localhost show the same update as the live website. The
-active local preview remains in `C:/Users/JOHN/Documents/SSL/StiOrmocLibrary`, with
-the web server on port 5173 and API on port 4000. The separate
-`StiOrmocLibrary-main-sync` checkout and its local payment commits were preserved.
-Those payment changes are not in the current production release.
-
-The saved `sti-login-device-release-0942a1f221` source was compared with the
-public production bundles. Two local account-activation wording changes were
-backed up under the ignored `.vercel/local-live-alignment-*` directory before
-matching the production wording. Other local code and tests were preserved.
-The previously disabled local `LOGIN_DEVICES_ENABLED` and
-`ENROLLMENT_ROSTER_ENABLED` settings now both equal `true`, matching the public
-production configuration endpoints. Other local settings were preserved; no
-credentials were copied from production.
-
-Verification completed:
-
-- All 179 non-test web source files, 212 non-test API source files, 15 public
-  assets and the API entrypoint match the saved production source byte for byte.
-- The rebuilt main bundle and four referenced JavaScript chunks match the live
-  code after normalizing generated asset filenames. CSS differs only in numeric
-  precision below five decimal places, so cross-platform asset hashes differ.
-- The web build and 11 authentication tests passed. The web server restarted with
-  dependency re-optimization, and the API restarted with the matching flags.
-- Home, login and staff entry returned HTTP 200 locally and live. API health,
-  device availability, roster registration availability, public catalog options
-  and public titles returned matching JSON responses on both sites.
-- No push, deployment or migration was performed. Authenticated workflows and
-  visual browser checks were not repeated in this synchronization task.
-
-The ignored `.vercel/local-live-verification.json` records the checks and
-`.vercel/local-live-alignment-path.txt` locates the preserved wording edits.
-Normal future startup from this project root remains `npm run dev:stable`.
 
 ## Change log
 

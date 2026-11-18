@@ -110,7 +110,7 @@ The module uses only `#003399`, `#FFF200`, and `#FFFFFF`, including opacity vari
 Run all migrations in order:
 
 ```powershell
-npm run db:migrate -w @sti-library/api
+npm run db:supabase -w @sti-library/api -- <file>.sql
 ```
 
 Migration `20260820_006_inventory_audit_events.sql` adds audit history. Migration `20260820_008_inventory_condition_availability_policy.sql` installs the five-state contract and Lost-only database enforcement. Neither migration rewrites title, copy, material, loan, or reservation identifiers. `/api/health` reports `DATABASE_MIGRATION_REQUIRED` until required structures are present.

@@ -1,6 +1,5 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise'
+import type { Pool, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
-import { isPostgres } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 
 export const activityCategories = ['all', 'borrowing', 'reservations', 'attendance', 'printing'] as const
@@ -19,7 +18,7 @@ export function parseActivityCategory(value: unknown): ActivityCategory {
 }
 
 /** Read committed source ledgers: never invent a loan from a cart or reservation. */
-export function createLibraryActivityService(database: Pick<Pool, 'execute'> = db, postgres = isPostgres) {
+export function createLibraryActivityService(database: Pick<Pool, 'execute'> = db, postgres = true) {
   // The hosted pooler stores server NOW() audit timestamps in UTC. Attendance
   // and Date-bound receipt fields are campus wall time; request events are zoned.
   const instant = (column: string, zone = 'UTC') => postgres ? `(${column} AT TIME ZONE '${zone}')` : column

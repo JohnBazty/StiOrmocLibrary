@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Pool, PoolConnection } from 'mysql2/promise'
+import type { Pool, PoolConnection } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import type { PhysicalCopyMutationTransaction } from './physical-copy-mutation.middleware.ts'
 import { archivePhysicalCopy, deletePhysicalCopy } from './physical-copy.service.ts'

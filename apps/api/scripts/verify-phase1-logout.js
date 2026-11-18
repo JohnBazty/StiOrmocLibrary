@@ -5,13 +5,13 @@ import { randomBytes } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import bcrypt from 'bcrypt'
 import request from 'supertest'
-import { db, dbDriver } from '../src/config/db.js'
+import { db } from '../src/config/db.js'
 import { createApp } from '../src/app.js'
 import { createJwtAuthService } from '../src/modules/auth/jwt-auth.service.ts'
 import { verifyAccessToken } from '../src/modules/auth/jwt-auth.middleware.ts'
 import { createAuthSessionRepository } from '../src/modules/auth/auth-session.repository.ts'
 
-assert.equal(dbDriver, 'postgres')
+
 const marker = `Q1L-${randomBytes(6).toString('hex').toUpperCase()}`
 const password = randomBytes(18).toString('hex')
 const checks = []

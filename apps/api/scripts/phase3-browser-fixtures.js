@@ -5,8 +5,8 @@ import { readFile, writeFile, unlink, mkdir } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import bcrypt from 'bcrypt'
 import ExcelJS from 'exceljs'
-import { db, dbDriver } from '../src/config/db.js'
-assert.equal(dbDriver, 'postgres')
+import { db } from '../src/config/db.js'
+
 const stateFile = new URL('../../../output/phase3-browser-fixtures.json', import.meta.url)
 const fingerprint = async table => {
   const keys = { accounts:'account_id', users:'user_id', titles:'title_id', physical_copies:'physical_copy_id', borrow_transactions:'transaction_id' }

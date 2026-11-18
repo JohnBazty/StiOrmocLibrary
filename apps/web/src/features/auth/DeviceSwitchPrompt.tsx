@@ -18,4 +18,3 @@ export function DeviceSwitchPrompt({ busy, onConfirm, onCancel }: {
     </section>
   )
 }
-

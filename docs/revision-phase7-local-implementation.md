@@ -2,8 +2,8 @@
 
 **Why:** Identify aging books, preserve review decisions, and compare mapped holdings with traceable school-approved requirements.
 
-**Date created:** 2026-10-12  
-**Date last updated:** 2026-10-12  
+**Date created:** 2026-10-12\
+**Date last updated:** 2026-10-12\
 **Status:** `built`
 
 ## How

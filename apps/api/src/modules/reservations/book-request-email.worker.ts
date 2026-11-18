@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import type { Pool, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { sendSchoolEmail } from '../auth/school-email.sender.ts'
 

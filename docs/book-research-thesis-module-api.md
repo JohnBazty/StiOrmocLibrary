@@ -46,7 +46,7 @@ The transaction is rolled back and released before the response; the protected m
 
 ## Deployment prerequisite
 
-Run `npm run db:migrate -w @sti-library/api` before using these endpoints. The checksum-tracked runner applies the additive catalog, category, reservation, and authentication migrations in order. It creates `titles`, `authors`, `research_records`, and `physical_copies` without deleting or silently remapping legacy `materials` rows. Complete and reconcile a legacy backfill before production cutover when legacy material rows exist.
+These endpoints need the catalog, category, reservation, and authentication tables in `database/supabase/` (Supabase Postgres). The schema creates `titles`, `authors`, `research_records`, and `physical_copies` without deleting or silently remapping legacy `materials` rows. Complete and reconcile a legacy backfill before production cutover when legacy material rows exist.
 
 The React CSV and PDF buttons use authenticated fetch requests so JWT-only and session logins both pass server RBAC. The API streams reports; it does not assemble the complete inventory in server memory.
 

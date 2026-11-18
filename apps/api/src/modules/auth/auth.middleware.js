@@ -70,7 +70,7 @@ export function requireAuth(request, response, next) {
     return response.redirect(303, '/login?auth=required')
   }
 
-  if (env.db.driver === 'postgres' && ['Student','Faculty'].includes(user.role)) { return response.status(401).json({ success: false, code: 'SESSION_UPGRADE_REQUIRED', message: 'Use the updated web login with school-email verification.' }) }
+  if (['Student','Faculty'].includes(user.role)) { return response.status(401).json({ success: false, code: 'SESSION_UPGRADE_REQUIRED', message: 'Use the updated web login with school-email verification.' }) }
   const lastActivity = Number(request.session.lastActivity ?? 0)
   if (lastActivity && Date.now() - lastActivity > env.session.idleTimeoutMs) {
     return request.session.destroy(() => {

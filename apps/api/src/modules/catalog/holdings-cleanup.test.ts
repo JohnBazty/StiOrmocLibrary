@@ -35,3 +35,15 @@ test('reference matching requires one active exact name after case and space nor
   assert.equal(matchImportReference('Shelf A', [...choices, { id: 3, name: 'SHELF A', status: 'Active' }]), null)
   assert.equal(matchImportReference('', choices), null)
 })
+
+test('spreadsheet placeholders count as blank so the book lookup can fill them', () => {
+  for (const placeholder of ['Not verified', 'NOT VERIFIED', ' not located online ', 'N/A', 'n/a', 'none', '-', '—', '–']) {
+    const result = cleanImportValue('publisher', placeholder)
+    assert.equal(result.value, '', placeholder)
+    assert.equal(result.correction?.reason, 'placeholder')
+  }
+  assert.equal(cleanImportValue('publicationYear', 'Not verified').value, '')
+  assert.equal(cleanImportValue('isbn', 'Not verified').value, '')
+  assert.equal(cleanImportValue('title', 'None of the Above').value, 'None of the Above', 'only a whole-cell placeholder is cleared')
+  assert.equal(cleanImportValue('edition', '2nd - revised').value, '2nd - revised')
+})

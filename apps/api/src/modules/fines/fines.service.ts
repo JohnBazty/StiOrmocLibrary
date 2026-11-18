@@ -1,14 +1,9 @@
-import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
-import { excluded, forUpdate, isPostgres } from '../../config/sql-dialect.js'
+import { excluded, forUpdate } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { receiptVerificationCode } from './fine-receipt-verification.ts'
 import { fineId, parseFineFilters, receiptId, validateAdjustment, validateCashPayment, validateInfraction, validateReversal, type FineFilters } from './fines.validation.ts'
-
-function insertIgnoreNotification(sql: string) {
-  if (!isPostgres) return sql
-  return `${sql.replace(/^\s*INSERT\s+IGNORE\s+INTO/i, 'INSERT INTO')} ON CONFLICT (user_id, dedupe_key) DO NOTHING`
-}
 
 export type FineActor = { accountId?: number; role?: string }
 
@@ -213,9 +208,7 @@ async function recomputeFineStatus(connection: PoolConnection, targetFineId: num
   if (!row) throw new HttpError(404, 'FINE_NOT_FOUND', 'The fine was not found.')
   const remaining = Math.max(0, number(row.fine_amount) - number(row.paid) - number(row.adjusted))
   const status = Number(row.is_void) ? 'Voided' : remaining <= 0 ? (number(row.adjusted) > 0 ? 'Waived' : 'Paid') : number(row.paid) > 0 ? 'Partially Paid' : 'Unpaid'
-  const paidAtSql = isPostgres
-    ? `CASE WHEN ? = 'Paid' THEN NOW() ELSE NULL END`
-    : `IF(?='Paid',NOW(),NULL)`
+  const paidAtSql = `CASE WHEN ? = 'Paid' THEN NOW() ELSE NULL END`
   await connection.execute(`UPDATE fines SET payment_status=?,paid_at=${paidAtSql},updated_at=NOW() WHERE fine_id=?`, [status, status, targetFineId])
   return { status, remaining, paid: number(row.paid), adjusted: number(row.adjusted), assessed: number(row.fine_amount) }
 }
@@ -230,11 +223,8 @@ async function refreshClearance(connection: PoolConnection, userId: number) {
   )
   const blocked = Number(rows[0]?.has_loan) || Number(rows[0]?.has_fine) || Number(rows[0]?.has_loss)
   await connection.execute(
-    isPostgres
-      ? `INSERT INTO clearance_statuses(user_id,standing_status,reason_block_details,last_checked_at,updated_at)
-     VALUES (?,?,?,NOW(),NOW()) ON CONFLICT (user_id) DO UPDATE SET standing_status=${excluded('standing_status')},reason_block_details=${excluded('reason_block_details')},last_checked_at=NOW(),updated_at=NOW()`
-      : `INSERT INTO clearance_statuses(user_id,standing_status,reason_block_details,last_checked_at,updated_at)
-     VALUES (?,?,?,NOW(),NOW()) ON DUPLICATE KEY UPDATE standing_status=VALUES(standing_status),reason_block_details=VALUES(reason_block_details),last_checked_at=NOW(),updated_at=NOW()`,
+    `INSERT INTO clearance_statuses(user_id,standing_status,reason_block_details,last_checked_at,updated_at)
+     VALUES (?,?,?,NOW(),NOW()) ON CONFLICT (user_id) DO UPDATE SET standing_status=${excluded('standing_status')},reason_block_details=${excluded('reason_block_details')},last_checked_at=NOW(),updated_at=NOW()`,
     [userId, blocked ? 'Not Cleared' : 'Cleared', blocked ? 'Outstanding library obligations remain.' : 'No outstanding library obligations.'],
   )
 }
@@ -327,8 +317,9 @@ export function createFinesService(database: Pool = db) {
           [insert.insertId,input.category,input.incidentAt,input.location,input.details,staffUserId],
         )
         await connection.execute(
-          insertIgnoreNotification(`INSERT IGNORE INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
-           VALUES (?,'Library fine issued',?,'Fine','Fine',?,'/student/fines','Important',?,NOW(),NOW())`),
+          `INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
+           VALUES (?,'Library fine issued',?,'Fine','Fine',?,'/student/fines','Important',?,NOW(),NOW())
+          ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
           [targetUserId,`${input.category} fine: PHP ${input.amount.toFixed(2)}.`,insert.insertId,`fine:${insert.insertId}:issued`],
         )
         await refreshClearance(connection,targetUserId); await connection.commit()
@@ -389,8 +380,9 @@ export function createFinesService(database: Pool = db) {
           else await connection.execute("UPDATE lost_book_reports SET payment_status='Paid',paid_at=NOW(),payment_recorded_by_user_id=?,updated_at=NOW() WHERE lost_book_report_id=?", [staffUserId,allocation.lostBookReportId])
         }
         await connection.execute(
-          insertIgnoreNotification(`INSERT IGNORE INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
-           VALUES (?,'Cash payment received',?,'Fine','Fine Receipt',?,'/student/fines','Normal',?,NOW(),NOW())`),
+          `INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
+           VALUES (?,'Cash payment received',?,'Fine','Fine Receipt',?,'/student/fines','Normal',?,NOW(),NOW())
+          ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
           [ownerUserId,`Receipt ${receiptNumber}: PHP ${total.toFixed(2)} received at the library counter.`,insert.insertId,`fine-receipt:${insert.insertId}:issued`],
         )
         await refreshClearance(connection,ownerUserId); await connection.commit()
@@ -415,8 +407,9 @@ export function createFinesService(database: Pool = db) {
         await connection.execute('INSERT INTO fine_adjustments(fine_id,adjustment_type,amount_adjusted,reason,adjusted_by_user_id,adjusted_at) VALUES (?,?,?,?,?,NOW())',[targetFineId,input.type,amount,input.reason,staffUserId])
         const result=await recomputeFineStatus(connection,targetFineId)
         await connection.execute(
-          insertIgnoreNotification(`INSERT IGNORE INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
-           VALUES (?,'Fine adjusted',?,'Fine','Fine',?,'/student/fines','Important',?,NOW(),NOW())`),
+          `INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
+           VALUES (?,'Fine adjusted',?,'Fine','Fine',?,'/student/fines','Important',?,NOW(),NOW())
+          ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
           [fine.user_id,`${input.type}: PHP ${amount.toFixed(2)}. Reason: ${input.reason}`,targetFineId,`fine:${targetFineId}:adjustment:${Date.now()}`],
         )
         await refreshClearance(connection,Number(fine.user_id)); await connection.commit(); return { fineId:targetFineId,...result }
@@ -424,9 +417,7 @@ export function createFinesService(database: Pool = db) {
     },
     async reverseReceipt(actor: FineActor, target: unknown, body: unknown) {
       requireStaff(actor); const targetReceiptId=receiptId(target); const input=validateReversal(body)
-      const [invoiceTables]=await database.execute<RowDataPacket[]>(isPostgres
-        ? "SELECT to_regclass('public.customer_invoices') IS NOT NULL AS exists"
-        : "SELECT COUNT(*) AS exists FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='customer_invoices'")
+      const [invoiceTables]=await database.execute<RowDataPacket[]>("SELECT to_regclass('public.customer_invoices') IS NOT NULL AS exists")
       const invoiceLedgerExists=Boolean(invoiceTables[0]?.exists)
       const connection=await database.getConnection()
       try {
@@ -439,8 +430,9 @@ export function createFinesService(database: Pool = db) {
         const [allocations]=await connection.execute<RowDataPacket[]>('SELECT fine_id,lost_book_report_id FROM fine_payment_allocations WHERE fine_payment_receipt_id=?',[targetReceiptId])
         for(const allocation of allocations){if(allocation.fine_id) await recomputeFineStatus(connection,Number(allocation.fine_id));else await connection.execute("UPDATE lost_book_reports SET payment_status='Unpaid',paid_at=NULL,payment_recorded_by_user_id=NULL,updated_at=NOW() WHERE lost_book_report_id=?",[allocation.lost_book_report_id])}
         await connection.execute(
-          insertIgnoreNotification(`INSERT IGNORE INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
-           VALUES (?,'Cash receipt reversed',?,'Fine','Fine Receipt',?,'/student/fines','Urgent',?,NOW(),NOW())`),
+          `INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
+           VALUES (?,'Cash receipt reversed',?,'Fine','Fine Receipt',?,'/student/fines','Urgent',?,NOW(),NOW())
+          ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
           [receipt.user_id,`A cash receipt was reversed. Reason: ${input.reason}`,targetReceiptId,`fine-receipt:${targetReceiptId}:reversed`],
         )
         await refreshClearance(connection,Number(receipt.user_id)); await connection.commit(); return receiptDetail(targetReceiptId)

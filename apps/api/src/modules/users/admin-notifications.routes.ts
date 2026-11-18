@@ -1,5 +1,5 @@
 import { Router, type NextFunction, type Request, type Response } from 'express'
-import type { RowDataPacket } from 'mysql2/promise'
+import type { RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 
 type Notice = { id: string; kind: 'profile' | 'status'; title: string; body: string; createdAt: string; actionPath: string }

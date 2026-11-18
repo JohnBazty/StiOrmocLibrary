@@ -4,14 +4,14 @@ import { randomUUID, randomBytes } from 'node:crypto'
 import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
 import request from 'supertest'
-import { db, dbDriver } from '../src/config/db.js'
+import { db } from '../src/config/db.js'
 import { env } from '../src/config/env.js'
 import { createApp } from '../src/app.js'
 import { createPasswordRecoveryService } from '../src/modules/auth/password-recovery.service.ts'
 import { createJwtAuthService } from '../src/modules/auth/jwt-auth.service.ts'
 import { listAdminNotifications } from '../src/modules/users/admin-notifications.routes.ts'
 
-assert.equal(dbDriver, 'postgres', 'This gate requires the configured Supabase connection.')
+
 const marker = randomUUID()
 const schoolId = `REV1-${marker}`.toUpperCase()
 const email = `revision-fixture-${marker}@ormoc.sti.edu.ph`

@@ -1,11 +1,10 @@
 import { createHash } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
-import type { Pool,PoolConnection,RowDataPacket } from 'mysql2/promise'
-import { db,dbDriver } from '../../config/db.js'
+import type { Pool,PoolConnection,RowDataPacket } from '../../config/db.js'
+import { db } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
 import { validateAttendanceCredential } from '../attendance/attendance-credential.service.ts'
-import { libraryState } from '../attendance/attendance-operations.service.ts'
 import { createCirculationService } from './circulation.service.ts'
 import { borrowerEligibility,requireEligible,requireLoanSlot } from './desk-circulation.policy.ts'
 import { loadDeskRequest } from './desk-request-context.ts'
@@ -85,7 +84,7 @@ export async function flagUnreturnedInLibrary(q:Pick<PoolConnection,'execute'>,n
 }
 export function createDeskCirculationService(database:Pool=db,clock=()=>new Date()){
  async function transaction<T>(actor:DeskActor,work:(q:PoolConnection)=>Promise<T>){
-  if(dbDriver!=='postgres')throw new HttpError(503,'DESK_SCHEMA_UNAVAILABLE','The revised circulation desk requires the Postgres extension.')
+
   if(!['Librarian','Staff'].includes(actor.role))throw new HttpError(403,'DESK_FORBIDDEN','Only library desk personnel can scan borrowing and returns.')
   const q=await database.getConnection();try{await q.beginTransaction();await q.execute('SELECT settings_id FROM library_profile_settings WHERE settings_id=1 FOR UPDATE');const [actors]=await q.execute<RowDataPacket[]>('SELECT account_id FROM accounts WHERE account_id=? AND role=? AND account_status=\'Active\' FOR UPDATE',[actor.accountId,actor.role]);if(!actors.length)throw new HttpError(403,'DESK_ACTOR_INACTIVE','Your desk account is not active.');const result=await work(q);await q.commit();return result}catch(e){await q.rollback();throw e}finally{q.release()}
  }

@@ -1,20 +1,12 @@
-import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise'
+import type { Pool, PoolConnection, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
-import { isPostgres } from '../../config/sql-dialect.js'
 
-const clearOtherSessionsSql = isPostgres
-  ? `DELETE FROM auth_sessions
+const clearOtherSessionsSql = `DELETE FROM auth_sessions
       WHERE session_id <> ?
         AND (session_data::json->'user'->>'id')::int = ?`
-  : `DELETE FROM auth_sessions
-      WHERE session_id <> ?
-        AND CAST(JSON_UNQUOTE(JSON_EXTRACT(session_data, '$.user.id')) AS UNSIGNED) = ?`
 
-const clearAllSessionsSql = isPostgres
-  ? `DELETE FROM auth_sessions
+const clearAllSessionsSql = `DELETE FROM auth_sessions
       WHERE (session_data::json->'user'->>'id')::int = ?`
-  : `DELETE FROM auth_sessions
-      WHERE CAST(JSON_UNQUOTE(JSON_EXTRACT(session_data, '$.user.id')) AS UNSIGNED) = ?`
 
 export type AuthSessionRepository = {
   incrementAuthVersionForAccount(accountId: number): Promise<number>

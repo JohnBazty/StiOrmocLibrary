@@ -10,7 +10,7 @@ import { env } from '../src/config/env.js'
  * Usage: node scripts/run-supabase-schema.js reviewed-single-filename.sql
  * Whole-directory replay is unsafe while 002 is a draft and 007 is untracked.
  */
-if (env.db.driver !== 'postgres' || !env.db.connectionString) {
+if (!env.db.connectionString) {
   throw new Error('Set DATABASE_URL (postgresql://…) in apps/api/.env before running Supabase schema scripts.')
 }
 

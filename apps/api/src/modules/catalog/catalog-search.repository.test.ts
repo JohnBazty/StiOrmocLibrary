@@ -10,7 +10,7 @@ test('builds one prepared query for combined category, author, year, availabilit
   const query = buildCatalogSearchQuery(filters)
 
   assert.match(query.dataSql, /t\.category_id = \?/)
-  assert.match(query.dataSql, /af\.normalized_name LIKE \?/)
+  assert.match(query.dataSql, /af\.normalized_name ILIKE \?/)
   assert.match(query.dataSql, /t\.publication_year = \?/)
   assert.match(query.dataSql, /pcf\.availability_status = 'Available'/)
   assert.deepEqual(query.dataParameters.slice(0, 3), [4, 2019, '%date%'])

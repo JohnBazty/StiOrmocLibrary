@@ -1,5 +1,4 @@
-import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
-import { randomUUID } from 'node:crypto'
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { requireOperationalService } from '../attendance/attendance-operations.service.ts'
 import { db } from '../../config/db.js'
 import { notifyReservationStatus } from '../reservations/reservation-notification.ts'
@@ -9,8 +8,6 @@ import {
   caseIf,
   currentDate,
   excluded,
-  isPostgres,
-  sumEquals,
 } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { calculateOperatingFine, loadFineContext } from '../fines/fine-calculator.ts'
@@ -27,7 +24,7 @@ const ACTIVE_RESERVATIONS = "('pending','approved','ready_for_pickup')"
 const WAITING_RESERVATIONS = "('pending','approved','ready_for_pickup')"
 
 function loanTimestamp(column: string) {
-  return isPostgres ? `(${column} AT TIME ZONE 'Asia/Manila') AS ${column.split('.').pop()}` : column
+  return `(${column} AT TIME ZONE 'Asia/Manila') AS ${column.split('.').pop()}`
 }
 
 type OperationalUser = RowDataPacket & {
@@ -66,7 +63,7 @@ async function loadCheckoutEvaluationContext(
   borrowedAt: Date,
   forUpdate: boolean,
 ): Promise<CheckoutEvaluationContext> {
-  const lockSuffix = forUpdate ? ` FOR UPDATE${isPostgres ? ' OF pc, t' : ''}` : ''
+  const lockSuffix = forUpdate ? ` FOR UPDATE OF pc, t` : ''
   const loanLock = forUpdate ? ' FOR UPDATE' : ''
   const reservationLock = forUpdate ? ' FOR UPDATE' : ''
   const borrower = await findBorrower(connection, input.userId, input.schoolId, forUpdate)
@@ -100,11 +97,11 @@ async function loadCheckoutEvaluationContext(
       }
     }
     const [queueRows] = await connection.execute<RowDataPacket[]>(
-      `SELECT reservation_id, user_id, queue_position, reservation_status${isPostgres ? ', request_kind' : ''} FROM reservations
+      `SELECT reservation_id, user_id, queue_position, reservation_status${', request_kind'} FROM reservations
         WHERE book_title_id = ? AND reservation_status IN ${WAITING_RESERVATIONS}
-        ${isPostgres ? 'AND (assigned_physical_copy_id=? OR assigned_physical_copy_id IS NULL)' : ''}
-        ORDER BY ${isPostgres ? 'CASE WHEN assigned_physical_copy_id=? THEN 0 ELSE 1 END, ' : ''}queue_position ASC, reserved_at ASC, reservation_id ASC LIMIT 1${reservationLock}`,
-      isPostgres ? [copy.title_id,copy.physical_copy_id,copy.physical_copy_id] : [copy.title_id],
+        ${'AND (assigned_physical_copy_id=? OR assigned_physical_copy_id IS NULL)'}
+        ORDER BY ${'CASE WHEN assigned_physical_copy_id=? THEN 0 ELSE 1 END, '}queue_position ASC, reserved_at ASC, reservation_id ASC LIMIT 1${reservationLock}`,
+      [copy.title_id,copy.physical_copy_id,copy.physical_copy_id],
     )
     if (queueRows[0]) {
       queueHead = {
@@ -117,7 +114,7 @@ async function loadCheckoutEvaluationContext(
   if (borrower) {
     if (copy) {
       const [capacityRows] = await connection.execute<RowDataPacket[]>(
-        `SELECT COUNT(DISTINCT activity.title_id) AS active_count, ${isPostgres ? 'COUNT(*) FILTER (WHERE activity.title_id = ?) > 0' : 'MAX(activity.title_id = ?)'} AS target_already_active FROM (
+        `SELECT COUNT(DISTINCT activity.title_id) AS active_count, COUNT(*) FILTER (WHERE activity.title_id = ?) > 0 AS target_already_active FROM (
            SELECT pc_active.title_id FROM borrow_transactions bt INNER JOIN physical_copies pc_active ON pc_active.physical_copy_id = bt.physical_copy_id
             WHERE bt.user_id = ? AND bt.transaction_status IN ${ACTIVE_LOANS}
            UNION ALL SELECT r.book_title_id FROM reservations r WHERE r.user_id = ? AND r.reservation_status IN ${ACTIVE_RESERVATIONS} AND r.book_title_id IS NOT NULL
@@ -218,7 +215,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
       // Rank the entire owned history before selecting one row per title, independent of history pagination.
       const [rows] = await database.execute<RowDataPacket[]>(`SELECT * FROM (
         SELECT bt.transaction_id,${loanTimestamp('bt.borrowed_at')},${loanTimestamp('bt.due_at')},${loanTimestamp('bt.returned_at')},
-          CASE WHEN bt.transaction_status='Borrowed' AND bt.due_at < ${isPostgres ? "(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila')" : 'NOW()'} THEN 'Overdue' ELSE bt.transaction_status END AS transaction_status,
+          CASE WHEN bt.transaction_status='Borrowed' AND bt.due_at < ${"(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila')"} THEN 'Overdue' ELSE bt.transaction_status END AS transaction_status,
           t.title_id,COALESCE(t.title,m.title) AS title,COALESCE(credits.author,m.author,'Unknown author') AS author,
           t.cover_image_path,pc.accession_number,COALESCE(pc.barcode,m.barcode) AS barcode,
           ROW_NUMBER() OVER (PARTITION BY COALESCE(pc.title_id,-m.material_id) ORDER BY bt.borrowed_at DESC,bt.transaction_id DESC) AS title_rank
@@ -244,7 +241,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
       const [[rows], [countRows], [activityRows]] = await Promise.all([
         database.execute<RowDataPacket[]>(
           `SELECT bt.transaction_id, ${loanTimestamp('bt.borrowed_at')}, ${loanTimestamp('bt.due_at')}, ${loanTimestamp('bt.returned_at')},
-              CASE WHEN bt.transaction_status = 'Borrowed' AND bt.due_at < ${isPostgres ? "(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila')" : 'NOW()'} THEN 'Overdue' ELSE bt.transaction_status END AS transaction_status,
+              CASE WHEN bt.transaction_status = 'Borrowed' AND bt.due_at < ${"(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila')"} THEN 'Overdue' ELSE bt.transaction_status END AS transaction_status,
               t.title_id, COALESCE(t.title, m.title) AS title, COALESCE(credits.author, m.author, 'Unknown author') AS author,
               t.cover_image_path,
               pc.accession_number, COALESCE(pc.barcode, m.barcode) AS barcode,
@@ -262,7 +259,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
           `SELECT
              (SELECT COUNT(*) FROM borrow_transactions WHERE user_id = ? AND transaction_status IN ${ACTIVE_LOANS}) AS active_loans,
              (SELECT COUNT(*) FROM reservations WHERE user_id = ? AND reservation_status IN ${ACTIVE_RESERVATIONS}) AS active_reservations,
-             (SELECT ${isPostgres ? "MIN(due_at) AT TIME ZONE 'Asia/Manila'" : 'MIN(due_at)'} FROM borrow_transactions WHERE user_id = ? AND transaction_status IN ('Borrowed','Overdue')) AS next_due_at`,
+             (SELECT ${"MIN(due_at) AT TIME ZONE 'Asia/Manila'"} FROM borrow_transactions WHERE user_id = ? AND transaction_status IN ('Borrowed','Overdue')) AS next_due_at`,
           [userId, userId, userId],
         ),
       ])
@@ -272,7 +269,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
       const policy = await policyService.resolveActive(database, clock())
       const loanLimit = roleBookLimit(policy, role)
       let activeStackCount = activeLoans + activeReservations
-      if (isPostgres) {
+      {
         const [commitments] = await database.execute<RowDataPacket[]>(`SELECT COUNT(*) AS total FROM reservations r WHERE r.user_id=? AND r.reservation_status IN ${ACTIVE_RESERVATIONS} AND NOT EXISTS (SELECT 1 FROM borrow_transactions bt WHERE bt.reservation_id=r.reservation_id AND bt.transaction_status IN ${ACTIVE_LOANS})`, [userId])
         activeStackCount = activeLoans + Number(commitments[0]?.total ?? 0)
       }
@@ -291,164 +288,8 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
     async submitBorrowRequest(accountIdValue: unknown, body: unknown | BorrowCartInput) {
       const accountId = positiveCirculationId(accountIdValue, 'accountId')
       const input = validateBorrowCart(body)
-      if(isPostgres) return createBookRequestService(database,clock).submitCart(accountId,input.titleIds,
+      return createBookRequestService(database,clock).submitCart(accountId,input.titleIds,
         body && typeof body==='object' ? (body as Record<string,unknown>).requestId : undefined)
-      const connection = await database.getConnection()
-      try {
-        await connection.beginTransaction()
-        const userId = await actorUserId(connection, accountId)
-        if (!userId) throw new HttpError(422, 'CIRCULATION_PROFILE_NOT_LINKED', 'This login account is not linked to a circulation profile.')
-        const borrower = await lockBorrower(connection, userId, null)
-        if (!['Student', 'Faculty'].includes(String(borrower.role_name))) {
-          throw new HttpError(403, 'BORROW_ROLE_FORBIDDEN', 'Only Student and Faculty accounts can submit book carts.')
-        }
-
-        const placeholders = input.titleIds.map(() => '?').join(', ')
-        const [commitmentRows] = await connection.execute<RowDataPacket[]>(
-          `SELECT COUNT(DISTINCT activity.title_id) AS active_count,
-                  COUNT(DISTINCT CASE WHEN activity.title_id IN (${placeholders}) THEN activity.title_id END) AS requested_active_count
-             FROM (
-               SELECT pc_active.title_id
-                 FROM borrow_transactions bt
-                 INNER JOIN physical_copies pc_active ON pc_active.physical_copy_id = bt.physical_copy_id
-                WHERE bt.user_id = ? AND bt.transaction_status IN ${ACTIVE_LOANS}
-               UNION ALL
-               SELECT r.book_title_id
-                 FROM reservations r
-                WHERE r.user_id = ? AND r.reservation_status IN ${ACTIVE_RESERVATIONS} AND r.book_title_id IS NOT NULL
-             ) activity`,
-          [...input.titleIds, borrower.user_id, borrower.user_id],
-        )
-        const activeCount = Number(commitmentRows[0]?.active_count ?? 0)
-        if (Number(commitmentRows[0]?.requested_active_count ?? 0) > 0) {
-          throw new HttpError(422, 'CART_TITLE_ALREADY_ACTIVE', 'One or more selected books already have an active loan or reservation.', {
-            activeCount,
-          })
-        }
-        const policy = await policyService.resolveActive(connection, clock())
-        const limit = roleBookLimit(policy, String(borrower.role_name))
-        if (limit !== null && activeCount + input.titleIds.length > limit) {
-          throw new HttpError(422, 'STUDENT_BORROW_LIMIT_REACHED', `Transaction Blocked: ${borrower.role_name} cannot exceed ${limit} books`, {
-            activeCount,
-            incomingCount: input.titleIds.length,
-            projectedCount: activeCount + input.titleIds.length,
-            limit, policyVersionId: policy.versionId,
-          })
-        }
-
-        const [copyRows] = await connection.execute<RowDataPacket[]>(
-          `SELECT t.title_id, t.title, pc.physical_copy_id, pc.material_id, pc.accession_number, pc.barcode,
-                  pc.condition_status, pc.availability_status, pc.lifecycle_status, m.material_type
-             FROM titles t
-             INNER JOIN physical_copies pc ON pc.title_id = t.title_id
-             LEFT JOIN materials m ON m.material_id = pc.material_id
-            WHERE t.title_id IN (${placeholders})
-              AND t.record_type = 'Book'
-              AND t.lifecycle_status = 'Active'
-              AND pc.lifecycle_status = 'Active'
-            ORDER BY t.title_id ASC, pc.physical_copy_id ASC
-            FOR UPDATE${isPostgres ? ' OF t, pc' : ''}`,
-          input.titleIds,
-        )
-        const selectedCopies = new Map<number, RowDataPacket>()
-        for (const row of copyRows) {
-          const titleId = Number(row.title_id)
-          if (selectedCopies.has(titleId)) continue
-          if (!row.material_id || (row.material_type && row.material_type !== 'Book')) continue
-          if (String(row.availability_status) !== 'Available') continue
-          if (String(row.condition_status) === 'Lost') continue
-          selectedCopies.set(titleId, row)
-        }
-        const unavailableTitleIds = input.titleIds.filter((titleId) => !selectedCopies.has(titleId))
-        if (unavailableTitleIds.length) {
-          const titleNames = new Map(copyRows.map((row) => [Number(row.title_id), String(row.title)]))
-          const unavailableTitles = unavailableTitleIds.map((titleId) => titleNames.get(titleId) ?? `Book #${titleId}`)
-          throw new HttpError(422, 'CART_COPY_UNAVAILABLE', `Unavailable: ${unavailableTitles.join(', ')}. Refresh the catalog and review your cart.`, {
-            unavailableTitleIds, unavailableTitles,
-          })
-        }
-
-        // A title-level waitlist owns the next available copy even before an
-        // accession is assigned. Checking only assigned_physical_copy_id lets
-        // a later online cart steal a copy from the first reservation.
-        const [waitingReservationRows] = await connection.execute<RowDataPacket[]>(
-          `SELECT r.reservation_id, r.book_title_id, r.user_id, r.queue_position,
-                  r.reservation_status, t.title
-             FROM reservations r INNER JOIN titles t ON t.title_id = r.book_title_id
-            WHERE r.book_title_id IN (${placeholders})
-              AND r.reservation_status IN ${ACTIVE_RESERVATIONS}
-            ORDER BY r.book_title_id ASC, r.queue_position ASC, r.reserved_at ASC
-            FOR UPDATE`,
-          input.titleIds,
-        )
-        if (waitingReservationRows.length) {
-          const reservedTitles = [...new Set(waitingReservationRows.map((row) => String(row.title)))]
-          throw new HttpError(422, 'CART_TITLE_RESERVED_FOR_QUEUE',
-            `Reserved for the waiting queue: ${reservedTitles.join(', ')}. Use the Reserve action instead of adding this title to the borrow cart.`, {
-              titleIds: [...new Set(waitingReservationRows.map((row) => Number(row.book_title_id)))],
-              reservedTitles,
-            })
-        }
-
-        const selectedCopyIds = [...selectedCopies.values()].map((row) => Number(row.physical_copy_id))
-        const copyPlaceholders = selectedCopyIds.map(() => '?').join(', ')
-        const [reservationRows] = await connection.execute<RowDataPacket[]>(
-          `SELECT reservation_id, assigned_physical_copy_id
-             FROM reservations
-            WHERE assigned_physical_copy_id IN (${copyPlaceholders})
-              AND reservation_status IN ${ACTIVE_RESERVATIONS}
-            FOR UPDATE`,
-          selectedCopyIds,
-        )
-        if (reservationRows.length) {
-          throw new HttpError(422, 'CART_COPY_RESERVED', 'One or more physical copies have just been reserved. Refresh the catalog and try again.')
-        }
-
-        const requestGroupId = randomUUID()
-        const items: Array<Record<string, unknown>> = []
-        let firstTransactionId: number | null = null
-        for (const titleId of input.titleIds) {
-          const copy = selectedCopies.get(titleId)!
-          const [insert] = await connection.execute<ResultSetHeader>(
-            `INSERT INTO borrow_transactions
-               (user_id, material_id, physical_copy_id, request_group_id, processed_by_user_id, borrowed_at, due_at, transaction_status, created_at)
-             VALUES (?, ?, ?, ?, NULL, NULL, NULL, 'Pending', NOW())`,
-            [borrower.user_id, copy.material_id, copy.physical_copy_id, requestGroupId],
-          )
-          firstTransactionId ??= Number(insert.insertId)
-          await connection.execute(
-            "UPDATE physical_copies SET availability_status = 'Reserved', row_version = row_version + 1, updated_at = NOW() WHERE physical_copy_id = ?",
-            [copy.physical_copy_id],
-          )
-          await connection.execute(
-            "UPDATE materials SET availability_status = 'Reserved', updated_at = NOW() WHERE material_id = ?",
-            [copy.material_id],
-          )
-          items.push({
-            transactionId: Number(insert.insertId), titleId, title: copy.title,
-            physicalCopyId: Number(copy.physical_copy_id), accessionNumber: copy.accession_number, barcode: copy.barcode,
-          })
-        }
-        await connection.execute(
-          `INSERT INTO admin_notifications
-             (event_type, actor_user_id, borrow_transaction_id, book_title_id, message_title, message_body)
-           VALUES ('borrow_request_submitted', ?, ?, ?, 'Online borrow request', ?)`,
-          [borrower.user_id, firstTransactionId, input.titleIds[0], `${borrower.full_name} submitted ${items.length} book${items.length === 1 ? '' : 's'} for counter claim.`],
-        )
-        await connection.commit()
-        return {
-          requestGroupId,
-          status: 'pending_claim',
-          instructions: 'Go to the library to claim and confirm books.',
-          borrower: { userId: Number(borrower.user_id), name: borrower.full_name, schoolId: borrower.school_id, role: borrower.role_name },
-          items,
-        }
-      } catch (error) {
-        await connection.rollback()
-        throw error
-      } finally {
-        connection.release()
-      }
     },
 
     async cancelRequest(actorValue: unknown, transactionIdValue: unknown, body: unknown) {
@@ -459,7 +300,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         throw new HttpError(403, 'CIRCULATION_CANCEL_FORBIDDEN', 'Your role cannot cancel borrowing requests.')
       }
       const transactionId = positiveCirculationId(transactionIdValue, 'transactionId')
-      if(isPostgres) {
+      {
         const [linked]=await database.execute<RowDataPacket[]>('SELECT reservation_id FROM borrow_transactions WHERE transaction_id=?',[transactionId])
         if(linked[0]?.reservation_id) {
           const r=await createBookRequestService(database,clock).cancel(actorAccountId,linked[0].reservation_id,['Librarian','Staff'].includes(actorRole))
@@ -482,7 +323,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
                OR (bt.physical_copy_id IS NULL AND pc.material_id = bt.material_id)
              LEFT JOIN titles t ON t.title_id = pc.title_id
             WHERE bt.transaction_id = ?
-            LIMIT 1 FOR UPDATE${isPostgres ? ' OF bt, m' : ''}`,
+            LIMIT 1 FOR UPDATE OF bt, m`,
           [transactionId],
         )
         const request = rows[0]
@@ -552,36 +393,24 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
           `SELECT bt.transaction_id, bt.reservation_id, u.full_name, u.school_id, ro.role_name, COALESCE(t.title, m.title) AS title,
              pc.accession_number, COALESCE(pc.barcode, m.barcode) AS barcode, bt.created_at AS requested_at, ${loanTimestamp('bt.borrowed_at')}, ${loanTimestamp('bt.due_at')}, ${loanTimestamp('bt.returned_at')},
              CASE WHEN bt.transaction_status = 'Borrowed' AND bt.due_at < NOW() THEN 'Overdue' ELSE bt.transaction_status END AS transaction_status
-           ${fromSql} ORDER BY ${isPostgres
-             ? `CASE (CASE WHEN bt.transaction_status = 'Borrowed' AND bt.due_at < NOW() THEN 'Overdue' ELSE bt.transaction_status END) WHEN 'Overdue' THEN 1 WHEN 'Borrowed' THEN 2 WHEN 'Pending' THEN 3 WHEN 'Returned' THEN 4 ELSE 5 END`
-             : `FIELD(CASE WHEN bt.transaction_status = 'Borrowed' AND bt.due_at < NOW() THEN 'Overdue' ELSE bt.transaction_status END, 'Overdue','Borrowed','Pending','Returned')`}, bt.due_at ASC, bt.transaction_id DESC LIMIT ${filters.limit} OFFSET ${offset}`,
+           ${fromSql} ORDER BY CASE (CASE WHEN bt.transaction_status = 'Borrowed' AND bt.due_at < NOW() THEN 'Overdue' ELSE bt.transaction_status END) WHEN 'Overdue' THEN 1 WHEN 'Borrowed' THEN 2 WHEN 'Pending' THEN 3 WHEN 'Returned' THEN 4 ELSE 5 END, bt.due_at ASC, bt.transaction_id DESC LIMIT ${filters.limit} OFFSET ${offset}`,
         ),
         database.execute<RowDataPacket[]>(
-            `SELECT ${isPostgres
-              ? `COUNT(*) FILTER (WHERE transaction_status='Pending' AND NOT EXISTS (
+            `SELECT ${`COUNT(*) FILTER (WHERE transaction_status='Pending' AND NOT EXISTS (
                    SELECT 1 FROM reservations r WHERE r.reservation_id=borrow_transactions.reservation_id
                    AND (r.reservation_status='ready_for_pickup' OR (r.request_kind='CartHandover' AND r.reservation_status='approved'))))
-                 + (SELECT COUNT(*) FROM reservations WHERE reservation_status='ready_for_pickup' OR (request_kind='CartHandover' AND reservation_status='approved'))`
-              : sumEquals('transaction_status', 'Pending')} AS pending_claims,
-             ${isPostgres
-    ? `COUNT(*) FILTER (WHERE transaction_status = 'Borrowed' AND due_at >= NOW())`
-    : `SUM(transaction_status = 'Borrowed' AND due_at >= NOW())`} AS active_loans,
-             ${isPostgres
-    ? `COUNT(*) FILTER (WHERE transaction_status = 'Overdue' OR (transaction_status = 'Borrowed' AND due_at < NOW()))`
-    : `SUM(transaction_status = 'Overdue' OR (transaction_status = 'Borrowed' AND due_at < NOW()))`} AS overdue_loans,
-             ${isPostgres
-    ? `COUNT(*) FILTER (WHERE transaction_status = 'Returned' AND DATE(returned_at) = ${currentDate()})`
-    : `SUM(transaction_status = 'Returned' AND DATE(returned_at) = CURDATE())`} AS returned_today,
-             ${isPostgres
-    ? `COUNT(*) FILTER (WHERE transaction_status IN ('Borrowed','Overdue') AND DATE(due_at) = ${currentDate()})`
-    : `SUM(transaction_status IN ('Borrowed','Overdue') AND DATE(due_at) = CURDATE())`} AS due_today FROM borrow_transactions`,
+                 + (SELECT COUNT(*) FROM reservations WHERE reservation_status='ready_for_pickup' OR (request_kind='CartHandover' AND reservation_status='approved'))`} AS pending_claims,
+             ${`COUNT(*) FILTER (WHERE transaction_status = 'Borrowed' AND due_at >= NOW())`} AS active_loans,
+             ${`COUNT(*) FILTER (WHERE transaction_status = 'Overdue' OR (transaction_status = 'Borrowed' AND due_at < NOW()))`} AS overdue_loans,
+             ${`COUNT(*) FILTER (WHERE transaction_status = 'Returned' AND DATE(returned_at) = ${currentDate()})`} AS returned_today,
+             ${`COUNT(*) FILTER (WHERE transaction_status IN ('Borrowed','Overdue') AND DATE(due_at) = ${currentDate()})`} AS due_today FROM borrow_transactions`,
         ),
         database.execute<RowDataPacket[]>('SELECT COUNT(*) AS total FROM borrow_transactions'),
       ])
-      const [readyRequests] = isPostgres ? await database.execute<RowDataPacket[]>(`SELECT r.reservation_id,r.request_kind,r.user_id,u.full_name,u.school_id,u.user_role,t.title,pc.barcode,pc.accession_number,r.reserved_at,r.pickup_deadline
+      const [readyRequests] = await database.execute<RowDataPacket[]>(`SELECT r.reservation_id,r.request_kind,r.user_id,u.full_name,u.school_id,u.user_role,t.title,pc.barcode,pc.accession_number,r.reserved_at,r.pickup_deadline
         FROM reservations r JOIN users u ON u.user_id=r.user_id JOIN titles t ON t.title_id=r.book_title_id
         JOIN physical_copies pc ON pc.physical_copy_id=r.assigned_physical_copy_id
-        WHERE r.reservation_status='ready_for_pickup' OR (r.request_kind='CartHandover' AND r.reservation_status='approved') ORDER BY r.pickup_deadline,r.reservation_id LIMIT 100`) : [[]]
+        WHERE r.reservation_status='ready_for_pickup' OR (r.request_kind='CartHandover' AND r.reservation_status='approved') ORDER BY r.pickup_deadline,r.reservation_id LIMIT 100`)
       const summary = summaryRows[0] ?? {}; const total = Number(countRows[0]?.total ?? 0)
       return {
         summary: { pendingClaims: Number(summary.pending_claims ?? 0), activeLoans: Number(summary.active_loans ?? 0), overdueLoans: Number(summary.overdue_loans ?? 0), returnedToday: Number(summary.returned_today ?? 0), dueToday: Number(summary.due_today ?? 0) },
@@ -619,7 +448,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
             condition: context.copy.condition,
             availability: context.copy.availability,
           } : null,
-          dueAt: isPostgres ? await policyDueDate(connection, borrowedAt, await borrowingPolicy(connection, borrowedAt)) : evaluation.dueAt,
+          dueAt: await policyDueDate(connection, borrowedAt, await borrowingPolicy(connection, borrowedAt)),
           policyVersionId: policy.versionId,
           policyDisplayName: `Policy ${policy.versionId}`,
           policyEffectiveOn: policy.effectiveOn,
@@ -656,19 +485,19 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         await requireOperationalService(connection,'Borrowing',clock())
         const processedByUserId = await actorUserId(connection, actorAccountId)
         const borrower = await lockBorrower(connection, input.userId, input.schoolId)
-        const deskEligibility = isPostgres ? await borrowerEligibility(connection,Number(borrower.user_id),clock()) : null
+        const deskEligibility = await borrowerEligibility(connection,Number(borrower.user_id),clock())
         if(deskEligibility)requireEligible(deskEligibility)
         const [copyRows] = await connection.execute<RowDataPacket[]>(
           `SELECT pc.physical_copy_id, pc.title_id, pc.material_id, pc.accession_number, pc.barcode, pc.condition_status,
                   pc.availability_status, pc.lifecycle_status, t.title, t.lifecycle_status AS title_status, t.record_type, m.material_type
              FROM physical_copies pc INNER JOIN titles t ON t.title_id = pc.title_id LEFT JOIN materials m ON m.material_id = pc.material_id
-            WHERE pc.barcode = ? LIMIT 1 FOR UPDATE${isPostgres ? ' OF pc, t' : ''}`, [input.barcode],
+            WHERE pc.barcode = ? LIMIT 1 FOR UPDATE${' OF pc, t'}`, [input.barcode],
         )
         const copy = copyRows[0]
         if (!copy || copy.lifecycle_status !== 'Active') throw new HttpError(404, 'CIRCULATION_COPY_NOT_FOUND', 'No active physical copy matches this barcode.')
         if (copy.material_type && copy.material_type !== 'Book') throw new HttpError(422, 'RESEARCH_VIEW_ONLY', 'Research and thesis records cannot be borrowed.')
         if (!copy.material_id) throw new HttpError(422, 'CIRCULATION_COPY_NOT_LINKED', 'This copy is not linked to the circulation material ledger.')
-        if(isPostgres){
+        {
           const [uses]=await connection.execute<RowDataPacket[]>('SELECT use_id FROM in_library_uses WHERE physical_copy_id=? AND ended_at IS NULL',[copy.physical_copy_id])
           const [rules]=await connection.execute<RowDataPacket[]>('SELECT is_borrowable FROM borrowing_policy_material_rules WHERE borrowing_policy_version_id=? AND material_type=?',[deskEligibility!.policy.borrowing_policy_version_id,copy.material_type])
           if(copy.title_status!=='Active'||copy.record_type!=='Book'||!rules[0]?.is_borrowable)throw new HttpError(422,'RESEARCH_VIEW_ONLY','This material is not eligible for take-home borrowing.')
@@ -689,18 +518,18 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
           throw new HttpError(422, 'CIRCULATION_COPY_PENDING_FOR_ANOTHER_USER', 'This copy is held for another user’s pending claim request.')
         }
         const [queueRows] = await connection.execute<RowDataPacket[]>(
-          `SELECT reservation_id, user_id, queue_position, reservation_status${isPostgres ? ', request_kind' : ''} FROM reservations
+          `SELECT reservation_id, user_id, queue_position, reservation_status${', request_kind'} FROM reservations
             WHERE book_title_id = ? AND reservation_status IN ${WAITING_RESERVATIONS}
-            ${isPostgres ? 'AND (assigned_physical_copy_id=? OR assigned_physical_copy_id IS NULL)' : ''}
-            ORDER BY ${isPostgres ? 'CASE WHEN assigned_physical_copy_id=? THEN 0 ELSE 1 END, ' : ''}queue_position ASC, reserved_at ASC, reservation_id ASC LIMIT 1 FOR UPDATE`,
-          isPostgres ? [copy.title_id,copy.physical_copy_id,copy.physical_copy_id] : [copy.title_id],
+            ${'AND (assigned_physical_copy_id=? OR assigned_physical_copy_id IS NULL)'}
+            ORDER BY ${'CASE WHEN assigned_physical_copy_id=? THEN 0 ELSE 1 END, '}queue_position ASC, reserved_at ASC, reservation_id ASC LIMIT 1 FOR UPDATE`,
+          [copy.title_id,copy.physical_copy_id,copy.physical_copy_id],
         )
         const queueHead = queueRows[0]
-        if(isPostgres) {
+        {
           const [own]=await connection.execute<RowDataPacket[]>(`SELECT assigned_physical_copy_id FROM reservations WHERE user_id=? AND book_title_id=? AND reservation_status IN ${ACTIVE_RESERVATIONS}`,[borrower.user_id,copy.title_id])
           if(own.length && Number(own[0].assigned_physical_copy_id)!==Number(copy.physical_copy_id)) throw new HttpError(422,'DESK_REQUEST_COPY_MISMATCH','Scan the copy assigned to this book request.')
         }
-        if(isPostgres&&queueHead&&Number(queueHead.user_id)===Number(borrower.user_id)){
+        if(queueHead&&Number(queueHead.user_id)===Number(borrower.user_id)){
           const [claimRows]=await connection.execute<RowDataPacket[]>('SELECT assigned_physical_copy_id,pickup_deadline,request_kind FROM reservations WHERE reservation_id=?',[queueHead.reservation_id])
           const claim=claimRows[0]
           const cartHandover=claim?.request_kind==='CartHandover'&&queueHead.reservation_status==='approved'
@@ -750,7 +579,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
           && (queueHead.reservation_status === 'ready_for_pickup' || (queueHead.request_kind==='CartHandover'&&queueHead.reservation_status==='approved')) ? queueHead : null
         if (fulfilledReservation) {
           await connection.execute('UPDATE borrow_transactions SET reservation_id=? WHERE transaction_id=?', [fulfilledReservation.reservation_id, transactionId])
-          await connection.execute(`UPDATE reservations SET reservation_status = 'claimed', accession_id = ?, assigned_physical_copy_id = ?, ${isPostgres ? '' : 'pickup_deadline = NULL,'} updated_at = NOW() WHERE reservation_id = ?`, [copy.material_id, copy.physical_copy_id, queueHead.reservation_id])
+          await connection.execute(`UPDATE reservations SET reservation_status = 'claimed', accession_id = ?, assigned_physical_copy_id = ?, ${''} updated_at = NOW() WHERE reservation_id = ?`, [copy.material_id, copy.physical_copy_id, queueHead.reservation_id])
           await notifyReservationStatus(connection, Number(queueHead.reservation_id), Number(borrower.user_id), String(copy.title), 'claimed',null,borrowedAt)
           if(queueHead.request_kind!=='CartHandover') await compactQueue(connection, Number(copy.title_id), Number(queueHead.queue_position))
         }
@@ -794,7 +623,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
       const connection = await database.getConnection()
       try {
         await connection.beginTransaction();
-        if(isPostgres)await connection.execute('SELECT settings_id FROM library_profile_settings WHERE settings_id=1 FOR UPDATE')
+        await connection.execute('SELECT settings_id FROM library_profile_settings WHERE settings_id=1 FOR UPDATE')
         await actorUserId(connection, actorAccountId)
         const [rows] = await connection.execute<RowDataPacket[]>(
           `SELECT bt.transaction_id, bt.user_id, bt.material_id, bt.physical_copy_id, ${loanTimestamp('bt.due_at')}, bt.transaction_status,
@@ -806,54 +635,17 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         if (!loan) throw new HttpError(404, 'CIRCULATION_TRANSACTION_NOT_FOUND', 'The borrowing transaction was not found.')
         if (!['Borrowed', 'Overdue'].includes(String(loan.transaction_status))) throw new HttpError(422, 'CIRCULATION_RETURN_INVALID', 'Only active or overdue transactions can be returned.')
         const returnedAt = clock()
-        await connection.execute(`UPDATE borrow_transactions SET transaction_status = 'Returned', returned_at = ${isPostgres?"(?::timestamptz AT TIME ZONE 'Asia/Manila')":'?'}, updated_at = NOW() WHERE transaction_id = ?`, [returnedAt, transactionId])
+        await connection.execute(`UPDATE borrow_transactions SET transaction_status = 'Returned', returned_at = ${"(?::timestamptz AT TIME ZONE 'Asia/Manila')"}, updated_at = NOW() WHERE transaction_id = ?`, [returnedAt, transactionId])
         if(loan.due_at&&(loan.transaction_status==='Overdue'||localTimestamp(loan.due_at)<returnedAt.getTime())){
           const due=new Date(localTimestamp(loan.due_at));const context=await loadFineContext(connection,due,returnedAt);const charge=calculateOperatingFine(due,returnedAt,context.policy,context.calendar)
           await connection.execute(
-            isPostgres
-              ? `INSERT INTO fines(transaction_id,user_id,fine_type,fine_amount,payment_status,calculation_basis,overdue_units,rate_applied,maximum_cap_applied,applied_date,finalized_at,notes,updated_at)
+            `INSERT INTO fines(transaction_id,user_id,fine_type,fine_amount,payment_status,calculation_basis,overdue_units,rate_applied,maximum_cap_applied,applied_date,finalized_at,notes,updated_at)
              VALUES (?,?,'Overdue',?,'Unpaid',?,?,?,?,NOW(),?,'Finalized when the book was returned',NOW())
-             ON CONFLICT (transaction_id) DO UPDATE SET fine_amount=${excluded('fine_amount')},payment_status=${caseIf("fines.payment_status IN ('Paid','Waived','Voided')", 'fines.payment_status', "'Unpaid'")},calculation_basis=${excluded('calculation_basis')},overdue_units=${excluded('overdue_units')},rate_applied=${excluded('rate_applied')},maximum_cap_applied=${excluded('maximum_cap_applied')},finalized_at=${excluded('finalized_at')},notes=${excluded('notes')},updated_at=NOW()`
-              : `INSERT INTO fines(transaction_id,user_id,fine_type,fine_amount,payment_status,calculation_basis,overdue_units,rate_applied,maximum_cap_applied,applied_date,finalized_at,notes,updated_at)
-             VALUES (?,?,'Overdue',?,'Unpaid',?,?,?,?,NOW(),?,'Finalized when the book was returned',NOW())
-             ON DUPLICATE KEY UPDATE fine_amount=VALUES(fine_amount),payment_status=IF(payment_status IN ('Paid','Waived','Voided'),payment_status,'Unpaid'),calculation_basis=VALUES(calculation_basis),overdue_units=VALUES(overdue_units),rate_applied=VALUES(rate_applied),maximum_cap_applied=VALUES(maximum_cap_applied),finalized_at=VALUES(finalized_at),notes=VALUES(notes),updated_at=NOW()`,
+             ON CONFLICT (transaction_id) DO UPDATE SET fine_amount=${excluded('fine_amount')},payment_status=${caseIf("fines.payment_status IN ('Paid','Waived','Voided')", 'fines.payment_status', "'Unpaid'")},calculation_basis=${excluded('calculation_basis')},overdue_units=${excluded('overdue_units')},rate_applied=${excluded('rate_applied')},maximum_cap_applied=${excluded('maximum_cap_applied')},finalized_at=${excluded('finalized_at')},notes=${excluded('notes')},updated_at=NOW()`,
             [transactionId,loan.user_id,charge.amount,charge.basis,charge.units,charge.rate,charge.capApplied?context.policy.maximumPenalty:null,returnedAt],
           )
         }
-        if(isPostgres){const release=await prepareReturnedCopy(connection,loan as any,clock());await connection.execute("INSERT INTO admin_notifications(event_type,actor_user_id,borrow_transaction_id,book_title_id,message_title,message_body) VALUES ('return_completed',?,?,?,'Return completed',?)",[loan.user_id,transactionId,loan.title_id,`${loan.title} was returned${release.nextReservationId?' and assigned for preparation':''}.`]);await connection.commit();return {transactionId,status:'Returned',returnedAt,...release}}
-        const [waitRows] = await connection.execute<RowDataPacket[]>(
-          `SELECT reservation_id, user_id, queue_position FROM reservations WHERE book_title_id = ? AND reservation_status IN ('pending','approved') ORDER BY queue_position ASC, reserved_at ASC, reservation_id ASC LIMIT 1 FOR UPDATE`, [loan.title_id],
-        )
-        const nextReservation = waitRows[0]
-        if (nextReservation) {
-          const pickupDeadline = new Date(returnedAt.getTime() + 24 * 60 * 60 * 1000)
-          await connection.execute(`UPDATE reservations SET reservation_status = '${isPostgres?'approved':'ready_for_pickup'}', accession_id = ?, assigned_physical_copy_id = ?, pickup_deadline = ?, updated_at = NOW() WHERE reservation_id = ?`, [loan.material_id, loan.physical_copy_id, isPostgres?null:pickupDeadline, nextReservation.reservation_id])
-          await connection.execute(
-            isPostgres
-              ? `INSERT INTO borrow_transactions
-               (user_id, material_id, physical_copy_id, reservation_id, request_group_id, transaction_status, created_at)
-             VALUES (?, ?, ?, ?, ?, 'Pending', NOW())
-             ON CONFLICT (reservation_id) DO UPDATE SET material_id = ${excluded('material_id')}, physical_copy_id = ${excluded('physical_copy_id')},
-               transaction_status = 'Pending', cancelled_at = NULL, cancelled_by_user_id = NULL,
-               cancellation_reason = NULL, updated_at = NOW()`
-              : `INSERT INTO borrow_transactions
-               (user_id, material_id, physical_copy_id, reservation_id, request_group_id, transaction_status, created_at)
-             VALUES (?, ?, ?, ?, ?, 'Pending', NOW())
-             ON DUPLICATE KEY UPDATE material_id = VALUES(material_id), physical_copy_id = VALUES(physical_copy_id),
-               transaction_status = 'Pending', cancelled_at = NULL, cancelled_by_user_id = NULL,
-               cancellation_reason = NULL, updated_at = NOW()`,
-            [nextReservation.user_id, loan.material_id, loan.physical_copy_id, nextReservation.reservation_id, randomUUID()],
-          )
-          await connection.execute("UPDATE physical_copies SET availability_status = 'Reserved', row_version = row_version + 1, updated_at = NOW() WHERE physical_copy_id = ?", [loan.physical_copy_id])
-          await connection.execute("UPDATE materials SET availability_status = 'Reserved', updated_at = NOW() WHERE material_id = ?", [loan.material_id])
-          await connection.execute(`INSERT INTO notifications (user_id, message_title, message_body, trigger_type, is_read) VALUES (?, ?, ?, 'Reservation Arrival', 0)`, [nextReservation.user_id,isPostgres?'Reservation being prepared':'Reservation ready for pickup', isPostgres?`${loan.title} has been assigned for staff preparation. Wait for the Ready for pickup notice before coming to claim it.`:`${loan.title} is ready for pickup. Claim it before the pickup deadline.`])
-        } else {
-          await connection.execute("UPDATE physical_copies SET availability_status = 'Available', row_version = row_version + 1, updated_at = NOW() WHERE physical_copy_id = ?", [loan.physical_copy_id])
-          await connection.execute("UPDATE materials SET availability_status = 'Available', updated_at = NOW() WHERE material_id = ?", [loan.material_id])
-        }
-        await connection.execute(`INSERT INTO admin_notifications (event_type, actor_user_id, borrow_transaction_id, book_title_id, message_title, message_body) VALUES ('return_completed', ?, ?, ?, 'Return completed', ?)`, [loan.user_id, transactionId, loan.title_id, `${loan.title} was returned${nextReservation ? ' and assigned to the next reservation' : ''}.`])
-        await connection.commit()
-        return { transactionId, status: 'Returned', returnedAt, nextReservationId: nextReservation ? Number(nextReservation.reservation_id) : null, copyAvailability: nextReservation ? 'Reserved' : 'Available' }
+        {const release=await prepareReturnedCopy(connection,loan as any,clock());await connection.execute("INSERT INTO admin_notifications(event_type,actor_user_id,borrow_transaction_id,book_title_id,message_title,message_body) VALUES ('return_completed',?,?,?,'Return completed',?)",[loan.user_id,transactionId,loan.title_id,`${loan.title} was returned${release.nextReservationId?' and assigned for preparation':''}.`]);await connection.commit();return {transactionId,status:'Returned',returnedAt,...release}}
       } catch (error) { await connection.rollback(); throw error } finally { connection.release() }
     },
 
@@ -866,9 +658,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         if (!loan) throw new HttpError(404, 'CIRCULATION_TRANSACTION_NOT_FOUND', 'The borrowing transaction was not found.')
         const due = new Date(loan.due_at); const ended = loan.returned_at ? new Date(loan.returned_at) : clock(); const context=await loadFineContext(connection,due,ended);const charge=calculateOperatingFine(due,ended,context.policy,context.calendar);const status=loan.returned_at?'Unpaid':'Accruing'
         await connection.execute(
-          isPostgres
-            ? `INSERT INTO fines (transaction_id,user_id,fine_type,fine_amount,payment_status,calculation_basis,overdue_units,rate_applied,maximum_cap_applied,applied_date,finalized_at,notes,updated_at) VALUES (?,?,'Overdue',?,?,?,?,?,?,NOW(),?,'Calculated from the operating calendar and 8:59 AM cutoff',NOW()) ON CONFLICT (transaction_id) DO UPDATE SET fine_amount=${excluded('fine_amount')},payment_status=${caseIf("fines.payment_status IN ('Paid','Waived','Voided')", 'fines.payment_status', excluded('payment_status'))},calculation_basis=${excluded('calculation_basis')},overdue_units=${excluded('overdue_units')},rate_applied=${excluded('rate_applied')},maximum_cap_applied=${excluded('maximum_cap_applied')},finalized_at=${excluded('finalized_at')},notes=${excluded('notes')},updated_at=NOW()`
-            : `INSERT INTO fines (transaction_id,user_id,fine_type,fine_amount,payment_status,calculation_basis,overdue_units,rate_applied,maximum_cap_applied,applied_date,finalized_at,notes,updated_at) VALUES (?,?,'Overdue',?,?,?,?,?,?,NOW(),?,'Calculated from the operating calendar and 8:59 AM cutoff',NOW()) ON DUPLICATE KEY UPDATE fine_amount=VALUES(fine_amount),payment_status=IF(payment_status IN ('Paid','Waived','Voided'),payment_status,VALUES(payment_status)),calculation_basis=VALUES(calculation_basis),overdue_units=VALUES(overdue_units),rate_applied=VALUES(rate_applied),maximum_cap_applied=VALUES(maximum_cap_applied),finalized_at=VALUES(finalized_at),notes=VALUES(notes),updated_at=NOW()`,
+          `INSERT INTO fines (transaction_id,user_id,fine_type,fine_amount,payment_status,calculation_basis,overdue_units,rate_applied,maximum_cap_applied,applied_date,finalized_at,notes,updated_at) VALUES (?,?,'Overdue',?,?,?,?,?,?,NOW(),?,'Calculated from the operating calendar and 8:59 AM cutoff',NOW()) ON CONFLICT (transaction_id) DO UPDATE SET fine_amount=${excluded('fine_amount')},payment_status=${caseIf("fines.payment_status IN ('Paid','Waived','Voided')", 'fines.payment_status', excluded('payment_status'))},calculation_basis=${excluded('calculation_basis')},overdue_units=${excluded('overdue_units')},rate_applied=${excluded('rate_applied')},maximum_cap_applied=${excluded('maximum_cap_applied')},finalized_at=${excluded('finalized_at')},notes=${excluded('notes')},updated_at=NOW()`,
           [transactionId,loan.user_id,charge.amount,status,charge.basis,charge.units,charge.rate,charge.capApplied?context.policy.maximumPenalty:null,loan.returned_at??null],
         )
         await connection.commit(); return { transactionId, amount:charge.amount, currency: 'PHP', basis:charge.basis, units:charge.units, rate:charge.rate,maximumPenalty:context.policy.maximumPenalty,capApplied:charge.capApplied }

@@ -1,6 +1,6 @@
 import { HttpError } from '../../core/http-error.ts'
 import type { PhysicalCopyMutationTransaction } from './physical-copy-mutation.middleware.ts'
-import type { Pool, RowDataPacket } from 'mysql2/promise'
+import type { Pool, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import type { InventoryRequestActor } from './inventory-actor.ts'
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Pool } from 'mysql2/promise'
+import type { Pool } from '../../../config/db.js'
 import { HttpError } from '../../../core/http-error.ts'
 import { createCategoryService } from './category.service.ts'
 import { findCategoryByName, updateCategoryRow } from './category.repository.ts'
@@ -21,7 +21,7 @@ test('creates a unique category with prepared values', async () => {
     async execute(sql: string, values: unknown[]) {
       calls.push({ sql, values })
       if (sql.includes('SELECT category_id')) return [[]]
-      if (sql.includes('FROM floor_plan_shelves')) return [[{ id: 4, label: 'Shelf A-1' }]]
+      if (sql.includes('FROM catalog_locations')) return [[{ id: 4, label: 'Shelf A-1' }]]
       return [{ insertId: 14, affectedRows: 1 }]
     },
   } as unknown as Pool
@@ -44,7 +44,7 @@ test('rejects a category shelf that is not managed in Category Management', asyn
   const database = {
     async execute(sql: string) {
       if (sql.includes('FROM categories')) return [[]]
-      if (sql.includes('FROM floor_plan_shelves')) return [[]]
+      if (sql.includes('FROM catalog_locations')) return [[]]
       throw new Error(`Unexpected statement: ${sql}`)
     },
   } as unknown as Pool
@@ -70,7 +70,7 @@ test('translates a PostgreSQL duplicate category into a clear validation error',
   const database = {
     async execute(sql: string) {
       if (sql.includes('FROM categories')) return [[]]
-      if (sql.includes('FROM floor_plan_shelves')) return [[{ id: 1, label: 'Shelf A-1', column_count: 2, row_count: 2 }]]
+      if (sql.includes('FROM catalog_locations')) return [[{ id: 1, label: 'Shelf A-1', column_count: 2, row_count: 2 }]]
       throw Object.assign(new Error('duplicate key'), { code: '23505' })
     },
   } as unknown as Pool
@@ -139,7 +139,7 @@ test('reassigns title and legacy identifiers before deleting the old category in
     async execute(sql: string) {
       state.statements.push(sql)
       if (sql.includes('WHERE category_id IN')) return [[{ category_id: 3, shelf_location: 'Old shelf' }, { category_id: 9, shelf_location: 'Shelf 1A' }]]
-      if (sql.includes('FROM floor_plan_shelves')) return [[{ id: 1, label: 'Shelf 1A' }]]
+      if (sql.includes('FROM catalog_locations')) return [[{ id: 1, label: 'Shelf 1A' }]]
       if (sql.includes('SELECT pc.physical_copy_id')) return [[{ physical_copy_id: 1, shelf_location: 'F-A' }]]
       if (sql.includes('SELECT ri.research_inventory_id')) return [[]]
       if (sql.includes('UPDATE titles')) return [{ affectedRows: 6 }]
@@ -166,7 +166,7 @@ test('saving a category synchronizes every active book and research copy to its 
       state.statements.push(sql)
       if (sql.includes('FROM categories WHERE category_id')) return [[{ category_id: 7, category_name: 'Action', shelf_location: 'F-A' }]]
       if (sql.includes('category_name = ?')) return [[]]
-      if (sql.includes('FROM floor_plan_shelves')) return [[{ id: 5, label: 'SHELF 1A' }]]
+      if (sql.includes('FROM catalog_locations')) return [[{ id: 5, label: 'SHELF 1A' }]]
       if (sql.includes('SELECT pc.physical_copy_id')) return [[{ physical_copy_id: 1, shelf_location: 'F-A' }, { physical_copy_id: 2, shelf_location: 'SHELF 1A' }]]
       if (sql.includes('SELECT ri.research_inventory_id')) return [[{ research_inventory_id: 8, shelf_location: 'Old research shelf' }]]
       if (sql.includes('INSERT INTO floor_plan_events')) return [{ insertId: 1 }]

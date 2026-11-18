@@ -1,7 +1,7 @@
 import jwt, { type JwtPayload } from 'jsonwebtoken'
 import type { NextFunction, Request, Response } from 'express'
 import { env } from '../../config/env.js'
-import { db, dbDriver } from '../../config/db.js'
+import { db } from '../../config/db.js'
 import type { JwtRole } from './jwt-auth.service.ts'
 import { hasLibraryPermission, type LibraryPermission } from '../../core/library-permissions.ts'
 import { semesterAccessEnded } from '../enrollment/enrollment-policy.ts'
@@ -49,7 +49,7 @@ export function createActiveJwtAccountGuard(database: Pick<typeof db, 'execute'>
       response.status(401).json({ success: false, code: 'ACCOUNT_ACCESS_REVOKED', message: 'Your account access changed. Please sign in again.' })
       return
     }
-    if (!identity.sessionId && dbDriver === 'postgres') { response.status(401).json({ success: false, code: 'SESSION_UPGRADE_REQUIRED', message: 'Sign in again to start your updated secure session.' }); return }
+    if (!identity.sessionId) { response.status(401).json({ success: false, code: 'SESSION_UPGRADE_REQUIRED', message: 'Sign in again to start your updated secure session.' }); return }
     if (identity.role==='Student' && await semesterAccessEnded(database,identity.accountId)) {
       response.status(401).json({success:false,code:'ACCOUNT_ACCESS_REVOKED',message:'Your semester has ended.'})
       return

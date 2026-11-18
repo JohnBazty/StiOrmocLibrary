@@ -22,4 +22,3 @@ Open **Actions** on a book or thesis row and choose an operation. The list expan
 ## Change log
 
 - **2026-11-10:** Added the Actions dropdown to the physical-copy and research inventory registers.
-- **2026-11-10:** All 285 web tests passed. Pushed the dropdown to `codex/library-revision-updates` (`6b34fd7`) and verified the production bundle and API health on Vercel (`dpl_5hsy4FohbR8fdHYbdH1HbPhRtMF6`). The action dialogs and disabled states were checked with test copies.

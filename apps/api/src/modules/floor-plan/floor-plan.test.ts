@@ -29,10 +29,3 @@ test('retired layout mutation and draft routes cannot be used by any role',async
   }
 })
 
-test('shelf grid migration is additive and stores exact copy positions',async()=>{
-  const {readFile}=await import('node:fs/promises')
-  const sql=await readFile(new URL('../../../../../database/migrations/20260907_038_shelf_grid_locations.sql',import.meta.url),'utf8')
-  assert.match(sql,/floor_plan_shelves[\s\S]*column_count[\s\S]*row_count/i)
-  assert.match(sql,/physical_copies[\s\S]*shelf_column[\s\S]*shelf_row/i)
-  assert.doesNotMatch(sql,/DROP (TABLE|COLUMN)/i)
-})

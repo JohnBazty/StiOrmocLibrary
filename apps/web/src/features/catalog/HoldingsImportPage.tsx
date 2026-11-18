@@ -8,7 +8,7 @@ import { ImportCleanupSummary } from './ImportCleanupSummary'
 import { catalogInput } from './CatalogDetailsPanel'
 import { enhancedCatalog, type Batch, type Mapping, type Options, type Sheet } from './enhanced-catalog-api'
 import { HoldingsImportRow } from './HoldingsImportRow'
-import { applyImportDefaults, blankImportCsv, importFileReady, importRowLabel, importSummary, unrecognizedImportHeadings } from './holdings-import-helpers'
+import { applyImportDefaults, blankImportCsv, importFileReady, importRowLabel, importSummary, rowsToFill, unrecognizedImportHeadings } from './holdings-import-helpers'
 
 export function HoldingsImportPage() {
   const [options, setOptions] = useState<Options | null>(null)
@@ -56,6 +56,17 @@ export function HoldingsImportPage() {
     try { await work() }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'The upload could not be completed. Please try again.') }
     finally { running.current = false; setBusy(false) }
+  }
+  async function fillFromLookup() {
+    if (!batch) return
+    const batchId = batch.id
+    await act(async () => {
+      const result = await enhancedCatalog.fillFromLookup(batchId)
+      await reload(batchId)
+      if (result.unavailable) throw new Error(`The book lookup is unavailable right now. ${result.filled} ${result.filled === 1 ? 'book was' : 'books were'} filled before it stopped; try again later. Nothing was lost.`)
+      setFilter('attention'); setPage(1)
+      setNotice(`${result.filled} ${result.filled === 1 ? 'book' : 'books'} filled from the book lookup, ${result.notFound} not found.${result.remaining ? ` ${result.remaining} still to fill.` : ''} Check each filled book and tick the box before saving it.`)
+    })
   }
   async function reload(batchId = batch?.id) {
     if (batchId) setBatch(await enhancedCatalog.batch(Number(batchId)))
@@ -173,6 +184,7 @@ export function HoldingsImportPage() {
         {summary.missing > 0 ? <p className="text-sm">{summary.missing} of these copies will be marked missing, not available for borrowing.</p> : null}
         {summary.added.length && !finished ? <p className="text-sm text-green-800 dark:text-green-300">{summary.added.length} book entries were already added and will not be added again.</p> : null}
         {summary.skipped.length ? <p className="text-sm text-slate-600 dark:text-slate-300">{summary.skipped.length} book entries left out.</p> : null}
+        {!finished && rowsToFill(batch).length ? <div className="space-y-2 rounded-xl border border-[#003399]/20 p-4 dark:border-white/15"><p className="text-sm">{rowsToFill(batch).length} {rowsToFill(batch).length === 1 ? 'book has' : 'books have'} blank details (title, author, ISBN, publisher or year) the book lookup may fill. You check every filled value before the book is saved.</p><Button disabled={locked} onClick={() => void fillFromLookup()}>{busy ? 'Looking up books…' : `Fill missing details from book lookup${rowsToFill(batch).length > 50 ? ' (next 50)' : ''}`}</Button></div> : null}
         {sourcePreview}
       </SectionCard>
       {summary.attention.length ? <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100"><AlertCircle aria-hidden size={20} className="mt-0.5 shrink-0"/><div><h3 className="font-semibold">{summary.attention.length} {summary.attention.length === 1 ? 'book needs' : 'books need'} your help</h3><p className="mt-1 text-sm">Check missing details or possible duplicates. These books will stay out until you choose what to do.</p></div></div> : null}

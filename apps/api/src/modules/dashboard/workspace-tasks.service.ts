@@ -1,7 +1,6 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise'
-import { db, dbDriver } from '../../config/db.js'
+import type { Pool, RowDataPacket } from '../../config/db.js'
+import { db } from '../../config/db.js'
 import { requireLibraryActor } from '../../core/library-permissions.ts'
-import { HttpError } from '../../core/http-error.ts'
 import { libraryState } from '../attendance/attendance-operations.service.ts'
 import { createClearanceService } from '../clearance/clearance.service.ts'
 import { readCollectionSnapshot } from '../catalog/collection-review.service.ts'
@@ -9,7 +8,7 @@ import { activeEnrollmentSemester, rosterRegistrationRequired } from '../enrollm
 
 export function createWorkspaceTasksService(database: Pool = db) {
   return { async read(accountId: number) {
-    if (dbDriver !== 'postgres') throw new HttpError(503, 'WORKSPACE_UNAVAILABLE', 'The live workspace requires the Postgres revision schema.')
+
     const q = await database.getConnection()
     try {
       await q.beginTransaction()

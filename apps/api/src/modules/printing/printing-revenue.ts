@@ -1,4 +1,4 @@
-import type { RowDataPacket } from 'mysql2/promise'
+import type { RowDataPacket } from '../../config/db.js'
 import type { FinanceFilters } from './printing.validation.ts'
 
 /** Receipts are the confirmed financial record. Never count their cash source twice. */

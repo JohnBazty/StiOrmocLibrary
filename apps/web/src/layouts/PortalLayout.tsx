@@ -71,6 +71,7 @@ const adminNav: NavItem[] = [
 const librarianNav: NavItem[] = [
   { label: 'Dashboard', to: '/librarian/dashboard', icon: LayoutDashboard, section: 'Operations' },
   { label: 'Book Reports', to: '/librarian/reports', icon: FileBarChart },
+  { label: 'Book register', to: '/librarian/book-register', icon: BookOpen },
   { label: 'Book archive', to: '/librarian/book-archive', icon: Archive },
   { label: 'Categories', to: '/librarian/categories', icon: Tags },
   { label: 'Borrow & return', to: '/librarian/circulation', icon: CalendarClock },

@@ -32,3 +32,17 @@ export type UserDashboardData = {
   recentHistory:Array<{id:number;title:string;coverPath:string|null;status:string;eventAt:string}>
   recommendations:Array<{id:number;title:string;author:string;availableCopies:number;coverPath:string|null}>
 }
+
+export type ScheduledJobHealth = 'healthy' | 'stale' | 'failed'
+export type ScheduledJobStatus = {
+  jobName: string
+  health: ScheduledJobHealth
+  lastOutcome: 'succeeded' | 'failed' | 'skipped' | null
+  lastStartedAt: string | null
+  lastSuccessAt: string | null
+  lastFailureAt: string | null
+  lastErrorCode: string | null
+  lastErrorMessage: string | null
+  runs: Array<{ jobName: string; startedAt: string; finishedAt: string; outcome: 'succeeded' | 'failed' | 'skipped'; errorMessage: string | null }>
+}
+export type ScheduledJobsData = { generatedAt: string; jobs: ScheduledJobStatus[] }

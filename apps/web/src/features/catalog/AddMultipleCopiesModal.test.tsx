@@ -69,6 +69,45 @@ describe('AddMultipleCopiesModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /Create copy and generate codes/i }))
     await waitFor(() => expect(api.createBulkBook).toHaveBeenCalledWith(expect.objectContaining({ isbn: '0132350882' })))
   })
+
+  it('sends the book register fields with the entry', async () => {
+    api.createBulkBook.mockResolvedValue({ titleId: 10, createdTitle: true, numberOfCopies: 1, copies: [] })
+    render(<AddMultipleCopiesModal categories={categories} onCreated={() => undefined} onClose={() => undefined} />)
+    fireEvent.change(screen.getByLabelText(/Title \*/i), { target: { value: 'Clean Code' } })
+    fireEvent.change(screen.getByLabelText(/Author \*/i), { target: { value: 'Robert C. Martin' } })
+    fireEvent.change(screen.getByLabelText(/ISBN \*/i), { target: { value: '9780132350884' } })
+    fireEvent.change(screen.getByLabelText(/Category \*/i), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText(/^Class/i), { target: { value: '005.1' } })
+    fireEvent.change(screen.getByLabelText(/^Edition/i), { target: { value: '1st ed.' } })
+    fireEvent.change(screen.getByLabelText(/^Volumes/i), { target: { value: '1 vol.' } })
+    fireEvent.change(screen.getByLabelText(/^Pages/i), { target: { value: '464' } })
+    fireEvent.change(screen.getByLabelText(/^Source of fund/i), { target: { value: 'Donation' } })
+    fireEvent.change(screen.getByLabelText(/^Fund details/i), { target: { value: 'Alumni' } })
+    fireEvent.change(screen.getByLabelText(/^Cost price/i), { target: { value: '450' } })
+    fireEvent.change(screen.getByLabelText(/^Date received/i), { target: { value: '2026-11-02' } })
+    fireEvent.change(screen.getByLabelText(/^Remarks/i), { target: { value: 'Donated set' } })
+    fireEvent.click(screen.getByRole('button', { name: /Create copy and generate codes/i }))
+    await waitFor(() => expect(api.createBulkBook).toHaveBeenLastCalledWith(expect.objectContaining({
+      classification: '005.1', edition: '1st ed.', volumes: '1 vol.', pages: '464', remarks: 'Donated set',
+      fund_source: 'Donation', fund_detail: 'Alumni', cost_php: '450', received_on: '2026-11-02',
+    })))
+  })
+
+  it('asks before closing once details were typed, and closes at once when empty', () => {
+    const closed = vi.fn()
+    const { unmount } = render(<AddMultipleCopiesModal categories={categories} onCreated={() => undefined} onClose={closed} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(closed).toHaveBeenCalledTimes(1)
+    fireEvent.change(screen.getByLabelText(/Title \*/i), { target: { value: 'Clean Code' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.getByRole('alertdialog', { name: 'You have unsaved changes' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }))
+    expect(closed).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }))
+    expect(closed).toHaveBeenCalledTimes(2)
+    unmount()
+  })
 })
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })

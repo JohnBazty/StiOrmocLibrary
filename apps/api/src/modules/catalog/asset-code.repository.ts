@@ -1,4 +1,4 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise'
+import type { Pool, RowDataPacket } from '../../config/db.js'
 import { authorsAgg } from '../../config/sql-dialect.js'
 
 export type AssetCodeRecord = {

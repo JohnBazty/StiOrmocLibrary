@@ -10,7 +10,6 @@ process.env.DATABASE_URL = url.toString()
 
 const { db } = await import('../../apps/api/src/config/db.js')
 const { env } = await import('../../apps/api/src/config/env.js')
-if (env.db.driver !== 'postgres') throw new Error('Refusing to test a non-Postgres database')
 const base = (process.argv[2] ?? 'https://sti-ormoc-smart-library.vercel.app').replace(/\/$/, '')
 const name = `Phase 1 live smoke ${Date.now()}-${Math.floor(Math.random() * 100000)}`
 let token

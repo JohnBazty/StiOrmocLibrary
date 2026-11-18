@@ -6,9 +6,9 @@
 - npm, included with Node.js.
 - A modern browser.
 
-MySQL is required for authentication and the live Category, Book/Research, inventory export, and Reservation modules. Other presentation-only screens may still use mock operational data while their integrations are completed.
+A Supabase Postgres database (`DATABASE_URL`) is required for authentication and the live Category, Book/Research, inventory export, and Reservation modules. Other presentation-only screens may still use mock operational data while their integrations are completed.
 
-When you are ready to install the database, follow [MySQL Server and Workbench Setup](mysql-workbench-setup.md).
+Database setup is described in the repository `README.MD` (Configure the database).
 
 ## Install and run
 
@@ -16,8 +16,6 @@ From the repository root:
 
 ```bash
 npm install
-npm run db:schema -w @sti-library/api
-npm run db:migrate -w @sti-library/api
 npm run dev
 ```
 
@@ -29,7 +27,7 @@ The command starts both applications:
 
 Open `http://localhost:5173/login` for the secure React login screen. Port `4000` is the API only. Follow [Login and Authentication Setup](authentication-setup.md) before starting the API for the first time.
 
-`db:migrate` executes pending SQL files in filename order and records their SHA-256 checksums in `schema_migrations`. It is safe to run again; applied migrations are skipped, and edited migration files are rejected.
+The API needs `DATABASE_URL` (Supabase Postgres) in `apps/api/.env`. Schema changes live in `database/supabase/`; apply one reviewed file at a time with `npm run db:supabase -w @sti-library/api -- <file>.sql` (see `database/supabase/README.md`).
 
 ## Run one application
 
@@ -66,8 +64,7 @@ Copy `apps/api/.env.example` to `apps/api/.env` when environment-specific values
 | --- | --- | --- |
 | `PORT` | `4000` | Express API port |
 | `WEB_ORIGIN` | `http://localhost:5173` | Allowed development browser origin |
-| `DB_HOST`, `DB_PORT` | `127.0.0.1`, `3306` | MySQL connection address |
-| `DB_USER`, `DB_PASSWORD`, `DB_NAME` | See `.env.example` | Application database credentials |
+| `DATABASE_URL` | None; required | Supabase Postgres connection string |
 | `SESSION_SECRET` | No production default | Signs opaque session identifiers; use 32+ random characters |
 
 The API loads `apps/api/.env`. Production requires strong, distinct session and JWT secrets.
@@ -81,4 +78,4 @@ The duplication is temporary and deliberate: the interface remains easy to previ
 
 ## Database readiness
 
-`GET http://localhost:4000/api/health` returns `databaseSchema.ready: true` when the required catalog, category, reservation, and authentication columns are available. A `503 DATABASE_MIGRATION_REQUIRED` response means `npm run db:migrate -w @sti-library/api` must be run.
+`GET http://localhost:4000/api/health` returns `databaseSchema.ready: true` when the required catalog, category, reservation, and authentication columns are available. A `503 DATABASE_MIGRATION_REQUIRED` response means a pending `database/supabase/` migration must be applied with `npm run db:supabase -w @sti-library/api -- <file>.sql`.

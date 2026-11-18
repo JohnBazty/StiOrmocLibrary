@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Pool } from 'mysql2/promise'
+import type { Pool } from '../../config/db.js'
 import { PDFDocument } from 'pdf-lib'
 import { PrintingRepository } from './printing.repository.ts'
 import { createPrintingService } from './printing.service.ts'
@@ -9,7 +9,11 @@ function serviceFixture(selectedRow:Record<string,unknown>,acceptingRequests=1){
   const calls:Array<{sql:string;values:unknown[]}>=[]
   const connection={
     beginTransaction:async()=>undefined,commit:async()=>undefined,rollback:async()=>undefined,release:()=>undefined,
-    execute:async(sql:string,values:unknown[]=[] )=>{assert.equal((sql.match(/\?/g)??[]).length,values.length,`Prepared value count mismatch in ${sql}`);calls.push({sql,values});if(sql.startsWith('SELECT'))return[[selectedRow],[]];if(sql.includes('INSERT INTO ink_repository'))return[{insertId:9},[]];if(sql.includes('INSERT INTO print_cash_payments'))return[{insertId:21},[]];if(sql.includes('INSERT INTO print_payment_receipts'))return[{insertId:31},[]];return[{},[]]},
+    execute:async(sql:string,values:unknown[]=[] )=>{assert.equal((sql.match(/\?/g)??[]).length,values.length,`Prepared value count mismatch in ${sql}`);calls.push({sql,values});
+      if (sql.includes('FROM library_operating_schedule')) return [[{ is_open: true, opens_at: '00:00:00', closes_at: '23:59:59' }]]
+      if (sql.includes('FROM attendance_operation_settings')) return [[{ configured: true, preclosing_minutes: 1 }]]
+      if (/FROM library_(closed_days|operational_events|profile_settings)|FROM attendance_operation_settings|FROM attendance_logs/.test(sql)) return [[]]
+      if(sql.startsWith('SELECT'))return[[selectedRow],[]];if(sql.includes('INSERT INTO ink_repository'))return[{insertId:9},[]];if(sql.includes('INSERT INTO print_cash_payments'))return[{insertId:21},[]];if(sql.includes('INSERT INTO print_payment_receipts'))return[{insertId:31},[]];return[{},[]]},
   }
   const pool={getConnection:async()=>connection} as unknown as Pool
   const repository={userBySchoolId:async()=>({user_id:5,account_status:'Active'}),serviceStatus:async()=>({accepting_requests:acceptingRequests}),pricing:async()=>[{print_type:'Monochrome',paper_size:'A4',price_per_page:3}]} as unknown as PrintingRepository
@@ -58,7 +62,7 @@ test('starting a paid print job notifies its owner once in the status transactio
   await service.updateStatus({schoolId:'ADMIN-PORTAL-001'},4,{status:'Printing'})
   assert.equal(calls.some(call=>call.sql.includes('bond_paper_stocks')),false)
   assert.equal(calls.some(call=>call.sql.includes('paper_stock_movements')),false)
-  const notification=calls.find(call=>call.sql.includes('INSERT IGNORE INTO notifications')&&call.values.includes('print:4:printing'))
+  const notification=calls.find(call=>call.sql.includes('INSERT INTO notifications')&&call.sql.includes('ON CONFLICT (user_id,dedupe_key) DO NOTHING')&&call.values.includes('print:4:printing'))
   assert.ok(notification)
   assert.equal(notification.values[0],12)
   assert.match(String(notification.values[1]),/thesis.pdf is now printing/)

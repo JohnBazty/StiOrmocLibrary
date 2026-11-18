@@ -9,7 +9,7 @@ import bcrypt from 'bcrypt'
 import QRCode from 'qrcode'
 import bwipjs from 'bwip-js'
 import PDFDocument from 'pdfkit'
-import type { Pool } from 'mysql2/promise'
+import type { Pool } from '../src/config/db.js'
 import { env } from '../src/config/env.js'
 import { db } from '../src/config/db.js'
 import { toPgPlaceholders } from '../src/config/sql.js'
@@ -27,7 +27,7 @@ import { createClearanceService } from '../src/modules/clearance/clearance.servi
 import { verifyIntegrityProtectedCsv } from '../src/modules/reports/csv-integrity.ts'
 
 const schema=`phase8_check_${randomUUID().replaceAll('-','')}`
-if(env.db.driver!=='postgres'||!/^phase8_check_[a-f0-9]{32}$/.test(schema))throw new Error('Invalid isolated test configuration.')
+if(!/^phase8_check_[a-f0-9]{32}$/.test(schema))throw new Error('Invalid isolated test configuration.')
 const admin=new pg.Client({connectionString:env.db.connectionString});await admin.connect()
 const native=new pg.Pool({connectionString:env.db.connectionString,max:6,options:`-c timezone=UTC -c search_path=${schema}`})
 const wrap=(q:Pick<pg.PoolClient,'query'>)=>({async execute(sql:string,args:any[]=[]){let s=toPgPlaceholders(sql);const write=/^\s*(INSERT|UPDATE|DELETE)/i.test(s);if(/^\s*INSERT/i.test(s)&&!/\bRETURNING\b/i.test(s))s+=' RETURNING *';const r=await q.query(s,args),first=r.rows[0];return [write?{rows:r.rows,affectedRows:r.rowCount,insertId:Number(first?Object.entries(first).find(([k])=>k.endsWith('_id'))?.[1]??0:0)}:r.rows,r]}})

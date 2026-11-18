@@ -1,4 +1,4 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise'
+import type { Pool, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { authorsAgg } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
@@ -18,7 +18,7 @@ export function createBookArchive(database: Pool = db) {
                 ia.previous_condition AS "lastCondition", ia.previous_availability AS "lastAvailability",
                 ia.action_reason AS reason, ia.verified_by_label AS "staffLabel", ia.created_at AS "deletedAt"
            FROM inventory_audit_events ia
-          WHERE ia.event_type='Deleted' AND ia.physical_copy_id IS NULL AND ia.barcode_snapshot LIKE ?
+          WHERE ia.event_type='Deleted' AND ia.physical_copy_id IS NULL AND ia.barcode_snapshot ILIKE ?
           ORDER BY ia.inventory_audit_event_id DESC LIMIT 200`, [`%${q}%`],
       )
       return rows.map(row => ({ ...row, eventId: Number(row.eventId) }))
@@ -33,9 +33,9 @@ export function createBookArchive(database: Pool = db) {
                 (SELECT COUNT(*) FROM physical_copies pc WHERE pc.title_id=t.title_id) AS "copyCount"
            FROM titles t LEFT JOIN accounts actor ON actor.account_id=t.archived_by_account_id
           WHERE t.record_type='Book' AND t.lifecycle_status='Archived'
-            AND (t.title LIKE ? OR t.isbn LIKE ? OR EXISTS
+            AND (t.title ILIKE ? OR t.isbn ILIKE ? OR EXISTS
               (SELECT 1 FROM physical_copies pc WHERE pc.title_id=t.title_id AND
-                (pc.barcode LIKE ? OR pc.accession_number LIKE ?)))
+                (pc.barcode ILIKE ? OR pc.accession_number ILIKE ?)))
           ORDER BY t.archived_at DESC, t.title_id DESC LIMIT 200`, [match, match, match, match],
       )
       const [copyRows] = await database.execute<RowDataPacket[]>(
@@ -48,7 +48,7 @@ export function createBookArchive(database: Pool = db) {
                 (SELECT ${authorsAgg('a')} FROM authors a WHERE a.title_id=t.title_id) AS authors
            FROM physical_copies pc JOIN titles t ON t.title_id=pc.title_id
           WHERE pc.lifecycle_status='Archived' AND t.lifecycle_status='Active' AND t.record_type='Book'
-            AND (t.title LIKE ? OR t.isbn LIKE ? OR pc.barcode LIKE ? OR pc.accession_number LIKE ?)
+            AND (t.title ILIKE ? OR t.isbn ILIKE ? OR pc.barcode ILIKE ? OR pc.accession_number ILIKE ?)
           ORDER BY pc.archived_at DESC, pc.physical_copy_id DESC LIMIT 200`, [match, match, match, match],
       )
       return [

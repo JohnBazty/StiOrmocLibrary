@@ -7,6 +7,7 @@ import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
 import { jwtProtectedRouter } from './jwt-auth.routes.ts'
 import { createJwtAuthService as createService, type JwtRole } from './jwt-auth.service.ts'
+import { signSessionToken } from './login-security.service.ts'
 import { createActiveJwtAccountGuard, verifyAccessToken } from './jwt-auth.middleware.ts'
 
 const createJwtAuthService: typeof createService = (database, hasher, signer) => createService(database, hasher, signer, {
@@ -36,11 +37,12 @@ test('a second successful login revokes the prior JWT through the stored account
   const body = { portal: 'staff', school_id: 'TEST-8', password: 'test-only-password' }
   const first = await service.login(body)
   const second = await service.login(body)
+  const persistedToken = (token: string) => signSessionToken({ ...verifyAccessToken(token), sessionId: 'test-session' })
   const app = express()
   app.use((req, res, next) => { res.locals.authenticatedUser = verifyAccessToken(String(req.headers.authorization).slice(7)); next() })
   app.get('/protected', createActiveJwtAccountGuard(database), (_req, res) => res.json({ success: true }))
-  assert.equal((await request(app).get('/protected').set('Authorization', `Bearer ${first.token}`)).status, 401)
-  assert.equal((await request(app).get('/protected').set('Authorization', `Bearer ${second.token}`)).status, 200)
+  assert.equal((await request(app).get('/protected').set('Authorization', `Bearer ${persistedToken(first.token)}`)).status, 401)
+  assert.equal((await request(app).get('/protected').set('Authorization', `Bearer ${persistedToken(second.token)}`)).status, 200)
   assert.equal(clears, 2)
 })
 

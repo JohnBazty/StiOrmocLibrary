@@ -1,4 +1,4 @@
-import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise'
+import type { Pool, PoolConnection, RowDataPacket } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 
 type MergeInput = { survivorSchoolId: string; retiredSchoolId: string; reason: string }

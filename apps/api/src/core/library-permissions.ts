@@ -1,5 +1,5 @@
 import type { JwtRole } from '../modules/auth/jwt-auth.service.ts'
-import type { PoolConnection, RowDataPacket } from 'mysql2/promise'
+import type { PoolConnection, RowDataPacket } from '../config/db.js'
 import { HttpError } from './http-error.ts'
 
 /** Library authority; Admin is retained only for existing account/bootstrap recovery. */

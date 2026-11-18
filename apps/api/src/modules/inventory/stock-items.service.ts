@@ -1,4 +1,4 @@
-import type { ResultSetHeader,RowDataPacket } from 'mysql2/promise'
+import type { ResultSetHeader,RowDataPacket } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { maintenanceStore,audit } from './maintenance-store.ts'
 import { choice,id,invalid,itemInput,number,text,type ItemKind } from './maintenance-validation.ts'

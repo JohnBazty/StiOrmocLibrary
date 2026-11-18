@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Button, SectionCard } from '../../components/ui'
 import { usersApi } from './users-api'
+import { confirmLeave, UnsavedGuard } from '../../components/UnsavedChanges'
 
 const initial = { first_name: '', last_name: '', school_id: '', school_email: '' }
 const fields = [
@@ -28,7 +29,7 @@ export function StaffAccountForm({ onClose, onCreated }: { onClose: () => void; 
   }
 
   return <SectionCard className="mb-5 p-5">
-    <form onSubmit={submit} className="space-y-4" aria-labelledby="staff-setup-heading">
+    <UnsavedGuard className="contents" cleanOnSubmit><form onSubmit={submit} className="space-y-4" aria-labelledby="staff-setup-heading">
       <h2 id="staff-setup-heading" className="text-lg font-bold">Set up Staff account</h2>
       <p className="text-sm">Use the staff member’s official School ID and Ormoc email. They’ll verify their email and choose their own password from the personnel login page.</p>
       <fieldset disabled={busy} className="grid gap-4 sm:grid-cols-2">
@@ -42,8 +43,8 @@ export function StaffAccountForm({ onClose, onCreated }: { onClose: () => void; 
       {error && <p role="alert" className="text-sm font-semibold text-red-700 dark:text-red-300">{error}</p>}
       <div className="flex flex-wrap gap-2">
         <Button type="submit" disabled={busy}>{busy ? 'Creating account…' : 'Create Staff account'}</Button>
-        <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
+        <Button variant="secondary" onClick={() => confirmLeave(onClose)} disabled={busy}>Cancel</Button>
       </div>
-    </form>
+    </form></UnsavedGuard>
   </SectionCard>
 }

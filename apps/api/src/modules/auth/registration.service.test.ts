@@ -25,7 +25,7 @@ function fixture(role = 'Librarian') {
 
 test('Librarian creates a Staff account with a private random password and a setup audit record', async () => {
   const { writes, database } = fixture()
-  assert.deepEqual(await createStaffAccount(1, { ...staff, password: 'ClientSuppliedPassword' }, database, 'postgres'),
+  assert.deepEqual(await createStaffAccount(1, { ...staff, password: 'ClientSuppliedPassword' }, database),
     { accountId: 12, schoolId: 'QA-STAFF' })
   const account = writes.find(write => write.sql.startsWith('INSERT INTO accounts'))
   assert.equal(account?.args[2], 'Staff')
@@ -36,8 +36,8 @@ test('Librarian creates a Staff account with a private random password and a set
 
 test('Staff setup rejects unauthorized actors, elevated roles and non-school email', async () => {
   const { writes, database } = fixture('Staff')
-  await assert.rejects(createStaffAccount(1, staff, database, 'postgres'), { status: 403 })
-  await assert.rejects(createStaffAccount(1, { ...staff, role: 'Librarian' }, database, 'postgres'), { code: 'STAFF_ROLE_REQUIRED' })
-  await assert.rejects(createStaffAccount(1, { ...staff, school_email: 'test@example.invalid' }, database, 'postgres'), { status: 422 })
+  await assert.rejects(createStaffAccount(1, staff, database), { status: 403 })
+  await assert.rejects(createStaffAccount(1, { ...staff, role: 'Librarian' }, database), { code: 'STAFF_ROLE_REQUIRED' })
+  await assert.rejects(createStaffAccount(1, { ...staff, school_email: 'test@example.invalid' }, database), { status: 422 })
   assert.deepEqual(writes, [])
 })

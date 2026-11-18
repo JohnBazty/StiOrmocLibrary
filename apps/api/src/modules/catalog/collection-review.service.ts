@@ -1,6 +1,5 @@
-import type {Pool,PoolConnection,RowDataPacket,ResultSetHeader} from 'mysql2/promise'
+import type {Pool,PoolConnection,RowDataPacket,ResultSetHeader} from '../../config/db.js'
 import {db} from '../../config/db.js'
-import {isPostgres} from '../../config/sql-dialect.js'
 import {HttpError} from '../../core/http-error.ts'
 import {requireLibraryActor} from '../../core/library-permissions.ts'
 import {collectionPartition,evaluateRequirement,type CollectionBook,type Requirement} from './collection-review.rules.ts'
@@ -52,7 +51,7 @@ export async function refreshCollectionReview(q:Query){
  return {titles:data.books.length,shortfalls:data.requirements.filter(r=>r.status==='Shortfall').length}
 }
 export function createCollectionReviewService(database:Pool=db){
- async function transaction<T>(actor:number|null,fn:(q:PoolConnection)=>Promise<T>,read=false){if(!isPostgres)throw fail('Collection review requires the Postgres catalog migration.',503);const q=await database.getConnection();try{await q.beginTransaction();if(read)await q.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY');if(actor!==null)await requireLibraryActor(q,actor,'library.manage');const result=await fn(q);await q.commit();return result}catch(e){await q.rollback();throw e}finally{q.release()}}
+ async function transaction<T>(actor:number|null,fn:(q:PoolConnection)=>Promise<T>,read=false){const q=await database.getConnection();try{await q.beginTransaction();if(read)await q.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY');if(actor!==null)await requireLibraryActor(q,actor,'library.manage');const result=await fn(q);await q.commit();return result}catch(e){await q.rollback();throw e}finally{q.release()}}
  return {
   read:(actor:number)=>transaction(actor,async q=>{const data=await snapshot(q);const alerts=await rows(q,'SELECT alert_id AS id,message,created_at AS "createdAt" FROM collection_review_alerts ORDER BY alert_id DESC LIMIT 50');const versions=await rows(q,'SELECT reference_id AS id,academic_year AS "academicYear",reference_year AS "referenceYear",approved_at AS "approvedAt",approval_source AS "approvalSource" FROM collection_reference_versions ORDER BY reference_id DESC');const history=await rows(q,'SELECT requirement_id AS id,program_id AS "programId",course_id AS "courseId",source_citation AS "sourceCitation",approval_note AS "approvalNote",approved,created_at AS "createdAt" FROM collection_requirement_versions ORDER BY requirement_id DESC');return {...data,alerts,referenceVersions:versions,requirementHistory:history}},true),
   refresh:()=>transaction(null,q=>refreshCollectionReview(q)),

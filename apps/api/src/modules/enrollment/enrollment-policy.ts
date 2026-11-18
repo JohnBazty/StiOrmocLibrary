@@ -1,9 +1,8 @@
-import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise'
-import { isPostgres } from '../../config/sql-dialect.js'
+import type { Pool, PoolConnection, RowDataPacket } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 
 type Query = Pick<PoolConnection, 'execute'> | Pick<Pool, 'execute'>
-export const enrollmentEnabled = () => isPostgres && process.env.ENROLLMENT_ROSTER_ENABLED === 'true'
+export const enrollmentEnabled = () => process.env.ENROLLMENT_ROSTER_ENABLED === 'true'
 export const currentRosterSql = `SELECT DISTINCT ON (r.school_id) r.*, b.semester_id
   FROM enrollment_roster_students r JOIN enrollment_roster_imports b ON b.roster_id=r.roster_id
   WHERE b.semester_id=? AND b.roster_id >= COALESCE(

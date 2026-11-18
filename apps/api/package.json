@@ -8,15 +8,14 @@
     "dev:stable": "node src/server.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --require ./scripts/force-mysql-env.cjs --test src/core/*.test.ts src/modules/auth/*.test.js src/modules/auth/*.test.ts src/modules/attendance/*.test.ts src/modules/catalog/*.test.ts src/modules/catalog/categories/*.test.ts src/modules/circulation/*.test.ts src/modules/clearance/*.test.ts src/modules/dashboard/*.test.ts src/modules/fines/*.test.ts src/modules/floor-plan/*.test.ts src/modules/inventory/*.test.ts src/modules/invoices/*.test.ts src/modules/jobs/*.test.ts src/modules/notifications/*.test.ts src/modules/printing/*.test.ts src/modules/reports/*.test.ts src/modules/reservations/*.test.ts src/modules/users/*.test.ts",
+    "test": "node --test \"src/**/*.test.ts\" \"src/**/*.test.js\"",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-exclude=\"**/*.test.*\" \"src/**/*.test.ts\" \"src/**/*.test.js\"",
     "auth:create-user": "node scripts/create-auth-user.js",
-    "db:schema": "node scripts/run-schema.js",
-    "db:migrate": "node scripts/run-migration.js",
-    "db:migrate:auth": "node scripts/run-migration.js 20260816_005_jwt_role_authentication.sql",
     "db:supabase": "node scripts/run-supabase-schema.js",
     "db:backfill:book-codes": "node scripts/backfill-book-asset-codes.js",
     "db:backfill:attendance-passes": "node scripts/backfill-attendance-passes.js",
     "reports:verify-csv": "node scripts/verify-csv.js",
+    "db:check-rls": "node scripts/check-rls.ts",
     "start": "node dist/server.js"
   },
   "dependencies": {
@@ -34,7 +33,6 @@
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.4.0",
-    "mysql2": "^3.23.3",
     "nodemailer": "^10.0.11",
     "pdf-lib": "^1.17.1",
     "pdfkit": "^0.19.1",
@@ -43,6 +41,7 @@
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.3.14",
     "@types/bcrypt": "^6.0.0",
     "@types/cors": "latest",
     "@types/express": "latest",

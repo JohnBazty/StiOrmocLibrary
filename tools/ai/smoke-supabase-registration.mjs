@@ -9,7 +9,6 @@ import { createClient } from '@supabase/supabase-js'
 import { PDFDocument } from 'pdf-lib'
 import { env } from '../../apps/api/src/config/env.js'
 
-if (env.db.driver !== 'postgres') throw new Error('Supabase DATABASE_URL required.')
 const dbUrl = new URL(env.db.connectionString)
 if (dbUrl.hostname.endsWith('.pooler.supabase.com') && dbUrl.port === '5432') dbUrl.port = '6543'
 const db = new pg.Client({ connectionString: dbUrl.toString() })

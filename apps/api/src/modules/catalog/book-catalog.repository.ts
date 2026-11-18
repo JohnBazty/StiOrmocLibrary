@@ -1,17 +1,10 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise'
-import { authorsAgg, isPostgres, sumEquals } from '../../config/sql-dialect.js'
+import type { Pool, RowDataPacket } from '../../config/db.js'
+import { authorsAgg, sumEquals } from '../../config/sql-dialect.js'
 import type { BookCatalogFilters } from './book-catalog.validation.ts'
 
-const availableCopyCount = isPostgres
-  ? `COUNT(*) FILTER (WHERE pc.availability_status = 'Available' AND pc.material_id IS NOT NULL AND pc.condition_status NOT IN ('Lost','Damaged','For Repair'))`
-  : `SUM(pc.availability_status = 'Available' AND pc.material_id IS NOT NULL)`
+const availableCopyCount = `COUNT(*) FILTER (WHERE pc.availability_status = 'Available' AND pc.material_id IS NOT NULL AND pc.condition_status NOT IN ('Lost','Damaged','For Repair'))`
 
-const currentConditionStatus = isPostgres
-  ? `(array_agg(pc.condition_status ORDER BY (pc.availability_status = 'Available') DESC, pc.physical_copy_id ASC))[1]`
-  : `SUBSTRING_INDEX(
-        GROUP_CONCAT(pc.condition_status ORDER BY (pc.availability_status = 'Available') DESC, pc.physical_copy_id ASC SEPARATOR ','),
-        ',', 1
-      )`
+const currentConditionStatus = `(array_agg(pc.condition_status ORDER BY (pc.availability_status = 'Available') DESC, pc.physical_copy_id ASC))[1]`
 
 const STOCK_JOIN = `LEFT JOIN (
     SELECT
@@ -59,13 +52,12 @@ const SELECT_FIELDS = `SELECT
     COALESCE(c.category_name, 'Uncategorized') AS category_name,
     COALESCE(stock.available_shelf_location, stock.any_shelf_location, t.call_number) AS shelf_location,
     COALESCE(stock.total_copies_count, 0) AS total_copies_count,
-    ${isPostgres ? 'COALESCE(stock.available_copies_count, 0)' : `CASE WHEN COALESCE(waiting.active_waiting_count, 0) > 0
-      THEN 0 ELSE COALESCE(stock.available_copies_count, 0) END`} AS available_copies_count,
+    ${'COALESCE(stock.available_copies_count, 0)'} AS available_copies_count,
     stock.reservable_material_id,
     stock.preview_barcode,
     stock.current_condition_status,
     CASE
-      ${isPostgres ? '' : "WHEN COALESCE(waiting.active_waiting_count, 0) > 0 THEN 'Reserved'"}
+      ${''}
       WHEN COALESCE(stock.available_copies_count, 0) > 0 THEN 'Available'
       WHEN COALESCE(stock.reserved_copies_count, 0) > 0 THEN 'Reserved'
       WHEN COALESCE(stock.borrowed_copies_count, 0) > 0 THEN 'Borrowed'
@@ -104,23 +96,23 @@ export function buildBookCatalogQuery(filters: BookCatalogFilters) {
     parameters.push(filters.publicationYear)
   }
   if (filters.title) {
-    where.push('t.title LIKE ?')
+    where.push('t.title ILIKE ?')
     parameters.push(like(filters.title))
   }
   if (filters.author) {
-    where.push('EXISTS (SELECT 1 FROM authors author_filter WHERE author_filter.title_id = t.title_id AND author_filter.normalized_name LIKE ?)')
+    where.push('EXISTS (SELECT 1 FROM authors author_filter WHERE author_filter.title_id = t.title_id AND author_filter.normalized_name ILIKE ?)')
     parameters.push(like(filters.author.toLocaleLowerCase('en-US')))
   }
   if (filters.isbn) {
-    where.push('t.isbn LIKE ?')
+    where.push('t.isbn ILIKE ?')
     parameters.push(like(filters.isbn))
   }
   if (filters.query) {
     const pattern = like(filters.query)
     where.push(`(
-      t.title LIKE ? OR t.isbn LIKE ? OR c.category_name LIKE ? OR
-      CAST(t.publication_year AS CHAR) = ? OR
-      EXISTS (SELECT 1 FROM authors search_author WHERE search_author.title_id = t.title_id AND search_author.author_name LIKE ?)
+      t.title ILIKE ? OR t.isbn ILIKE ? OR c.category_name ILIKE ? OR
+      CAST(t.publication_year AS TEXT) = ? OR
+      EXISTS (SELECT 1 FROM authors search_author WHERE search_author.title_id = t.title_id AND search_author.author_name ILIKE ?)
     )`)
     parameters.push(pattern, pattern, pattern, filters.query, pattern)
   }

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise'
-import { db, dbDriver } from '../../config/db.js'
+import type { Pool, PoolConnection, RowDataPacket } from '../../config/db.js'
+import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { requireLibraryActor } from '../../core/library-permissions.ts'
 import { validateAttendanceCredential } from './attendance-credential.service.ts'
@@ -30,7 +30,7 @@ export async function libraryState(q:Query,now=new Date()) {
 
 /** Desk service checks share the same lock and event policy as entrance scans. */
 export async function requireOperationalService(q:Query,service:'Borrowing'|'Printing',now=new Date()){
- if(dbDriver!=='postgres')return
+
  await rows(q,'SELECT settings_id FROM library_profile_settings WHERE settings_id=1 FOR UPDATE')
  const state=await libraryState(q,now)
  if(!(service==='Borrowing'?state.allowBorrowing:state.allowPrinting))throw fail('LIBRARY_SERVICE_CLOSED',`${service} is closed for operating hours or the current scheduled event.`)
@@ -89,7 +89,7 @@ export function createAttendanceOperations(pool:Pool=db,clock=()=>new Date()) {
     return receipt(c,{log_id:logId,action} as RowDataPacket,visitor,false)
    })
   },
-  async autoCheckout(){if(dbDriver!=='postgres')return {closed:0};return transaction(async c=>{await rows(c,'SELECT settings_id FROM library_profile_settings WHERE settings_id=1 FOR UPDATE');return closeAttendanceAtCutoff(c,clock())})},
+  async autoCheckout(){return transaction(async c=>{await rows(c,'SELECT settings_id FROM library_profile_settings WHERE settings_id=1 FOR UPDATE');return closeAttendanceAtCutoff(c,clock())})},
  }
 }
 export const attendanceOperations=createAttendanceOperations()

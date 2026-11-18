@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { loadDeskRequest } from './desk-request-context.ts'
-import type { PoolConnection } from 'mysql2/promise'
+import type { PoolConnection } from '../../config/db.js'
 
 const now = new Date('2026-10-16T02:00:00Z')
 const ready = {user_id:7,reservation_id:9,reservation_status:'ready_for_pickup',pickup_deadline:'2026-10-17T10:00:00',copy_id:42,assigned_physical_copy_id:42,barcode:'COPY-42'}

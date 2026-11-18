@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { db, dbDriver } from '../src/config/db.js'
+import { db } from '../src/config/db.js'
 import { createAccountConsolidationService } from '../src/modules/users/account-consolidation.service.ts'
-import type { RowDataPacket } from 'mysql2/promise'
+import type { RowDataPacket } from '../src/config/db.js'
 
 // Deliberately limited to the two identities selected by the owner. No credentials as arguments.
 const backupSchema=`admin_librarian_merge_20261012_${randomUUID().replaceAll('-','').slice(0,8)}`
 const input={survivorSchoolId:'ADMIN-PORTAL-001',retiredSchoolId:'LIB-TEST-001',reason:'Owner-approved consolidation into one Librarian/Admin login on 2026-10-12.'}
 try {
-  assert.equal(dbDriver,'postgres','This operation targets the configured Postgres database.')
+
   const [before]=await db.execute<RowDataPacket[]>(`SELECT account_id,user_id,school_id,role,account_status FROM accounts WHERE school_id IN (?,?) ORDER BY account_id`,[input.survivorSchoolId,input.retiredSchoolId])
   assert.deepEqual(before.map(r=>[Number(r.account_id),Number(r.user_id),r.school_id]),[[5,5,input.survivorSchoolId],[47,35,input.retiredSchoolId]],'Unexpected identity links; no changes permitted.')
   if (!process.argv.includes('--apply')) {

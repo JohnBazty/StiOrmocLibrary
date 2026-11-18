@@ -5,6 +5,7 @@ import { SelectedFilePreview } from '../../components/SelectedFilePreview'
 import { enrollmentApi, EnrollmentError, type RosterPreview, type RowIssue, type Semester } from './enrollment-api'
 import { RosterPreviewTable } from './RosterPreviewTable'
 import { usersApi, type UserDetail } from './users-api'
+import { UnsavedGuard } from '../../components/UnsavedChanges'
 
 const field='mt-1 block min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-950 dark:border-slate-600 dark:bg-slate-900 dark:text-white'
 const displayTime=(value:string|null)=>value?new Intl.DateTimeFormat('en-PH',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Manila'}).format(new Date(value)):'—'
@@ -87,7 +88,7 @@ function SemesterEditor({term,onCancel,onSaved}:{term?:Semester;onCancel:()=>voi
     try{const data=await enrollmentApi.save({semesterId:term?.semester_id,academicYear:year,termName:name,endDate,manualEndAt:unlock});onSaved(data.semesterId)}
     catch(e){setError(errorText(e))}finally{setBusy(false)}
   }
-  return <SectionCard className="p-5"><form className="space-y-4" onSubmit={submit}>
+  return <SectionCard className="p-5"><UnsavedGuard className="contents" cleanOnSubmit><form className="space-y-4" onSubmit={submit}>
     <h2 className="text-balance text-lg font-bold">{term?'Edit semester dates':'Add semester'}</h2>
     <p className="text-pretty text-sm">Both dates lock when you start the semester. All times are Philippine time.</p>
     <div className="grid gap-4 sm:grid-cols-2">
@@ -98,7 +99,7 @@ function SemesterEditor({term,onCancel,onSaved}:{term?:Semester;onCancel:()=>voi
     </div>
     {error&&<p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
     <div className="flex gap-2"><Button type="submit" disabled={busy}>{busy?'Saving…':'Save semester'}</Button><Button variant="secondary" disabled={busy} onClick={onCancel}>Cancel</Button></div>
-  </form></SectionCard>
+  </form></UnsavedGuard></SectionCard>
 }
 
 function SemesterAction({action,disabled,count,onConfirm}:{action:'start'|'end';disabled:boolean;count?:number;onConfirm:()=>Promise<void>}){
@@ -154,7 +155,7 @@ function RosterUpload({term,onSaved}:{term:Semester;onSaved:(message:string)=>vo
     }catch(e){setError(errorText(e));if(e instanceof EnrollmentError)setIssues(e.issues)}
     finally{setBusy(false)}
   }
-  return <SectionCard className="p-5"><form className="space-y-4" onSubmit={upload}>
+  return <SectionCard className="p-5"><UnsavedGuard className="contents" cleanOnSubmit><form className="space-y-4" onSubmit={upload}>
     <h2 className="text-balance text-lg font-bold">Upload roster</h2>
     <p className="text-pretty text-sm">Choose the registrar CSV or Excel file. A successful upload marks matching students as enrolled automatically.</p>
     <p className="text-pretty text-sm">A complete roster replaces the enrollment list. A partial update changes only the Student IDs in that file.</p>
@@ -171,7 +172,7 @@ function RosterUpload({term,onSaved}:{term:Semester;onSaved:(message:string)=>vo
     {preview && <RosterPreviewTable preview={preview}/>}
     {error&&<div role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-900"><p>{error}</p>{issues.length>0&&<ul className="mt-2 list-disc pl-5">{issues.map(issue=><li key={issue.sheet+issue.row}>{issue.sheet}, row {issue.row}: {issue.errors.join(' ')}</li>)}</ul>}</div>}
     <Button disabled={busy||!preview||preview.errorCount>0} type="submit">{busy?'Importing…':'Import roster'}</Button>
-  </form></SectionCard>
+  </form></UnsavedGuard></SectionCard>
 }
 
 function RosterRecords({term,revision}:{term:Semester;revision:number}){

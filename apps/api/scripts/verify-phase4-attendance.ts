@@ -2,17 +2,17 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import pg from 'pg'
-import type { Pool as MysqlPool } from 'mysql2/promise'
+import type { Pool } from '../src/config/db.js'
 import { env } from '../src/config/env.js'
 import { toPgPlaceholders } from '../src/config/sql.js'
 import { createAttendanceOperations, requireOperationalService } from '../src/modules/attendance/attendance-operations.service.ts'
 import { issueAttendanceCredential, purposeAttendanceQr } from '../src/modules/attendance/attendance-credential.service.ts'
 import { concurrentAttendanceReport } from '../src/modules/attendance/attendance-concurrent-report.ts'
 import { parseAttendanceFilters } from '../src/modules/attendance/attendance.validation.ts'
-import { claimOperationalMinute, jobRunnerStatus } from '../src/modules/jobs/job-runner.ts'
+import { createJobRunnerRepository } from '../src/modules/job-runner/job-runner.repository.ts'
 import { AttendanceRepository } from '../src/modules/attendance/attendance.repository.ts'
 
-if(env.db.driver!=='postgres')throw new Error('This check requires the configured Postgres database.')
+
 const schema=`phase4_check_${randomUUID().replaceAll('-','')}`
 if(!/^phase4_check_[a-f0-9]{32}$/.test(schema))throw new Error('Invalid isolated schema name.')
 const admin=new pg.Client({connectionString:env.db.connectionString,options:'-c timezone=Asia/Manila'})
@@ -21,24 +21,22 @@ const native=new pg.Pool({connectionString:env.db.connectionString,max:6,options
 const wrap=(client:Pick<pg.PoolClient,'query'>)=>({
  async execute(sql:string,values:any[]=[]){let query=toPgPlaceholders(sql);const write=/^\s*(INSERT|UPDATE|DELETE)/i.test(query);if(/^\s*INSERT/i.test(query)&&!/\bRETURNING\b/i.test(query))query+=' RETURNING *';const r=await client.query(query,values);return [write?{affectedRows:r.rowCount,insertId:Number(r.rows[0]?.log_id??r.rows[0]?.credential_id??r.rows[0]?.event_id??r.rows[0]?.notification_id??0),rows:r.rows}:r.rows,r]},
 })
-const pool={...wrap(native),async getConnection(){const c=await native.connect();return {...wrap(c),beginTransaction:()=>c.query('BEGIN'),commit:()=>c.query('COMMIT'),rollback:()=>c.query('ROLLBACK'),release:()=>c.release()}}} as unknown as MysqlPool
+const pool={...wrap(native),async getConnection(){const c=await native.connect();return {...wrap(c),beginTransaction:()=>c.query('BEGIN'),commit:()=>c.query('COMMIT'),rollback:()=>c.query('ROLLBACK'),release:()=>c.release()}}} as unknown as Pool
 let now=new Date('2026-10-12T08:00:00+08:00')
 const operations=createAttendanceOperations(pool,()=>now)
 const id=()=>randomUUID().replaceAll('-','')
 try{
  const before=(await admin.query('SELECT COUNT(*) AS count FROM public.attendance_logs')).rows[0].count
  await admin.query(`CREATE SCHEMA ${schema}`)
- const tables=['users','accounts','attendance_qr_credentials','attendance_logs','attendance_scan_receipts','attendance_operation_settings','library_operational_events','library_profile_settings','library_operating_schedule','library_closed_days','notifications','library_job_runs']
+ const tables=['users','accounts','attendance_qr_credentials','attendance_logs','attendance_scan_receipts','attendance_operation_settings','library_operational_events','library_profile_settings','library_operating_schedule','library_closed_days','notifications','scheduled_job_state','scheduled_job_runs']
  for(const table of tables)await admin.query(`CREATE TABLE ${schema}.${table} (LIKE public.${table} INCLUDING ALL)`)
  await native.query("INSERT INTO library_profile_settings(settings_id,library_name,seat_capacity) VALUES(1,'Phase 4 isolated test',1)")
  await native.query('INSERT INTO library_operating_schedule SELECT * FROM public.library_operating_schedule')
  await native.query('INSERT INTO attendance_operation_settings(settings_id,preclosing_minutes,configured) VALUES(1,5,TRUE)')
- await native.query("INSERT INTO library_job_runs(job_name) VALUES('operational-minute')")
- const actual=new Date();assert.equal((await claimOperationalMinute(actual,pool)).claimed,true)
- assert.equal((await claimOperationalMinute(actual,pool)).claimed,false)
- const lease=await jobRunnerStatus(pool);assert.ok(Math.abs(new Date(lease!.lease_until).getTime()-actual.getTime()-300000)<1000)
- await native.query("UPDATE library_job_runs SET lease_until=NULL,run_token=NULL,last_success_at=NOW() AT TIME ZONE 'UTC'")
- assert.equal((await claimOperationalMinute(actual,pool)).claimed,false)
+ const jobs=createJobRunnerRepository(pool as unknown as Pool)
+ assert.ok(await jobs.claim('attendance-auto-checkout',randomUUID()))
+ assert.equal(await jobs.claim('attendance-auto-checkout',randomUUID()),null)
+ const lease=(await native.query("SELECT EXTRACT(EPOCH FROM lease_expires_at-last_started_at)::int AS seconds FROM scheduled_job_state WHERE job_name='attendance-auto-checkout'")).rows[0];assert.equal(lease.seconds,90)
  for(let n=1;n<=6;n++){
   const role=n===1?'Staff':n===2?'Librarian':'Student'
   await native.query("INSERT INTO users(user_id,role_id,user_role,institutional_id,school_id,full_name,email,password_hash) VALUES($1,1,$2,$3,$3,$4,$5,'integration-only')",[n,role,`PHASE4-${n}`,`Isolated visitor ${n}`,`phase4.${n}@ormoc.sti.edu.ph`])

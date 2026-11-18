@@ -1,4 +1,4 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise'
+import type { Pool, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { authorsAgg } from '../../config/sql-dialect.js'
 import type { CatalogSearchFilters } from '../catalog/catalog-search.repository.ts'
@@ -27,11 +27,11 @@ function commonWhere(filters: CatalogSearchFilters, alias = 't') {
   if (filters.categoryId !== null) { where.push(`${alias}.category_id = ?`); parameters.push(filters.categoryId) }
   if (filters.publicationYear !== null) { where.push(`${alias}.publication_year = ?`); parameters.push(filters.publicationYear) }
   if (filters.author) {
-    where.push(`EXISTS (SELECT 1 FROM authors af WHERE af.title_id = ${alias}.title_id AND LOWER(af.author_name) LIKE ? ESCAPE '!')`)
+    where.push(`EXISTS (SELECT 1 FROM authors af WHERE af.title_id = ${alias}.title_id AND af.author_name ILIKE ? ESCAPE '!')`)
     parameters.push(`%${filters.author.toLocaleLowerCase('en-US').replace(/[!%_]/g,'!$&')}%`)
   }
   if (filters.query) {
-    where.push(`(LOWER(${alias}.title) LIKE ? ESCAPE '!' OR LOWER(${alias}.isbn) LIKE ? ESCAPE '!' OR EXISTS (SELECT 1 FROM authors aq WHERE aq.title_id = ${alias}.title_id AND LOWER(aq.author_name) LIKE ? ESCAPE '!'))`)
+    where.push(`(${alias}.title ILIKE ? ESCAPE '!' OR ${alias}.isbn ILIKE ? ESCAPE '!' OR EXISTS (SELECT 1 FROM authors aq WHERE aq.title_id = ${alias}.title_id AND aq.author_name ILIKE ? ESCAPE '!'))`)
     const like = `%${filters.query.toLocaleLowerCase('en-US').replace(/[!%_]/g,'!$&')}%`
     parameters.push(like, like, like)
   }

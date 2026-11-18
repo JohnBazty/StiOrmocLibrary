@@ -10,7 +10,7 @@ import pg from 'pg'
 import { env } from '../src/config/env.js'
 
 const deployment = process.argv[2]
-if (!deployment || !/^dpl_[A-Za-z0-9]+$/.test(deployment) || env.db.driver !== 'postgres') {
+if (!deployment || !/^dpl_[A-Za-z0-9]+$/.test(deployment)) {
   throw new Error('Pass a reviewed Vercel deployment ID and configure Supabase Postgres.')
 }
 const scope = 'team_wAUPvzzbz6oyARTA04OLQyH2'

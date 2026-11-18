@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import type { RowDataPacket } from 'mysql2/promise'
-import { db, dbDriver } from '../src/config/db.js'
+import type { RowDataPacket } from '../src/config/db.js'
+import { db } from '../src/config/db.js'
 import { createConsolidatedRoleRepairService } from '../src/modules/users/account-consolidation.service.ts'
 
 const snapshot=`phase1_role_repair_20261016_${randomUUID().replaceAll('-','').slice(0,8)}`
 const input={survivorSchoolId:'ADMIN-PORTAL-001',retiredSchoolId:'LIB-TEST-001',reason:'Owner-authorized repair of QA P1-01: restore the retained combined Librarian/Admin login to its previously approved canonical Librarian role.'}
 try {
-  assert.equal(dbDriver,'postgres')
+
   const [identities]=await db.execute<RowDataPacket[]>('SELECT account_id,user_id,school_id,role,account_status FROM accounts WHERE school_id IN (?,?) ORDER BY account_id',[input.survivorSchoolId,input.retiredSchoolId])
   assert.deepEqual(identities.map(a=>[Number(a.account_id),Number(a.user_id),a.school_id]),[[5,5,input.survivorSchoolId],[47,35,input.retiredSchoolId]])
   if (!process.argv.includes('--apply')) console.log(JSON.stringify({mode:'preview',identities,dashboard:'/librarian/dashboard'}))

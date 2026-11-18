@@ -4,9 +4,9 @@ import session from 'express-session'
 import helmet from 'helmet'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { db, dbDriver } from './config/db.js'
+import { db } from './config/db.js'
 import { env } from './config/env.js'
-import { MySqlSessionStore } from './core/mysql-session-store.js'
+import { SqlSessionStore } from './core/sql-session-store.js'
 import { HttpError } from './core/http-error.ts'
 import { isDatabaseUnavailable } from './core/database-availability.ts'
 import { checkSchemaReadiness, isMissingSchemaError } from './core/schema-readiness.ts'
@@ -37,7 +37,8 @@ import { liveReportsRouter, workspaceTasksRouter } from './modules/reports/live-
 import { maintenanceRouter } from './modules/inventory/maintenance.routes.ts'
 import { floorPlanRouter } from './modules/floor-plan/floor-plan.routes.ts'
 import { catalogAdminRouter } from './modules/catalog/catalog-admin.routes.ts'
-import { authorizedJobToken, jobRunnerStatus, runOperationalJobs } from './modules/jobs/job-runner.ts'
+import { jobRunner } from './modules/job-runner/index.ts'
+import { createAdminJobRouter, createInternalJobRouter } from './modules/job-runner/job-runner.routes.ts'
 import { archivedInvoiceRouter } from './modules/invoices/invoice-archive.routes.ts'
 import { usersRepository } from './modules/users/users.repository.ts'
 import { clearanceService } from './modules/clearance/clearance.service.ts'
@@ -69,12 +70,14 @@ export function createApp() {
     },
   }))
   app.use(cors({ origin: env.webOrigin, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }))
+  // D1: Supabase Cron only; before body parsing, the session, JWT and CSRF middleware, authorized by X-Job-Runner-Secret alone.
+  app.use('/api/internal/jobs', createInternalJobRouter(jobRunner, () => env.jobRunner.secret))
   app.use(express.json({ limit: '3mb' }))
   app.use(express.urlencoded({ extended: false, limit: '32kb' }))
   app.use(session({
     name: env.session.name,
     secret: env.session.secret,
-    store: new MySqlSessionStore(db),
+    store: new SqlSessionStore(db),
     resave: false,
     saveUninitialized: false,
     rolling: true,
@@ -90,14 +93,10 @@ export function createApp() {
       const status = schema.ready ? 'healthy' : 'migration_required'
       response.status(schema.ready ? 200 : 503).json({
         success: schema.ready,
-        ...(schema.ready ? {} : { code: 'DATABASE_MIGRATION_REQUIRED', message: dbDriver === 'postgres' ? 'The connected Supabase database is missing required migrations.' : 'The database schema is not ready. Run npm run db:migrate -w @sti-library/api.' }),
+        ...(schema.ready ? {} : { code: 'DATABASE_MIGRATION_REQUIRED', message: 'The database schema is not ready. Apply the pending database/supabase/ migration with npm run db:supabase -w @sti-library/api -- <file>.sql.' }),
         data: { service: 'sti-library-api', architecture: 'modular-monolith', status, databaseSchema: schema },
       })
     } catch (error) { next(error) }
-  })
-  app.post('/api/jobs/run', async (request, response, next) => {
-    if (!authorizedJobToken(request.get('authorization'))) return response.status(401).json({ success: false, message: 'Scheduled job authorization failed.' })
-    try { return response.json({ success: true, data: await runOperationalJobs() }) } catch (error) { return next(error) }
   })
   app.use('/api/auth', authRouter)
   app.use('/api/v1/auth', jwtAuthRouter)
@@ -117,9 +116,7 @@ export function createApp() {
       } })
     } catch (error) { next(error) }
   })
-  app.get('/api/v1/admin/jobs/status', authenticateJwt, requireLibraryPermission('library.manage'), async (_request, response, next) => {
-    try { response.json({ success: true, data: await jobRunnerStatus() }) } catch (error) { next(error) }
-  })
+  app.use('/api/v1/admin/jobs', requireLibraryPermission('library.manage'), createAdminJobRouter(jobRunner))
   app.use('/api/v1/catalog', authenticateJwt, requireJwtRoles('Student', 'Faculty', 'Librarian'), bookCatalogRouter)
   app.use('/api/v1/floor-plan', authenticateJwt, requireJwtRoles('Librarian', 'Student', 'Faculty'), floorPlanRouter)
   app.use('/api/v1/catalog', authenticateJwt, requireJwtRoles('Student', 'Faculty', 'Librarian'), researchCatalogRouter)

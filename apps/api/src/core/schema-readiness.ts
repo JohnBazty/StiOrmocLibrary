@@ -1,14 +1,14 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise'
-import { db, dbDriver } from '../config/db.js'
+import type { Pool, RowDataPacket } from '../config/db.js'
+import { db } from '../config/db.js'
 import { enrollmentEnabled } from '../modules/enrollment/enrollment-policy.ts'
 import { loginDevicesEnabled } from '../modules/auth/login-device-policy.ts'
 
 const REQUIRED_COLUMNS: Record<string, string[]> = {
   categories: ['category_id', 'category_name', 'shelf_location', 'created_at', 'updated_at'],
-  titles: ['title_id', 'category_id', 'record_type', 'title', 'cover_image_path', 'purchase_price', 'lifecycle_status'],
+  titles: ['title_id', 'category_id', 'record_type', 'title', 'cover_image_path', 'purchase_price', 'classification', 'volumes', 'remarks', 'lifecycle_status'],
   authors: ['author_id', 'title_id', 'author_name'],
   research_records: ['research_record_id', 'title_id', 'research_code', 'adviser_name'],
-  physical_copies: ['physical_copy_id', 'title_id', 'barcode', 'qr_code_data', 'accession_number', 'availability_status'],
+  physical_copies: ['physical_copy_id', 'title_id', 'barcode', 'qr_code_data', 'accession_number', 'availability_status', 'fund_source', 'fund_detail', 'cost_php'],
   barcode_sequences: ['sequence_year', 'last_value', 'updated_at'],
   inventory_audit_events: ['inventory_audit_event_id', 'physical_copy_id', 'barcode_snapshot', 'event_type', 'action_reason', 'created_at'],
   research_inventory: ['research_inventory_id', 'title_id', 'title', 'authors', 'adviser', 'publication_year', 'accession_number', 'barcode', 'qr_code_data', 'condition_state', 'availability_status', 'lifecycle_status', 'shelf_location', 'archived_at', 'archive_reason'],
@@ -27,7 +27,8 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   clearance_overrides: ['clearance_override_id', 'user_id', 'override_status', 'reason', 'applied_by_user_id', 'revoked_at'],
   lost_book_reports: ['lost_book_report_id', 'transaction_id', 'user_id', 'report_status', 'replacement_charge', 'payment_status', 'quotation_id', 'charge_resolution', 'resolution_reason'],
   book_quotations: ['quotation_id', 'title_id', 'storage_path', 'quoted_amount', 'created_at'],
-  library_job_runs: ['job_name', 'lease_until', 'run_token', 'last_success_at', 'last_error_at'],
+  scheduled_job_state: ['job_name', 'lease_token', 'lease_expires_at', 'last_success_at', 'last_failure_at', 'last_outcome', 'progress_cursor'],
+  scheduled_job_runs: ['run_id', 'job_name', 'started_at', 'finished_at', 'outcome', 'result_json'],
   invoice_setup: ['settings_id', 'issuer_name', 'issuer_tin', 'serial_prefix', 'next_serial', 'approved'],
   customer_invoices: ['invoice_id', 'source_type', 'source_id', 'invoice_number', 'status', 'amount'],
   fines: ['fine_id', 'user_id', 'fine_type', 'fine_amount', 'payment_status', 'maximum_cap_applied', 'finalized_at'],
@@ -64,7 +65,7 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
 export type SchemaReadiness = { ready: boolean; missingTables: string[]; missingColumns: string[] }
 
 export async function checkSchemaReadiness(database: Pool = db as Pool): Promise<SchemaReadiness> {
-  const requiredColumns = dbDriver === 'postgres' ? {
+  const requiredColumns: Record<string, string[]> = {
     ...REQUIRED_COLUMNS,
     login_attempt_windows: ['identifier_hash', 'failed_count', 'window_started_at', 'locked_until'],
     login_otp_challenges: ['challenge_id', 'account_id', 'auth_version', 'code_hash', 'failed_count', 'expires_at', 'sent_at', 'consumed_at', 'resend_count', ...(enrollmentEnabled() ? ['restoration_semester_id'] : []), ...(loginDevicesEnabled() ? ['remember_device'] : [])],
@@ -97,22 +98,15 @@ export async function checkSchemaReadiness(database: Pool = db as Pool): Promise
       enrollment_semester_members: ['semester_id', 'account_id', 'school_id', 'student_name', 'closed_status', 'closed_auth_version'],
       enrollment_signup_challenges: ['challenge_id', 'semester_id', 'roster_id', 'school_id', 'school_email', 'code_hash', 'grant_hash', 'attempts', 'sent_at', 'expires_at'],
     } : {}),
-  } : REQUIRED_COLUMNS
+  }
   const tableNames = Object.keys(requiredColumns)
   const placeholders = tableNames.map(() => '?').join(', ')
-  const [rows] = dbDriver === 'postgres'
-    ? await database.execute<RowDataPacket[]>(
-        `SELECT table_name AS "TABLE_NAME", column_name AS "COLUMN_NAME"
-           FROM information_schema.columns
-          WHERE table_schema = 'public' AND table_name IN (${placeholders})`,
-        tableNames,
-      )
-    : await database.execute<RowDataPacket[]>(
-        `SELECT TABLE_NAME, COLUMN_NAME
-           FROM information_schema.COLUMNS
-          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (${placeholders})`,
-        tableNames,
-      )
+  const [rows] = await database.execute<RowDataPacket[]>(
+    `SELECT table_name AS "TABLE_NAME", column_name AS "COLUMN_NAME"
+       FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name IN (${placeholders})`,
+    tableNames,
+  )
   const found = new Map<string, Set<string>>()
   for (const row of rows) {
     const table = String(row.TABLE_NAME ?? row.table_name)
@@ -133,10 +127,6 @@ export function isMissingSchemaError(error: unknown) {
   const code = (error as { code?: string } | null)?.code
   const message = String((error as { message?: string } | null)?.message ?? '')
   return [
-    'ER_NO_SUCH_TABLE',
-    'ER_BAD_FIELD_ERROR',
-    'ER_CANT_DROP_FIELD_OR_KEY',
-    'ER_KEY_COLUMN_DOES_NOT_EXITS',
     '42P01', // undefined_table
     '42703', // undefined_column
   ].includes(code ?? '') || /relation .* does not exist|column .* does not exist/i.test(message)

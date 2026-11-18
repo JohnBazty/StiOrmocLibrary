@@ -1,4 +1,4 @@
-import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise'
+import type { Pool, PoolConnection, RowDataPacket } from '../../config/db.js'
 
 export type FinePolicy = { hourlyRate: number; dailyRate: number; maximumPenalty: number }
 export type FineCalendar = { openDays: Set<number>; closedDates: Set<string> }

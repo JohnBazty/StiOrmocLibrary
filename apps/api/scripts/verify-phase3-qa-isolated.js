@@ -2,8 +2,8 @@
 // Inner service transactions use real savepoints in a rollback-only outer trial.
 import assert from 'node:assert/strict'
 import { randomUUID, createHash } from 'node:crypto'
-import { db, dbDriver } from '../src/config/db.js'
-assert.equal(dbDriver, 'postgres')
+import { db } from '../src/config/db.js'
+
 const original = { execute: db.execute.bind(db), getConnection: db.getConnection.bind(db), end: db.end.bind(db) }
 const tables = { accounts:'account_id', users:'user_id', titles:'title_id', physical_copies:'physical_copy_id', materials:'material_id', borrow_transactions:'transaction_id', catalog_title_details:'title_id', catalog_locations:'location_id', catalog_resource_types:'type_id', catalog_programs:'program_id', catalog_courses:'course_id', catalog_import_batches:'batch_id', catalog_import_rows:'import_row_id', collection_age_status:'title_id', collection_review_alerts:'alert_id' }
 async function fingerprints() {

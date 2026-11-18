@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto'
-import type { Pool,PoolConnection,RowDataPacket } from 'mysql2/promise'
-import { db,dbDriver } from '../../config/db.js'
+import type { Pool,PoolConnection,RowDataPacket } from '../../config/db.js'
+import { db } from '../../config/db.js'
 import { requireLibraryActor } from '../../core/library-permissions.ts'
 import { HttpError } from '../../core/http-error.ts'
 import { invalid,text } from './maintenance-validation.ts'
-export function createMaintenanceStore(database:Pool=db,driver=dbDriver){
+export function createMaintenanceStore(database:Pool=db,driver='postgres'){
   async function read<T>(actor:number,work:(q:PoolConnection)=>Promise<T>){
     if(driver!=='postgres')throw new HttpError(503,'MAINTENANCE_UNAVAILABLE','This feature needs the current Postgres database.')
     const q=await database.getConnection()

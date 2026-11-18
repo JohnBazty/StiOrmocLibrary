@@ -1,4 +1,4 @@
-import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import type { BorrowingPolicyMaterialRule, BorrowingPolicyVersion, PublishBorrowingPolicyInput } from './borrowing-policy.types.ts'
 

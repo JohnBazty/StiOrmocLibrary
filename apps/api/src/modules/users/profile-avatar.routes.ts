@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { Router, type NextFunction, type Request, type Response } from 'express'
 import multer from 'multer'
 import { rateLimit } from 'express-rate-limit'
-import type { RowDataPacket } from 'mysql2/promise'
+import type { RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
@@ -18,7 +18,7 @@ const handle = (fn: (request: Request, response: Response) => Promise<void>) =>
   (request: Request, response: Response, next: NextFunction) => { void fn(request, response).catch(next) }
 const accountId = (response: Response) => Number(response.locals.authenticatedUser?.accountId)
 const requireSupabase = () => {
-  if (env.db.driver !== 'postgres' || !storage) throw new HttpError(503, 'AVATAR_STORAGE_UNAVAILABLE', 'Profile image storage is unavailable.')
+  if (!storage) throw new HttpError(503, 'AVATAR_STORAGE_UNAVAILABLE', 'Profile image storage is unavailable.')
 }
 
 function validate(file?: Express.Multer.File) {

@@ -1,4 +1,4 @@
-import type { PoolConnection,ResultSetHeader,RowDataPacket } from 'mysql2/promise'
+import type { PoolConnection,ResultSetHeader,RowDataPacket } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { maintenanceStore,audit } from '../inventory/maintenance-store.ts'
 import { historicalInput,id,invalid,text } from '../inventory/maintenance-validation.ts'

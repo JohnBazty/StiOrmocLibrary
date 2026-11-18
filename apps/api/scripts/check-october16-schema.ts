@@ -1,11 +1,11 @@
 /** Read-only before/after evidence for additive migration 029. Never exports school rows or credentials. */
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { db, dbDriver } from '../src/config/db.js'
+import { db } from '../src/config/db.js'
 import { checkSchemaReadiness } from '../src/core/schema-readiness.ts'
 import { requireVerificationSender } from '../src/modules/auth/school-email.sender.ts'
-import type { RowDataPacket } from 'mysql2/promise'
+import type { RowDataPacket } from '../src/config/db.js'
 
-if (dbDriver !== 'postgres') throw new Error('This check targets the configured hosted Postgres database.')
+
 const mode = process.argv[2]
 if (!['before','after'].includes(mode)) throw new Error('Choose before or after.')
 const tables = ['accounts','users','titles','physical_copies','borrow_transactions','reservations','print_requests']

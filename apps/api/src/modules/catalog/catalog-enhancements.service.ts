@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { lookupReviewFacts } from './import-lookup-fill.ts'
 import { createClient } from '@supabase/supabase-js'
-import type { PoolConnection, RowDataPacket, ResultSetHeader } from 'mysql2/promise'
-import { db, dbDriver } from '../../config/db.js'
+import type { PoolConnection, RowDataPacket, ResultSetHeader } from '../../config/db.js'
+import { db } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
 import { requireLibraryActor } from '../../core/library-permissions.ts'
@@ -14,15 +15,14 @@ import { renderBookLabel } from './book-label.renderer.ts'
 
 const fail=(message:string,status=422)=>new HttpError(status,'CATALOG_REVIEW_REQUIRED',message)
 const id=(value:unknown)=>{const n=positiveId(value);if(!n)throw fail('Choose a valid record.');return n}
-const pg=()=>{if(dbDriver!=='postgres')throw fail('Catalog enhancements require the configured Supabase database.',503)}
 type Query=Pick<PoolConnection,'execute'>
 async function rows(q:Query,sql:string,values:any[]=[]){const [data]=await q.execute<RowDataPacket[]>(sql,values);return data}
-async function transaction<T>(actor:number,fn:(c:PoolConnection)=>Promise<T>){pg();const c=await db.getConnection();try{await c.beginTransaction();await requireLibraryActor(c,actor,'library.manage');const result=await fn(c);await c.commit();return result}catch(e){await c.rollback();throw e}finally{c.release()}}
+async function transaction<T>(actor:number,fn:(c:PoolConnection)=>Promise<T>){const c=await db.getConnection();try{await c.beginTransaction();await requireLibraryActor(c,actor,'library.manage');const result=await fn(c);await c.commit();return result}catch(e){await c.rollback();throw e}finally{c.release()}}
 const foundation={locations:{table:'catalog_locations',id:'location_id'},programs:{table:'catalog_programs',id:'program_id'},courses:{table:'catalog_courses',id:'course_id'},types:{table:'catalog_resource_types',id:'type_id'}} as const
 type FoundationKind=keyof typeof foundation
 function foundationKind(value:string):FoundationKind{if(!Object.hasOwn(foundation,value))throw fail('Choose locations, programs, courses or types.');return value as FoundationKind}
 export async function catalogOptions(publicOnly=false){
- pg();const result:Record<string,unknown>={}
+ const result:Record<string,unknown>={}
  for(const [kind,spec] of Object.entries(foundation))result[kind]=await rows(db,`SELECT ${spec.id} AS id,name,lifecycle_status AS status,row_version AS version${kind==='programs'||kind==='courses'?',code':''}${kind==='courses'?',program_id AS "programId"':''}${kind==='types'?',record_kind AS "recordKind"':''}${kind==='locations'?',COALESCE((SELECT column_count FROM floor_plan_shelves s WHERE s.label=name),1) AS "columnCount",COALESCE((SELECT row_count FROM floor_plan_shelves s WHERE s.label=name),1) AS "rowCount"':''} FROM ${spec.table} ${publicOnly?"WHERE lifecycle_status='Active'":''} ORDER BY name`)
  result.categories=await rows(db,"SELECT category_id AS id,category_name AS name,'Active' AS status,1 AS version FROM categories ORDER BY category_name")
  return result
@@ -81,11 +81,11 @@ function publicWhere(query:Record<string,unknown>){
  if(researchFilters.length)clauses.push("EXISTS(SELECT 1 FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived' AND "+researchFilters.join(' AND ')+")")
  return {sql:clauses.join(' AND '),values}
 }
-export async function publicCatalog(query:Record<string,unknown>){pg();const where=publicWhere(query),page=Math.max(1,Math.min(10000,positiveId(query.page)??1)),limit=24
+export async function publicCatalog(query:Record<string,unknown>){const where=publicWhere(query),page=Math.max(1,Math.min(10000,positiveId(query.page)??1)),limit=24
  const [items,count]=await Promise.all([rows(db,`${publicSelect} WHERE ${where.sql} ORDER BY t.title,t.title_id LIMIT ${limit} OFFSET ${(page-1)*limit}`,where.values),rows(db,`SELECT COUNT(*) AS total FROM titles t WHERE ${where.sql}`,where.values)])
  return {items,pagination:{page,limit,total:Number(count[0].total)}}
 }
-export async function publicDetail(value:unknown){pg();const titleId=id(value),where=publicWhere({}),book=(await rows(db,`${publicSelect} WHERE ${where.sql} AND t.title_id=?`,[titleId]))[0];if(!book)throw fail('This catalog entry is unavailable.',404)
+export async function publicDetail(value:unknown){const titleId=id(value),where=publicWhere({}),book=(await rows(db,`${publicSelect} WHERE ${where.sql} AND t.title_id=?`,[titleId]))[0];if(!book)throw fail('This catalog entry is unavailable.',404)
  const copies=book.kind==='Book'?await rows(db,`SELECT physical_copy_id AS id,accession_number AS accession,barcode,shelf_location AS shelf,condition_status AS condition,availability_status AS availability FROM physical_copies WHERE title_id=? AND lifecycle_status='Active' ORDER BY physical_copy_id`,[titleId]):await rows(db,`SELECT research_inventory_id AS id,accession_number AS accession,barcode,shelf_location AS shelf,condition_state AS condition,availability_status AS availability FROM research_inventory WHERE title_id=? AND lifecycle_status='Active' ORDER BY research_inventory_id`,[titleId])
  const files=await rows(db,"SELECT file_id AS id,original_name AS name,byte_size AS size,created_at AS uploaded FROM catalog_digital_files WHERE title_id=? AND lifecycle_status='Active' ORDER BY file_id",[titleId])
  return {...book,version:Number(book.version??0),copies,files}
@@ -125,13 +125,12 @@ export async function uploadDigital(value:unknown,file:Express.Multer.File|undef
  })}catch(e){if(uploaded)await store.remove([path]);throw e}return publicDetail(titleId)
 }
 export async function archiveDigital(value:unknown,actor:number){await transaction(actor,async c=>{await c.execute("UPDATE catalog_digital_files SET lifecycle_status='Archived' WHERE file_id=?",[id(value)])});return {archived:true}}
-export async function digitalDownload(value:unknown){pg();const file=(await rows(db,"SELECT f.storage_path,f.original_name FROM catalog_digital_files f JOIN titles t ON t.title_id=f.title_id WHERE f.file_id=? AND f.lifecycle_status='Active' AND t.lifecycle_status='Active' AND LENGTH(TRIM(f.permission_note))>0",[id(value)]))[0];if(!file)throw fail('This digital file is unavailable.',404)
+export async function digitalDownload(value:unknown){const file=(await rows(db,"SELECT f.storage_path,f.original_name FROM catalog_digital_files f JOIN titles t ON t.title_id=f.title_id WHERE f.file_id=? AND f.lifecycle_status='Active' AND t.lifecycle_status='Active' AND LENGTH(TRIM(f.permission_note))>0",[id(value)]))[0];if(!file)throw fail('This digital file is unavailable.',404)
  const result=await storage().download(file.storage_path);if(result.error||!result.data)throw fail('The digital file could not be downloaded.',503)
  return {bytes:Buffer.from(await result.data.arrayBuffer()),name:String(file.original_name)}
 }
 export async function inspectHoldings(file:Express.Multer.File|undefined){if(!file)throw fail('Choose a holdings file.');const sheets=await readHoldings(file);return sheets.map(s=>({name:s.name,rowCount:s.rows.length,headers:s.headers,mapping:s.mapping,preview:s.rows.slice(0,12)}))}
 export async function stageHoldings(file:Express.Multer.File|undefined,mappings:SheetMapping[],actor:number){
- pg()
  if(!file)throw fail('Choose a holdings file.');if(!Array.isArray(mappings)||!mappings.length||mappings.length>12)throw fail('Confirm the sheet mappings.')
  const sheets=await readHoldings(file)
  const [categories,locations]=await Promise.all([
@@ -147,9 +146,9 @@ export async function stageHoldings(file:Express.Multer.File|undefined,mappings:
   return Number(batch.batch_id)
  });return {batchId,ignored,reused:!(await rows(db,"SELECT 1 FROM catalog_import_rows WHERE batch_id=? AND status<>'Review' LIMIT 1",[batchId])).length?false:true}
 }
-export async function importBatches(){pg();return rows(db,`SELECT b.batch_id AS id,b.filename,b.created_at AS created,COUNT(r.import_row_id)::int AS total,COUNT(*) FILTER(WHERE r.status='Imported')::int AS imported,COUNT(*) FILTER(WHERE r.status='Skipped')::int AS skipped,COUNT(*) FILTER(WHERE r.status='Ready')::int AS ready FROM catalog_import_batches b LEFT JOIN catalog_import_rows r ON r.batch_id=b.batch_id GROUP BY b.batch_id ORDER BY b.batch_id DESC LIMIT 50`)}
+export async function importBatches(){return rows(db,`SELECT b.batch_id AS id,b.filename,b.created_at AS created,COUNT(r.import_row_id)::int AS total,COUNT(*) FILTER(WHERE r.status='Imported')::int AS imported,COUNT(*) FILTER(WHERE r.status='Skipped')::int AS skipped,COUNT(*) FILTER(WHERE r.status='Ready')::int AS ready FROM catalog_import_batches b LEFT JOIN catalog_import_rows r ON r.batch_id=b.batch_id GROUP BY b.batch_id ORDER BY b.batch_id DESC LIMIT 50`)}
 async function matchTitles(q:Query,data:HoldingsData){return rows(q,`SELECT t.title_id AS id,t.title,t.isbn,t.lifecycle_status AS status,COALESCE((SELECT string_agg(author_name,', ' ORDER BY author_order) FROM authors WHERE title_id=t.title_id),'') AS author FROM titles t WHERE t.record_type='Book' AND ((?<>'' AND t.isbn=?) OR LOWER(TRIM(t.title))=LOWER(TRIM(?))) ORDER BY t.title_id LIMIT 20`,[data.isbn,data.isbn,data.title])}
-export async function importBatch(value:unknown){pg();const batchId=id(value),batch=(await rows(db,'SELECT batch_id AS id,filename,mapping_json AS mapping FROM catalog_import_batches WHERE batch_id=?',[batchId]))[0];if(!batch)throw fail('Import batch not found.',404)
+export async function importBatch(value:unknown){const batchId=id(value),batch=(await rows(db,'SELECT batch_id AS id,filename,mapping_json AS mapping FROM catalog_import_batches WHERE batch_id=?',[batchId]))[0];if(!batch)throw fail('Import batch not found.',404)
  const entries=await rows(db,'SELECT import_row_id AS id,sheet_name AS sheet,source_row AS "sourceRow",source_json AS source,data_json AS data,status,decision,target_title_id AS "targetTitleId",reuse_row_id AS "reuseRowId",row_version AS version,result_json AS result,error_text AS error FROM catalog_import_rows WHERE batch_id=? ORDER BY import_row_id',[batchId])
  const groups=new Map<string,number[]>();for(const row of entries){const identity=holdingsIdentity(row.data);groups.set(identity,[...(groups.get(identity)??[]),Number(row.id)])}
  // Match titles once per identity, rather than once per repeated workbook row.
@@ -170,6 +169,8 @@ export async function reviewImport(value:unknown,body:Record<string,unknown>,act
   const row=(await rows(c,'SELECT * FROM catalog_import_rows WHERE import_row_id=? FOR UPDATE',[rowId]))[0];if(!row||row.status==='Imported')throw fail('An imported row cannot be changed.',409)
   if(Number(row.row_version)!==Number(body.version))throw fail('This row changed. Reload before reviewing.',409)
   data.autoCorrections=retainImportCorrections(row.data_json?.autoCorrections)
+  // Lookup facts come from the stored row; a row the lookup filled needs the librarian's checked tick (LOOKUP_NOT_CHECKED).
+  Object.assign(data,lookupReviewFacts(row.data_json,decision,body.lookupChecked,actor,new Date()))
   if(decision!=='skip')await validateImportReferences(c,data,needsCopies)
   let target:number|null=null,reuse:number|null=null
   if(decision==='link'||decision==='add'){target=id(body.targetTitleId);if(!(await rows(c,"SELECT 1 FROM titles WHERE title_id=? AND record_type='Book' AND lifecycle_status='Active'",[target])).length)throw fail('Choose an active existing book.')}
@@ -193,7 +194,7 @@ export async function commitImport(value:unknown,actor:number){
    if(row.decision==='new'){
     if((await matchTitles(c,data)).length)throw fail('A matching title was added since review. Choose the existing holding before retrying.')
     titleId=Number(await insertTitle(c,{title:data.title,recordType:'Book',categoryId:data.categoryId,isbn:data.isbn||null,publisher:data.publisher||null,publicationYear:data.publicationYear?Number(data.publicationYear):null,callNumber:data.callNumber||null,searchText:[data.title,data.author,data.isbn].join(' ')}));await insertAuthors(c,titleId,[data.author])
-    await c.execute('INSERT INTO catalog_title_details(title_id,copyright_year,edition,page_count,type_id,updated_by) VALUES (?,?,?,?,(SELECT type_id FROM catalog_resource_types WHERE name=?),?)',[titleId,data.copyrightYear?Number(data.copyrightYear):null,data.edition||null,data.pages?Number(data.pages):null,'Book',actor])
+    await c.execute('INSERT INTO catalog_title_details(title_id,copyright_year,edition,page_count,synopsis,type_id,updated_by) VALUES (?,?,?,?,?,(SELECT type_id FROM catalog_resource_types WHERE name=?),?)',[titleId,data.copyrightYear?Number(data.copyrightYear):null,data.edition||null,data.pages?Number(data.pages):null,data.summary??'','Book',actor])
    }else if(!(await rows(c,"SELECT title_id FROM titles WHERE title_id=? AND record_type='Book' AND lifecycle_status='Active' FOR UPDATE",[titleId])).length)throw fail('The selected holding is no longer active.')
    if(needsCopies){
     const count=Number(data.copies),missing=Number(data.missingCopies||0),year=new Date().getFullYear(),start=await reserveBarcodeSequence(c,year,count),accessions=data.generateAccessions?[]:identityList(data.accessions),barcodes=identityList(data.barcodes)

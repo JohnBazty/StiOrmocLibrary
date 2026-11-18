@@ -1,4 +1,4 @@
-import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import type { PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { requireVerificationSender } from '../auth/school-email.sender.ts'
 import { notifyLibrarians } from '../notifications/library-alerts.ts'
 

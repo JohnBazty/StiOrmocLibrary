@@ -1,4 +1,4 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise'
+import type { Pool, RowDataPacket } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 
 export function parseAvailabilityIds(value: unknown) {

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import ExcelJS from 'exceljs'
 import bcrypt from 'bcrypt'
-import type { Pool, RowDataPacket } from 'mysql2/promise'
+import type { Pool, RowDataPacket } from '../src/config/db.js'
 import { createPgPool } from '../src/config/pg-pool.js'
 import { env } from '../src/config/env.js'
 import { createEnrollmentService } from '../src/modules/enrollment/enrollment.service.ts'
@@ -17,7 +17,7 @@ import { createPasswordRecoveryService } from '../src/modules/auth/password-reco
 import { createActiveJwtAccountGuard, verifyAccessToken } from '../src/modules/auth/jwt-auth.middleware.ts'
 import { REMEMBER_DEVICE_MS } from '../src/modules/auth/login-device-policy.ts'
 
-if (!process.argv.includes('--isolated-schema') || env.db.driver !== 'postgres') {
+if (!process.argv.includes('--isolated-schema')) {
   throw new Error('Use --isolated-schema with a configured Postgres connection.')
 }
 process.env.ENROLLMENT_ROSTER_ENABLED = 'true'
@@ -280,7 +280,7 @@ try {
   assert.equal(Number((await row('SELECT COUNT(*) n FROM enrollment_semester_members WHERE account_id=?', [student.account_id])).n), 2)
   const provisioned = await createStaffAccount(library, {
     school_id: 'QA-NEW-STAFF', school_email: 'new-staff-fixture@ormoc.sti.edu.ph', first_name: 'New', last_name: 'Staff',
-  }, pool, 'postgres')
+  }, pool)
   const staffCredentials = { school_id: provisioned.schoolId, password, portal: 'staff' }
   await assert.rejects(security.login(staffCredentials), { code: 'INVALID_CREDENTIALS' })
   const recovery = createPasswordRecoveryService(pool, sender)

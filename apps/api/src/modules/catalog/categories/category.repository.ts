@@ -1,5 +1,5 @@
-import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
-import { forUpdate, isPostgres } from '../../../config/sql-dialect.js'
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../../config/db.js'
+import { forUpdate } from '../../../config/sql-dialect.js'
 import type { CategoryInput } from './category.validation.ts'
 
 export type CategoryRecord = {
@@ -64,27 +64,17 @@ export async function findCategoryByName(database: Pool | PoolConnection, catego
 }
 
 export async function findManagedShelfByLabel(database: Pool | PoolConnection, shelfLocation: string) {
-  if (isPostgres) {
+  {
     const [rows] = await database.execute<RowDataPacket[]>(`SELECT l.location_id AS id,l.name AS label,COALESCE(s.column_count,1) AS column_count,COALESCE(s.row_count,1) AS row_count FROM catalog_locations l LEFT JOIN floor_plan_shelves s ON s.label=l.name WHERE l.name=? AND l.lifecycle_status='Active' LIMIT 1`,[shelfLocation])
     return rows[0]??null
   }
-  const [rows] = await database.execute<RowDataPacket[]>(
-    'SELECT id, label, column_count, row_count FROM floor_plan_shelves WHERE label = ? LIMIT 1',
-    [shelfLocation],
-  )
-  return rows[0] ?? null
 }
 
 export async function lockManagedShelfByLabel(connection: PoolConnection, shelfLocation: string) {
-  if (isPostgres) {
+  {
     const [rows] = await connection.execute<RowDataPacket[]>(`SELECT l.location_id AS id,l.name AS label,COALESCE(s.column_count,1) AS column_count,COALESCE(s.row_count,1) AS row_count FROM catalog_locations l LEFT JOIN floor_plan_shelves s ON s.label=l.name WHERE l.name=? AND l.lifecycle_status='Active' LIMIT 1 FOR UPDATE OF l`,[shelfLocation])
     return rows[0]??null
   }
-  const [rows] = await connection.execute<RowDataPacket[]>(
-    'SELECT id, label, column_count, row_count FROM floor_plan_shelves WHERE label = ? LIMIT 1 FOR UPDATE',
-    [shelfLocation],
-  )
-  return rows[0] ?? null
 }
 
 export async function synchronizeCategoryShelf(connection: PoolConnection, categoryId: number, shelfLocation: string, shelfColumn = 1, shelfRow = 1) {
@@ -105,16 +95,10 @@ export async function synchronizeCategoryShelf(connection: PoolConnection, categ
       ${forUpdate('ri')}`, [categoryId],
   )
   await connection.execute(
-    isPostgres
-      ? `UPDATE physical_copies pc
+    `UPDATE physical_copies pc
             SET shelf_location = ?, shelf_column = ?, shelf_row = ?, updated_at = NOW()
            FROM titles t
           WHERE t.title_id = pc.title_id AND t.category_id = ? AND t.record_type = 'Book'
-            AND t.lifecycle_status = 'Active' AND pc.lifecycle_status = 'Active'`
-      : `UPDATE physical_copies pc
-           JOIN titles t ON t.title_id = pc.title_id
-            SET pc.shelf_location = ?, pc.shelf_column = ?, pc.shelf_row = ?, pc.updated_at = NOW()
-          WHERE t.category_id = ? AND t.record_type = 'Book'
             AND t.lifecycle_status = 'Active' AND pc.lifecycle_status = 'Active'`,
     [shelfLocation, shelfColumn, shelfRow, categoryId],
   )
@@ -123,16 +107,10 @@ export async function synchronizeCategoryShelf(connection: PoolConnection, categ
     [shelfLocation, categoryId],
   )
   await connection.execute(
-    isPostgres
-      ? `UPDATE research_inventory ri
+    `UPDATE research_inventory ri
             SET shelf_location = ?, shelf_column = ?, shelf_row = ?, updated_at = NOW(), row_version = ri.row_version + 1
            FROM titles t
           WHERE t.title_id = ri.title_id AND t.category_id = ? AND t.record_type = 'Research/Thesis'
-            AND t.lifecycle_status = 'Active' AND ri.lifecycle_status = 'Active'`
-      : `UPDATE research_inventory ri
-           JOIN titles t ON t.title_id = ri.title_id
-            SET ri.shelf_location = ?, ri.shelf_column = ?, ri.shelf_row = ?, ri.updated_at = NOW(), ri.row_version = ri.row_version + 1
-          WHERE t.category_id = ? AND t.record_type = 'Research/Thesis'
             AND t.lifecycle_status = 'Active' AND ri.lifecycle_status = 'Active'`,
     [shelfLocation, shelfColumn, shelfRow, categoryId],
   )

@@ -1,10 +1,10 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise'
-import { dateAddDays, isPostgres } from '../../config/sql-dialect.js'
+import type { Pool, RowDataPacket } from '../../config/db.js'
+import { dateAddDays } from '../../config/sql-dialect.js'
 import type { QueueFilters } from './reservation.validation.ts'
 import { requestEventStatus, requestLabels } from './book-request-events.ts'
 
 export function buildReservationQueueQuery(filters: QueueFilters) {
-  const where = [isPostgres ? "r.request_kind='Reservation'" : '1 = 1']
+  const where = ["r.request_kind='Reservation'"]
   const parameters: Array<string | number> = []
   if (filters.status === 'active') where.push("r.reservation_status IN ('pending','approved','ready_for_pickup')")
   else if (filters.status) { where.push('r.reservation_status = ?'); parameters.push(filters.status) }
@@ -13,7 +13,7 @@ export function buildReservationQueueQuery(filters: QueueFilters) {
   if (filters.role) { where.push('ro.role_name = ?'); parameters.push(filters.role) }
   if (filters.user) {
     const like = `%${filters.user}%`
-    where.push('(u.full_name LIKE ? OR u.institutional_id LIKE ? OR u.email LIKE ?)')
+    where.push('(u.full_name ILIKE ? OR u.institutional_id ILIKE ? OR u.email ILIKE ?)')
     parameters.push(like, like, like)
   }
   const from = `FROM reservations r
@@ -35,15 +35,13 @@ export function buildReservationQueueQuery(filters: QueueFilters) {
        COALESCE(pc.barcode,assigned.barcode) AS barcode, pc.shelf_location,
        r.assigned_physical_copy_id,r.queue_position, r.reservation_status, r.reserved_at,
        r.pickup_deadline, r.created_at, r.updated_at
-       ${isPostgres ? `, (r.pickup_deadline AT TIME ZONE 'Asia/Manila') AS deadline_iso,
+       ${`, (r.pickup_deadline AT TIME ZONE 'Asia/Manila') AS deadline_iso,
          (r.reserved_at AT TIME ZONE 'Asia/Manila') AS requested_iso,
          r.preparation_started_at,r.ready_at,
          (SELECT d.status FROM book_request_email_deliveries d JOIN book_request_events e ON e.event_id=d.event_id
-          WHERE e.reservation_id=r.reservation_id ORDER BY e.event_id DESC LIMIT 1) AS email_status` : ''}
+          WHERE e.reservation_id=r.reservation_id ORDER BY e.event_id DESC LIMIT 1) AS email_status`}
       ${from} ${whereSql}
-      ORDER BY ${isPostgres
-      ? `CASE r.reservation_status WHEN 'ready_for_pickup' THEN 1 WHEN 'approved' THEN 2 WHEN 'pending' THEN 3 WHEN 'claimed' THEN 4 WHEN 'expired' THEN 5 WHEN 'cancelled' THEN 6 ELSE 7 END`
-      : `FIELD(r.reservation_status, 'ready_for_pickup','approved','pending','claimed','expired','cancelled')`},
+      ORDER BY CASE r.reservation_status WHEN 'ready_for_pickup' THEN 1 WHEN 'approved' THEN 2 WHEN 'pending' THEN 3 WHEN 'claimed' THEN 4 WHEN 'expired' THEN 5 WHEN 'cancelled' THEN 6 ELSE 7 END,
         r.reserved_at ASC, r.reservation_id ASC LIMIT ${safeLimit} OFFSET ${safeOffset}`,
     countSql: `SELECT COUNT(*) AS total ${from} ${whereSql}`,
     dataParameters: parameters,
@@ -64,8 +62,8 @@ export async function queryReservationQueue(database: Pool, filters: QueueFilter
     materialTitle: row.title, materialType: row.material_type,
     categoryName: row.category_name, accessionId: row.accession_id ? Number(row.accession_id) : null,
     accessionNumber: row.accession_number, barcode: row.barcode, queuePosition: Number(row.queue_position),
-    status: row.reservation_status, reservedAt: isPostgres ? row.requested_iso : row.reserved_at,
-    pickupDeadline: isPostgres ? row.deadline_iso : row.pickup_deadline,
+    status: row.reservation_status, reservedAt: row.requested_iso,
+    pickupDeadline: row.deadline_iso,
     assignedCopyId: row.assigned_physical_copy_id ? Number(row.assigned_physical_copy_id) : null,
     shelfLocation:row.shelf_location??null,emailStatus:row.email_status??null,
     statusLabel:requestLabels[requestEventStatus(String(row.reservation_status),Boolean(row.assigned_physical_copy_id))],

@@ -7,13 +7,13 @@ import jwt from 'jsonwebtoken'
 import request from 'supertest'
 import { PDFDocument } from 'pdf-lib'
 import { createClient } from '@supabase/supabase-js'
-import { db,dbDriver } from '../src/config/db.js'
+import { db } from '../src/config/db.js'
 import { env } from '../src/config/env.js'
 import { createApp } from '../src/app.js'
 import * as service from '../src/modules/catalog/catalog-enhancements.service.ts'
 import { readHoldings,mappedRows } from '../src/modules/catalog/holdings-parser.ts'
 
-assert.equal(dbDriver,'postgres')
+
 assert.ok(process.env.PHASE3_QA_ROLLBACK_ONLY==='1'&&/^QA3-[A-F0-9-]{36}$/.test(process.env.PHASE3_QA_ACTOR_PREFIX??''),'Run scripts/verify-phase3-qa-isolated.js: Phase 7 caches require rollback-only fixture cleanup.')
 const tag=`REV3-${randomUUID()}`.toUpperCase(),titleName=`${tag} Quality management`,batchIds=[],titleIds=[],materialIds=[],copyIds=[]
 let courseId=0,locationId=0,typeId=0,programId=0,fileId=0
