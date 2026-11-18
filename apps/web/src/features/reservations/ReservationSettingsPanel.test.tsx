@@ -31,3 +31,52 @@ it('saves the typed pickup window and shows who changed it and when', async () =
   expect(api.saveSettings).toHaveBeenCalledTimes(1)
   expect(api.saveSettings).toHaveBeenCalledWith({ pickupWindowDays: '3' })
 })
+
+const limitInput = async () => await screen.findByLabelText('Waiting-list limit (days)') as HTMLInputElement
+const card = (heading: string) => screen.getByRole('heading', { name: heading }).parentElement as HTMLElement
+
+it('shows the default view as window 1, a blank limit and Default for both (AC 18)', async () => {
+  api.settings.mockResolvedValue(defaults)
+  render(<ReservationSettingsPanel />)
+  expect((await limitInput()).value).toBe('')
+  expect((screen.getByLabelText('Pickup window (days)') as HTMLInputElement).value).toBe('1')
+  expect(screen.getAllByText('Default')).toHaveLength(2)
+})
+
+it('saves a typed limit of 14 and a blank limit as off', async () => {
+  api.settings.mockResolvedValue(defaults)
+  api.saveSettings.mockResolvedValueOnce({ ...defaults, waitingExpiryDays: 14, waitingExpiryChangedBy: 'Sample Librarian', waitingExpiryChangedAt: at })
+  render(<ReservationSettingsPanel />)
+  const input = await limitInput()
+  fireEvent.change(input, { target: { value: '14' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save waiting-list limit' }))
+  await screen.findByText(`Last changed by Sample Librarian on ${manilaDate(at)}`)
+  expect(api.saveSettings).toHaveBeenLastCalledWith({ waitingExpiryDays: '14' })
+  api.saveSettings.mockResolvedValueOnce({ ...defaults, waitingExpiryChangedBy: null, waitingExpiryChangedAt: at })
+  fireEvent.change(input, { target: { value: '' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save waiting-list limit' }))
+  await screen.findByText(`Last changed by a librarian on ${manilaDate(at)}`)
+  expect(api.saveSettings).toHaveBeenLastCalledWith({ waitingExpiryDays: '' })
+})
+
+it('shows a failed limit save only in the limit card and keeps the saved status', async () => {
+  const text = 'Leave blank to turn off, or enter a whole number of days from 7 to 90.'
+  api.settings.mockResolvedValue({ ...defaults, waitingExpiryDays: 14, waitingExpiryChangedBy: 'Sample Librarian', waitingExpiryChangedAt: at })
+  api.saveSettings.mockRejectedValue(new Error(text))
+  render(<ReservationSettingsPanel />)
+  const input = await limitInput()
+  fireEvent.change(input, { target: { value: '3' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save waiting-list limit' }))
+  const alert = await screen.findByRole('alert')
+  expect(alert.textContent).toBe(text)
+  expect(card('Waiting-list limit').contains(alert)).toBe(true)
+  expect(card('Pickup window').querySelector('[role="alert"]')).toBeNull()
+  expect(screen.getByText(`Last changed by Sample Librarian on ${manilaDate(at)}`)).toBeTruthy()
+  expect(input.value).toBe('3')
+})
+
+it('shows the load error when the settings cannot be read', async () => {
+  api.settings.mockRejectedValue(new Error('Reservation settings need the latest database update.'))
+  render(<ReservationSettingsPanel />)
+  expect((await screen.findByRole('alert')).textContent).toBe('Reservation settings need the latest database update.')
+})
