@@ -24,10 +24,10 @@ export function AdminReservationQueuePage() {
   const workspace=getCurrentIdentity()?.role==='Staff'?'/staff':'/librarian'
   const error=actionError||query.error?.message||''
   function filter(value:Partial<ReservationFilters>){setFilters(f=>({...f,...value}));setPage(1)}
-  async function update(r:ReservationQueueItem,status:ReservationStatus){setBusy(r.reservationId);setSuccess('');setError('');try{await reservationApi.adjustStatus(r.reservationId,status);setCancel(null);await load();setSuccess(status==='ready_for_pickup'?`${r.materialTitle} is ready. Its fixed 24-hour pickup timer has started.`:`${r.materialTitle} request cancelled.`)}catch(e){setError(e instanceof Error?e.message:'Request action failed.')}finally{setBusy(null)}}
+  async function update(r:ReservationQueueItem,status:ReservationStatus){setBusy(r.reservationId);setSuccess('');setError('');try{await reservationApi.adjustStatus(r.reservationId,status);setCancel(null);await load();setSuccess(status==='ready_for_pickup'?`${r.materialTitle} is ready. Its pickup timer has started.`:`${r.materialTitle} request cancelled.`)}catch(e){setError(e instanceof Error?e.message:'Request action failed.')}finally{setBusy(null)}}
   const done=(message:string)=>{setSwap(null);setMove(null);setSuccess(message);void load()}
   return <>
-    <PageHeader eyebrow="Circulation desk" title="Book queue" description="Pull the assigned copy from its shelf. Mark ready only after it is set aside at the desk; this starts the 24-hour pickup timer." action={<Button variant="secondary" onClick={()=>void load()}><RefreshCw size={16}/> Refresh</Button>}/>
+    <PageHeader eyebrow="Circulation desk" title="Book queue" description="Pull the assigned copy from its shelf. Mark ready only after it is set aside at the desk; this starts the pickup timer." action={<Button variant="secondary" onClick={()=>void load()}><RefreshCw size={16}/> Refresh</Button>}/>
     <p className="mb-5 text-sm opacity-75">{cart?'Carts for available books wait here until closing time, then cancel automatically. Confirm handover in Borrow & return.':'Only reservations for unavailable books appear here. Available-book carts are under Cart handovers.'} A request is a place in line, not a loan. Mark the assigned copy ready after setting it aside; confirm handover in Borrow & return when the borrower collects it.</p>
     {error?<p role="alert" className="auth-error mb-4 rounded-xl p-4">{error}</p>:null}
     {success?<p role="status" className="mb-4 rounded-xl bg-[#FFF200] p-4 font-semibold">{success}</p>:null}
