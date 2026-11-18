@@ -2,7 +2,7 @@
 
 ## November 18 application rollback
 
-The fines-and-borrowing-policies application merge d3e5fe3 is reverted at the owner's request. The borrowing-policy editor is archived again and the previous fine calculator is restored. Already-applied migrations 038 and 040 and their additive schema/data remain intact. Latest applied 040 / next unused 041 remains valid. No database rollback was executed. See [rollback record](plans/2026-11-18-undo-fines-merge.md).
+The fines-and-borrowing-policies application merge d3e5fe3 is reverted at the owner's request. The borrowing-policy editor is archived again and the previous fine calculator is restored. Already-applied migrations 038 and 040 and their additive schema/data remain intact. No database rollback was executed. See [rollback record](plans/2026-11-18-undo-fines-merge.md).
 
 ## Fines and borrowing policies integration — November 18, 2026
 
@@ -10,8 +10,7 @@ Read-only checks confirm applied migrations `038_fine_policy_maintenance.sql` an
 `040_library_hours_8am_5pm.sql` with exact source checksum matches. The fine-policy
 change reason and three CHECK constraints exist; RLS is enabled and browser roles
 have no table access. Open days run 08:00–17:00; Sunday remains closed. Latest
-applied migration is **040**, **039** remains reserved, **041** is pending review,
-and the next unused number is **042**.
+applied migration at the time of that integration was **040**.
 No database writes or migration replays occurred during this integration.
 
 Historical integration behavior (reverted on 2026-11-18): Borrowing policies and Fine rules were available only to the Librarian. New fine
@@ -53,7 +52,7 @@ See [implementation and remaining human acceptance](revision-oct17-remaining-imp
 The API runs on Supabase PostgreSQL only (`DATABASE_URL`, `pg`). MySQL was retired on 2026-11-10; see [mysql-removal-plan.md](mysql-removal-plan.md). History of the move: [supabase-migration-plan.md](supabase-migration-plan.md).
 
 - When `DATABASE_URL` (postgresql://…) is set, the runtime uses `pg` against drafts under [database/supabase/](../database/supabase/).
-- The current migration tracker is maintained in `.cursor/agent-protocol.md`: latest applied 040, next unused 041, with 039 reserved. Earlier engine notes below are historical.
+- The current migration tracker is maintained in `.cursor/agent-protocol.md`. Latest applied is 041 and next unused is 042, with 039 reserved.
 - Additive MAIN product tables for Postgres land in `database/supabase/005_main_product_gapfill.sql` (033–040).
 - Applied Supabase Phase 2 files `012`–`014` add `book_quotations`, lost-report charge resolution, `library_job_runs`, `invoice_setup`, and `customer_invoices`. Since 2026-11-11 the scheduled jobs use `scheduled_job_state` and `scheduled_job_runs` from `019` (one row per job, created on first claim; leases, cursor, 30-day history); `library_job_runs` is no longer read or written. Existing payment rows now have `document_label='Legacy Receipt'`; future rows default to `Payment Record`.
 - Branding 033 changes the default public library name and updates the former stock name. It preserves customized names.
@@ -446,11 +445,11 @@ Applied Postgres migration `031_semester_enrollment.sql` supersedes draft 028. E
 - `enrollment_signup_challenges` binds hashed codes and one-time password setup grants to the effective roster row. A returning student's login challenge is bound to the active semester via `login_otp_challenges.restoration_semester_id`. New enrollment tables use RLS and are accessible through the private API.
 - Enforcement requires Postgres and `ENROLLMENT_ROSTER_ENABLED=true`. The first semester start switches Student registration and new borrowing to the roster. The server enforces the cutoff even if a job is delayed. The existing job runner or a subsequent enrollment overview saves scheduled closure.
 
-### Late student enrollment — migration pending review (2026-11-18)
+### Late student enrollment — migration applied (2026-11-18)
 
 - `041_late_student_enrollment.sql` adds `enrollment_roster_imports.source_kind`. Existing imports and ordinary uploads use `RosterUpload`. `LateEnrollmentForm` and `LateEnrollmentFile` must have `complete=false`. The existing private roster tables keep their privileges and row-level security.
 - Late enrollment writes the reviewed batch, new roster rows and matching active Student memberships using 031's existing lifecycle lock and tables. Regular complete uploads remain authoritative and require confirming which late students they would omit. A late confirmation date does not change date ordering for ordinary uploads.
-- Apply 041 before deploying the updated enrollment service. Latest recorded applied is 040 and the next unused number is 042. See [late enrollment plan](plans/2026-11-18-late-student-enrollment.md).
+- Migration 041 was applied on 2026-11-18. A read-only check matched its ledger checksum to the source, verified the column default and validated constraint, and confirmed RLS and revoked browser-role access across all six enrollment tables. The next unused number is 042. See [late enrollment plan](plans/2026-11-18-late-student-enrollment.md).
 
 ### Account setup without a review queue — local implementation
 

@@ -1,5 +1,14 @@
 # Title
 
+## November 18 late student enrollment migration
+
+Applied `041_late_student_enrollment.sql` individually with Ethan's approval.
+The production ledger checksum matches the source. Verified that existing and
+ordinary roster imports use the `RosterUpload` default, late enrollment imports
+are partial only, and all six enrollment tables retain row-level security with
+access revoked from `PUBLIC`, `anon` and `authenticated`.
+Latest applied **041**, reserved **039**, next unused **042**.
+
 ## November 18 fines and operating-hours integration
 
 Read-only verification found `038_fine_policy_maintenance.sql` and
@@ -7,10 +16,6 @@ Read-only verification found `038_fine_policy_maintenance.sql` and
 Fine-policy constraints, RLS, denied browser-role access, and 08:00–17:00 open-day
 hours match the feature branch. Migration files, including 038 line endings, were
 preserved exactly. No database changes were performed during this merge.
-Latest applied **040**, reserved **039**, pending **041**, next unused **042**.
-Migration `041_late_student_enrollment.sql` adds private provenance to roster imports
-and is prepared for review. Apply it before deploying the late enrollment API.
-This record supersedes older numbering in the historical sections below.
 
 **MySQL → Supabase (PostgreSQL) conversion for STI Ormoc Smart Library**
 

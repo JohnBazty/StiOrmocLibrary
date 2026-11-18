@@ -84,8 +84,11 @@ Roster enrollment, account access and library clearance remain separate decision
 
 ## Verification evidence
 
-- API suite passed 518 tests and web suite passed 388 tests in 91 files. Coverage completed successfully. Tests used ENROLLMENT_ROSTER_ENABLED=false for older enrollment-independent fixtures. Feature integration enabled enrollment explicitly.
+- After rebasing onto current GitHub main, the API suite passed 497 tests and web suite passed 378 tests in 89 files. Coverage completed successfully. Tests used ENROLLMENT_ROSTER_ENABLED=false for older enrollment-independent fixtures. Feature integration enabled enrollment explicitly.
 - Type checks and production build passed. Vite retains its large-chunk advisory.
 - The extended semester verification script passed against local in-memory PGlite with synthetic records and a captured email sender. It covered both input modes, CSV and Excel, conflicts, stale review, replay, replacement confirmation, account activation/restoration, cutoff, manual closure and archive history. Overlapping calls were serialized by PGlite. Native multi-connection lock contention remains unverified.
 - The local browser rendered the active semester and late enrollment form using synthetic API responses. Full hosted authenticated interaction and narrow-screen/dark-theme visual checks remain pending.
 - Combined security, correctness, React and database source review found no remaining actionable defects. The unavailable wiki vault prevented the session memory transaction.
+
+- **2026-11-18** — Owner approved publication and migration 041. Rebased feature onto current origin/main, applied 041 and verified its checksum and access restrictions. Hosting a separate review URL while the production dashboard baseline decision remains open.
+

@@ -46,4 +46,3 @@ it('keeps the selected file after a review failure and invalidates review after 
   fireEvent.change(screen.getByLabelText('Registrar confirmation date'), {target: {value: '2026-11-17'}})
   expect(screen.queryByRole('button', {name: 'Add to semester roster'})).toBeNull()
 })
-

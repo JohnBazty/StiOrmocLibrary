@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-11-18 (Postgres 041 added for review, latest applied 040, 039 reserved, next unused 042) |
+| **Date last updated** | 2026-11-18 (Postgres 041 applied and verified, 039 reserved, next unused 042) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---
@@ -100,8 +100,8 @@ Always know and document:
 | Item | Value |
 | --- | --- |
 | Migrations directory | `database/supabase/` (Postgres only; MySQL was retired 2026-11-10) |
-| Latest applied migration | `040_library_hours_8am_5pm.sql` (2026-11-18); `038_fine_policy_maintenance.sql` also applied. Both ledger checksums and current schema verified read-only during integration. Earlier applied migrations include `037` and `034`; pending/reserved files remain tracked below. |
-| Latest file pending review | `041_late_student_enrollment.sql`. `033_rename_system_brand.sql` remains pending and `035` is reserved by PR #20 (circulation RLS). |
+| Latest applied migration | `041_late_student_enrollment.sql` (2026-11-18). Its ledger checksum, source-kind constraint and private table access were verified read-only. `040_library_hours_8am_5pm.sql` and `038_fine_policy_maintenance.sql` remain applied. |
+| Latest file pending review | `033_rename_system_brand.sql`. `035` is reserved by PR #20 for circulation RLS. |
 | **Next available number** | **`042`** (`039` reserved for the mobile refresh token, PR #39) |
 
 Applied enrollment 031 supersedes the removed 028 draft. Keep applied filenames and source bytes, including line endings. The 003 source still needs checksum reconciliation. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set.
@@ -157,4 +157,4 @@ Prefer simple, readable scripts under a clear folder (for example `tools/` or `s
 | 2026-10-09 | Configurable borrowing policies: MySQL `046` / Supabase `016`; tracker advanced to MySQL next `047` and Supabase next `017`. |
 | 2026-11-10 | Start session now reads the Obsidian wiki first and scans only what it does not cover; added the `start-session` skill. Migration numbers unchanged. |
 | 2026-11-10 | MySQL retired (`docs/mysql-removal-plan.md`): tracker is Supabase only, `016` / next `017`; MySQL rows and the `mysql_to_pg.py` step removed. |
-| 2026-11-18 | Added `041_late_student_enrollment.sql` for review. Latest applied remains `040` and next available is `042`. |
+| 2026-11-18 | Applied and verified `041_late_student_enrollment.sql` with Ethan's approval. Next available is `042`. |
