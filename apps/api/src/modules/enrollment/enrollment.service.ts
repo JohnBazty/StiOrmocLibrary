@@ -122,8 +122,10 @@ export function createEnrollmentService(database: Pool = db, enabled = enrollmen
         return rows
       })
     },
-    async qrRoster(actor: number, semesterId: unknown, pageValue: unknown, query: unknown) {
+    async qrRoster(actor: number, semesterId: unknown, pageValue: unknown, query: unknown, accountStatus: unknown = '') {
       return run(actor,false,async q => {
+        const filter = text(accountStatus)
+        if (!['', 'Active', 'Not registered'].includes(filter)) throw fail('Choose a valid account filter.')
         const term = await semester(q,semesterId)
         const page = pageValue === undefined ? 1 : id(pageValue)
         const [rows] = await q.execute<RowDataPacket[]>(`SELECT r.school_id,r.student_name,r.program,r.year_level,
@@ -133,7 +135,9 @@ export function createEnrollmentService(database: Pool = db, enabled = enrollmen
           LEFT JOIN users u ON u.user_id=a.user_id
           LEFT JOIN attendance_qr_credentials c ON c.user_id=u.user_id
           WHERE STRPOS(LOWER(CONCAT_WS(' ',r.school_id,r.student_name)),LOWER(?))>0
-          ORDER BY r.school_id LIMIT 25 OFFSET ?`, [term.semester_id,text(query).slice(0,100),(page-1)*24])
+            AND (?='' OR (?='Active' AND a.account_status='Active' AND u.account_status='Active')
+              OR (?='Not registered' AND a.account_id IS NULL))
+          ORDER BY r.school_id LIMIT 25 OFFSET ?`, [term.semester_id,text(query).slice(0,100),filter,filter,filter,(page-1)*24])
         const ended = Boolean(term.ended_at) || Boolean(term.started_at && new Date(term.scheduled_end_at) <= new Date())
         const cards = await Promise.all(rows.slice(0,24).map(async row => {
           const active = !ended && row.account_status === 'Active' && row.user_status === 'Active'

@@ -16,7 +16,9 @@ it('shows roster students with their QR or a clear registration message', async 
   expect(await screen.findByRole('img', { name: 'Library QR for Example Student' })).toBeTruthy()
   expect(screen.getByText('Registration needed')).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'Next' }))
-  expect(enrollmentApi.qrRoster).toHaveBeenLastCalledWith(1, 2, '', expect.any(AbortSignal))
+  expect(enrollmentApi.qrRoster).toHaveBeenLastCalledWith(1, 2, '', expect.any(AbortSignal), '')
+  fireEvent.change(screen.getByRole('combobox', { name: 'Account status' }), { target: { value: 'Not registered' } })
+  expect(enrollmentApi.qrRoster).toHaveBeenLastCalledWith(1, 1, '', expect.any(AbortSignal), 'Not registered')
 })
 
 it('shows load errors with a retry action', async () => {

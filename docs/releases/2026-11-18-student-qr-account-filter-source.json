@@ -1,0 +1,16 @@
+{
+  "date": "2026-11-18",
+  "branch": "feat/student-qr-roster",
+  "baseDeployment": "dpl_AkcpJEwcJw5Pzvn8s9GZFxwW6VK5",
+  "deployment": "dpl_6NyND5LXsvhWH3V9LxGK87fyoW5o",
+  "url": "https://sti-ormoc-smart-library.vercel.app",
+  "change": "Account status filter: All students, Active accounts, Not registered. Applied server-side before pagination.",
+  "tests": "Not run per owner instruction; Vercel deployment build succeeded.",
+  "order": "Hosted before Git push.",
+  "files": {
+    "apps/api/src/modules/enrollment/enrollment.service.ts": "53d02b9ce192c3ce5b7a5ef1bdaebe42c7b798417552828538716ef9abe95ddc",
+    "apps/api/src/modules/enrollment/enrollment.routes.ts": "bd1a2284a6f8e043190ce93589d4bfdfcfa1123b32a449ec818ab12aab2bc95a",
+    "apps/web/src/features/users/enrollment-api.ts": "50cfae6c4d874bb8e9d1770c5183488c4b41155064d795bf0dd08be96cd7799b",
+    "apps/web/src/features/users/StudentQrRosterPage.tsx": "734959fe7b39e059ff572e2f19440be1984cd7b83f428fd46dfeef686c29c085"
+  }
+}

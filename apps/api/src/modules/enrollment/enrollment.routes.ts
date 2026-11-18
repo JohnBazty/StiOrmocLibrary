@@ -16,7 +16,7 @@ export function createEnrollmentRouter(service=enrollmentService) {
   }
   router.get('/',run((_req,actor)=>service.overview(actor)))
   router.get('/qr-semesters',run((_req,actor)=>service.qrSemesters(actor)))
-  router.get('/semesters/:id/qr-roster',run((req,actor)=>service.qrRoster(actor,req.params.id,req.query.page,req.query.q)))
+  router.get('/semesters/:id/qr-roster',run((req,actor)=>service.qrRoster(actor,req.params.id,req.query.page,req.query.q,req.query.account_status)))
   router.post('/semesters',run((req,actor)=>service.saveSemester(actor,req.body)))
   router.post('/semesters/:id/start',run((req,actor)=>service.start(actor,req.params.id)))
   router.post('/semesters/:id/end',run((req,actor)=>service.end(actor,req.params.id)))

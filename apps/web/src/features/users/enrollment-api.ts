@@ -33,7 +33,7 @@ async function request<T>(path:string, body?:unknown, signal?:AbortSignal) {
 }
 export const enrollmentApi={
   qrSemesters:(signal?:AbortSignal)=>request<Pick<Semester,'semester_id'|'academic_year'|'term_name'|'status'>[]>('/qr-semesters',undefined,signal),
-  qrRoster:(id:number,page:number,q:string,signal?:AbortSignal)=>request<{rows:StudentQrCard[];more:boolean}>(`/semesters/${id}/qr-roster?${new URLSearchParams({page:String(page),q})}`,undefined,signal),
+  qrRoster:(id:number,page:number,q:string,signal?:AbortSignal,accountStatus='' )=>request<{rows:StudentQrCard[];more:boolean}>(`/semesters/${id}/qr-roster?${new URLSearchParams({page:String(page),q,account_status:accountStatus})}`,undefined,signal),
   overview:(signal?:AbortSignal)=>request<Semester[]>('',undefined,signal),
   save:(body:unknown)=>request<{semesterId:number}>('/semesters',body),
   start:(id:number)=>request(`/semesters/${id}/start`,{}),

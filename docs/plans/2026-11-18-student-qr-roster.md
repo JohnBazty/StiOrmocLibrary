@@ -66,3 +66,11 @@ Owner supplied a reference personal library pass and requested the same appearan
 Owner explicitly requested hosting before pushing and no further tests. One regression test had already been started before that instruction and failed against the earlier 256px roster output. No tests were run after the design implementation. Vercel's deployment build remains required to host the code. Production deployment status will be recorded after hosting, before the Git push.
 
 Shared design deployed as `dpl_AkcpJEwcJw5Pzvn8s9GZFxwW6VK5` and promoted to the public alias before committing/pushing the design change. Vercel deployment build completed successfully. No post-implementation tests were run, per owner request. Provenance is recorded in `docs/releases/2026-11-18-shared-student-qr-design-source.json`.
+
+## Account filter — 2026-11-18
+
+Owner requested QR roster filters for active accounts and unregistered students, followed by hosting and pushing. Added Account status options All students, Active accounts, and Not registered. Selection reloads results immediately and returns to page 1. The server validates the filter and applies it before pagination. Active accounts requires both account and linked user to be Active; Not registered requires no matching Student account. Search and semester selection remain available together with this filter. No schema changes or live roster writes are needed.
+
+No further tests are run under the owner's continuing no-test instruction. Deployment requires Vercel's normal build. The regression test was updated to describe the new request and page reset but was not executed. Hosting precedes the Git push.
+
+Account filter hosted as `dpl_6NyND5LXsvhWH3V9LxGK87fyoW5o` after a successful Vercel build and promoted before Git push. Source hashes are recorded in `docs/releases/2026-11-18-student-qr-account-filter-source.json`. No tests were run or live roster records changed.
