@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { Button, SectionCard } from '../../components/ui'
 import { catalogInput } from '../catalog/CatalogDetailsPanel'
 import { reservationApi, type ReservationSettingsView } from './reservation-api'
@@ -11,19 +11,25 @@ function lastChanged(by: string | null, at: string | null) {
 
 function SettingCard({ title, action, label, help, min, max, initial, status, onSave }: { title: string; action: string; label: string; help: string; min: number; max: number; initial: string; status: string; onSave: (value: string) => Promise<void> }) {
   const [value, setValue] = useState(initial), [busy, setBusy] = useState(false), [error, setError] = useState('')
+  const id = useId(), helpId = `${id}-help`, errorId = `${id}-error`
   async function save() { setBusy(true); setError(''); try { await onSave(value) } catch (e) { setError(message(e)) } finally { setBusy(false) } }
   return <SectionCard className="space-y-3 p-4">
     <h2 className="text-lg font-bold">{title}</h2>
-    <label className="block">{label}<input type="number" min={min} max={max} step={1} className={catalogInput} value={value} onChange={e => setValue(e.target.value)} /></label>
-    <p className="text-sm">{help}</p>
-    {error && <p role="alert" className="rounded-xl bg-[#b42318] p-3 text-white">{error}</p>}
-    <div className="flex flex-wrap items-center gap-3"><Button disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : action}</Button><span className="text-sm">{status}</span></div>
+    <label className="block">{label}<input type="number" min={min} max={max} step={1} className={catalogInput} value={value} onChange={e => setValue(e.target.value)}
+      aria-invalid={error ? true : undefined} aria-describedby={error ? `${helpId} ${errorId}` : helpId} /></label>
+    <p id={helpId} className="text-sm">{help}</p>
+    {error && <p id={errorId} role="alert" className="rounded-xl bg-[#b42318] p-3 text-white">{error}</p>}
+    <div className="flex flex-wrap items-center gap-3"><Button disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : action}</Button><span role="status" className="text-sm">{status}</span></div>
   </SectionCard>
 }
 
 export function ReservationSettingsPanel() {
   const [view, setView] = useState<ReservationSettingsView | null>(null), [error, setError] = useState('')
-  useEffect(() => { reservationApi.settings().then(setView).catch(e => setError(message(e))) }, [])
+  useEffect(() => {
+    let live = true
+    reservationApi.settings().then(v => { if (live) setView(v) }).catch(e => { if (live) setError(message(e)) })
+    return () => { live = false }
+  }, [])
   if (error) return <p role="alert" className="rounded-xl bg-[#b42318] p-3 text-white">{error}</p>
   if (!view) return <p>Loading reservation settings…</p>
   return <div className="grid gap-4 lg:grid-cols-2">

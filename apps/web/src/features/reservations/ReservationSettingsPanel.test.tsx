@@ -80,3 +80,18 @@ it('shows the load error when the settings cannot be read', async () => {
   render(<ReservationSettingsPanel />)
   expect((await screen.findByRole('alert')).textContent).toBe('Reservation settings need the latest database update.')
 })
+
+const description = (el: HTMLElement) => (el.getAttribute('aria-describedby') ?? '').split(' ').map(id => document.getElementById(id)?.textContent ?? '').join(' ')
+it('ties the help text and a save error to the input and announces the last-changed line', async () => {
+  api.settings.mockResolvedValue(defaults)
+  api.saveSettings.mockRejectedValue(new Error('Pickup window must be a whole number from 1 to 7 days.'))
+  render(<ReservationSettingsPanel />)
+  const input = await screen.findByLabelText('Pickup window (days)')
+  expect(description(input)).toMatch(/How long a book marked ready is held/)
+  expect(input.getAttribute('aria-invalid')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Save pickup window' }))
+  await screen.findByText('Pickup window must be a whole number from 1 to 7 days.')
+  expect(input.getAttribute('aria-invalid')).toBe('true')
+  expect(description(input)).toMatch(/whole number from 1 to 7 days/)
+  expect(screen.getAllByRole('status').some(s => s.textContent === 'Default')).toBe(true)
+})

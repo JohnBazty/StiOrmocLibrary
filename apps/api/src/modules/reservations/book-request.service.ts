@@ -103,7 +103,7 @@ export async function releaseBookRequest(q: PoolConnection,r:RowDataPacket,statu
   if(!['pending','approved','ready_for_pickup'].includes(String(r.reservation_status))) return false
   // Keep the assignment and fixed deadline as history; terminal states no longer own the copy.
   await q.execute('UPDATE reservations SET reservation_status=?,last_skip_reason=NULL,last_skipped_at=NULL,updated_at=NOW() WHERE reservation_id=?',[status,r.reservation_id])
-  await cancelPendingCounterClaim(q,Number(r.reservation_id),actor,status==='expired'?(r.request_kind==='CartHandover'?'Cart handover expired at closing.':'Pickup deadline expired.'):'Book request cancelled.')
+  await cancelPendingCounterClaim(q,Number(r.reservation_id),actor,status==='expired'?(r.request_kind==='CartHandover'?'Cart handover expired at closing.':r.assigned_physical_copy_id?'Pickup deadline expired.':'Waiting-list limit passed.'):'Book request cancelled.')
   if(r.assigned_physical_copy_id) {
     await q.execute(`UPDATE physical_copies SET availability_status=CASE WHEN lifecycle_status='Active' AND condition_status NOT IN ('Lost','Damaged','For Repair') THEN 'Available' ELSE 'Unavailable' END,
       row_version=row_version+1,updated_at=NOW() WHERE physical_copy_id=? AND availability_status='Reserved'`,[r.assigned_physical_copy_id])
@@ -153,6 +153,9 @@ async function expireWaiting(q: PoolConnection,now:Date,limit:number) {
   if(!cutoff) return 0
   const [rows]=await q.execute<RowDataPacket[]>(`SELECT * FROM reservations WHERE request_kind='Reservation' AND reservation_status IN ('pending','approved')
     AND assigned_physical_copy_id IS NULL AND reserved_at<=(?::timestamptz AT TIME ZONE 'Asia/Manila')
+    -- A copy freed since the last allocation run goes to this queue first; advanceWaiting assigns it.
+    AND NOT EXISTS (SELECT 1 FROM physical_copies pc WHERE pc.title_id=reservations.book_title_id AND pc.lifecycle_status='Active'
+      AND pc.availability_status='Available' AND pc.condition_status NOT IN ('Lost','Damaged','For Repair'))
     ORDER BY reserved_at,reservation_id LIMIT ? FOR UPDATE`,[cutoff,limit])
   let expired=0
   for(const candidate of rows) {

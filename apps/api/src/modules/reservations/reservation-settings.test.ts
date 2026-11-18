@@ -21,20 +21,23 @@ async function createDatabase({ apply = true } = {}) {
   await pg.exec(`CREATE ROLE anon; CREATE ROLE authenticated;
     CREATE TABLE accounts (account_id BIGINT PRIMARY KEY, user_id BIGINT, school_id TEXT, role TEXT, account_status TEXT);
     CREATE TABLE users (user_id BIGINT PRIMARY KEY, full_name TEXT, account_status TEXT);
+    CREATE TABLE library_profile_settings (settings_id INT PRIMARY KEY); INSERT INTO library_profile_settings VALUES (1);
     CREATE TABLE reservations (reservation_id BIGSERIAL PRIMARY KEY, request_kind TEXT, reservation_status TEXT,
       assigned_physical_copy_id BIGINT, reserved_at TIMESTAMP, pickup_deadline TIMESTAMP);
     INSERT INTO users VALUES (101, 'Lia Librarian', 'Active'), (102, 'Sam Staff', 'Active'), (103, 'Bea Librarian', 'Active');
     INSERT INTO accounts VALUES (11, 101, 'LIB-001', 'Librarian', 'Active'), (12, 102, 'STF-001', 'Staff', 'Active'),
       (13, 103, 'LIB-002', 'Librarian', 'Active');`)
   if (apply) await pg.exec(migration043)
+  const sqls: string[] = []
   const execute = async (sql: string, values: unknown[] = []) => {
+    sqls.push(sql)
     const result = await pg.query(toPgPlaceholders(sql), values)
     const write = /^\s*(INSERT|UPDATE|DELETE)/i.test(sql)
     return write ? [{ affectedRows: result.affectedRows ?? 0, rows: result.rows }, result] : [result.rows, result]
   }
   const connection = { execute, query: execute, beginTransaction: () => pg.exec('BEGIN'), commit: () => pg.exec('COMMIT'), rollback: () => pg.exec('ROLLBACK'), release() {} }
   const pool = { execute, query: execute, getConnection: async () => connection } as unknown as Pool
-  return { pg, pool }
+  return { pg, pool, sqls }
 }
 
 type Service = ReturnType<typeof createReservationSettingsService>
@@ -259,4 +262,14 @@ test('only Librarians reach the settings API; other roles get 403 and signed-out
 test('dayCount reads 1 day and N days', () => {
   assert.equal(dayCount(1), '1 day')
   assert.equal(dayCount(3), '3 days')
+})
+
+test('a save takes the circulation lock before writing, so it cannot race the expiry job', async () => {
+  const { pg, pool, sqls } = await createDatabase()
+  const app = routeApp(createReservationSettingsService(pool, () => T0), LIBRARIAN, 'Librarian')
+  assert.equal((await request(app).put('/settings').send({ waitingExpiryDays: 14 })).status, 200)
+  const lockAt = sqls.findIndex((sql) => /FROM library_profile_settings WHERE settings_id=1 FOR UPDATE/.test(sql))
+  const writeAt = sqls.findIndex((sql) => /INSERT INTO reservation_settings/.test(sql))
+  assert.ok(lockAt >= 0 && lockAt < writeAt, `lock at ${lockAt}, write at ${writeAt}`)
+  await pg.close()
 })

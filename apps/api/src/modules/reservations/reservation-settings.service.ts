@@ -111,6 +111,8 @@ export function createReservationSettingsService(database: Pool = db, clock = ()
     try {
       await q.beginTransaction()
       await requireLibraryActor(q, actorAccountId, 'library.manage')
+      // Same circulation lock as book-request.service.ts lock(): the expiry job reads these settings under it, so a save waits for a running job.
+      await q.execute('SELECT settings_id FROM library_profile_settings WHERE settings_id=1 FOR UPDATE')
       if (!await tablePresent(q)) throw new HttpError(503, 'RESERVATION_SETTINGS_UNAVAILABLE', 'Reservation settings need the latest database update. Ask the system administrator to apply it.')
       const now = clock()
       if (update.pickupWindowDays !== undefined) {

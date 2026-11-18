@@ -153,3 +153,17 @@ test('an expired ready hold still gets the pickup-deadline text and the libraria
   assert.match(String(student.params[2]), /The pickup deadline passed/)
   assert.ok(JSON.stringify(calls.map((c) => c.params)).includes('reservation:701:expired'), 'librarian alert sent')
 })
+
+// ---- Review fixes (2026-11-19)
+test('a waiting request whose title has a free, unallocated copy is left for allocation, not expired', async () => {
+  const { database, calls } = expiryPool({ settings: { days: 7, savedAt: T }, candidates: [waitingRow(811, 1)] })
+  await createBookRequestService(database).expire(plus(T, 7 * DAY))
+  const select = calls.find((c) => isWaitingSelect(c.sql))!
+  assert.match(select.sql, /NOT EXISTS\s*\(SELECT 1 FROM physical_copies pc WHERE pc\.title_id=reservations\.book_title_id[^)]*availability_status='Available'/)
+})
+test('a waiting-list expiry cancels a pending counter claim with the waiting-list reason, not the pickup one', async () => {
+  const { database, calls } = expiryPool({ settings: { days: 7, savedAt: T }, candidates: [waitingRow(812, 1)] })
+  await createBookRequestService(database).expire(plus(T, 7 * DAY))
+  const cancel = calls.find((c) => c.sql.includes('UPDATE borrow_transactions'))!
+  assert.equal(cancel.params[1], 'Waiting-list limit passed.')
+})

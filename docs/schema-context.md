@@ -10,7 +10,7 @@ Read-only checks confirm applied migrations `038_fine_policy_maintenance.sql` an
 `040_library_hours_8am_5pm.sql` with exact source checksum matches. The fine-policy
 change reason and three CHECK constraints exist; RLS is enabled and browser roles
 have no table access. Open days run 08:00–17:00; Sunday remains closed. Latest
-applied migration is **040**, **039** remains reserved, **041** and **042** are written but not applied, next unused is **043**.
+applied migration is **040**, **039** remains reserved, **041**, **042** and **043** are written but not applied, next unused is **044**.
 No database writes or migration replays occurred during this integration.
 
 Historical integration behavior (reverted on 2026-11-18): Borrowing policies and Fine rules were available only to the Librarian. New fine
@@ -52,7 +52,7 @@ See [implementation and remaining human acceptance](revision-oct17-remaining-imp
 The API runs on Supabase PostgreSQL only (`DATABASE_URL`, `pg`). MySQL was retired on 2026-11-10; see [mysql-removal-plan.md](mysql-removal-plan.md). History of the move: [supabase-migration-plan.md](supabase-migration-plan.md).
 
 - When `DATABASE_URL` (postgresql://…) is set, the runtime uses `pg` against drafts under [database/supabase/](../database/supabase/).
-- The current migration tracker is maintained in `.cursor/agent-protocol.md`: latest applied 040, 041 and 042 written (not applied), next unused 043, with 039 reserved. Earlier engine notes below are historical.
+- The current migration tracker is maintained in `.cursor/agent-protocol.md`: latest applied 040, 041, 042 and 043 written (not applied), next unused 044, with 039 reserved. Earlier engine notes below are historical.
 - Additive MAIN product tables for Postgres land in `database/supabase/005_main_product_gapfill.sql` (033–040).
 - Applied Supabase Phase 2 files `012`–`014` add `book_quotations`, lost-report charge resolution, `library_job_runs`, `invoice_setup`, and `customer_invoices`. Since 2026-11-11 the scheduled jobs use `scheduled_job_state` and `scheduled_job_runs` from `019` (one row per job, created on first claim; leases, cursor, 30-day history); `library_job_runs` is no longer read or written. Existing payment rows now have `document_label='Legacy Receipt'`; future rows default to `Payment Record`.
 - Branding 033 changes the default public library name and updates the former stock name. It preserves customized names.
