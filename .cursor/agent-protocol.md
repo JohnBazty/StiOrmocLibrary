@@ -6,7 +6,7 @@ It is stored under `.cursor/` so it is versioned and visible when the project is
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-11-11 (Supabase `032`, `034` and `036` applied, `033` pending, `035` reserved by PR #20, next unused `038`; `037` applied 2026-11-13) |
+| **Date last updated** | 2026-11-18 (Postgres 040 and 038 verified applied; 039 reserved; next unused 041) |
 | **Maintained for** | All assigned AI agents and human developers |
 
 ---
@@ -100,9 +100,9 @@ Always know and document:
 | Item | Value |
 | --- | --- |
 | Migrations directory | `database/supabase/` (Postgres only; MySQL was retired 2026-11-10) |
-| Latest applied migration | `037_book_register.sql` (2026-11-13, from feat/book-register; also applied: `034_job_runner_hardening.sql`, 2026-11-11; `036` lives on PR #19's branch) |
+| Latest applied migration | `040_library_hours_8am_5pm.sql` (2026-11-18); `038_fine_policy_maintenance.sql` also applied. Both ledger checksums and current schema verified read-only during integration. Earlier applied migrations include `037` and `034`; pending/reserved files remain tracked below. |
 | Latest file pending review | `033_rename_system_brand.sql`; `035` reserved by PR #20 (circulation RLS), not applied |
-| **Next available number** | **`038`** |
+| **Next available number** | **`041`** (`040_library_hours_8am_5pm.sql` applied 2026-11-18; `038_fine_policy_maintenance.sql` applied 2026-11-18 from `feat/fines-maintenance`; `039` reserved for the mobile refresh token, PR #39) |
 
 Applied enrollment 031 supersedes the removed 028 draft. Keep applied filenames and source bytes, including line endings. The 003 source still needs checksum reconciliation. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set.
 

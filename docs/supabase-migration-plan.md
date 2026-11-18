@@ -1,5 +1,15 @@
 # Title
 
+## November 18 fines and operating-hours integration
+
+Read-only verification found `038_fine_policy_maintenance.sql` and
+`040_library_hours_8am_5pm.sql` applied with matching source-byte checksums.
+Fine-policy constraints, RLS, denied browser-role access, and 08:00–17:00 open-day
+hours match the feature branch. Migration files, including 038 line endings, were
+preserved exactly. No database changes were performed during this merge.
+Latest applied **040**, reserved **039**, next unused **041**. This current record
+supersedes older numbering in the historical sections below.
+
 **MySQL → Supabase (PostgreSQL) conversion for STI Ormoc Smart Library**
 
 ## November 10 browser sign-in migration

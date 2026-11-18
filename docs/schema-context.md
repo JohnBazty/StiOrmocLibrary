@@ -1,5 +1,19 @@
 # Database Schema Context
 
+## Fines and borrowing policies integration — November 18, 2026
+
+Read-only checks confirm applied migrations `038_fine_policy_maintenance.sql` and
+`040_library_hours_8am_5pm.sql` with exact source checksum matches. The fine-policy
+change reason and three CHECK constraints exist; RLS is enabled and browser roles
+have no table access. Open days run 08:00–17:00; Sunday remains closed. Latest
+applied migration is **040**, **039** remains reserved, next unused is **041**.
+No database writes or migration replays occurred during this integration.
+
+Borrowing policies and Fine rules are available only to the Librarian. New fine
+rules retain history and apply according to each loan's due instant. Due-date
+hourly charging stops at closing and is bounded by the daily rate; later closed
+days retain the accrued due-date amount. See [integration evidence](plans/2026-11-18-fines-branch-integration.md).
+
 ## Maintenance schema integrated on November 18, 2026
 
 Applied additive Postgres **030_october17_maintenance.sql** on October 22.
@@ -34,7 +48,7 @@ See [implementation and remaining human acceptance](revision-oct17-remaining-imp
 The API runs on Supabase PostgreSQL only (`DATABASE_URL`, `pg`). MySQL was retired on 2026-11-10; see [mysql-removal-plan.md](mysql-removal-plan.md). History of the move: [supabase-migration-plan.md](supabase-migration-plan.md).
 
 - When `DATABASE_URL` (postgresql://…) is set, the runtime uses `pg` against drafts under [database/supabase/](../database/supabase/).
-- Device sign-in migration 032 is the latest applied Postgres file. Branding 033 and job runner hardening 034 are pending review. The next unused number is 035.
+- The current migration tracker is maintained in `.cursor/agent-protocol.md`: latest applied 040, next unused 041, with 039 reserved. Earlier engine notes below are historical.
 - Additive MAIN product tables for Postgres land in `database/supabase/005_main_product_gapfill.sql` (033–040).
 - Applied Supabase Phase 2 files `012`–`014` add `book_quotations`, lost-report charge resolution, `library_job_runs`, `invoice_setup`, and `customer_invoices`. Since 2026-11-11 the scheduled jobs use `scheduled_job_state` and `scheduled_job_runs` from `019` (one row per job, created on first claim; leases, cursor, 30-day history); `library_job_runs` is no longer read or written. Existing payment rows now have `document_label='Legacy Receipt'`; future rows default to `Payment Record`.
 - Branding 033 changes the default public library name and updates the former stock name. It preserves customized names.
@@ -337,7 +351,7 @@ The application service calculates the fine and writes the audit inputs. The dat
 
 Migration `20260902_031_cash_fines_and_receipts.sql` implements the current cash-only fines scope:
 
-- `fine_policy_versions` versions hourly, daily, and maximum-penalty policy values.
+- `fine_policy_versions` versions hourly, daily, and maximum-penalty policy values. Supabase `038_fine_policy_maintenance.sql` (applied 2026-11-18) adds `change_reason` and value checks; Librarians publish new versions from the Fine rules page (`/api/v1/admin/fine-policies`), and each overdue fine uses the version in force on its loan's due date.
 - `fine_infractions` documents non-circulation incidents and the staff member who issued them.
 - `fine_payment_receipts` is an immutable cash receipt header with a unique receipt number, idempotency key, receiving staff member, and reversible audit state.
 - `fine_payment_allocations` applies one receipt to fine or lost-book balances and snapshots each before/after balance. Fine payments may be partial; lost-book replacement charges require full payment.

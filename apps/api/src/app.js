@@ -32,6 +32,7 @@ import { adminPrintingV1Router, userPrintingV1Router } from './modules/printing/
 import { adminClearanceV1Router, userClearanceV1Router } from './modules/clearance/clearance.routes.ts'
 import { adminAnnouncementsV1Router, userNotificationsV1Router } from './modules/notifications/notifications.routes.ts'
 import { adminFinesV1Router, userFinesV1Router } from './modules/fines/fines.routes.ts'
+import { finePolicyRouter } from './modules/fines/fine-policy.routes.ts'
 import { adminDashboardV1Router, userDashboardV1Router } from './modules/dashboard/dashboard.routes.ts'
 import { liveReportsRouter, workspaceTasksRouter } from './modules/reports/live-reports.routes.ts'
 import { maintenanceRouter } from './modules/inventory/maintenance.routes.ts'
@@ -44,7 +45,7 @@ import { usersRepository } from './modules/users/users.repository.ts'
 import { clearanceService } from './modules/clearance/clearance.service.ts'
 import { profileAvatarRouter } from './modules/users/profile-avatar.routes.ts'
 import { adminNotificationsRouter } from './modules/users/admin-notifications.routes.ts'
-import { archivedBorrowingPolicyRouter } from './modules/circulation/borrowing-policy-archive.routes.ts'
+import { borrowingPolicyRouter } from './modules/circulation/borrowing-policy.routes.ts'
 import { publicCatalogRouter, catalogMaintenanceRouter } from './modules/catalog/catalog-enhancements.routes.ts'
 import { collectionReviewRouter } from './modules/catalog/collection-review.routes.ts'
 
@@ -103,7 +104,8 @@ export function createApp() {
   app.use('/api/public/catalog', publicCatalogRouter)
   app.use('/api/v1', authenticateJwt, ensureActiveJwtAccount)
   app.use('/api/v1/admin/enrollment', enrollmentRouter)
-  app.use('/api/v1/admin/borrowing-policies', requireLibraryPermission('library.manage'), archivedBorrowingPolicyRouter)
+  app.use('/api/v1/admin/borrowing-policies', requireLibraryPermission('library.manage'), borrowingPolicyRouter)
+  app.use('/api/v1/admin/fine-policies', authenticateJwt, requireLibraryPermission('library.manage'), finePolicyRouter)
   app.use('/api/v1/admin/maintenance', requireLibraryPermission('library.manage'), catalogMaintenanceRouter)
   app.use('/api/v1/admin/collection-review', requireLibraryPermission('library.manage'), collectionReviewRouter)
   app.use('/api/v1/profile/avatar', profileAvatarRouter)

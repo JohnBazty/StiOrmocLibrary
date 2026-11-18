@@ -6,7 +6,7 @@ This guide explains how to prepare a Windows development computer, run and test 
 
 ## AI agents — read this first
 
-1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) for the session protocol, plan statuses, and current Supabase migration tracker: latest applied **037**, next unused **038**. Migration **030** maintenance features are included; MySQL remains retired.
+1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) for the session protocol, plan statuses, and current Supabase migration tracker: latest recorded applied **040**, **039** reserved, next unused **041**. Migration **030** maintenance features are included; MySQL remains retired.
 2. Read [AGENTS.md](AGENTS.md) and [agent.md](agent.md).
 3. Database history: [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md) and [docs/mysql-removal-plan.md](docs/mysql-removal-plan.md).
 
