@@ -58,5 +58,5 @@ return capped(Math.max(libraryDays * policy.dailyRate, dueDayAmount), libraryDay
 `040_library_hours_8am_5pm.sql` sets open days to 08:00–17:00 (a data fix; the calculator needs no migration). `library_operating_schedule.closes_at` already exists. No live writes.
 
 ## Change log
-- 2026-11-18: Approved and built (calculator, `closes_at` in `loadFineContext`, Fine rules page note). Ethan confirmed library hours are 08:00 to 17:00; migration `040_library_hours_8am_5pm.sql` replaces the 19:00 closing from `022` (written, not applied).
+- 2026-11-18: Approved and built (calculator, `closes_at` in `loadFineContext`, Fine rules page note). Ethan confirmed library hours are 08:00 to 17:00; migration `040_library_hours_8am_5pm.sql` replaces the 19:00 closing from `022` (applied live 2026-11-18).
 - 2026-11-18: Plan drafted from the fine calculator review in the fines maintenance session.
