@@ -82,7 +82,7 @@ Gap 1 (a held copy reported Lost stranded the borrower) is being fixed on `fix/l
 - [ ] R7: the helper passes the 8 calendar cases above and is used by Mark ready and cart submit
 - [ ] NOT: a student request never returns another borrower's `last_skip_reason` (API test as student)
 - [ ] NOT: the R7 deadline is never earlier than `readyAt + 24h` (property test over random ready times)
-- [ ] NOT: R1, R2 and R5 never assign or release a copy that another active hold owns (concurrency test with two holds on the same title)
+- [ ] NOT: R1, R2 and R5 never assign or release a copy that another active hold owns (SQL-shape tested; no Postgres harness in repo)
 - [ ] `npm test`, `npm run typecheck` and `npm run build` pass
 
 ## Edge coverage

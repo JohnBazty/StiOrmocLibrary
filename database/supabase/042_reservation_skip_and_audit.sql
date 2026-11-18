@@ -21,6 +21,15 @@ CREATE TABLE IF NOT EXISTS public.reservation_audit_events (
 );
 CREATE INDEX IF NOT EXISTS ix_reservation_audit_reservation ON public.reservation_audit_events (reservation_id, created_at);
 
+-- Partial indexes keep the ON DELETE SET NULL foreign keys cheap to check.
+CREATE INDEX IF NOT EXISTS ix_reservation_audit_from_copy ON public.reservation_audit_events (from_copy_id) WHERE from_copy_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_reservation_audit_to_copy ON public.reservation_audit_events (to_copy_id) WHERE to_copy_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_reservation_audit_actor ON public.reservation_audit_events (actor_user_id) WHERE actor_user_id IS NOT NULL;
+
+-- expire() scans open holds and cart handovers by deadline.
+CREATE INDEX IF NOT EXISTS ix_reservation_deadline_open ON public.reservations (pickup_deadline)
+  WHERE pickup_deadline IS NOT NULL AND reservation_status IN ('approved', 'ready_for_pickup');
+
 ALTER TABLE public.reservation_audit_events ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON public.reservation_audit_events FROM anon, authenticated;
-REVOKE ALL ON SEQUENCE public.reservation_audit_events_audit_event_id_seq FROM anon, authenticated;
+REVOKE ALL ON public.reservation_audit_events FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON SEQUENCE public.reservation_audit_events_audit_event_id_seq FROM PUBLIC, anon, authenticated;
