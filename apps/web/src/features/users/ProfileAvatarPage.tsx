@@ -6,6 +6,7 @@ import { PageHeader } from '../../components/ui'
 import { getCsrfToken } from '../auth/auth-storage'
 import { usersApi, type OwnProfile, type ProfileEdit } from './users-api'
 import { notifyProfileUpdated } from './profile-events'
+import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 
 type AvatarState = { currentUrl: string | null; pending: { id: number; submittedAt: string } | null; lastRejection?: { reviewedAt: string; reason: string } | null }
 
@@ -23,6 +24,7 @@ export function ProfileAvatarPage() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [messageError, setMessageError] = useState(true)
+  const { ask, dialog: confirmSave } = useConfirmSave()
   useEffect(() => {
     if (!file) { setPreview(null); return }
     const url = URL.createObjectURL(file)
@@ -51,8 +53,13 @@ export function ProfileAvatarPage() {
     setProfile(value)
     setDraft({ first_name: value.first_name ?? '', last_name: value.last_name ?? '', program_strand: value.program_strand ?? '', year_grade_level: value.year_grade_level ?? '' })
   }).catch(cause => setMessage(cause instanceof Error ? cause.message : 'Unable to load your profile.')) }, [])
-  async function saveProfile(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setOperation('profile'); setMessage(''); setMessageError(true)
+  function saveProfile(event: FormEvent) {
+    event.preventDefault()
+    if (busy) return
+    ask('Save your profile details.', () => { void persistProfile() })
+  }
+  async function persistProfile() {
+    setBusy(true); setOperation('profile'); setMessage(''); setMessageError(true)
     try {
       await usersApi.saveMyProfile(draft)
       setProfile(await usersApi.myProfile())
@@ -61,8 +68,12 @@ export function ProfileAvatarPage() {
     } catch (cause) { setMessageError(true); setMessage(cause instanceof Error ? cause.message : 'Unable to save your profile.') }
     finally { setBusy(false); setOperation(null) }
   }
-  async function submit(event: FormEvent) {
+  function submit(event: FormEvent) {
     event.preventDefault()
+    if (!file || busy) return
+    ask('Save this profile picture.', () => { void persistPicture() })
+  }
+  async function persistPicture() {
     if (!file) return
     setBusy(true); setOperation('photo'); setMessage(''); setMessageError(true)
     try {
@@ -82,7 +93,7 @@ export function ProfileAvatarPage() {
   }
   const name = profile ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || profile.full_name || 'Your account' : 'Your account'
   const initials = profile ? `${profile.first_name?.[0] ?? ''}${profile.last_name?.[0] ?? ''}`.toUpperCase() : ''
-  return <div className="my-profile-page"><PageHeader eyebrow="My account" title={showAll ? 'My profile' : section === 'personal' ? 'Personal details' : section === 'school' ? 'School details' : 'Profile photo'} />
+  return <div className="my-profile-page">{confirmSave}<PageHeader eyebrow="My account" title={showAll ? 'My profile' : section === 'personal' ? 'Personal details' : section === 'school' ? 'School details' : 'Profile photo'} />
     <section className="profile-summary" aria-label="Account summary">
       <div className="profile-summary-icon"><UserRound size={26} /></div>
       <div className="min-w-0 flex-1"><p className="profile-summary-eyebrow">Your library identity</p><h2>{name}</h2><p className="profile-summary-description">Keep your details up to date for a smoother library experience.</p></div>

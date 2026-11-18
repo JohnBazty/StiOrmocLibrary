@@ -35,6 +35,7 @@ describe('cover from the book lookup', () => {
     expect(api.fetchCover).toHaveBeenCalledWith(isbn)
     fireEvent.change(screen.getByLabelText(/Category \*/i), { target: { value: '1' } })
     fireEvent.click(screen.getByRole('button', { name: /Create copy and generate codes/i }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
     await waitFor(() => expect(api.createBulkBook).toHaveBeenCalled())
     expect(String(api.createBulkBook.mock.calls[0][0].cover_image_data)).toMatch(/^data:image\/jpeg;base64,/)
   })

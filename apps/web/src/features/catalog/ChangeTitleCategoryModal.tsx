@@ -1,5 +1,6 @@
 import { ArrowRight, MapPin, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 import type { CatalogItem, Category } from './types'
 
 type Props = {
@@ -17,6 +18,7 @@ export function ChangeTitleCategoryModal({ item, categories, saving, error, onCl
   const choices = useMemo(() => categories.filter((category) => category.categoryId !== item.categoryId), [categories, item.categoryId])
   const [selectedId, setSelectedId] = useState(choices[0]?.categoryId ?? 0)
   const selected = choices.find((category) => category.categoryId === selectedId) ?? null
+  const { ask, dialog: confirmSave } = useConfirmSave()
   const recordLabel = item.recordType === 'Book' ? 'book' : 'research'
   const inventoryLabel = item.recordType === 'Book'
     ? `${item.activeInventoryCount} active book ${item.activeInventoryCount === 1 ? 'copy' : 'copies'}`
@@ -47,8 +49,9 @@ export function ChangeTitleCategoryModal({ item, categories, saving, error, onCl
       </div>
       <div className="flex justify-end gap-2 border-t border-[#0b5ea2]/15 px-6 py-4">
         <button type="button" disabled={saving} onClick={onClose} className="h-11 rounded-xl border border-[#0b5ea2]/25 px-5 text-sm font-bold text-[#0b5ea2] disabled:opacity-40">Cancel</button>
-        <button type="button" disabled={saving || !selected} onClick={() => selected && onConfirm(selected.categoryId)} className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#0b5ea2] px-5 text-sm font-bold text-white disabled:opacity-40">{saving ? `Moving ${recordLabel}…` : <>Move {recordLabel} <ArrowRight size={16} /></>}</button>
+        <button type="button" disabled={saving || !selected} onClick={() => selected && ask(`Move ${item.title} to ${selected.categoryName}.`, () => onConfirm(selected.categoryId))} className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#0b5ea2] px-5 text-sm font-bold text-white disabled:opacity-40">{saving ? `Moving ${recordLabel}…` : <>Move {recordLabel} <ArrowRight size={16} /></>}</button>
       </div>
     </div>
+    {confirmSave}
   </div>
 }

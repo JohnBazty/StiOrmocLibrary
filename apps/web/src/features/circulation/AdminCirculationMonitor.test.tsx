@@ -63,6 +63,7 @@ describe('AdminCirculationMonitor', () => {
     expect((confirmButton as HTMLButtonElement).disabled).toBe(true)
     fireEvent.change(screen.getByLabelText(/staff note/i), { target: { value: 'Borrower requested at the circulation desk.' } })
     fireEvent.click(confirmButton)
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
     await waitFor(() => expect(api.staffRenewal).toHaveBeenCalledWith(4, expect.any(String), 'Borrower requested at the circulation desk.'))
     expect(await screen.findByText(/Database Systems was renewed for A Student until/)).toBeTruthy()
   })

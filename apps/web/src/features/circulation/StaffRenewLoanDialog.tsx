@@ -1,6 +1,7 @@
 import { AlertTriangle, CalendarClock, RefreshCw, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { circulationApi } from './circulation-api'
+import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 import type { RenewalDecisionData, RenewalPreflightData } from './types'
 
 const STAFF_NOTE_MAX = 500
@@ -34,6 +35,7 @@ export function StaffRenewLoanDialog({
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const { ask, dialog: confirmSave } = useConfirmSave()
   const normalizedNote = staffNote.trim()
 
   async function loadPreflight() {
@@ -110,9 +112,10 @@ export function StaffRenewLoanDialog({
         <footer className="flex justify-end gap-2 border-t border-[#003399]/15 p-4">
           <button type="button" disabled={busy} onClick={onCancel} className="h-10 rounded-xl border border-[#003399]/20 bg-[#FFFFFF] px-4 text-sm font-bold text-[#003399] disabled:opacity-40">Cancel</button>
           {error && !preflight ? <button type="button" disabled={loading} onClick={() => void loadPreflight()} className="h-10 rounded-xl bg-[#FFF200] px-4 text-sm font-bold text-[#003399] disabled:opacity-40">Retry</button> : null}
-          <button type="button" disabled={loading || busy || !preflight?.canRequestRenewal || !normalizedNote} onClick={() => void confirmRenewal()} className="h-10 rounded-xl bg-[#003399] px-4 text-sm font-bold text-[#FFFFFF] disabled:opacity-40">{busy ? 'Renewing…' : 'Confirm staff renewal'}</button>
+          <button type="button" disabled={loading || busy || !preflight?.canRequestRenewal || !normalizedNote} onClick={() => ask(`Renew ${title} for ${borrowerName}.`, () => { void confirmRenewal() })} className="h-10 rounded-xl bg-[#003399] px-4 text-sm font-bold text-[#FFFFFF] disabled:opacity-40">{busy ? 'Renewing…' : 'Confirm staff renewal'}</button>
         </footer>
       </div>
+      {confirmSave}
     </div>
   )
 }

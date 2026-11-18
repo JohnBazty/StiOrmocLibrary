@@ -3,6 +3,7 @@ import { Button, SectionCard, StatusBadge } from '../../components/ui'
 import { getCurrentIdentity } from '../auth/auth-storage'
 import { circulationApi } from './circulation-api'
 import type { DamageCaseDetail, DamageCaseListItem, DamageDisposition } from './types'
+import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 
 const STATUSES = ['all', 'Open', 'Under Investigation', 'Reopened', 'Resolved', 'Dismissed'] as const
 const DECISIONS: Array<[DamageDisposition, string]> = [
@@ -25,6 +26,7 @@ function CaseReview({ caseId, canDecide, onChanged, revision }: { caseId: number
   const [note, setNote] = useState(''); const [decision, setDecision] = useState<DamageDisposition>('damaged_held')
   const [decisionReason, setDecisionReason] = useState(''); const [charge, setCharge] = useState(''); const [closingReason, setClosingReason] = useState('')
   const [confirmWriteOff, setConfirmWriteOff] = useState(false)
+  const { ask, dialog: confirmSave } = useConfirmSave()
 
   useEffect(() => {
     let active = true
@@ -54,16 +56,18 @@ function CaseReview({ caseId, canDecide, onChanged, revision }: { caseId: number
     const amount = Number(charge)
     if (needsCharge && !(amount > 0)) { setError('Enter the replacement charge for this title.'); return }
     if (decision === 'lost' && !confirmWriteOff) { setError(''); setConfirmWriteOff(true); return }
-    void run(() => circulationApi.recordCaseDisposition(caseId, { disposition: decision, reason: decisionReason.trim(), ...(needsCharge ? { replacementCharge: amount } : {}) }),
+    const record = () => void run(() => circulationApi.recordCaseDisposition(caseId, { disposition: decision, reason: decisionReason.trim(), ...(needsCharge ? { replacementCharge: amount } : {}) }),
       'Decision recorded.', () => { setDecisionReason(''); setCharge('') })
+    if (decision === 'lost') { record(); return }
+    ask(`Record this decision for case ${caseId}.`, record)
   }
   function close(action: 'resolve' | 'dismiss') {
     if (!closingReason.trim()) { setError('Enter a reason before closing the case.'); return }
-    void run(() => circulationApi.closeCase(caseId, action, closingReason.trim()), action === 'resolve' ? 'Case resolved.' : 'Case dismissed.', () => setClosingReason(''))
+    ask(`${action === 'resolve' ? 'Resolve' : 'Dismiss'} case ${caseId}.`, () => { void run(() => circulationApi.closeCase(caseId, action, closingReason.trim()), action === 'resolve' ? 'Case resolved.' : 'Case dismissed.', () => setClosingReason('')) })
   }
   function reopen() {
     if (!closingReason.trim()) { setError('Enter a reason before reopening the case.'); return }
-    void run(() => circulationApi.reopenCase(caseId, closingReason.trim()), 'Case reopened.', () => setClosingReason(''))
+    ask(`Reopen case ${caseId}.`, () => { void run(() => circulationApi.reopenCase(caseId, closingReason.trim()), 'Case reopened.', () => setClosingReason('')) })
   }
 
   return <section aria-label={`${detail.case.caseType === 'Long Overdue' ? 'Overdue' : 'Damage'} case ${caseId}`} className="space-y-4 border-t border-[#003399]/10 bg-[#003399]/[0.03] p-5 text-sm text-[#003399] dark:border-white/10 dark:bg-white/5 dark:text-white">
@@ -80,7 +84,7 @@ function CaseReview({ caseId, canDecide, onChanged, revision }: { caseId: number
     </li>)}</ol>
     {!closed ? <div>
       <label className="block font-semibold">Note<textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} maxLength={1000} className={fieldClass} /></label>
-      <Button variant="secondary" className="mt-2" disabled={busy || !note.trim()} onClick={() => void run(() => circulationApi.addCaseNote(caseId, note.trim()), 'Note added.', () => setNote(''))}>Add note</Button>
+      <Button variant="secondary" className="mt-2" disabled={busy || !note.trim()} onClick={() => ask('Add this note to the case.', () => { void run(() => circulationApi.addCaseNote(caseId, note.trim()), 'Note added.', () => setNote('')) })}>Add note</Button>
     </div> : null}
     {canDecide && !closed && !charged && detail.case.caseType !== 'Long Overdue' ? <div className="space-y-2 rounded-xl border border-[#003399]/15 p-4 dark:border-white/15">
       <label className="block font-semibold">Decision<select value={decision} onChange={(event) => { setDecision(event.target.value as DamageDisposition); setConfirmWriteOff(false) }} className={fieldClass}>{DECISIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
@@ -99,6 +103,7 @@ function CaseReview({ caseId, canDecide, onChanged, revision }: { caseId: number
         ? <Button variant="secondary" disabled={busy} onClick={reopen}>Reopen</Button>
         : <><Button disabled={busy} onClick={() => close('resolve')}>Resolve</Button><Button variant="secondary" disabled={busy} onClick={() => close('dismiss')}>Dismiss</Button></>}</div>
     </div> : null}
+    {confirmSave}
   </section>
 }
 

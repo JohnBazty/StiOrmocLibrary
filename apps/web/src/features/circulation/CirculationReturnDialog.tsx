@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Button } from '../../components/ui'
 import { deskCirculationApi, type ReturnPreview } from './desk-circulation-api'
+import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 
 export function CirculationReturnDialog({ barcode, onClose, onReturned }: {
   barcode: string; onClose: () => void; onReturned: (message: string) => void
@@ -13,6 +14,7 @@ export function CirculationReturnDialog({ barcode, onClose, onReturned }: {
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
   const [assessment, setAssessment] = useState(false)
+  const { ask, dialog: confirmSave } = useConfirmSave()
   const [condition, setCondition] = useState('')
   const [note, setNote] = useState('')
   const dialog = useRef<HTMLDivElement>(null)
@@ -86,8 +88,9 @@ export function CirculationReturnDialog({ barcode, onClose, onReturned }: {
       </div>
       <footer className="flex flex-col-reverse gap-2 border-t border-[#0b5ea2]/10 p-4 sm:flex-row sm:justify-end dark:border-white/15">
         <Button variant="secondary" disabled={busy} onClick={onClose}><ArrowLeft size={16} /> Back</Button>
-        <Button disabled={loading || busy || !preview || (assessment && (!condition || (condition === 'Damaged' && !note.trim())))} onClick={() => void confirm()}><CheckCircle2 size={17} />{busy ? 'Saving return…' : 'Confirm return'}</Button>
+        <Button disabled={loading || busy || !preview || (assessment && (!condition || (condition === 'Damaged' && !note.trim())))} onClick={() => ask(`Return ${preview?.title ?? 'this book'}.`, () => { void confirm() })}><CheckCircle2 size={17} />{busy ? 'Saving return…' : 'Confirm return'}</Button>
       </footer>
     </div>
+    {confirmSave}
   </div>, document.body)
 }

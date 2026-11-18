@@ -11,6 +11,7 @@ import { inventoryApi, InventoryApiError } from './inventory-api'
 import type { InventoryCopy, InventoryFilters, InventoryPagination, InventoryRemovalTarget, InventorySummary, ThesisInventoryFilters, ThesisInventoryRow, ThesisInventorySummary } from './types'
 import { useDesktopScanner } from './useDesktopScanner'
 import { InventoryRemovalDialog } from './InventoryRemovalDialog'
+import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 
 const EMPTY_SUMMARY: InventorySummary = { total_catalog_materials: 0, total_physical_copies: 0, damaged_copies_count: 0, lost_copies_count: 0 }
 const DEFAULT_FILTERS: InventoryFilters = { page: 1, limit: 25, query: '', conditionState: '', availabilityStatus: '' }
@@ -138,11 +139,17 @@ function ConditionModal({ copy, onClose, onSaved, saveCondition, initialConditio
   const [condition, setCondition] = useState<ConditionInput>(initialCondition)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const submit = async (event: FormEvent) => {
-    event.preventDefault(); setSaving(true); setError(null)
+  const { ask, dialog: confirmSave } = useConfirmSave()
+  const persist = async () => {
+    setSaving(true); setError(null)
     try { await saveCondition(copy.barcode, condition); await onSaved(); onClose() }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to update this physical copy.') }
     finally { setSaving(false) }
+  }
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    if (saving) return
+    ask(`Set the condition of ${copy.accession_number} to ${condition.replace('_', ' ')}.`, () => { void persist() })
   }
   return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#0b5ea2]/55 p-4" role="dialog" aria-modal="true" aria-labelledby="condition-title">
     <form onSubmit={submit} className="w-full max-w-lg rounded-2xl bg-[#FFFFFF] shadow-2xl shadow-[#0b5ea2]/25">
@@ -155,6 +162,7 @@ function ConditionModal({ copy, onClose, onSaved, saveCondition, initialConditio
       </div>
       <div className="flex justify-end gap-2 border-t border-[#0b5ea2]/15 p-5"><button type="button" onClick={onClose} disabled={saving} className="h-10 rounded-xl border border-[#0b5ea2]/20 px-4 text-sm font-bold text-[#0b5ea2] disabled:opacity-50">Cancel</button><button disabled={saving} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#0b5ea2] px-4 text-sm font-bold text-[#FFFFFF] disabled:opacity-50">{saving ? <RefreshCw className="animate-spin" size={15} /> : <ShieldAlert size={15} />}{saving ? 'Updating…' : 'Confirm override'}</button></div>
     </form>
+    {confirmSave}
   </div>
 }
 

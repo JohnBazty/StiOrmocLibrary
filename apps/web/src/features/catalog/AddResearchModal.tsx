@@ -7,6 +7,7 @@ import { ShelfPlacementFields, placementFits } from '../shelves/ShelfPlacementFi
 import { useManagedShelves } from '../shelves/useManagedShelves'
 import type { PlacementValue } from '../shelves/types'
 import { confirmLeave, UnsavedGuard } from '../../components/UnsavedChanges'
+import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 
 const fieldClass = 'h-11 w-full rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] px-3 text-sm text-[#0b5ea2] outline-none focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/10'
 const labelClass = 'mb-1.5 block text-xs font-bold uppercase tracking-wide text-[#0b5ea2]'
@@ -22,9 +23,8 @@ export function AddResearchModal({ locations, onCreated, onClose }: { locations:
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [message, setMessage] = useState('')
   const [batch, setBatch] = useState<BulkBookResult | null>(null)
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (saving || batch || !canPlace) return
-    const data = Object.fromEntries(new FormData(event.currentTarget).entries())
+  const { ask, dialog: confirmSave } = useConfirmSave()
+  async function createRecord(data: Record<string, FormDataEntryValue>) {
     setSaving(true); setErrors({}); setMessage('')
     try {
       const result = await catalogApi.createThesis({
@@ -40,6 +40,12 @@ export function AddResearchModal({ locations, onCreated, onClose }: { locations:
       setErrors(error.details?.errors ?? {}); setMessage(error.message || 'The research record could not be published.')
     } finally { setSaving(false) }
   }
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (saving || batch || !canPlace) return
+    const data = Object.fromEntries(new FormData(event.currentTarget).entries())
+    ask(`Publish ${String(data.title)} and generate its codes.`, () => { void createRecord(data) })
+  }
   return <div className="fixed inset-0 z-50 overflow-y-auto bg-[#0b5ea2]/80 p-4"><div role="dialog" aria-modal="true" className="mx-auto my-6 max-w-4xl rounded-2xl bg-[#FFFFFF] shadow-2xl">
     <header className="flex items-center justify-between border-b border-[#0b5ea2]/15 p-5"><div><p className="text-xs font-bold uppercase text-[#0b5ea2]">Catalog entry</p><h2 className="text-xl font-black text-[#0b5ea2]">Add research / thesis</h2></div><button aria-label="Close" disabled={saving} onClick={() => confirmLeave(onClose)} className="p-2 text-[#0b5ea2] disabled:opacity-40"><X /></button></header>
     <UnsavedGuard className="contents" cleanOnSubmit><form onSubmit={submit} className="grid gap-4 p-5 sm:grid-cols-2">
@@ -53,7 +59,7 @@ export function AddResearchModal({ locations, onCreated, onClose }: { locations:
       <div className="rounded-xl border border-[#0b5ea2]/15 bg-[#FFF200] p-3 text-xs font-semibold text-[#0b5ea2] sm:col-span-2">New publications start in Good condition. Accession number, inventory barcode, and QR code are generated automatically.</div>
       <label className="sm:col-span-2"><span className={labelClass}>Abstract *</span><textarea name="abstract" required minLength={20} rows={6} className={`${fieldClass} h-auto py-3`} /></label>
       <div className="flex justify-end gap-2 sm:col-span-2">{!batch ? <><button type="button" disabled={saving} onClick={() => confirmLeave(onClose)} className="h-11 rounded-xl border border-[#0b5ea2] bg-[#FFFFFF] px-5 font-bold text-[#0b5ea2]">Cancel</button><button disabled={saving || !locations.length || !canPlace} type="submit" className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#0b5ea2] px-5 font-bold text-[#FFFFFF] disabled:opacity-50"><QrCode size={17} />{saving ? 'Publishing and generating codes…' : 'Publish and generate codes'}</button></> : <button type="button" onClick={() => confirmLeave(onClose)} className="h-11 rounded-xl bg-[#0b5ea2] px-5 font-bold text-[#FFFFFF]">Close and view inventory</button>}</div>
-    </form></UnsavedGuard>
+    </form></UnsavedGuard>{confirmSave}
     {batch ? <div className="border-t border-[#0b5ea2]/15 p-5"><BookLabelSheet batch={batch} /></div> : null}
   </div></div>
 }

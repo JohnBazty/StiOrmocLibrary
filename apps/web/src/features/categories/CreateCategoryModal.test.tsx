@@ -47,6 +47,7 @@ describe('CreateCategoryModal', () => {
     fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Computer programming books' } })
     fireEvent.change(screen.getByRole('combobox', { name: /Shelf location/i }), { target: { value: 'Cabinet 4-B / West Wing' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save category' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
     await waitFor(() => expect(submit).toHaveBeenCalledWith({ categoryName: 'Programming', description: 'Computer programming books', shelfLocation: 'Cabinet 4-B / West Wing', shelfColumn: 1, shelfRow: 1 }))
   })
 })

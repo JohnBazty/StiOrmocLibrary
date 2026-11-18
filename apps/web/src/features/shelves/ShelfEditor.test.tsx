@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, expect, it, vi } from 'vitest'
 import { ShelfEditor } from './ShelfEditor'
 import { ShelfPlacementFields, placementFits } from './ShelfPlacementFields'
@@ -14,6 +15,7 @@ it('saves dimensions and individual compartment capacities without inventing a l
   fireEvent.change(screen.getByLabelText('Capacity for Column 2, Row 1'), { target: { value: '15' } })
   expect(screen.getByText('Total capacity: 25 copies')).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'Save shelf' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
   await waitFor(() => expect(save).toHaveBeenCalledWith({ label: 'Shelf A', columnCount: 2, rowCount: 1, defaultCapacity: 10, overrides: [{ column: 2, row: 1, capacity: 15 }], version: 2, status: 'Active' }))
 })
 
@@ -31,4 +33,10 @@ it('shows the shortage and permits staff to choose another compartment', () => {
   expect(change).toHaveBeenCalledWith({ shelfLocation: 'Shelf A', locationId: 1, shelfColumn: 2, shelfRow: 1 })
   expect(placementFits([shelf], { shelfLocation: 'Shelf A', shelfColumn: 1, shelfRow: 1 }, 2)).toBe(false)
   expect(placementFits([shelf], { shelfLocation: 'Shelf A', shelfColumn: 2, shelfRow: 1 }, 6)).toBe(true)
+})
+
+it('opens shelf setup when capacity is not configured', () => {
+  const unconfigured = { ...shelf, capacityConfigured: false, compartments: undefined }
+  render(<MemoryRouter><ShelfPlacementFields shelves={[unconfigured]} value={{ shelfLocation: 'Shelf A', locationId: 1, shelfColumn: 1, shelfRow: 1 }} onChange={vi.fn()} /></MemoryRouter>)
+  expect(screen.getByRole('link', { name: /Capacity not configured/ }).getAttribute('href')).toBe('/librarian/maintenance?tab=locations&editShelf=1')
 })

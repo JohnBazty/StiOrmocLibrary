@@ -41,6 +41,7 @@ it('creates Staff accounts from official school details without asking Admin to 
   ]) fireEvent.change(screen.getByLabelText(label), { target: { value } })
   expect(screen.queryByLabelText('Password')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: 'Create Staff account' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
   expect(await screen.findByText(/Staff account STAFF-QA created/)).toBeTruthy()
   expect(usersApi.createStaff).toHaveBeenCalledWith({
     first_name: 'Test', last_name: 'Staff', school_id: 'STAFF-QA', school_email: 'staff-qa@ormoc.sti.edu.ph',

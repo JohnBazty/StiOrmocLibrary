@@ -7,6 +7,7 @@ import { isbnInputError, normalizeIsbnInput } from './isbn'
 import { SelectedFilePreview } from '../../components/SelectedFilePreview'
 import { TitleLookup } from './TitleLookup'
 import { confirmLeave, UnsavedGuard } from '../../components/UnsavedChanges'
+import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 import { CategorySuggestion } from './CategorySuggestion'
 import { PredictionList, usePredictions } from './usePredictions'
 import { ShelfPlacementFields, placementFits } from '../shelves/ShelfPlacementFields'
@@ -112,16 +113,8 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
 
   useEffect(() => () => lookupAbort.current?.abort(), [])
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (saving || batch) return
-    if (!canPlace) { setMessage('Choose a configured compartment with enough space for every copy.'); return }
-    if (liveIsbnError) {
-      setErrors((current) => ({ ...current, isbn: liveIsbnError }))
-      setMessage('Correct the ISBN check digit before creating this catalog record.')
-      return
-    }
-    const data = Object.fromEntries(new FormData(event.currentTarget).entries())
+  const { ask, dialog: confirmSave } = useConfirmSave()
+  async function createCopies(data: Record<string, FormDataEntryValue>) {
     setSaving(true); setErrors({}); setMessage('')
     try {
       const coverImageData = coverFile ? await new Promise<string>((resolve, reject) => {
@@ -148,6 +141,19 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
       setErrors(apiError.details?.errors ?? {})
       setMessage(apiError.message || 'The copies could not be created.')
     } finally { setSaving(false) }
+  }
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (saving || batch) return
+    if (!canPlace) { setMessage('Choose a configured compartment with enough space for every copy.'); return }
+    if (liveIsbnError) {
+      setErrors((current) => ({ ...current, isbn: liveIsbnError }))
+      setMessage('Correct the ISBN check digit before creating this catalog record.')
+      return
+    }
+    const data = Object.fromEntries(new FormData(event.currentTarget).entries())
+    const copies = Number(data.numberOfCopies) || 1
+    ask(`Create ${copies} ${copies === 1 ? 'copy' : 'copies'} of ${String(data.title)}.`, () => { void createCopies(data) })
   }
 
   function selectCover(event: ChangeEvent<HTMLInputElement>) {
@@ -211,5 +217,5 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
       </form>
       {batch ? <div className="border-t border-[#0b5ea2]/15 p-5"><BookLabelSheet batch={batch} /></div> : null}
     </div>
-  </div></UnsavedGuard>
+  </div>{confirmSave}</UnsavedGuard>
 }

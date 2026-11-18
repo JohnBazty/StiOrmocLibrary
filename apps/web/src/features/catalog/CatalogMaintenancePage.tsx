@@ -7,6 +7,7 @@ import { HoldingsImportPage } from './HoldingsImportPage'
 import { FindBookDetailsPage } from './FindBookDetailsPage'
 import { ShelfManagementPage } from '../shelves/ShelfManagement'
 import { confirmLeave } from '../../components/UnsavedChanges'
+import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 import { CatalogDetailsPanel, catalogInput } from './CatalogDetailsPanel'
 import { enhancedCatalog, type CatalogRecord, type Option, type Options } from './enhanced-catalog-api'
 
@@ -19,6 +20,7 @@ function FoundationEditor({ kind }: { kind: Kind }) {
   const [edit, setEdit] = useState<Partial<Option>>({ name: '', code: '', recordKind: 'Book', status: 'Active' })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const { ask, dialog: confirmSave } = useConfirmSave()
   useEffect(() => {
     setEdit({ name: '', code: '', recordKind: 'Book', status: 'Active' })
     enhancedCatalog.options(true).then(setOptions).catch((e) => setError(e.message))
@@ -45,9 +47,10 @@ function FoundationEditor({ kind }: { kind: Kind }) {
         {kind === 'courses' && <label>Program<select className={catalogInput} value={edit.programId ?? ''} onChange={(e) => setEdit({ ...edit, programId: Number(e.target.value) })}><option value="">Choose program</option>{options?.programs.filter((p) => p.status === 'Active').map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
         {kind === 'types' && <label>Classification<select className={catalogInput} value={edit.recordKind} onChange={(e) => setEdit({ ...edit, recordKind: e.target.value })}><option>Book</option><option value="Research/Thesis">Research / Thesis</option></select></label>}
         <label>Status<select className={catalogInput} value={edit.status} onChange={(e) => setEdit({ ...edit, status: e.target.value })}><option>Active</option><option>Archived</option></select></label>
-        <div className="flex gap-3 sm:col-span-2"><Button disabled={busy || !edit.name?.trim()} onClick={() => void save()}>{edit.id ? 'Save changes' : 'Add entry'}</Button>{edit.id && <Button variant="secondary" onClick={() => setEdit({ name: '', code: '', recordKind: 'Book', status: 'Active' })}>Cancel edit</Button>}</div>
+        <div className="flex gap-3 sm:col-span-2"><Button disabled={busy || !edit.name?.trim()} onClick={() => ask(`${edit.id ? 'Save changes to' : 'Add'} ${edit.name}.`, () => { void save() })}>{edit.id ? 'Save changes' : 'Add entry'}</Button>{edit.id && <Button variant="secondary" onClick={() => setEdit({ name: '', code: '', recordKind: 'Book', status: 'Active' })}>Cancel edit</Button>}</div>
       </SectionCard>
       <SectionCard className="divide-y">{options?.[kind].map((entry) => <div key={entry.id} className="flex items-center justify-between gap-3 p-3"><div><strong>{entry.name}</strong><p className="text-xs">{entry.code} {entry.recordKind} · {entry.status}</p></div><Button variant="secondary" onClick={() => setEdit(entry)}>Edit</Button></div>)}</SectionCard>
+      {confirmSave}
     </div>
   )
 }

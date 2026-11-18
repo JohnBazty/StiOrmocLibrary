@@ -68,6 +68,7 @@ describe('DamageCasesPanel', () => {
     api.getCase.mockResolvedValue(detail({ titlePrice: 500 }))
     fireEvent.change(within(region).getByLabelText('Decision reason'), { target: { value: 'Still damaged.' } })
     fireEvent.click(within(region).getByRole('button', { name: 'Record decision' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
     expect(await within(region).findByText('Book price: PHP 500.00')).toBeTruthy()
     expect(within(region).getByRole('alert').textContent).toContain('PHP 500.00')
   })
@@ -103,6 +104,7 @@ describe('DamageCasesPanel', () => {
     expect(api.recordCaseDisposition).not.toHaveBeenCalled()
     fireEvent.change(within(region).getByLabelText('Decision reason'), { target: { value: 'Pages torn out.' } })
     fireEvent.click(within(region).getByRole('button', { name: 'Record decision' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
     expect((await within(region).findByRole('alert')).textContent).toContain('already exists')
   })
 
@@ -114,6 +116,7 @@ describe('DamageCasesPanel', () => {
     expect(within(region).queryByRole('button', { name: 'Resolve' })).toBeNull()
     fireEvent.change(within(region).getByLabelText('Note'), { target: { value: 'Borrower says it was wet on checkout.' } })
     fireEvent.click(within(region).getByRole('button', { name: 'Add note' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
     await waitFor(() => expect(api.addCaseNote).toHaveBeenCalledWith(4, 'Borrower says it was wet on checkout.'))
   })
 
@@ -122,6 +125,7 @@ describe('DamageCasesPanel', () => {
     const region = await openReview()
     fireEvent.change(within(region).getByLabelText('Closing reason'), { target: { value: 'Charged and settled.' } })
     fireEvent.click(within(region).getByRole('button', { name: 'Resolve' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
     await waitFor(() => expect(api.closeCase).toHaveBeenCalledWith(4, 'resolve', 'Charged and settled.'))
     expect(await within(region).findByRole('button', { name: 'Reopen' })).toBeTruthy()
   })

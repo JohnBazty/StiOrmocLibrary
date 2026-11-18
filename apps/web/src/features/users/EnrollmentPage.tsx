@@ -6,6 +6,7 @@ import { enrollmentApi, EnrollmentError, type RosterPreview, type RowIssue, type
 import { RosterPreviewTable } from './RosterPreviewTable'
 import { usersApi, type UserDetail } from './users-api'
 import { UnsavedGuard } from '../../components/UnsavedChanges'
+import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 
 const field='mt-1 block min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-950 dark:border-slate-600 dark:bg-slate-900 dark:text-white'
 const displayTime=(value:string|null)=>value?new Intl.DateTimeFormat('en-PH',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Manila'}).format(new Date(value)):'—'
@@ -84,7 +85,9 @@ function SemesterEditor({term,onCancel,onSaved}:{term?:Semester;onCancel:()=>voi
   const [year,setYear]=useState(term?.academic_year??''),[name,setName]=useState(term?.term_name??'1st Semester')
   const [endDate,setEndDate]=useState(term?.end_date??''),[unlock,setUnlock]=useState(term&&term.manual_end_at!==term.scheduled_end_at?localInput(term.manual_end_at):'')
   const [busy,setBusy]=useState(false),[error,setError]=useState('')
-  async function submit(e:FormEvent){e.preventDefault();setBusy(true);setError('')
+  const { ask, dialog: confirmSave } = useConfirmSave()
+  function submit(e:FormEvent){e.preventDefault();if(busy)return;ask(`${term ? 'Save' : 'Add'} ${name} ${year}.`,()=>{void persist()})}
+  async function persist(){setBusy(true);setError('')
     try{const data=await enrollmentApi.save({semesterId:term?.semester_id,academicYear:year,termName:name,endDate,manualEndAt:unlock});onSaved(data.semesterId)}
     catch(e){setError(errorText(e))}finally{setBusy(false)}
   }
@@ -99,7 +102,7 @@ function SemesterEditor({term,onCancel,onSaved}:{term?:Semester;onCancel:()=>voi
     </div>
     {error&&<p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
     <div className="flex gap-2"><Button type="submit" disabled={busy}>{busy?'Saving…':'Save semester'}</Button><Button variant="secondary" disabled={busy} onClick={onCancel}>Cancel</Button></div>
-  </form></UnsavedGuard></SectionCard>
+    </form></UnsavedGuard>{confirmSave}</SectionCard>
 }
 
 function SemesterAction({action,disabled,count,onConfirm}:{action:'start'|'end';disabled:boolean;count?:number;onConfirm:()=>Promise<void>}){
@@ -129,6 +132,7 @@ function RosterUpload({term,onSaved}:{term:Semester;onSaved:(message:string)=>vo
   const [preview, setPreview] = useState<RosterPreview | null>(null)
   const [previewError, setPreviewError] = useState('')
   const [retry, setRetry] = useState(0)
+  const { ask, dialog: confirmSave } = useConfirmSave()
   function selectFile(next: File | null) {
     setPreview(null)
     setPreviewError('')
@@ -145,8 +149,13 @@ function RosterUpload({term,onSaved}:{term:Semester;onSaved:(message:string)=>vo
       .catch(error => { if (!controller.signal.aborted) setPreviewError(errorText(error)) })
     return () => controller.abort()
   }, [file, term.semester_id, retry])
-  async function upload(e:FormEvent){
-    e.preventDefault();if(!file || !preview || preview.errorCount || busy)return;setError('');setIssues([]);setBusy(true)
+  function upload(e:FormEvent){
+    e.preventDefault();if(!file || !preview || preview.errorCount || busy)return
+    ask(`Import this ${scope.toLowerCase()} roster dated ${sourceDate}.`, () => { void sendRoster() })
+  }
+  async function sendRoster(){
+    if(!file)return
+    setError('');setIssues([]);setBusy(true)
     try{
       const body=new FormData();body.set('roster',file);body.set('sourceDate',sourceDate);body.set('scope',scope)
       const result=await enrollmentApi.upload(term.semester_id,body)
@@ -171,7 +180,7 @@ function RosterUpload({term,onSaved}:{term:Semester;onSaved:(message:string)=>vo
     </div>}
     {preview && <RosterPreviewTable preview={preview}/>}
     {error&&<div role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-900"><p>{error}</p>{issues.length>0&&<ul className="mt-2 list-disc pl-5">{issues.map(issue=><li key={issue.sheet+issue.row}>{issue.sheet}, row {issue.row}: {issue.errors.join(' ')}</li>)}</ul>}</div>}
-    <Button disabled={busy||!preview||preview.errorCount>0} type="submit">{busy?'Importing…':'Import roster'}</Button>
+    <Button disabled={busy||!preview||preview.errorCount>0} type="submit">{busy?'Importing…':'Import roster'}</Button>{confirmSave}
   </form></UnsavedGuard></SectionCard>
 }
 

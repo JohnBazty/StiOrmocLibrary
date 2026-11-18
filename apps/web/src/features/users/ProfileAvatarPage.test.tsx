@@ -22,6 +22,7 @@ it('lets the owner edit academic details while school email and ID stay fixed', 
   expect((screen.getByDisplayValue('STI-9') as HTMLInputElement).readOnly).toBe(true)
   fireEvent.change(screen.getByRole('textbox', { name: 'Year / grade level' }), { target: { value: '3rd Year' } })
   fireEvent.click(screen.getByRole('button', { name: 'Save my profile' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
   await waitFor(() => expect(api.saveMyProfile).toHaveBeenCalledWith({ first_name: 'Test', last_name: 'Student', program_strand: 'BSIT', year_grade_level: '3rd Year' }))
 })
 
@@ -77,6 +78,7 @@ it('shows the new picture immediately after it is saved', async () => {
   const image = new File(['image'], 'new-picture.png', { type: 'image/png' })
   fireEvent.change(screen.getByLabelText('New picture'), { target: { files: [image] } })
   fireEvent.click(screen.getByRole('button', { name: 'Save picture' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
   await screen.findByText('Your profile picture has been updated.')
   const upload = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')
   expect((upload?.[1]?.body as FormData).get('image')).toBe(image)

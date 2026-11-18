@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { X } from 'lucide-react'
 import type { Category, CategoryPayload } from './types'
 import { confirmLeave, UnsavedGuard } from '../../components/UnsavedChanges'
+import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 
 const inputClass = 'h-11 w-full rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] px-3 text-sm text-[#0b5ea2] outline-none focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/10'
 export const addShelfFromCategoryPath = '/librarian/maintenance?tab=locations&addShelf=1'
@@ -22,16 +23,18 @@ export function CreateCategoryModal({ category, initialName, shelves, saving, er
   const currentShelfIsManaged = !category || shelves.some((shelf) => shelf.label === category.shelfLocation)
   const [shelfLabel, setShelfLabel] = useState(currentShelfIsManaged ? category?.shelfLocation ?? '' : '')
   const selectedShelf = shelves.find((shelf) => shelf.label === shelfLabel)
+  const { ask, dialog } = useConfirmSave()
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
-    void onSubmit({
+    const payload = {
       categoryName: String(data.get('categoryName') ?? ''),
       description: String(data.get('description') ?? ''),
       shelfLocation: String(data.get('shelfLocation') ?? ''),
       shelfColumn: Number(data.get('shelfColumn') ?? 1),
       shelfRow: Number(data.get('shelfRow') ?? 1),
-    })
+    }
+    ask(`${category ? 'Save changes to' : 'Create'} category ${payload.categoryName}.`, () => { void onSubmit(payload) })
   }
 
   return createPortal(<div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0b5ea2]/80 p-4">
@@ -44,7 +47,7 @@ export function CreateCategoryModal({ category, initialName, shelves, saving, er
         <label className="block"><span className="mb-1.5 block text-xs font-bold uppercase text-[#0b5ea2]">Shelf location *</span><select name="shelfLocation" required value={shelfLabel} onChange={(event) => setShelfLabel(event.target.value)} className={inputClass}><option value="">{currentShelfIsManaged ? 'Select a shelf' : `Current location “${category?.shelfLocation}” is not managed — select a shelf`}</option>{shelves.map((shelf) => <option key={shelf.id} value={shelf.label}>{shelf.label}</option>)}</select>{errors.shelfLocation ? <span className="mt-1 block text-xs font-semibold text-[#0b5ea2]">{errors.shelfLocation}</span> : null}<p className="mt-1 text-xs text-[#0b5ea2]/65">{!shelves.length ? 'No managed shelves yet. ' : 'Need another shelf? '}<Link to={addShelfFromCategoryPath} className="font-semibold underline" onClick={(event) => { event.preventDefault(); confirmLeave(() => { onClose(); navigate(addShelfFromCategoryPath) }) }}>Add a new shelf</Link></p></label>
         {selectedShelf ? <div key={selectedShelf.id} className="grid gap-3 sm:grid-cols-2"><label className="block"><span className="mb-1.5 block text-xs font-bold uppercase text-[#0b5ea2]">Column *</span><select name="shelfColumn" defaultValue={category?.shelfLocation===shelfLabel?category.shelfColumn:1} className={inputClass}>{Array.from({length:selectedShelf.columnCount},(_,index)=><option key={index+1} value={index+1}>Column {index+1}</option>)}</select>{errors.shelfColumn?<span className="mt-1 block text-xs font-semibold">{errors.shelfColumn}</span>:null}</label><label className="block"><span className="mb-1.5 block text-xs font-bold uppercase text-[#0b5ea2]">Row *</span><select name="shelfRow" defaultValue={category?.shelfLocation===shelfLabel?category.shelfRow:1} className={inputClass}>{Array.from({length:selectedShelf.rowCount},(_,index)=><option key={index+1} value={index+1}>Row {index+1}</option>)}</select>{errors.shelfRow?<span className="mt-1 block text-xs font-semibold">{errors.shelfRow}</span>:null}</label></div>:null}
         <div className="flex justify-end gap-2 pt-2"><button type="button" disabled={saving} onClick={() => confirmLeave(onClose)} className="h-11 rounded-xl border border-[#0b5ea2] bg-[#FFFFFF] px-5 font-bold text-[#0b5ea2] disabled:opacity-40">Cancel</button><button disabled={saving || !selectedShelf} type="submit" className="h-11 rounded-xl bg-[#0b5ea2] px-5 font-bold text-[#FFFFFF] disabled:opacity-50">{saving ? 'Saving…' : 'Save category'}</button></div>
-      </form></UnsavedGuard>
+      </form></UnsavedGuard>{dialog}
     </div>
   </div>, document.body)
 }

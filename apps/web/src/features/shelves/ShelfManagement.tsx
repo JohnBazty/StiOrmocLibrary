@@ -6,7 +6,7 @@ import { ShelfEditor } from './ShelfEditor'
 import { useManagedShelves } from './useManagedShelves'
 import type { ManagedShelf, ShelfPayload } from './types'
 
-export function ShelfManagement({ shelves, onRefresh }: { shelves: ManagedShelf[]; onRefresh: () => Promise<void> }) {
+export function ShelfManagement({ shelves, loading = false, onRefresh }: { shelves: ManagedShelf[]; loading?: boolean; onRefresh: () => Promise<void> }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const [editor, setEditor] = useState<{ shelf: ManagedShelf | null } | null>(null)
   const [saving, setSaving] = useState(false)
@@ -20,6 +20,16 @@ export function ShelfManagement({ shelves, onRefresh }: { shelves: ManagedShelf[
     params.delete('addShelf')
     setSearchParams(params, { replace: true })
   }, [searchParams, setSearchParams])
+  useEffect(() => {
+    const requested = searchParams.get('editShelf')
+    if (!requested || loading) return
+    const shelf = shelves.find(item => item.id === Number(requested)) ?? null
+    setError('')
+    if (shelf) setEditor({ shelf })
+    const params = new URLSearchParams(searchParams)
+    params.delete('editShelf')
+    setSearchParams(params, { replace: true })
+  }, [loading, searchParams, setSearchParams, shelves])
   async function save(payload: ShelfPayload) {
     if (!editor) return
     setSaving(true); setError(''); setNotice('')
@@ -36,5 +46,5 @@ export function ShelfManagement({ shelves, onRefresh }: { shelves: ManagedShelf[
 
 export function ShelfManagementPage() {
   const { shelves, error, loading, refresh } = useManagedShelves(true)
-  return <>{error ? <p role="alert" className="mb-4 rounded-xl bg-red-50 p-3 text-red-800 dark:bg-red-950/30 dark:text-red-200">{error}</p> : null}{loading ? <p className="mb-3 text-sm">Loading shelves…</p> : null}<ShelfManagement shelves={shelves} onRefresh={refresh}/></>
+  return <>{error ? <p role="alert" className="mb-4 rounded-xl bg-red-50 p-3 text-red-800 dark:bg-red-950/30 dark:text-red-200">{error}</p> : null}{loading ? <p className="mb-3 text-sm">Loading shelves…</p> : null}<ShelfManagement shelves={shelves} loading={loading} onRefresh={refresh}/></>
 }

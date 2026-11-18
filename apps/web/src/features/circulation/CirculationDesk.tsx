@@ -12,6 +12,7 @@ import { CirculationReturnDialog } from './CirculationReturnDialog'
 
 import { attendanceApi, type OperationalState } from '../attendance/attendance-api'
 import { BORROWING_CLOSED, borrowingClosedMessage, checkoutBlockerLines } from './checkout-blockers'
+import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 
 const when = (value: string) => new Date(value).toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' })
 
@@ -44,6 +45,7 @@ export function CirculationDesk({ onChanged, returnBarcode, borrowerRequest, onB
   const [listError, setListError] = useState('')
 
   const [busy, setBusy] = useState(false)
+  const { ask, dialog: confirmSave } = useConfirmSave()
 
   const [error, setError] = useState('')
 
@@ -277,6 +279,7 @@ export function CirculationDesk({ onChanged, returnBarcode, borrowerRequest, onB
   const entryAllowed = Boolean(entryState?.entryOpen && entryState.allowBorrowing && entryState.available > 0)
 
   return <>
+    {confirmSave}
 
     <SectionCard className="mb-6 overflow-hidden">
 
@@ -327,7 +330,7 @@ export function CirculationDesk({ onChanged, returnBarcode, borrowerRequest, onB
 
               {!pickupContext ? <DeskScanInput key="borrow-book" manual={manual} autoSubmit={!manual} label="Book barcode" value={barcode} disabled={busy} focusRequest={scanFocus} actionLabel={busy ? 'Checking…' : manual?'Find book':'Look up'} onChange={value => { setBarcode(value); setCopy(null); setSelectedRequest(null); key.current = '' }} onScan={value => void verifyCopy(value)} /> : null}
 
-              {copy ? <div className="mt-4 rounded-2xl bg-[#0b5ea2]/5 p-4 dark:bg-white/10"><h3 className="break-words text-lg font-bold">{copy.copy.title}</h3><p className="mt-1 break-all font-mono text-xs opacity-65">{copy.copy.barcode} · {copy.copy.condition}</p>{selectedRequest ? <p className="mt-2 text-xs font-semibold">Ready pickup request matched automatically.</p> : null}{copy.blockers.length ? <ul role="alert" className="auth-error mt-3 list-inside list-disc rounded-xl p-3 text-sm">{copy.blockers.map(blocker => <li key={blocker}>{blocker}</li>)}</ul> : null}{copy.eligible && borrower.eligible ? <><p className="mt-3 text-xs opacity-70">{mode === 'InLibrary' ? 'For use inside the library; hand back before the closing cutoff.' : 'Match the borrower and physical book, then confirm.'}</p><div className="mt-3 flex flex-col gap-2 sm:flex-row"><Button disabled={busy} className="flex-1" onClick={() => void confirm()}><CheckCircle2 size={17} />{busy ? 'Saving…' : mode === 'InLibrary' ? 'Confirm in-library use' : pickupContext ? 'Confirm handover' : 'Confirm checkout'}</Button><Button disabled={busy} variant="ghost" onClick={() => { if (pickupContext) { void loadPickup(pickupContext); return } setCopy(null); setBarcode(''); key.current = ''; setScanFocus(value => value + 1) }}>{pickupContext ? 'Refresh pickup' : 'Clear book'}</Button></div></> : null}</div> : null}
+              {copy ? <div className="mt-4 rounded-2xl bg-[#0b5ea2]/5 p-4 dark:bg-white/10"><h3 className="break-words text-lg font-bold">{copy.copy.title}</h3><p className="mt-1 break-all font-mono text-xs opacity-65">{copy.copy.barcode} · {copy.copy.condition}</p>{selectedRequest ? <p className="mt-2 text-xs font-semibold">Ready pickup request matched automatically.</p> : null}{copy.blockers.length ? <ul role="alert" className="auth-error mt-3 list-inside list-disc rounded-xl p-3 text-sm">{copy.blockers.map(blocker => <li key={blocker}>{blocker}</li>)}</ul> : null}{copy.eligible && borrower.eligible ? <><p className="mt-3 text-xs opacity-70">{mode === 'InLibrary' ? 'For use inside the library; hand back before the closing cutoff.' : 'Match the borrower and physical book, then confirm.'}</p><div className="mt-3 flex flex-col gap-2 sm:flex-row"><Button disabled={busy} className="flex-1" onClick={() => ask(`${mode === 'InLibrary' ? 'Record in-library use of' : pickupContext ? 'Hand over' : 'Check out'} ${copy.copy.title}.`, () => { void confirm() })}><CheckCircle2 size={17} />{busy ? 'Saving…' : mode === 'InLibrary' ? 'Confirm in-library use' : pickupContext ? 'Confirm handover' : 'Confirm checkout'}</Button><Button disabled={busy} variant="ghost" onClick={() => { if (pickupContext) { void loadPickup(pickupContext); return } setCopy(null); setBarcode(''); key.current = ''; setScanFocus(value => value + 1) }}>{pickupContext ? 'Refresh pickup' : 'Clear book'}</Button></div></> : null}</div> : null}
 
               <p className="mt-3 text-xs opacity-55">{pickupContext ? 'No loan is recorded until you confirm the physical handover.' : 'The borrower stays selected for their next book. Choose Next borrower when finished.'}</p>
 
