@@ -48,3 +48,13 @@ npm run build
 - 2026-11-18: Owner requested replacement of User archive with Student QR roster.
 - 2026-11-18: Owner added QR replacement on roster upload and explicitly clarified that identical-file uploads must also generate new QR codes.
 - 2026-11-18: Implemented using existing schema and credentials; checks and fixture-based desktop/mobile verification completed. Configured Ethan wiki paths are absent on this computer, so no wiki mutation was attempted.
+
+## Production release — 2026-11-18
+
+Owner authorized pushing the dedicated branch and hosting the change live. Feature commit `1abc755` was pushed to `origin/feat/student-qr-roster`. Release preparation detected a concurrent production change and refreshed the baseline before promotion. The final release preserves live Faculty enrollment, late-enrollment review, grouped navigation, shelf-capacity changes and route error boundaries. Student-only credential replacement also covers the live duplicate complete-roster early return. Credential issuance retains the checked rotation/race handling while preserving the live inactive-return scanner option.
+
+Combined release validation passed type checking, production build, 19 API tests (QR credentials, roster and Faculty enrollment), and 19 web tests (QR roster, enrollment, users and navigation). Candidate API health reported healthy and schema ready; anonymous QR roster access returned HTTP 401.
+
+Deployment `dpl_FXHfzuC8JxrhvPUeNUzdzw124ie8` was promoted to https://sti-ormoc-smart-library.vercel.app. Final live checks: health HTTP 200 / healthy, Admin and Librarian QR page URLs HTTP 200, protected QR-semesters API HTTP 401, and the lazy-loaded QR page asset contains the replacement notice. No live roster upload, credential rotation, schema migration, or student-data write was performed during release verification. Authenticated production QR rendering and physical scanning remain human acceptance checks.
+
+Source provenance and exact production integration changes are recorded in `docs/releases/2026-11-18-student-qr-roster-source.json` and `docs/releases/2026-11-18-student-qr-roster-production.patch`. The current live baseline includes unrelated releases beyond local main; the patch makes the deployed integration reproducible without importing those unrelated changes into this feature branch.

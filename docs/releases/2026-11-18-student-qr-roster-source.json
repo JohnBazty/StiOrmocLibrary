@@ -1,0 +1,24 @@
+{
+  "branch": "feat/student-qr-roster",
+  "featureCommit": "1abc755",
+  "baseDeployment": "dpl_5HCtdtyxQePz1Hup6Z9jQLPqpJDX",
+  "stage": "C:\\Users\\JOHN\\AppData\\Local\\Temp\\sti-student-qr-roster-release-20261118",
+  "files": {
+    "apps/api/src/modules/attendance/attendance-credential.service.ts": "b907ea88cabce8846d423bc874dc56e6b5b98ef6812f97ab2ac7f4209cdbf883",
+    "apps/api/src/modules/enrollment/enrollment.routes.ts": "34cb974df9852740bca7064f368832b29638c6c64210ed38cbb96f280fc6a5cb",
+    "apps/api/src/modules/enrollment/enrollment.service.ts": "d72ce8e94ce9c8e35a97d99f337d5858883d7aaa01c693ac6b67fe2ac1bd97af",
+    "apps/api/src/modules/enrollment/student-qr-roster.test.ts": "3258663637110bc7fe2eab151a7b4fda548d468c85c081225fb24ed0fc474aa9",
+    "apps/api/src/modules/users/admin-notifications.routes.ts": "8102fc2d1707b86fdfb4fecbb4243b214d99af9606c042e88ee4b7ea8dc92e42",
+    "apps/web/src/App.tsx": "614ea43fa1c9a34904a513db70b0cf6ce8508b80fea53f732c3960af2f6611b0",
+    "apps/web/src/features/attendance/UserAttendancePage.tsx": "58b2101fd6f395a51b0e3cfe9c1ae318ab56817da60b16dd31f3ccac4984e655",
+    "apps/web/src/features/users/AdminUsersPage.tsx": "d53fb4eaca8d9e7463000868ed3427b5857f3c3dfa739e255b4f9a84389f7156",
+    "apps/web/src/features/users/EnrollmentPage.tsx": "a9aeabe9eca8129504573272fe40036264178764e9c24fc6a657a8b988e76d66",
+    "apps/web/src/features/users/StudentQrRosterPage.test.tsx": "59b645dcfea2b345a0ce59b6666541831692068b9e850e716551ba49bc94c902",
+    "apps/web/src/features/users/StudentQrRosterPage.tsx": "88f017716eb390a7b8f4bb450d3e0dab8186fd1032cfd1ee6591d44eb2b5d834",
+    "apps/web/src/features/users/enrollment-api.ts": "195aba1c043436c24342bfb4c4561f37731c3af2867a75adc1eec4f84b80ee90",
+    "apps/web/src/layouts/PortalLayout.tsx": "b39f3f8b0477d2c9827f7c8dd8f63adb9b8251a6c98ac889281b6600971cc5e4",
+    "apps/web/src/layouts/admin-navigation.ts": "ab7f9f00e3cf5b3ae2819e4accd6ebaa499dde0c4c0860ba269dccbb9ae0b476"
+  },
+  "deployment": "dpl_FXHfzuC8JxrhvPUeNUzdzw124ie8",
+  "url": "https://sti-ormoc-smart-library.vercel.app"
+}
