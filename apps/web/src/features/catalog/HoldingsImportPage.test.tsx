@@ -221,14 +221,28 @@ describe('Simple book import', () => {
   expect(api.review).toHaveBeenCalledTimes(2)
   expect(api.commit).toHaveBeenCalledTimes(3)
  })
- it('shows a source-book name for a save error and requires correction before retry', async () => {
+ it('shows a source-book name for a save error and leaves that book out until corrected', async () => {
   const failed = { ...initial, rows: [row(1, { status: 'Ready', decision: 'new', error: 'An accession already exists.' }), finished.rows[1]] }
   api.batch.mockResolvedValueOnce(initial).mockResolvedValue(failed)
   api.commit.mockResolvedValue({ imported: 1, remaining: 1, errors: [{ rowId: 1, message: 'An accession already exists.' }] })
   await upload(); fireEvent.click(screen.getByRole('button', { name: 'Add 5 copies' }))
   await screen.findByText(/First Book \(Books, line 2\): An accession already exists/)
-  expect(screen.getByText('Correct the books with save errors before continuing.')).toBeTruthy()
+  expect(screen.getByText('Books with save errors will stay in this saved list. Other ready books can still be added.')).toBeTruthy()
   expect((screen.getByRole('button', { name: 'Save reviewed choices' }) as HTMLButtonElement).disabled).toBe(true)
+ })
+ it('adds ready books while leaving saved errors out of the attempt', async () => {
+  const failed = row(2, { status: 'Ready', decision: 'new', error: 'An accession already exists.' })
+  api.batch.mockResolvedValueOnce({ ...initial, rows: [row(1), failed] }).mockResolvedValue({ ...initial, rows: [finished.rows[0], failed] })
+  api.commit.mockResolvedValue({ imported: 1, remaining: 0, errors: [] })
+  await upload()
+  const add = screen.getByRole('button', { name: 'Add 3 copies' }) as HTMLButtonElement
+  expect(add.disabled).toBe(false)
+  fireEvent.click(add)
+  await waitFor(() => expect(api.commit).toHaveBeenCalledTimes(1))
+  expect(api.review).toHaveBeenCalledTimes(1)
+  expect(api.review.mock.calls[0][0].id).toBe(1)
+  await screen.findByText(/1 book entry saved in this attempt/)
+  expect(screen.getByRole('button', { name: 'Questions (1)' })).toBeTruthy()
  })
  it('clears an old error after a successful correction', async () => {
   api.batch.mockResolvedValue({ ...initial, rows: [row(2, { errors: ['Author is required.'] })] })

@@ -1,5 +1,93 @@
 # Database Schema Context
 
+## October 17 revision Phases 5–7 - October 22, 2026
+
+Applied additive Postgres **030_october17_maintenance.sql**; next unused **031**.
+Draft enrollment **028** and MySQL **048**/next **049** remain unchanged. Dewey is
+deferred. Before/after count/hash snapshots of 12 existing operational tables
+matched exactly; seven new ledgers were empty after migration.
+
+Historical previews resolve optional Student/Faculty IDs before review and duplicate checks. Exact duplicates sort before the bounded similar-entry warning list, including older entries; linked user IDs remain recognized after name changes. This is service logic and adds no schema migration.
+
+`historical_print_entries` retains actual service/payment instants separately from
+entry actor/time. Only supported confirmed payments enter revenue, on receipt date.
+Unknown counts/identities remain unrecorded; corrections/voids retain append-only
+`library_maintenance_events`. No online queue, stock, receipt or email is fabricated.
+`print_supply_details` describes existing paper/ink without changing stock units or
+quantities. `maintained_item_categories`, `maintained_stock_items` and append-only
+`maintained_stock_movements` separate printing materials from merchandise by kind,
+including a composite category foreign key. Monetary values use exact decimals;
+stock units, nonnegative balances, version checks, row locks and actor/key-scoped
+`library_maintenance_commands` protect concurrent/retried changes. Merchandise
+changes do not produce sales revenue or affect library copies.
+
+Four security-invoker server report views combine source-labelled service,
+confirmed revenue, recorded restock facts and current supply descriptions. All new
+tables enable RLS; tables, sequences and views revoke direct browser-role access.
+Only existing Librarian authority can access the new APIs. The migration runner
+uses the explicit public ledger and transaction-local search path; disposable
+acceptance schemas likewise use transaction-local paths and exact-name cleanup.
+See [implementation and remaining human acceptance](revision-oct17-remaining-implementation.md).
+
+## October 17 revision Phase 4 report reads - October 22, 2026
+
+No schema or migration changes. Librarian report definitions, preview and CSV/PDF
+share one label/filter contract. Report reads use repeatable-read, read-only
+transactions and retain `library.manage` authorization. Search/status apply before
+the 20,000-matching-row ceiling; exports include all matching preview pages.
+Fine reporting reads existing allocation/adjustment ledgers without the operational
+5,000-row shortlist. Active holdings exclude archived copies and account for the
+existing material availability bridge. Current stock, holdings and clearance remain
+explicit current snapshots; they do not reconstruct historical balances.
+
+Periods require confirmed semester dates or explicit ranges. UTC audit fields are
+converted to Philippine time; existing campus wall-time service fields retain their
+semantics. No historical values are rewritten. Recorded applied Postgres remains
+029, next unused 030; draft enrollment 028 and MySQL 048/next 049 are unchanged.
+See [implementation and verification](revision-oct17-phase4-implementation.md).
+
+## October 17 revision Phase 3 activity - October 22, 2026
+
+No schema or migration changes. The owner deferred Phase 2 Dewey work and approved
+Phase 3. Librarian-only `GET /api/v1/notifications/activity` reads bounded existing
+administrative circulation events, request events, attendance visits, printing
+status history and payment receipts. Routine reads create no notices or loans.
+Operational alerts reuse `notifications`, stable `library:` dedupe keys and each
+recipient's existing read/deleted state. Printing submission and reservation
+readiness/expiry write alerts in their original transactions; the minute worker
+recovers currently overdue loans, pending print work and ready reservations.
+Recipients are distinct active Librarian account/profile pairs. Existing browser
+role revocations and RLS remain intact; no Staff privilege is added.
+
+Hosted pooler inspection confirmed UTC server audit timestamps; attendance and
+Date-bound receipt service times retain explicit Philippine wall-time semantics.
+The activity DTO converts these sources to ISO instants. New operational notice
+delivery/creation fields explicitly store UTC; their API creation time is converted
+on read. No existing dates are rewritten. Current applied product file remains
+029, next unused 030; draft enrollment 028 and MySQL 048/next 049 are unchanged.
+See [implementation, source coverage and verification](revision-oct17-phase3-implementation.md).
+
+## October 17 revision Phase 1 reads - October 22, 2026
+
+No new tables, columns or migrations. Public stock polling uses a parameterized,
+bounded read over active titles, physical copies and their existing material bridge.
+`GET /api/public/catalog/availability?ids=...` accepts at most 25 unique positive
+title IDs and exposes IDs, active flags and stock counts. An optional `detailId`
+within that list also returns already-public fields for that title's active copies,
+without reloading authors, digital files or other metadata. Identical pending
+public reads coalesce and completed counts cache for 250 ms. The endpoint has its
+own bounded polling budget; existing full catalog and authentication limits remain.
+
+Protected `GET /api/v1/catalog/books?viewer_only=1` returns current viewer policy
+and commitment counts without loading full catalog metadata. The owner clearance
+read computes current standing without updating its derived cache; automatic
+polling must not create repeated writes. Authorization, copy IDs, account versions,
+reservation/loan meanings and operational ledgers are unchanged.
+
+Tracker for this work: recorded applied Postgres **029**, enrollment **028** still
+an unapplied draft, next unused **030**; MySQL reference **048**, next **049**.
+See [implementation and verification](revision-oct17-phase1-implementation.json).
+
 ## Engine note (updated 2026-09-28)
 
 The API is mid-cutover to Supabase PostgreSQL. See [supabase-migration-plan.md](supabase-migration-plan.md).
@@ -399,7 +487,7 @@ Implementation and verification evidence is tracked in `docs/october16-revisions
 
 ## Student enrollment and Semester Archive — applied (2026-11-09)
 
-Applied Postgres migration `031_semester_enrollment.sql` supersedes draft 028. Existing account and academic-term structures retain their meanings. The next unused Postgres number is 032.
+Applied Postgres migration `031_semester_enrollment.sql` supersedes draft 028. Existing account and academic-term structures retain their meanings.
 
 - `enrollment_semesters` records the single active enrollment term, both locked end times, and closure actors and timestamps. These records are separate from the reporting and clearance calendar.
 - `enrollment_roster_imports` and `enrollment_roster_students` store validated versions. The latest complete roster and later partial updates determine enrollment. An upload does not create or reactivate an account.
@@ -407,8 +495,15 @@ Applied Postgres migration `031_semester_enrollment.sql` supersedes draft 028. E
 - `enrollment_signup_challenges` binds hashed codes and one-time password setup grants to the effective roster row. A returning student's login challenge is bound to the active semester via `login_otp_challenges.restoration_semester_id`. New enrollment tables use RLS and are accessible through the private API.
 - Enforcement requires Postgres and `ENROLLMENT_ROSTER_ENABLED=true`. The first semester start switches Student registration and new borrowing to the roster. The server enforces the cutoff even if a job is delayed. The existing job runner or a subsequent enrollment overview saves scheduled closure.
 
-### Account setup without a review queue — implementation
+### Account setup without a review queue — local implementation
 
 - Public signup uses the active Student roster. Existing Faculty accounts continue to sign in with a password and school email code. New Faculty signup is paused.
 - Admin and Librarian can create Staff accounts from Users. Setup records a `StaffAccountCreated` audit event and generates a private random credential. The Staff member sets a password through the personnel login page. Existing password-recovery challenges also handle this Staff flow, limited to active Staff accounts created through the new setup.
 - New profile pictures publish on save. The storage bucket remains private, and the existing `Approved` storage status marks the published image for compatibility. Previously submitted pictures remain in history. Users can select and save an older pending picture again.
+## Remembered browser sign-in (2026-11-10)
+
+Postgres migration `032_login_devices.sql` was applied individually on 2026-11-10. The next unused Postgres number is 033. The API reads the new fields only when `LOGIN_DEVICES_ENABLED=true` on Postgres.
+
+- `library_login_sessions` stores the browser token hash and optional seven-day deadline alongside the existing account version, last activity and revocation time. A browser-session cookie identifies an ordinary sign-in. It can resume within the existing ten-minute inactivity limit.
+- `login_otp_challenges.remember_device` binds the Student or Faculty choice to the verified challenge.
+- `login_device_switches` stores private, hashed two-minute confirmations tied to the account version and the session they can replace. The account lock serializes switches, resumptions and revocations.

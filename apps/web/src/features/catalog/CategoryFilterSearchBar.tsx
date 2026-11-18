@@ -39,22 +39,22 @@ export function CategoryFilterSearchBar({
     }
   }, [categories, loading, onCategoryChange, selectedCategoryId])
 
-  const pillClass = (active: boolean) => `whitespace-nowrap rounded-full border px-4 py-2 text-xs font-bold transition focus:outline-none focus:ring-4 focus:ring-[#003399]/15 ${
+  const pillClass = (active: boolean) => `whitespace-nowrap rounded-full border px-4 py-2 text-xs font-bold transition focus:outline-none focus:ring-4 focus:ring-[#0b5ea2]/15 ${
     active
-      ? 'border-[#003399] bg-[#003399] text-[#FFFFFF]'
-      : 'border-[#003399]/15 bg-[#FFFFFF] text-[#003399] hover:border-[#003399]'
+      ? 'border-[#0b5ea2] bg-[#0b5ea2] text-[#FFFFFF]'
+      : 'border-[#0b5ea2]/15 bg-[#FFFFFF] text-[#0b5ea2] hover:border-[#0b5ea2]'
   }`
 
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
       <label className="relative block w-full lg:max-w-md lg:flex-none">
-        <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#003399]/55" size={18} />
+        <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#0b5ea2]/55" size={18} />
         <input
           aria-label="Search books"
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
           placeholder="Search title, author, ISBN, category, or year…"
-          className="h-12 w-full rounded-xl border border-[#003399]/15 bg-[#FFFFFF] pl-11 pr-4 text-sm text-[#003399] outline-none focus:border-[#003399] focus:ring-4 focus:ring-[#003399]/10"
+          className="h-12 w-full rounded-xl border border-[#0b5ea2]/15 bg-[#FFFFFF] pl-11 pr-4 text-sm text-[#0b5ea2] outline-none focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/10"
         />
       </label>
 
@@ -72,9 +72,9 @@ export function CategoryFilterSearchBar({
               {category.categoryName}
             </button>
           ))}
-          {loading ? <span className="whitespace-nowrap px-3 py-2 text-xs font-semibold text-[#003399]/60">Loading categories…</span> : null}
+          {loading ? <span className="whitespace-nowrap px-3 py-2 text-xs font-semibold text-[#0b5ea2]/60">Loading categories…</span> : null}
         </div>
-        {error ? <p role="alert" className="mt-2 text-right text-xs font-semibold text-[#003399]">{error}</p> : null}
+        {error ? <p role="alert" className="mt-2 text-right text-xs font-semibold text-[#0b5ea2]">{error}</p> : null}
       </div>
     </div>
   )

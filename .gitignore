@@ -20,3 +20,7 @@ apps/api/public/assets/covers/
 # Python bytecode generated while producing documentation
 __pycache__/
 *.pyc
+
+# Local Xendit sandbox credentials
+/docs/local/xendit-sandbox-credentials.md
+/docs/local/xendit-credentials-blank.md

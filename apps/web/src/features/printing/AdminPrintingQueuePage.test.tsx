@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { AdminPrintingQueuePage } from './AdminPrintingQueuePage'
+import { MemoryRouter } from 'react-router-dom'
 
 const api = vi.hoisted(() => ({ summary: vi.fn(), queue: vi.fn(), setServiceStatus: vi.fn() }))
 vi.mock('./printing-api', () => ({ printingApi: api }))
@@ -12,7 +13,7 @@ it('does not report paused/zero/empty data after a failed request and recovers w
     service_status: { accepting_requests: 1, unavailable_reason: null },
   })
   api.queue.mockResolvedValue({ rows: [] })
-  render(<AdminPrintingQueuePage />)
+  render(<MemoryRouter><AdminPrintingQueuePage /></MemoryRouter>)
   await screen.findByRole('alert')
   expect(screen.getByText('Printing service status unavailable.')).toBeTruthy()
   expect(screen.queryByText('Print requests are paused')).toBeNull()

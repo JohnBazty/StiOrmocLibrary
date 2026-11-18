@@ -3,7 +3,7 @@
 **Why:** Connect catalog requests, existing cart claims and waitlists to one physical-copy allocation and verified desk checkout.
 
 **Date created:** 2026-10-11  
-**Date last updated:** 2026-10-16  
+**Date last updated:** 2026-11-10  
 **Status:** `built`
 
 ## How
@@ -46,3 +46,7 @@
 ## Owner amendment — 2026-10-16
 
 The owner confirmed that only unavailable books enter the reservation queue. Available books use the cart and go directly to staff handover in Borrow & return. Additive Postgres 027 persists the distinction while preserving existing requests. No new loan exists before physical handover. See [updated workflow and acceptance evidence](cart-handover-reservation-split-20261016.md); earlier descriptions of all cart submissions entering the queue are superseded for new submissions.
+
+## November 10 layout update
+
+Larger covers, titles, status badges and request details improve readability on phones and desktops. The history control and cancellation button have larger touch targets. Verified a single column at phone width and two columns at desktop width with disposable data and no horizontal scrolling. All 327 web tests passed. Both live Student and Faculty routes serve Vercel deployment `dpl_6H2Foy8G6mjmLm6GUUANGvedtWit`.

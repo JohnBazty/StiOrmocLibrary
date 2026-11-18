@@ -1,0 +1,40 @@
+{
+  "title": "Recover API startup from temporary database DNS failures",
+  "why": "The owner encountered ENOTFOUND for the configured Supabase pooler hostname. The API exited after its first failed connection probe, leaving Vite running with ECONNREFUSED proxy errors.",
+  "dateCreated": "2026-10-17",
+  "dateLastUpdated": "2026-10-17",
+  "status": "built",
+  "evidence": {
+    "reportedError": "getaddrinfo ENOTFOUND aws-0-ap-northeast-2.pooler.supabase.com",
+    "configuration": "The existing explicit Postgres connection string targets the reported hostname on port 6543. No hostname, credentials or environment settings were changed.",
+    "diagnosis": "Subsequent Windows and Node DNS lookups succeeded, as did the actual configured database SELECT 1 probe. The observed failure was DNS resolution before database authentication. The specific external resolver or network interruption could not be determined after recovery.",
+    "startupDefect": "src/server.ts performed one connection probe and exited immediately when it failed. The web server then continued attempting to proxy requests to the stopped API."
+  },
+  "how": {
+    "implementation": "A small database-startup helper retries only the read-only initial connection probe for recognized transient DNS, network and database-starting errors. It permits five probes with 1, 2, 4 and 8 second waits. Wrong credentials, missing database/schema and unrelated SQL failures are not retried.",
+    "diagnostics": "Retry notices show the delay and attempt count. Exhausted DNS/network errors give actionable connection guidance without printing passwords, connection strings or raw SQL. Failed startup closes the pool.",
+    "scope": "No application writes are replayed. No migrations, schema changes, credential resets, fixed-IP substitutions or Windows DNS changes are performed.",
+    "files": ["apps/api/src/core/database-startup.ts", "apps/api/src/core/database-startup.test.ts", "apps/api/src/server.ts", "README.MD"]
+  },
+  "implementationTracking": {
+    "diagnoseConnectionAndDns": "complete",
+    "boundedReadOnlyRetries": "complete",
+    "clearCredentialSafeStartupMessages": "complete",
+    "regressionTestsAndApiBuild": "complete",
+    "restartAndPublicProxyChecks": "complete"
+  },
+  "verification": {
+    "focusedTests": "6 passed: recovery, retry exhaustion, immediate permanent failure, nested errors, first-probe success and sanitized diagnostics.",
+    "apiSuite": "396 passed, 0 failed.",
+    "apiBuild": "passed",
+    "liveDatabase": "Configured SELECT 1 succeeded.",
+    "apiHealth": "http://localhost:4000/api/health — HTTP 200, schema ready, no missing tables or columns.",
+    "websiteProxy": ["http://localhost:5173/api/public/catalog/options — HTTP 200", "http://localhost:5173/api/public/catalog/titles — HTTP 200"],
+    "limits": "The live DNS fault had already recovered during diagnosis. Repeat failures and recovery were exercised through deterministic injected probes; system DNS was not deliberately broken. A lasting network outage or incorrect saved hostname still requires restoration or correction after retry exhaustion."
+  },
+  "migrationTracking": "Postgres 029 remains applied; enrollment 028 stays unapplied; next unused 030. MySQL reference 048 / next 049 unchanged.",
+  "changeLog": [
+    {"date":"2026-10-17","change":"Added bounded startup recovery and safe terminal diagnostics, passed tests/build, restarted the API alongside the existing web server and verified the previously failing public catalog requests through Vite."}
+  ],
+  "references": ["https://supabase.com/docs/guides/database/connecting-to-postgres"]
+}

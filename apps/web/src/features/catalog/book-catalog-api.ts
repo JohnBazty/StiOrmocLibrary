@@ -16,6 +16,7 @@ function authorizationHeaders(): Record<string, string> {
 }
 
 export type BookCatalogRequest = {
+  viewerOnly?: boolean
   query?: string
   categoryName?: string
   categoryId?: number
@@ -38,6 +39,7 @@ export async function fetchBookCategories(signal?: AbortSignal) {
 
 export async function fetchBookCatalog(request: BookCatalogRequest = {}) {
   const parameters = new URLSearchParams()
+  if (request.viewerOnly) parameters.set('viewer_only', '1')
   if (request.query) parameters.set('q', request.query)
   if (request.categoryName) parameters.set('category_name', request.categoryName)
   if (request.categoryId) parameters.set('category_id', String(request.categoryId))

@@ -14,12 +14,12 @@ export type Book = {
 }
 
 export const books: Book[] = [
-  { id: 1, title: 'Clean Code', author: 'Robert C. Martin', category: 'Software Engineering', year: 2008, isbn: '978-0132350884', shelf: 'IT-A12', available: 3, total: 5, status: 'available', cover: 'CC', accent: 'from-[#003399] to-[#003399]' },
-  { id: 2, title: 'Database System Concepts', author: 'Abraham Silberschatz', category: 'Database', year: 2019, isbn: '978-0078022159', shelf: 'IT-B04', available: 1, total: 4, status: 'available', cover: 'DB', accent: 'from-[#003399] to-[#003399]' },
-  { id: 3, title: 'Computer Networks', author: 'Andrew S. Tanenbaum', category: 'Networking', year: 2021, isbn: '978-0136764052', shelf: 'IT-C08', available: 0, total: 3, status: 'borrowed', cover: 'CN', accent: 'from-[#003399] to-[#003399]' },
-  { id: 4, title: 'The Design of Everyday Things', author: 'Don Norman', category: 'UI/UX Design', year: 2013, isbn: '978-0465050659', shelf: 'DES-A03', available: 2, total: 2, status: 'available', cover: 'DE', accent: 'from-[#003399] to-[#003399]' },
-  { id: 5, title: 'Artificial Intelligence: A Modern Approach', author: 'Stuart Russell and Peter Norvig', category: 'Artificial Intelligence', year: 2020, isbn: '978-0134610993', shelf: 'IT-D11', available: 1, total: 3, status: 'available', cover: 'AI', accent: 'from-[#003399] to-[#003399]' },
-  { id: 6, title: 'Introduction to Algorithms', author: 'Thomas H. Cormen', category: 'Programming', year: 2022, isbn: '978-0262046305', shelf: 'IT-A02', available: 0, total: 2, status: 'reserved', cover: 'IA', accent: 'from-[#003399] to-[#003399]' },
+  { id: 1, title: 'Clean Code', author: 'Robert C. Martin', category: 'Software Engineering', year: 2008, isbn: '978-0132350884', shelf: 'IT-A12', available: 3, total: 5, status: 'available', cover: 'CC', accent: 'from-[#0b5ea2] to-[#0b5ea2]' },
+  { id: 2, title: 'Database System Concepts', author: 'Abraham Silberschatz', category: 'Database', year: 2019, isbn: '978-0078022159', shelf: 'IT-B04', available: 1, total: 4, status: 'available', cover: 'DB', accent: 'from-[#0b5ea2] to-[#0b5ea2]' },
+  { id: 3, title: 'Computer Networks', author: 'Andrew S. Tanenbaum', category: 'Networking', year: 2021, isbn: '978-0136764052', shelf: 'IT-C08', available: 0, total: 3, status: 'borrowed', cover: 'CN', accent: 'from-[#0b5ea2] to-[#0b5ea2]' },
+  { id: 4, title: 'The Design of Everyday Things', author: 'Don Norman', category: 'UI/UX Design', year: 2013, isbn: '978-0465050659', shelf: 'DES-A03', available: 2, total: 2, status: 'available', cover: 'DE', accent: 'from-[#0b5ea2] to-[#0b5ea2]' },
+  { id: 5, title: 'Artificial Intelligence: A Modern Approach', author: 'Stuart Russell and Peter Norvig', category: 'Artificial Intelligence', year: 2020, isbn: '978-0134610993', shelf: 'IT-D11', available: 1, total: 3, status: 'available', cover: 'AI', accent: 'from-[#0b5ea2] to-[#0b5ea2]' },
+  { id: 6, title: 'Introduction to Algorithms', author: 'Thomas H. Cormen', category: 'Programming', year: 2022, isbn: '978-0262046305', shelf: 'IT-A02', available: 0, total: 2, status: 'reserved', cover: 'IA', accent: 'from-[#0b5ea2] to-[#0b5ea2]' },
 ]
 
 export const researchPapers = [

@@ -1,5 +1,6 @@
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { requireVerificationSender } from '../auth/school-email.sender.ts'
+import { notifyLibrarians } from '../notifications/library-alerts.ts'
 
 export type RequestEventStatus = 'received' | 'waiting' | 'preparing' | 'ready_for_pickup' | 'claimed' | 'cancelled' | 'expired'
 export const requestLabels: Record<RequestEventStatus, string> = {
@@ -39,6 +40,11 @@ export async function recordRequestEvent(q: PoolConnection, id: number, status: 
   const label = cart && status === 'received' ? 'Cart sent to library desk' : requestLabels[status]
   const instructions = cart && status === 'received' ? 'Bring the selected book to the library desk. Your loan starts only when staff confirm handover.' : requestInstructions(status, r.deadline ? new Date(r.deadline) : null)
   const body = `${r.title}: ${instructions}`
+  if (!cart && (status === 'ready_for_pickup' || status === 'expired')) {
+    await notifyLibrarians(q, {key:`reservation:${id}:${status}`, title: status === 'expired' ? 'Reservation pickup expired' : 'Reservation ready for pickup',
+      body:`${r.title}: request ${id} is ${status === 'expired' ? 'expired. Review the released copy and waiting list.' : 'ready for collection.'}`,
+      sourceId:id,personUserId:Number(r.user_id),path:`/librarian/reservations?status=${status}`,type:'Reservation Arrival'})
+  }
   const path = r.user_role === 'Faculty' ? '/faculty/reservations' : '/student/reservations'
   await q.execute(`INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,
     action_path,priority,dedupe_key,scheduled_for,delivered_at) VALUES (?,?,?,'Reservation Arrival','Reservation',?,?,?, ?,NOW(),NOW())

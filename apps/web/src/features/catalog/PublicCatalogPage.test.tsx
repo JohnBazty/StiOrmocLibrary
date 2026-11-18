@@ -1,13 +1,17 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { PublicCatalogPage } from './PublicCatalogPage'
 import { ThemeProvider } from '../theme/ThemeProvider'
 import { enhancedCatalog } from './enhanced-catalog-api'
 
-vi.mock('./enhanced-catalog-api',()=>({enhancedCatalog:{options:vi.fn(),search:vi.fn(),detail:vi.fn()}}))
+vi.mock('./enhanced-catalog-api',()=>({enhancedCatalog:{availability:vi.fn().mockResolvedValue({items:[]}),options:vi.fn(),search:vi.fn(),detail:vi.fn()}}))
 vi.mock('./CatalogDetailsPanel',()=>({catalogInput:'field',CatalogDetailsPanel:()=> <p>Public book information</p>}))
 const book={id:42,title:'Example library book',coverImagePath:'/api/assets/covers/example.jpg',kind:'Book',author:'Author',category:'Science',programs:[],courses:[],files:[],copies:[{id:1,accession:'ACC-1',availability:'Available',condition:'Good',shelf:'Shelf A'}],available:1,copyCount:1}
+beforeAll(()=>{
+ Object.defineProperty(HTMLDialogElement.prototype,'showModal',{configurable:true,value(){this.setAttribute('open','')}})
+ Object.defineProperty(HTMLDialogElement.prototype,'close',{configurable:true,value(){this.removeAttribute('open')}})
+})
 afterEach(()=>{cleanup();vi.clearAllMocks();vi.restoreAllMocks()})
 it('allows anonymous browsing and details while borrowing leads to login',async()=>{
  vi.mocked(enhancedCatalog.options).mockResolvedValue({categories:[{id:1,name:'Science'}],programs:[],courses:[],types:[],locations:[]} as never)
@@ -23,6 +27,11 @@ it('allows anonymous browsing and details while borrowing leads to login',async(
  expect(screen.getByText('Available · Good')).toBeTruthy()
  expect(screen.getAllByRole('link',{name:'Borrow book'})).toHaveLength(2)
  expect(screen.getAllByRole('link',{name:'Borrow book'}).every(link=>link.getAttribute('href')==='/login?catalogTitleId=42')).toBe(true)
+ const close=screen.getByRole('button',{name:'Close details'})
+ close.focus()
+ fireEvent(screen.getByRole('dialog'),new Event('cancel',{cancelable:true,bubbles:true}))
+ expect(screen.queryByRole('dialog')).toBeNull()
+ expect(document.body.style.overflow).toBe('')
 })
 
 it('filters from the main search, preserves other filters and resets pagination when typing or clearing',async()=>{
@@ -61,4 +70,31 @@ it('retains collection search for embedded catalogs without a welcome search',as
  expect(screen.getAllByRole('textbox')).toHaveLength(1)
  fireEvent.change(screen.getByRole('textbox',{name:'Search title, author or ISBN'}),{target:{value:'978123'}})
  await waitFor(()=>expect(vi.mocked(enhancedCatalog.search).mock.lastCall?.[0].get('q')).toBe('978123'))
+})
+
+it('filters public research and clears research fields when switching back to books', async () => {
+ const thesis={...book,id:43,title:'Example thesis',kind:'Research/Thesis',coverImagePath:null,department:'Information Technology',adviser:'Example Adviser',publicationYear:2026}
+ vi.mocked(enhancedCatalog.options).mockResolvedValue({categories:[],programs:[],courses:[],types:[],locations:[]} as never)
+ vi.mocked(enhancedCatalog.search).mockResolvedValue({items:[thesis],pagination:{total:1,page:1,limit:24}} as never)
+ render(<MemoryRouter initialEntries={['/?kind=Research%2FThesis&page=2']}><ThemeProvider><PublicCatalogPage embedded/></ThemeProvider></MemoryRouter>)
+ expect(await screen.findByRole('img',{name:'Example thesis research cover'})).toBeTruthy()
+ expect(screen.queryByRole('link',{name:'Borrow book'})).toBeNull()
+ fireEvent.click(screen.getByText('Filter collection'))
+ for (const [name,value] of [['Department','Information Technology'],['Publication year','2026'],['Author','Example Author'],['Adviser','Example Adviser']]) {
+  fireEvent.change(screen.getByLabelText(name),{target:{value}})
+ }
+ await waitFor(()=>{
+  const query=vi.mocked(enhancedCatalog.search).mock.lastCall?.[0]
+  expect(query?.get('department')).toBe('Information Technology')
+  expect(query?.get('publicationYear')).toBe('2026')
+  expect(query?.get('author')).toBe('Example Author')
+  expect(query?.get('adviser')).toBe('Example Adviser')
+  expect(query?.has('page')).toBe(false)
+ })
+ fireEvent.change(screen.getByLabelText('Collection'),{target:{value:'Book'}})
+ await waitFor(()=>{
+  const query=vi.mocked(enhancedCatalog.search).mock.lastCall?.[0]
+  expect(query?.get('kind')).toBe('Book')
+  expect(['department','publicationYear','author','adviser'].some(field=>query?.has(field))).toBe(false)
+ })
 })

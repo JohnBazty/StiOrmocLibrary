@@ -58,14 +58,27 @@ const publicSelect=`SELECT t.title_id AS id,t.title,t.record_type AS kind,t.cove
  COALESCE((SELECT jsonb_agg(jsonb_build_object('id',s.course_id,'name',s.name,'programId',s.program_id,'code',s.code)) FROM catalog_title_courses tc JOIN catalog_courses s ON s.course_id=tc.course_id WHERE tc.title_id=t.title_id),'[]') AS courses,
  (SELECT COUNT(*) FROM physical_copies pc WHERE pc.title_id=t.title_id AND pc.lifecycle_status='Active') AS "copyCount",
  (SELECT COUNT(*) FROM physical_copies pc JOIN materials m ON m.material_id=pc.material_id WHERE pc.title_id=t.title_id AND pc.lifecycle_status='Active' AND pc.availability_status='Available' AND m.availability_status='Available' AND pc.condition_status NOT IN ('Lost','Damaged','For Repair')) AS available,
- COALESCE((SELECT abstract_text FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived' LIMIT 1),'') AS abstract
- FROM titles t LEFT JOIN categories c ON c.category_id=t.category_id LEFT JOIN catalog_title_details d ON d.title_id=t.title_id LEFT JOIN catalog_resource_types rt ON rt.type_id=d.type_id`
+ COALESCE(research.abstract_text,'') AS abstract, research.department_or_program AS department, research.adviser_name AS adviser
+ FROM titles t LEFT JOIN categories c ON c.category_id=t.category_id LEFT JOIN catalog_title_details d ON d.title_id=t.title_id LEFT JOIN catalog_resource_types rt ON rt.type_id=d.type_id
+ LEFT JOIN LATERAL (SELECT rr.abstract_text,rr.department_or_program,rr.adviser_name
+   FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived'
+   ORDER BY rr.research_record_id LIMIT 1) research ON t.record_type<>'Book'`
 function publicWhere(query:Record<string,unknown>){
  const clauses=["t.lifecycle_status='Active'","(t.record_type='Book' OR EXISTS(SELECT 1 FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived'))"],values:any[]=[]
  const q=clean(query.q).slice(0,120);if(q){clauses.push('(t.title ILIKE ? OR t.isbn ILIKE ? OR EXISTS(SELECT 1 FROM authors a WHERE a.title_id=t.title_id AND a.author_name ILIKE ?))');values.push(`%${q}%`,`%${q}%`,`%${q}%`)}
  if(['Book','Research/Thesis'].includes(String(query.kind))){clauses.push('t.record_type=?');values.push(query.kind)}
  if(positiveId(query.categoryId)){clauses.push('t.category_id=?');values.push(positiveId(query.categoryId))}
  for(const [param,table,col] of [['programId','catalog_title_programs','program_id'],['courseId','catalog_title_courses','course_id'],['typeId','catalog_title_details','type_id']])if(positiveId(query[param])){clauses.push(`EXISTS(SELECT 1 FROM ${table} f WHERE f.title_id=t.title_id AND f.${col}=?)`);values.push(positiveId(query[param]))}
+ const year=clean(query.publicationYear)
+ if(/^\d{4}$/.test(year)&&Number(year)>=1000){clauses.push('t.publication_year=?');values.push(Number(year))}
+ const author=clean(query.author).slice(0,120)
+ if(author){clauses.push('EXISTS(SELECT 1 FROM authors a WHERE a.title_id=t.title_id AND STRPOS(LOWER(a.author_name),LOWER(?))>0)');values.push(author)}
+ const researchFilters:string[]=[]
+ for(const [parameter,column] of [['department','department_or_program'],['adviser','adviser_name']] as const){
+  const value=clean(query[parameter]).slice(0,150)
+  if(value){researchFilters.push('STRPOS(LOWER(rr.'+column+'),LOWER(?))>0');values.push(value)}
+ }
+ if(researchFilters.length)clauses.push("EXISTS(SELECT 1 FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived' AND "+researchFilters.join(' AND ')+")")
  return {sql:clauses.join(' AND '),values}
 }
 export async function publicCatalog(query:Record<string,unknown>){pg();const where=publicWhere(query),page=Math.max(1,Math.min(10000,positiveId(query.page)??1)),limit=24
@@ -166,12 +179,12 @@ export async function reviewImport(value:unknown,body:Record<string,unknown>,act
  });return {reviewed:true}
 }
 export async function commitImport(value:unknown,actor:number){
- const batchId=id(value),selected=await rows(db,"SELECT import_row_id FROM catalog_import_rows WHERE batch_id=? AND status='Ready' ORDER BY import_row_id LIMIT 10",[batchId]);const errors:Array<{rowId:number;message:string}>=[];let imported=0
+ const batchId=id(value),selected=await rows(db,"SELECT import_row_id FROM catalog_import_rows WHERE batch_id=? AND status='Ready' AND (error_text IS NULL OR error_text='') ORDER BY import_row_id LIMIT 10",[batchId]);const errors:Array<{rowId:number;message:string}>=[];let imported=0
  for(const entry of selected){const rowId=Number(entry.import_row_id)
   try{const saved=await transaction(actor,async c=>{
    // Serializes commits for the same batch and retains a durable per-row result.
    await rows(c,'SELECT batch_id FROM catalog_import_batches WHERE batch_id=? FOR UPDATE',[batchId])
-   const row=(await rows(c,'SELECT * FROM catalog_import_rows WHERE import_row_id=? AND batch_id=? FOR UPDATE',[rowId,batchId]))[0];if(!row||row.status!=='Ready')return false
+   const row=(await rows(c,'SELECT * FROM catalog_import_rows WHERE import_row_id=? AND batch_id=? FOR UPDATE',[rowId,batchId]))[0];if(!row||row.status!=='Ready'||row.error_text)return false
    const data=row.data_json as HoldingsData,needsCopies=['new','add'].includes(row.decision),issues=validateHoldingsData(data,needsCopies);if(issues.length)throw fail(issues.join(' '));await validateImportReferences(c,data,needsCopies)
    // A global transaction lock closes concurrent duplicate-title races across imports.
    await c.execute("SELECT pg_advisory_xact_lock(734031)")
@@ -198,5 +211,5 @@ export async function commitImport(value:unknown,actor:number){
    await c.execute("UPDATE catalog_import_rows SET status='Imported',result_json=?::jsonb,row_version=row_version+1,error_text=NULL,updated_at=NOW() WHERE import_row_id=?",[JSON.stringify({titleId,copyIds}),rowId]);await refreshCollectionReview(c);return true
   });if(saved)imported++}catch(e){const message=e instanceof HttpError?e.message:'The row could not be imported. Review its identifiers and try again.';errors.push({rowId,message});await db.execute("UPDATE catalog_import_rows SET error_text=? WHERE import_row_id=? AND status='Ready'",[message,rowId])}
  }
- const remaining=await rows(db,"SELECT COUNT(*) AS total FROM catalog_import_rows WHERE batch_id=? AND status='Ready'",[batchId]);return {imported,remaining:Number(remaining[0].total),errors}
+ const remaining=await rows(db,"SELECT COUNT(*) AS total FROM catalog_import_rows WHERE batch_id=? AND status='Ready' AND (error_text IS NULL OR error_text='')",[batchId]);return {imported,remaining:Number(remaining[0].total),errors}
 }

@@ -1,5 +1,7 @@
 import type { Pool, RowDataPacket } from 'mysql2/promise'
 import { db } from '../../config/db.js'
+import { extendedPrintingReports } from './printing-extended-reports.ts'
+import { revenueSnapshot } from './printing-revenue.ts'
 import {
   currentDate,
   dateAddDays,
@@ -71,7 +73,7 @@ export class PrintingRepository {
 
   private queueWhere(filters: QueueFilters) {
     const clauses = ['1=1']; const values: Array<string|number> = []
-    if (filters.q) { const q=`%${filters.q}%`; clauses.push(`(u.full_name LIKE ? OR u.school_id LIKE ? OR pr.file_name LIKE ? OR CAST(pr.request_id AS ${isPostgres ? 'TEXT' : 'CHAR'}) LIKE ? OR r.receipt_number LIKE ? OR r.verification_code LIKE ?)`); values.push(q,q,q,q,q,q) }
+    if (filters.q) { const text=`CONCAT_WS(' ',u.full_name,u.school_id,pr.file_name,CAST(pr.request_id AS ${isPostgres?'TEXT':'CHAR'}),r.receipt_number,r.verification_code)`; clauses.push(isPostgres?`strpos(lower(${text}),lower(?))>0`:`LOCATE(LOWER(?),LOWER(${text}))>0`); values.push(filters.q) }
     if (filters.status) { clauses.push('pr.job_status=?'); values.push(filters.status) }
     if (filters.payment) { clauses.push('pr.payment_status=?'); values.push(filters.payment) }
     return { sql: clauses.join(' AND '), values }
@@ -110,7 +112,12 @@ export class PrintingRepository {
     return { ink, paper, summary:{low_ink_items:Number(totals[0]?.low_ink_items??0),low_paper_items:Number(totals[0]?.low_paper_items??0),monthly_expense:Number(totals[0]?.monthly_expense??0)} }
   }
 
+  async revenueSnapshot(filters: FinanceFilters) {
+    return revenueSnapshot(await this.revenueEntries(filters), filters)
+  }
+
   async revenueSummary(filters: FinanceFilters) {
+    if(isPostgres)return extendedPrintingReports(this.pool).revenueSummary(filters)
     const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT COUNT(*) paid_requests,COALESCE(SUM(pr.total_sheets),0) total_sheets,COALESCE(SUM(pr.number_of_copies),0) total_copies,COALESCE(SUM(p.amount_paid),0) total_revenue
       FROM print_cash_payments p JOIN print_requests pr ON pr.request_id=p.request_id
       WHERE p.received_at>=? AND p.received_at<${dayAfter()}`,[filters.from,filters.to])
@@ -118,6 +125,7 @@ export class PrintingRepository {
   }
 
   async revenueEntries(filters: FinanceFilters) {
+    if(isPostgres)return extendedPrintingReports(this.pool).revenue(filters)
     const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT p.received_at,p.request_id,u.full_name,u.school_id,pr.file_name,pr.print_type,pr.paper_size,pr.page_count,pr.number_of_copies,pr.total_sheets,p.amount_paid,staff.full_name received_by
       FROM print_cash_payments p
       JOIN print_requests pr ON pr.request_id=p.request_id
@@ -129,6 +137,7 @@ export class PrintingRepository {
   }
 
   async expenseSummary(filters: FinanceFilters) {
+    if(isPostgres)return extendedPrintingReports(this.pool).expenseSummary(filters)
     const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT
       (SELECT COALESCE(SUM(expense_amount),0) FROM ink_stock_movements WHERE movement_type='Restock' AND created_at>=? AND created_at<${dayAfter()}) ink_expenses,
       (SELECT COALESCE(SUM(expense_amount),0) FROM paper_stock_movements WHERE movement_type='Restock' AND created_at>=? AND created_at<${dayAfter()}) paper_expenses,
@@ -138,6 +147,7 @@ export class PrintingRepository {
   }
 
   async restockHistory(filters: FinanceFilters) {
+    if(isPostgres)return extendedPrintingReports(this.pool).expenses(filters)
     const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT * FROM (
       SELECT m.created_at,'Ink' supply_type,CONCAT(i.cartridge_type,' · ',i.color_variation) supply_name,m.quantity_bottles quantity,'bottles' unit,m.unit_cost_per_bottle unit_cost,m.expense_amount total_expense,m.balance_before,m.balance_after,u.full_name recorded_by
       FROM ink_stock_movements m JOIN ink_repository i ON i.ink_id=m.ink_id LEFT JOIN users u ON u.user_id=m.recorded_by_user_id
@@ -166,6 +176,7 @@ export class PrintingRepository {
   async *expenseReportRows(filters: FinanceFilters) { for(const row of await this.restockHistory(filters))yield row }
 
   async financeSummary(filters: FinanceFilters) {
+    if(isPostgres){const extended=extendedPrintingReports(this.pool),[r,e]=await Promise.all([extended.revenueSummary(filters),extended.expenseSummary(filters)]),net=r.total_revenue-e.total_expenses;return {...e,revenue:r.total_revenue,net_result:net,profit_margin:r.total_revenue?Number((net/r.total_revenue*100).toFixed(2)):0,indicator:net>0?'Net gain':net<0?'Net loss':'Break-even'}}
     const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT
       (SELECT COALESCE(SUM(amount_paid),0) FROM print_cash_payments WHERE received_at>=? AND received_at<${dayAfter()}) revenue,
       (SELECT COALESCE(SUM(expense_amount),0) FROM ink_stock_movements WHERE movement_type='Restock' AND created_at>=? AND created_at<${dayAfter()}) ink_expenses,
@@ -177,6 +188,7 @@ export class PrintingRepository {
   }
 
   async financeEntries(filters: FinanceFilters) {
+    if(isPostgres)return extendedPrintingReports(this.pool).financeEntries(filters)
     const values=[filters.from,filters.to,filters.from,filters.to,filters.from,filters.to]
     const [rows]=await this.pool.execute<RowDataPacket[]>(`SELECT * FROM (
       SELECT p.received_at entry_date,CONCAT('Print request #',p.request_id,' - ',pr.file_name) entry_name,'Revenue' entry_type,
@@ -207,7 +219,10 @@ export class PrintingRepository {
   }
 
   async *printReportRows(filters: QueueFilters) { let page=1; while(true){const result=await this.queue({...filters,page,limit:100});for(const row of result.rows)yield row;if(page>=result.pagination.total_pages)break;page+=1} }
-  async *supplyReportRows() { const data=await this.supplies();for(const row of data.ink)yield {supply_type:'Ink bottle',name:`${row.cartridge_type} ${row.color_variation}`,available:`${row.available_bottles} unopened bottles`,threshold:`${row.low_stock_threshold_bottles} bottles`,status:Number(row.is_low)?'Low stock':'In stock'};for(const row of data.paper)yield {supply_type:'Bond paper',name:row.paper_size_dimension,available:`${row.unopened_reams} unopened reams`,threshold:`${row.low_stock_threshold_reams} reams`,status:Number(row.is_low)?'Low stock':'In stock'} }
+  async *supplyReportRows() {
+    if(isPostgres){const [rows]=await this.pool.execute<RowDataPacket[]>('SELECT * FROM october17_supply_snapshot ORDER BY supply_type,name');for(const row of rows)yield row;return}
+    const data=await this.supplies();for(const row of data.ink)yield {supply_type:'Ink bottle',name:`${row.cartridge_type} ${row.color_variation}`,specifications:'',unit:'bottles',available:`${row.available_bottles} unopened bottles`,threshold:`${row.low_stock_threshold_bottles} bottles`,status:Number(row.is_low)?'Low stock':'In stock'};for(const row of data.paper)yield {supply_type:'Bond paper',name:row.paper_size_dimension,specifications:'',unit:'reams',available:`${row.unopened_reams} unopened reams`,threshold:`${row.low_stock_threshold_reams} reams`,status:Number(row.is_low)?'Low stock':'In stock'}
+  }
 }
 
 export const printingRepository = new PrintingRepository()

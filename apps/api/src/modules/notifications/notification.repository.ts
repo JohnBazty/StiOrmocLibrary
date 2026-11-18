@@ -60,6 +60,7 @@ export function createNotificationRepository(database: Pool = db) {
           `SELECT n.notification_id, n.message_title, n.message_body, n.trigger_type,
                   n.source_type, n.source_id, n.action_path, n.priority, n.is_read,
                   n.notification_timestamp, n.read_at, n.expires_at
+                  ${isPostgres ? ", CASE WHEN n.source_type='Library Operations' THEN n.notification_timestamp AT TIME ZONE 'UTC' END AS operation_created_at" : ''}
              FROM notifications n
             WHERE n.user_id = ?${unreadSql}
               AND n.deleted_at IS NULL
@@ -82,7 +83,7 @@ export function createNotificationRepository(database: Pool = db) {
           notificationId: Number(row.notification_id), title: String(row.message_title), body: String(row.message_body),
           type: String(row.trigger_type), sourceType: row.source_type ? String(row.source_type) : null,
           sourceId: row.source_id ? Number(row.source_id) : null, actionPath: row.action_path ? String(row.action_path) : null,
-          priority: String(row.priority ?? 'Normal'), isRead: Boolean(row.is_read), createdAt: row.notification_timestamp,
+          priority: String(row.priority ?? 'Normal'), isRead: Boolean(row.is_read), createdAt: row.operation_created_at ?? row.notification_timestamp,
           readAt: row.read_at, expiresAt: row.expires_at,
         })),
         unreadCount: Number(counts[0]?.unread ?? 0),

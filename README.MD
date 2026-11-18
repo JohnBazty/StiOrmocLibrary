@@ -6,7 +6,7 @@ This guide explains how to prepare a Windows development computer, run and test 
 
 ## AI agents — read this first
 
-1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) for the session protocol and migration tracker. MySQL reference **048**, next **049**. The latest applied Postgres product migration is **030**. Prepared enrollment migration **031** supersedes unapplied draft **028**. Next unused Postgres number is **032**.
+1. Follow [`.cursor/agent-protocol.md`](.cursor/agent-protocol.md) for the session protocol and migration tracker. MySQL reference **048**, next **049**. The latest applied Postgres migration is device sign-in **032**. Enrollment **031** supersedes unapplied draft **028**. Next unused Postgres number is **033**.
 2. Read [AGENTS.md](AGENTS.md) and [agent.md](agent.md).
 3. Database cutover status: [docs/supabase-migration-plan.md](docs/supabase-migration-plan.md).
 
@@ -53,6 +53,8 @@ Implemented live database areas include authentication, categories, normalized b
 Revision Phase 8 adds live actionable Librarian/Staff tasks, owner-scoped dashboard links and a Librarian Reports page with 13 filtered source reports and CSV/PDF exports. The active report overview uses real database records. Local technical checks passed; human Librarian acceptance remains open. See [implementation evidence](docs/revision-phase8-local-implementation.md) and [trial guide](docs/revision-phase8-librarian-trial.md).
 
 The owner-approved combined Librarian/Admin login is `ADMIN-PORTAL-001` at `/staff`, using its existing password and opening `/librarian/dashboard`. The temporary `LIB-TEST-001` login is archived with its history preserved. See [account consolidation record](docs/admin-librarian-account-consolidation.md).
+
+October 17 Phases 5–7 add **Printing queue > Past transactions**, **Print supplies > Paper & ink details / Other materials**, and **Maintenance > Items for sale**. Existing data was preserved when additive Postgres 030 was applied. Automated and desktop/mobile browser checks passed; actual human usability acceptance remains pending. See [implementation](docs/revision-oct17-remaining-implementation.md) and [final technical QA](docs/revision-oct17-final-qa.md). Dewey remains deferred.
 
 ## Prerequisites
 
@@ -491,6 +493,14 @@ Before production deployment:
 The current application does not provide a Docker or one-command cloud deployment configuration.
 
 ## Troubleshooting
+
+### `getaddrinfo ENOTFOUND ...pooler.supabase.com`
+
+The computer could not resolve the database address. A temporary DNS or internet interruption can cause this even when the saved connection string is correct. The API now retries its read-only startup connection check five times, waiting 1, 2, 4 and 8 seconds between attempts. It does not retry application writes or apply migrations automatically.
+
+If all attempts fail, check your internet connection and compare `DATABASE_URL` in `apps/api/.env` with the exact connection string in the [Supabase Connect panel](https://supabase.com/docs/guides/database/connecting-to-postgres). Do not replace the hostname with a guessed address or a fixed IP.
+
+After the connection is restored, stop the failed run with **Ctrl+C** and run `npm.cmd run dev:stable` from the repository root. While the API is stopped, Vite may also print `ECONNREFUSED` for `/api` requests; those messages should stop once the API starts on port 4000.
 
 ### `Access denied for user ... (using password: NO)`
 

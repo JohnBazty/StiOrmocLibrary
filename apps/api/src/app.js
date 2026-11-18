@@ -34,6 +34,7 @@ import { adminAnnouncementsV1Router, userNotificationsV1Router } from './modules
 import { adminFinesV1Router, userFinesV1Router } from './modules/fines/fines.routes.ts'
 import { adminDashboardV1Router, userDashboardV1Router } from './modules/dashboard/dashboard.routes.ts'
 import { liveReportsRouter, workspaceTasksRouter } from './modules/reports/live-reports.routes.ts'
+import { maintenanceRouter } from './modules/inventory/maintenance.routes.ts'
 import { floorPlanRouter } from './modules/floor-plan/floor-plan.routes.ts'
 import { catalogAdminRouter } from './modules/catalog/catalog-admin.routes.ts'
 import { authorizedJobToken, jobRunnerStatus, runOperationalJobs } from './modules/jobs/job-runner.ts'
@@ -146,6 +147,7 @@ export function createApp() {
   app.use('/api/v1/dashboard', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userDashboardV1Router)
   app.use('/api/v1/workspace/tasks', authenticateJwt, workspaceTasksRouter)
   app.use('/api/v1/admin/reports', authenticateJwt, liveReportsRouter)
+  app.use('/api/v1/admin/operations-maintenance', authenticateJwt, maintenanceRouter)
   app.use('/api/v1/admin/printing', authenticateJwt, requireLibraryPermission('desk.operate'), adminPrintingV1Router)
   app.use('/api/v1/admin/clearance', authenticateJwt, requireJwtRoles('Admin', 'Librarian'), adminClearanceV1Router)
   app.use('/api/v1/admin/fines', authenticateJwt, requireLibraryPermission('library.manage'), adminFinesV1Router)

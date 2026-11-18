@@ -30,9 +30,9 @@ function schedule<T>(entry: Entry<T>) {
   const delay = entry.failures ? Math.min(30_000, LIVE_REFRESH_MS * 2 ** entry.failures) : LIVE_REFRESH_MS
   entry.timer = setTimeout(() => { entry.timer = null; void run(entry) }, Math.max(0, entry.startedAt + delay - Date.now()))
 }
-function run<T>(entry: Entry<T>): Promise<T | undefined> {
+function run<T>(entry: Entry<T>, manual = false): Promise<T | undefined> {
   if (entry.flight) return entry.flight
-  if (!entry.listeners.size || !visible()) return Promise.resolve(undefined)
+  if (!entry.listeners.size || document.hidden || (!manual && navigator.onLine === false)) return Promise.resolve(undefined)
   const generation = entry.generation
   const controller = new AbortController()
   entry.controller = controller
@@ -81,10 +81,10 @@ export function useLiveQuery<T>(key: string, read: (signal: AbortSignal) => Prom
   }, [key])
   entry.read = read
   entry.poll = poll
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (manual = true) => {
     // A post-mutation refresh waits out an older read, then reads committed data.
     if (entry.flight) await entry.flight
-    return run(entry)
+    return run(entry, manual)
   }, [entry])
   const subscribe = useCallback((listener: () => void) => {
     if (!enabled) return () => {}
@@ -96,24 +96,25 @@ export function useLiveQuery<T>(key: string, read: (signal: AbortSignal) => Prom
       if (visible()) void run(entry)
     }
     const events = eventKey ? eventKey.split('\n') : []
+    const refreshAfterEvent = () => { void refresh(false) }
     // Only the first consumer installs the initial read. Identical consumers share
-    // the same in-flight request and timer; their event reads coalesce as well.
+    // the same in-flight request and timer; mutation events wait out older reads.
     if (entry.listeners.size === 1) void run(entry)
     window.addEventListener('focus', resume)
     window.addEventListener('online', resume)
     window.addEventListener('offline', resume)
     document.addEventListener('visibilitychange', resume)
-    events.forEach(event => window.addEventListener(event, resume))
+    events.forEach(event => window.addEventListener(event, refreshAfterEvent))
     return () => {
       window.removeEventListener('focus', resume)
       window.removeEventListener('online', resume)
       window.removeEventListener('offline', resume)
       document.removeEventListener('visibilitychange', resume)
-      events.forEach(event => window.removeEventListener(event, resume))
+      events.forEach(event => window.removeEventListener(event, refreshAfterEvent))
       entry.listeners.delete(listener)
       if (!entry.listeners.size) { stop(entry); if (entries.get(key) === entry) entries.delete(key) }
     }
-  }, [entry, key, enabled, eventKey])
+  }, [entry, key, enabled, eventKey, refresh])
   const snapshot = useSyncExternalStore(subscribe, () => entry.snapshot)
   const update = useCallback((change: T | ((current: T | undefined) => T | undefined)) => {
     const data = typeof change === 'function' ? (change as (current: T | undefined) => T | undefined)(entry.snapshot.data) : change

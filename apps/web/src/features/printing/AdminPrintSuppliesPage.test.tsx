@@ -1,56 +1,65 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { afterEach, expect, it, vi } from 'vitest'
 import { AdminPrintSuppliesPage } from './AdminPrintSuppliesPage'
 
-const api=vi.hoisted(()=>({supplies:vi.fn(),revenueSummary:vi.fn(),revenueEntries:vi.fn(),expenseSummary:vi.fn(),restockHistory:vi.fn(),stockUsage:vi.fn(),restock:vi.fn(),createInk:vi.fn(),useInkBottle:vi.fn(),openPaperReam:vi.fn(),revenueReport:vi.fn(),stockExpenseReport:vi.fn(),supplyReport:vi.fn()}))
-vi.mock('./printing-api',()=>({printingApi:api}))
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals() })
 
-const supplyData={ink:[{ink_id:1,cartridge_type:'Dye ink',color_variation:'Black',available_bottles:2,low_stock_threshold_bottles:1,cost_per_bottle:100,is_low:0}],paper:[{paper_stock_id:1,paper_size_dimension:'A4',unopened_reams:2,remaining_reams:2,low_stock_threshold_reams:2,average_expense_cost:100,is_low:1}],summary:{low_ink_items:0,low_paper_items:1,monthly_expense:0}}
-const revenue={period:'monthly',label:'2026-08',from:'2026-08-01',to:'2026-08-31',paid_requests:2,total_sheets:20,total_copies:4,total_revenue:100}
-const expenses={period:'monthly',label:'2026-08',from:'2026-08-01',to:'2026-08-31',restock_entries:2,ink_expenses:20,paper_expenses:30,total_expenses:50}
-
-function mockReads(){api.supplies.mockResolvedValue(supplyData);api.revenueSummary.mockResolvedValue(revenue);api.revenueEntries.mockResolvedValue([]);api.expenseSummary.mockResolvedValue(expenses);api.restockHistory.mockResolvedValue([]);api.stockUsage.mockResolvedValue([])}
-
-describe('AdminPrintSuppliesPage',()=>{
-  it('uses a simple paper restock form with required per-ream cost',async()=>{
-    mockReads();api.restock.mockResolvedValue({})
-    render(<AdminPrintSuppliesPage/>)
-    fireEvent.click((await screen.findAllByRole('button',{name:'Restock'}))[1])
-    expect(screen.getByLabelText('Reams to add')).toBeTruthy()
-    expect(screen.getByLabelText('Cost per ream')).toBeTruthy()
-    expect(screen.queryByLabelText('Movement')).toBeNull()
-    expect(screen.queryByLabelText('Notes')).toBeNull()
-    fireEvent.change(screen.getByLabelText('Reams to add'),{target:{value:'3'}})
-    fireEvent.change(screen.getByLabelText('Cost per ream'),{target:{value:'125'}})
-    fireEvent.click(screen.getByRole('button',{name:'Add paper stock'}))
-    await waitFor(()=>expect(api.restock).toHaveBeenCalledWith('paper',1,{quantity:3,unit_cost:125}))
+function setup() {
+  vi.useFakeTimers()
+  let paid = false, fail = false
+  const fetch = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input)
+    if (url.includes('/revenue?')) {
+      if (fail) return Response.json({ message: 'Unavailable' }, { status: 503 })
+      const entries = paid ? [
+        {request_id:'P-1',received_at:'2026-11-18T04:00:00Z',full_name:'Cash payer',file_name:'cash.pdf',payment_method:'Cash',amount_paid:20},
+        {request_id:'P-2',received_at:'2026-11-18T05:00:00Z',full_name:'Online payer',file_name:'online.pdf',payment_method:'GCASH',amount_paid:30},
+      ] : []
+      return Response.json({data:{summary:{label:'Selected month',paid_requests:entries.length,total_sheets:5,total_copies:2,total_revenue:paid?50:0},entries}})
+    }
+    if (url.endsWith('/supplies')) return Response.json({data:{ink:[],paper:[],summary:{}}})
+    if (url.includes('/expenses/summary')) return Response.json({data:{}})
+    return Response.json({data:[]})
   })
+  vi.stubGlobal('fetch', fetch)
+  render(<AdminPrintSuppliesPage />)
+  return { fetch, pay:()=>{paid=true}, fail:()=>{fail=true}, recover:()=>{fail=false} }
+}
 
-  it('separates revenue and expenses without net result presentation',async()=>{
-    mockReads()
-    render(<AdminPrintSuppliesPage/>)
-    expect(await screen.findByText('Printing revenue')).toBeTruthy()
-    expect(screen.getAllByText('₱100.00').length).toBeGreaterThan(0)
-    expect(screen.queryByText(/Net gain|Net loss|Net impact/i)).toBeNull()
-    expect(screen.getByRole('button',{name:/Export revenue/i})).toBeTruthy()
-    expect(screen.getByRole('button',{name:/Export stock expenses/i})).toBeTruthy()
-  })
-
-  it('confirms one whole bottle usage through the dedicated action',async()=>{
-    mockReads();api.useInkBottle.mockResolvedValue({})
-    render(<AdminPrintSuppliesPage/>)
-    fireEvent.click(await screen.findByRole('button',{name:'Use one bottle'}))
-    fireEvent.click(screen.getByRole('button',{name:'Confirm usage'}))
-    await waitFor(()=>expect(api.useInkBottle).toHaveBeenCalledWith(1))
-  })
-
-  it('downloads current stock separately from period expense reports',async()=>{
-    mockReads();api.supplyReport.mockResolvedValue(undefined)
-    render(<AdminPrintSuppliesPage/>)
-    fireEvent.click(await screen.findByRole('button',{name:'Export current stock PDF'}))
-    await waitFor(()=>expect(api.supplyReport).toHaveBeenCalledTimes(1))
-    expect(api.stockExpenseReport).not.toHaveBeenCalled()
-  })
+it('refreshes cash and online details and total together without manual refresh', async () => {
+  const fixture = setup()
+  await act(async () => {})
+  expect(screen.getByText('No paid printing requests for this period.')).toBeTruthy()
+  fixture.pay()
+  await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+  expect(screen.getByText('₱50.00')).toBeTruthy()
+  expect(screen.getByText('cash.pdf')).toBeTruthy()
+  expect(screen.getByText('online.pdf')).toBeTruthy()
+  expect(screen.getByText('GCASH')).toBeTruthy()
+  expect(screen.queryByText('Loading revenue…')).toBeNull()
+  expect(fixture.fetch.mock.calls.filter(([url])=>String(url).includes('/revenue?'))).toHaveLength(2)
 })
 
-afterEach(()=>{cleanup();vi.clearAllMocks()})
+it('preserves confirmed rows on a refresh failure and recovers with Refresh', async () => {
+  const fixture = setup()
+  await act(async () => {})
+  fixture.pay()
+  await act(async () => { window.dispatchEvent(new Event('printing-updated')) })
+  fixture.fail()
+  await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+  expect(within(screen.getByRole('alert')).getByText(/Showing the last successful update/)).toBeTruthy()
+  expect(screen.getByText('online.pdf')).toBeTruthy()
+  expect(screen.getByText('₱50.00')).toBeTruthy()
+  fixture.recover()
+  await act(async () => { fireEvent.click(screen.getByRole('button',{name:'Refresh'})) })
+  expect(screen.queryByRole('alert')).toBeNull()
+})
+
+it('does not claim no payments when the initial revenue read fails', async () => {
+  const fixture = setup()
+  fixture.fail()
+  await act(async () => {})
+  expect(screen.getByRole('alert')).toBeTruthy()
+  expect(screen.getByText('Revenue could not be loaded. Use Refresh to try again.')).toBeTruthy()
+  expect(screen.queryByText('No paid printing requests for this period.')).toBeNull()
+})

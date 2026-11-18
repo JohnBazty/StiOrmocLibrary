@@ -1,5 +1,6 @@
 import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { db } from '../../config/db.js'
+import { generateLibrarianAlerts } from './library-alerts.worker.ts'
 import {
   currentDate,
   dateAddDays,
@@ -115,7 +116,8 @@ export async function generateNotifications(database: Pool = db, now: Date = new
     inserted += (result as ResultSetHeader).affectedRows
   }
   const publishedAnnouncements = await publishScheduledAnnouncements(database, now)
-  return { inserted, publishedAnnouncements }
+  const libraryAlerts = await generateLibrarianAlerts(database, now)
+  return { inserted, publishedAnnouncements, libraryAlerts }
 }
 
 export function startNotificationWorker(database: Pool = db, intervalMs = 60_000) {

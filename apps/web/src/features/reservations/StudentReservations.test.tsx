@@ -25,7 +25,7 @@ describe('StudentReservations', () => {
 
     expect(await screen.findByText('Clean Code')).toBeTruthy()
     expect((screen.getByAltText('Clean Code cover') as HTMLImageElement).src).toContain('/api/assets/covers/clean-code.png')
-    expect(screen.getByText('Current condition: Damaged')).toBeTruthy()
+    expect(screen.getByText('Condition: Damaged')).toBeTruthy()
   })
 })
 

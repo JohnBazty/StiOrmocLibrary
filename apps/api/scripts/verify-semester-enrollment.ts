@@ -14,11 +14,14 @@ import { createLoginSecurityService } from '../src/modules/auth/login-security.s
 import { parseUserFilters, UsersRepository } from '../src/modules/users/users.repository.ts'
 import { createStaffAccount } from '../src/modules/auth/registration.service.ts'
 import { createPasswordRecoveryService } from '../src/modules/auth/password-recovery.service.ts'
+import { createActiveJwtAccountGuard, verifyAccessToken } from '../src/modules/auth/jwt-auth.middleware.ts'
+import { REMEMBER_DEVICE_MS } from '../src/modules/auth/login-device-policy.ts'
 
 if (!process.argv.includes('--isolated-schema') || env.db.driver !== 'postgres') {
   throw new Error('Use --isolated-schema with a configured Postgres connection.')
 }
 process.env.ENROLLMENT_ROSTER_ENABLED = 'true'
+process.env.LOGIN_DEVICES_ENABLED = 'true'
 const schema = `qa_enrollment_${randomUUID().replaceAll('-', '')}`
 assert.match(schema, /^qa_enrollment_[a-f0-9]{32}$/)
 const connection = createPgPool(env.db.connectionString, 3)
@@ -60,6 +63,18 @@ const row = async (sql: string, values: unknown[] = []) => {
   const [rows] = await pool.execute<RowDataPacket[]>(sql, values)
   return rows[0]
 }
+type DeviceResult = Extract<Awaited<ReturnType<ReturnType<typeof createLoginSecurityService>['verify']>>, { deviceCookie: unknown }>
+const device = (result: unknown) => {
+  assert.ok(result && typeof result === 'object' && 'deviceCookie' in result)
+  return result as DeviceResult
+}
+const protectedStatus = (token: string) => new Promise<number>((resolve, reject) => {
+  const response = {
+    locals: { authenticatedUser: verifyAccessToken(token) },
+    status: (status: number) => ({ json: () => resolve(status) }),
+  }
+  createActiveJwtAccountGuard(pool)({} as never, response as never, error => error ? reject(error) : resolve(200))
+})
 
 const header = ['Student ID', 'Name', 'Program', 'Level', 'Campus Email Address']
 const newStudent = ['00000123', 'QA New Student', 'BSIT', '1Y', 'new-fixture@ormoc.sti.edu.ph']
@@ -71,10 +86,10 @@ const password = 'FakeFixturePass123'
 
 let created = false
 try {
-  const [base, roles, qr, loginDdl, enrollment, events, recoveryDdl] = await Promise.all([
+  const [base, roles, qr, loginDdl, enrollment, events, recoveryDdl, devicesDdl] = await Promise.all([
     file('001_from_baseline.sql'), file('015_phase6_registration_roles.sql'), file('005_main_product_gapfill.sql'),
     file('029_october16_revisions.sql'), file('031_semester_enrollment.sql'),
-    file('011_phase2_user_management.sql'), file('020_revision_phase1_password_recovery.sql'),
+    file('011_phase2_user_management.sql'), file('020_revision_phase1_password_recovery.sql'), file('032_login_devices.sql'),
   ])
   await connection.execute(`CREATE SCHEMA ${schema}`)
   created = true
@@ -93,6 +108,7 @@ try {
     ]
     await q.execute(fixtures.join('\n'))
     await q.execute(enrollment)
+    await q.execute(devicesDdl)
     await q.execute(`WITH inserted AS (
       INSERT INTO roles(role_name) VALUES ('Librarian'),('Staff'),('Library Staff'),('Faculty'),('Student') RETURNING role_id,role_name
     ), identities AS (
@@ -119,6 +135,9 @@ try {
     WHERE relnamespace=current_schema()::regnamespace AND relkind='r' AND relrowsecurity
       AND NOT has_table_privilege('anon',oid,'SELECT') AND NOT has_table_privilege('authenticated',oid,'SELECT')
       AND relname LIKE 'enrollment_%'`)).n), 6)
+  assert.equal((await row(`SELECT relrowsecurity AND NOT has_table_privilege('anon',oid,'SELECT')
+    AND NOT has_table_privilege('authenticated',oid,'SELECT') AS private FROM pg_class
+    WHERE relnamespace=current_schema()::regnamespace AND relname='login_device_switches'`)).private, true)
   await assert.rejects(service.saveSemester(staff, setup), { status: 403 })
   const { semesterId } = await service.saveSemester(library, setup)
   const { semesterId: nextId } = await service.saveSemester(library, { ...setup, termName: '2nd Semester' })
@@ -187,10 +206,33 @@ try {
   const security = createLoginSecurityService(pool, body => login.login(body, true), sender, () => loginTime)
   const credentials = { school_id: newStudent[0], password, portal: 'user' }
   await assert.rejects(security.login({ ...credentials, password: 'IncorrectPassword' }), { code: 'INVALID_CREDENTIALS' })
-  const signIn = await security.login(credentials)
+  const signIn = await security.login({ ...credentials, remember_device: true })
   assert.ok(signIn && 'challengeId' in signIn)
-  const session = await security.verify({ challenge_id: signIn.challengeId, code: deliveries.at(-1)?.code })
-  assert.equal(session?.user.accountId, Number(student.account_id))
+  const session = device(await security.verify({ challenge_id: signIn.challengeId, code: deliveries.at(-1)?.code }))
+  assert.equal(session.user.accountId, Number(student.account_id))
+  assert.equal(session.deviceCookie.deadline, loginTime + REMEMBER_DEVICE_MS)
+  assert.notEqual((await row('SELECT device_token_hash FROM library_login_sessions WHERE session_id=?', [session.deviceCookie.sessionId])).device_token_hash, session.deviceCookie.token)
+  assert.equal(await protectedStatus(session.token), 200)
+  await assert.rejects(security.resumeDevice('A'.repeat(43)), { code: 'DEVICE_EXPIRED' })
+  await pool.execute("UPDATE library_login_sessions SET last_activity_at=clock_timestamp()-interval '11 minutes' WHERE session_id=?", [session.deviceCookie.sessionId])
+  assert.equal(await protectedStatus(session.token), 401)
+  const resumed = await Promise.all(Array.from({ length: 3 }, () => security.resumeDevice(session.deviceCookie.token)))
+  assert.ok(resumed.every(result => verifyAccessToken(result.token).sessionId === session.deviceCookie.sessionId))
+  assert.ok(resumed.every(result => verifyAccessToken(result.token).rememberedUntil === session.deviceCookie.deadline))
+
+  loginTime += 61_000
+  const otherLogin = await security.login({ ...credentials, remember_device: true })
+  assert.ok(otherLogin && 'challengeId' in otherLogin)
+  const conflict = await security.verify({ challenge_id: otherLogin.challengeId, code: deliveries.at(-1)?.code })
+  assert.ok(conflict && 'switchToken' in conflict)
+  assert.equal(await protectedStatus(resumed[0].token), 200)
+  const switched = await Promise.allSettled([security.switchDevice(conflict.switchToken), security.switchDevice(conflict.switchToken)])
+  assert.equal(switched.filter(result => result.status === 'fulfilled').length, 1)
+  const replacement = device(switched.find(result => result.status === 'fulfilled')?.value)
+  assert.equal(await protectedStatus(resumed[0].token), 401)
+  assert.equal(await security.revokeDevice(session.deviceCookie.token, verifyAccessToken(session.token)), false)
+  assert.equal(await protectedStatus(replacement.token), 200)
+  await assert.rejects(security.resumeDevice(session.deviceCookie.token), { code: 'DEVICE_EXPIRED' })
   await pool.execute("INSERT INTO loan_fixture VALUES (?,NOW(),'Borrowed')", [student.account_id])
   const loan = await row('SELECT * FROM loan_fixture')
 
@@ -202,7 +244,8 @@ try {
   assert.equal(await service.closeDue(), true)
   assert.equal(await service.closeDue(), false)
   assert.equal((await row('SELECT account_status FROM accounts WHERE account_id=?', [student.account_id])).account_status, 'Deactivated')
-  assert.ok((await row('SELECT revoked_at FROM library_login_sessions WHERE account_id=?', [student.account_id])).revoked_at)
+  assert.ok((await row('SELECT revoked_at FROM library_login_sessions WHERE session_id=?', [replacement.deviceCookie.sessionId])).revoked_at)
+  await assert.rejects(security.resumeDevice(replacement.deviceCookie.token), { code: 'DEVICE_EXPIRED' })
   const archive = await service.roster(library, semesterId, 1, newStudent[0])
   assert.equal(archive.archived, true)
   assert.equal(archive.rows[0].closed_status, 'Deactivated')
@@ -225,7 +268,7 @@ try {
   await assert.rejects(security.verify({ challenge_id: returning.challengeId, code: deliveries.at(-1)?.code }), { code: 'LOGIN_CHANGED' })
   await pool.execute('UPDATE login_otp_challenges SET restoration_semester_id=? WHERE challenge_id=?', [nextId, returning.challengeId])
   const restored = await security.verify({ challenge_id: returning.challengeId, code: deliveries.at(-1)?.code })
-  assert.equal(restored?.user.accountId, Number(student.account_id))
+  assert.equal(device(restored).user.accountId, Number(student.account_id))
   assert.equal((await row('SELECT user_id,account_status FROM accounts WHERE account_id=?', [student.account_id])).user_id, student.user_id)
   assert.equal((await row("SELECT account_status FROM accounts WHERE school_id='00000456'")).account_status, 'Deactivated')
   assert.deepEqual(await row('SELECT * FROM loan_fixture'), loan)
@@ -250,8 +293,31 @@ try {
   assert.equal(deliveries.at(-1)?.email, 'new-staff-fixture@ormoc.sti.edu.ph')
   const verifiedStaff = await recovery.verify({ challenge_id: staffSetup.challengeId, code: deliveries.at(-1)?.code })
   await recovery.reset({ challenge_id: staffSetup.challengeId, reset_token: verifiedStaff.resetToken, password, confirm_password: password })
-  assert.equal((await security.login(staffCredentials))?.user?.accountId, provisioned.accountId)
-  console.log('Enrollment and account checks passed, including Staff provisioning and first password setup.')
+  const ordinary = device(await security.login({ ...staffCredentials, remember_device: true }))
+  assert.equal(ordinary.user.accountId, provisioned.accountId)
+  assert.equal(ordinary.deviceCookie.deadline, undefined)
+  await pool.execute("UPDATE library_login_sessions SET last_activity_at=clock_timestamp()-interval '11 minutes' WHERE session_id=?", [ordinary.deviceCookie.sessionId])
+  await assert.rejects(security.resumeDevice(ordinary.deviceCookie.token), { code: 'DEVICE_EXPIRED' })
+  const staffSession = device(await security.login(staffCredentials))
+  assert.equal(await security.revokeDevice(undefined, verifyAccessToken(staffSession.token)), true)
+  await assert.rejects(security.resumeDevice(staffSession.deviceCookie.token), { code: 'DEVICE_EXPIRED' })
+
+  await pool.execute("UPDATE accounts SET password_hash=? WHERE school_id='QA-FAC'", [await bcrypt.hash(password, 4)])
+  const facultyLogin = await security.login({ school_id: 'QA-FAC', password, portal: 'user', remember_device: true })
+  assert.ok(facultyLogin && 'challengeId' in facultyLogin)
+  const faculty = device(await security.verify({ challenge_id: facultyLogin.challengeId, code: deliveries.at(-1)?.code }))
+  assert.equal(await protectedStatus(faculty.token), 200)
+  loginTime = faculty.deviceCookie.deadline!
+  await pool.execute("UPDATE library_login_sessions SET remembered_until=clock_timestamp()-interval '1 second' WHERE session_id=?", [faculty.deviceCookie.sessionId])
+  assert.equal(await protectedStatus(faculty.token), 401)
+  await assert.rejects(security.resumeDevice(faculty.deviceCookie.token), { code: 'DEVICE_EXPIRED' })
+  const lastFacultyLogin = await security.login({ school_id: 'QA-FAC', password, portal: 'user', remember_device: true })
+  assert.ok(lastFacultyLogin && 'challengeId' in lastFacultyLogin)
+  const lastFaculty = device(await security.verify({ challenge_id: lastFacultyLogin.challengeId, code: deliveries.at(-1)?.code }))
+  await users.changeStatus(lastFaculty.user.accountId, library, { status: 'Deactivated', reason: 'Disposable device verification' })
+  assert.equal(await protectedStatus(lastFaculty.token), 401)
+  await assert.rejects(security.resumeDevice(lastFaculty.deviceCookie.token), { code: 'DEVICE_EXPIRED' })
+  console.log('Enrollment, account setup, and single-device checks passed with mock email.')
 } finally {
   try {
     if (created) {

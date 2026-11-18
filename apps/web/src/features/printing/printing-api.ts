@@ -13,12 +13,12 @@ export type SupplyData={ink:InkStock[];paper:PaperStock[];summary:{low_ink_items
 export type FinancePeriod='daily'|'weekly'|'monthly'
 export type FinanceFilters={period:FinancePeriod;date:string;month:string;week:number}
 export type FinanceSummary={period:FinancePeriod;label:string;from:string;to:string;revenue:number;ink_expenses:number;paper_expenses:number;total_expenses:number;net_result:number;profit_margin:number;indicator:'Net gain'|'Net loss'|'Break-even'}
-export type FinanceEntry={entry_date:string;entry_name:string;entry_type:'Revenue'|'Ink restock'|'Paper restock';quantity:string;unit_cost:number|string;revenue:number|string;expense:number|string;net_impact:number|string;recorded_by:string|null}
+export type FinanceEntry={entry_date:string;entry_name:string;entry_type:'Revenue'|'Ink restock'|'Paper restock'|'Other materials restock';quantity:string;unit_cost:number|string;revenue:number|string;expense:number|string;net_impact:number|string;recorded_by:string|null}
 export type RevenueSummary={period:FinancePeriod;label:string;from:string;to:string;paid_requests:number;total_sheets:number;total_copies:number;total_revenue:number}
-export type RevenueEntry={received_at:string;request_id:number;full_name:string;school_id:string;file_name:string;print_type:string;paper_size:string;page_count:number;number_of_copies:number;total_sheets:number;amount_paid:number|string;received_by:string|null}
-export type ExpenseSummary={period:FinancePeriod;label:string;from:string;to:string;restock_entries:number;ink_expenses:number;paper_expenses:number;total_expenses:number}
-export type RestockEntry={created_at:string;supply_type:'Ink'|'Paper';supply_name:string;quantity:number|string;unit:string;unit_cost:number|string;total_expense:number|string;balance_before:number|string|null;balance_after:number|string|null;recorded_by:string|null}
-export type StockUsageEntry={created_at:string;supply_type:'Ink'|'Paper';supply_name:string;activity_code:'LoadedIntoPrinter'|'OpenedReam';quantity:number|string;unit:string;balance_before:number|string;balance_after:number|string;recorded_by:string|null}
+export type RevenueEntry={received_at:string;source?:string;request_id:number|string;full_name:string;school_id:string;file_name:string;print_type:string;paper_size:string|null;page_count:number|null;number_of_copies:number|null;total_sheets:number|null;amount_paid:number|string;received_by:string|null;payment_method?:string}
+export type ExpenseSummary={period:FinancePeriod;label:string;from:string;to:string;restock_entries:number;ink_expenses:number;paper_expenses:number;other_expenses?:number;total_expenses:number}
+export type RestockEntry={created_at:string;supply_type:'Ink'|'Paper'|'Other materials';supply_name:string;quantity:number|string;unit:string;unit_cost:number|string;total_expense:number|string;balance_before:number|string|null;balance_after:number|string|null;recorded_by:string|null}
+export type StockUsageEntry={created_at:string;supply_type:'Ink'|'Paper'|'Other materials';supply_name:string;activity_code:'LoadedIntoPrinter'|'OpenedReam';quantity:number|string;unit:string;balance_before:number|string;balance_after:number|string;recorded_by:string|null}
 
 let csrfToken:string|null=null
 function headers(accept='application/json'){const h=new Headers({Accept:accept}),token=getAccessToken();if(token)h.set('Authorization',`Bearer ${token}`);return h}
@@ -33,6 +33,7 @@ async function request<T>(url:string,options:RequestInit={}){
   const p=await r.json().catch(()=>null) as {data?:T;message?:string;meta?:{pagination?:{page:number;limit:number;total:number;total_pages:number}}}|null
   if(!r.ok)throw new Error(p?.message??'The printing service is temporarily unavailable. Please try again.')
   if(!p||p.data==null)throw new Error('The printing service returned an incomplete response. Please try again.')
+  if(mutating)window.dispatchEvent(new Event('printing-updated'))
   return{data:p.data as T,meta:p.meta}
 }
 async function download(url:string,name:string,accept:string,expected?:string){const r=await fetch(url,{credentials:'include',headers:headers(accept)});if(!r.ok){const p=await r.json().catch(()=>({})) as {message?:string};throw new Error(p.message??'Unable to download the file.')}const contentType=r.headers.get('content-type')??'';if(expected&&!contentType.includes(expected))throw new Error('The server returned an invalid download.');const blob=await r.blob(),objectUrl=URL.createObjectURL(blob),link=document.createElement('a');link.href=objectUrl;link.download=name;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(objectUrl),1000)}
@@ -59,6 +60,7 @@ export const printingApi={
   financeSummary:async(filters:FinanceFilters)=>(await request<FinanceSummary>(`/api/v1/admin/printing/finance/summary?${filterParams(filters)}`)).data,
   financeEntries:async(filters:FinanceFilters)=>(await request<FinanceEntry[]>(`/api/v1/admin/printing/finance/entries?${filterParams(filters)}`)).data,
   revenueSummary:async(filters:FinanceFilters)=>(await request<RevenueSummary>(`/api/v1/admin/printing/revenue/summary?${filterParams(filters)}`)).data,
+  revenueSnapshot:async(filters:FinanceFilters,signal?:AbortSignal)=>(await request<{summary:RevenueSummary;entries:RevenueEntry[]}>(`/api/v1/admin/printing/revenue?${filterParams(filters)}`,{signal,cache:'no-store'})).data,
   revenueEntries:async(filters:FinanceFilters)=>(await request<RevenueEntry[]>(`/api/v1/admin/printing/revenue/entries?${filterParams(filters)}`)).data,
   expenseSummary:async(filters:FinanceFilters)=>(await request<ExpenseSummary>(`/api/v1/admin/printing/expenses/summary?${filterParams(filters)}`)).data,
   restockHistory:async(filters:FinanceFilters)=>(await request<RestockEntry[]>(`/api/v1/admin/printing/restocks?${filterParams(filters)}`)).data,
@@ -68,7 +70,7 @@ export const printingApi={
   useInkBottle:async(id:number)=>request(`/api/v1/admin/printing/supplies/ink/${id}/use-bottle`,{method:'POST',body:'{}'}),
   openPaperReam:async(id:number)=>request(`/api/v1/admin/printing/supplies/paper/${id}/open-ream`,{method:'POST',body:'{}'}),
   createInk:async(data:{cartridge_type:string;color_variation:string;available_bottles:number;low_stock_threshold_bottles:number;cost_per_bottle:number})=>request('/api/v1/admin/printing/supplies/ink',{method:'POST',body:JSON.stringify(data)}),
-  printReport:()=>download('/api/v1/admin/printing/report.pdf','smartlib-printing-report.pdf','application/pdf','application/pdf'),
+  printReport:(filters:{q:string;status:string;payment:string}={q:'',status:'',payment:''})=>download(`/api/v1/admin/printing/report.pdf?${new URLSearchParams({q:filters.q,status:filters.status,payment_status:filters.payment})}`,'smartlib-printing-report.pdf','application/pdf','application/pdf'),
   supplyReport:()=>download('/api/v1/admin/printing/supplies/report.pdf','smartlib-print-supplies-current-stock.pdf','application/pdf','application/pdf'),
   financeReport:(filters:FinanceFilters)=>download(`/api/v1/admin/printing/finance/report.pdf?${filterParams(filters)}`,`smartlib-print-finance-${filters.period}-${filters.date}.pdf`,'application/pdf','application/pdf'),
   revenueReport:(filters:FinanceFilters)=>download(`/api/v1/admin/printing/reports/revenue.pdf?${filterParams(filters)}`,`smartlib-print-revenue-${filters.period}-${filters.date}.pdf`,'application/pdf','application/pdf'),

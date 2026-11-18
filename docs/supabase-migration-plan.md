@@ -2,6 +2,18 @@
 
 **MySQL → Supabase (PostgreSQL) conversion for STI Ormoc Smart Library**
 
+## November 10 browser sign-in migration
+
+Applied **032_login_devices.sql** individually on 2026-11-10 after matching the production database target. Verified the migration checksum, row-level security, and browser-role access restrictions on the three authentication tables. The next unused number is **033**. The API requires **032** before enabling `LOGIN_DEVICES_ENABLED`. See the [device sign-in plan](plans/2026-11-10-remember-this-device.md).
+
+## November 9 enrollment migration status
+
+Applied **031_semester_enrollment.sql** individually on 2026-11-09 after confirming the Vercel production database target. It supersedes the unapplied enrollment draft **028**. The production API enables enrollment using `ENROLLMENT_ROSTER_ENABLED`. Verify school email delivery and scheduled processing before starting an actual term. See the [enrollment plan](plans/2026-11-09-student-roster-registration-and-login.md).
+
+## October 22 current migration update
+
+Applied product migration **030_october17_maintenance.sql**, next unused **031**. Enrollment **028** remains an unapplied draft and Dewey is deferred. The single reviewed file was tested in a disposable schema, then applied atomically after local hash/count snapshots of 12 existing tables. Afterward those records matched exactly; seven new ledgers were empty and their RLS/grants verified. The migration runner now qualifies the public ledger and sets the transaction-local product search path to avoid pooler session drift. MySQL reference **048**, next **049**, is unchanged. See [implementation, evidence and pending acceptance](revision-oct17-remaining-implementation.md).
+
 ## Why
 
 The team needs a shared, hosted database so every buddy can use the same live data without depending on one person’s local MySQL install. Supabase gives us a managed PostgreSQL instance, connection strings, and a dashboard everyone can access. Converting the API and schema off local MySQL / `mysql2` is the prerequisite for that shared environment.
@@ -11,7 +23,7 @@ Product PDFs and `agent.md` historically name MySQL as the baseline; those docs 
 | Field | Value |
 | --- | --- |
 | **Date created** | 2026-09-25 |
-| **Date last updated** | 2026-10-16 |
+| **Date last updated** | 2026-10-22 |
 | **Status** | `inprogress` |
 
 Allowed status values: `planned` → `inprogress` → `built`.

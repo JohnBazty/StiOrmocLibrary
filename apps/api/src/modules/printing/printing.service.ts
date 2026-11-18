@@ -9,6 +9,7 @@ import { removePrintDocument, resolvePrintDocument, storePrintDocument } from '.
 import { inspectPrintDocument } from './printing.document.ts'
 import { parseFinanceFilters, parseNewInkStock, parsePrintRequest, parseQueueFilters, parseRestock, parseServiceStatus, parseStatusUpdate, parseStockMovement } from './printing.validation.ts'
 import { PrintingRepository, printingRepository } from './printing.repository.ts'
+import { notifyLibrarians } from '../notifications/library-alerts.ts'
 
 type Actor = { schoolId?: string; role?: string }
 const transitions: Record<string, string[]> = { Pending:['Printing','Cancelled'],Printing:['Ready for Pickup'], 'Ready for Pickup':['Completed'],Completed:[],Cancelled:[] }
@@ -65,6 +66,9 @@ export function createPrintingService(pool: Pool = db, repository: PrintingRepos
         await connection.beginTransaction()
         const[result]=await connection.execute<ResultSetHeader>(`INSERT INTO print_requests (user_id,file_name,file_path,number_of_copies,print_type,paper_size,page_count,total_sheets,optional_notes,calculated_cost,payment_status,job_status) VALUES (?,?,?,?,?,?,?,?,?,?,'Unpaid','Pending')`,[userId,stored.originalName,stored.storedPath,input.numberOfCopies,input.printType,input.paperSize,input.pageCount,input.totalSheets,input.notes,calculatedCost])
         await connection.execute(`INSERT INTO print_status_history(request_id,from_status,to_status,changed_by_user_id,reason) VALUES (?,NULL,'Pending',?,'Submitted through the printing service')`,[result.insertId,userId])
+        await notifyLibrarians(connection,{key:`print:${result.insertId}:pending`,title:'New print request',
+          body:`${stored.originalName}: print request ${result.insertId} is waiting for staff.`,sourceId:Number(result.insertId),personUserId:userId,
+          path:'/librarian/printing',type:'Printing Update'})
         await connection.commit()
         return {request_id:Number(result.insertId),file_name:stored.originalName,...input,calculated_cost:calculatedCost,payment_status:'Unpaid',job_status:'Pending'}
       }catch(error){await connection.rollback();await removePrintDocument(stored.storedPath);throw error}finally{connection.release()}

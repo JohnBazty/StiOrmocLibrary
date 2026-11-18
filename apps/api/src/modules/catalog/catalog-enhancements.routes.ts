@@ -4,11 +4,17 @@ import { rateLimit } from 'express-rate-limit'
 import * as service from './catalog-enhancements.service.ts'
 import type { SheetMapping } from './holdings-parser.ts'
 import { HttpError } from '../../core/http-error.ts'
+import { db } from '../../config/db.js'
+import { createAvailabilityReader } from './catalog-availability.ts'
 
 const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:4194304,files:1,fields:4,fieldSize:32768}})
 const run=(fn:(request:Request,response:Response)=>Promise<unknown>)=>(request:Request,response:Response,next:NextFunction)=>{response.set('Cache-Control','no-store');void fn(request,response).then(data=>response.json({success:true,data})).catch(next)}
 const mappings=(value:unknown):SheetMapping[]=>{try{return JSON.parse(String(value))}catch{throw new HttpError(422,'HOLDINGS_MAPPING_INVALID','Confirm the sheet mappings.')}}
 export const publicCatalogRouter=Router()
+// Bounded stock polling has its own budget; full catalog reads and downloads keep
+// their existing limiter. It never expands the limit for mutations or login.
+const availabilityReader=createAvailabilityReader(db)
+publicCatalogRouter.get('/availability',rateLimit({windowMs:60000,limit:6000,standardHeaders:true,legacyHeaders:false}),run(req=>availabilityReader(req.query.ids,req.query.detailId)))
 publicCatalogRouter.use(rateLimit({windowMs:60000,limit:120,standardHeaders:true,legacyHeaders:false}))
 publicCatalogRouter.get('/options',run(()=>service.catalogOptions(true)))
 publicCatalogRouter.get('/titles',run((req,res)=>service.publicCatalog(req.query)))

@@ -1,0 +1,8 @@
+{
+  "files": {
+    "apps/web/src/features/catalog/AddMultipleCopiesModal.tsx": "fb07fe31dd3294a5aa877ec28b8c2d855d12375a8ce4d6e8f81094790c745daa",
+    "apps/web/src/features/catalog/catalog-api.ts": "636d4a1e809fe5238def0ccae676860dba380d2cc4dc56ef851f6f17dd2047bf",
+    "apps/api/src/modules/catalog/isbn-lookup.service.ts": "c1e50b341209af2e8f5ee34c0e6b61179a8fea5ad52aa6fe304192158401bd33"
+  },
+  "deployment": "dpl_C3a3q3KhNxtt77hPvoA8EgCD34V8"
+}

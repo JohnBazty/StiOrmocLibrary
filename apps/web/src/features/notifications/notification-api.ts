@@ -1,5 +1,6 @@
 import { getAccessToken } from '../auth/auth-storage'
 import type { Announcement, LibrarySchedule, NotificationList } from './types'
+import type { LibraryActivityList } from './types'
 
 async function request<T>(url: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers); headers.set('Accept', 'application/json')
@@ -12,7 +13,8 @@ async function request<T>(url: string, options: RequestInit = {}) {
 }
 
 export const notificationApi = {
-  list: () => request<NotificationList>('/api/v1/notifications?limit=100'),
+  activity: (category: string, signal?: AbortSignal) => request<LibraryActivityList>(`/api/v1/notifications/activity?${new URLSearchParams({category})}`,{signal}),
+  list: (signal?: AbortSignal, limit = 100) => request<NotificationList>(`/api/v1/notifications?limit=${limit}`, { signal }),
   schedule: () => request<LibrarySchedule>('/api/v1/notifications/schedule'),
   markRead: (id: number) => request(`/api/v1/notifications/${id}/read`, { method: 'PATCH' }),
   markAllRead: () => request('/api/v1/notifications/read-all', { method: 'PATCH' }),

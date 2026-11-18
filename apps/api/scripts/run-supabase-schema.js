@@ -54,7 +54,7 @@ const client = new pg.Client({
 
 await client.connect()
 try {
-  await client.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
+  await client.query(`CREATE TABLE IF NOT EXISTS public.schema_migrations (
     migration_name VARCHAR(191) PRIMARY KEY,
     checksum CHAR(64) NOT NULL,
     applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -67,7 +67,7 @@ try {
     const source = await fs.readFile(fullPath, 'utf8')
     const checksum = createHash('sha256').update(source).digest('hex')
     const applied = await client.query(
-      'SELECT checksum FROM schema_migrations WHERE migration_name = $1 LIMIT 1',
+      'SELECT checksum FROM public.schema_migrations WHERE migration_name = $1 LIMIT 1',
       [fileName],
     )
     if (applied.rows.length) {
@@ -81,6 +81,9 @@ try {
     const statements = splitSql(source)
     await client.query('BEGIN')
     try {
+      // Pooler backends can retain another session's search path. Pin this
+      // migration to the product schema for the duration of its transaction.
+      await client.query('SET LOCAL search_path TO public')
       for (let index = 0; index < statements.length; index += 1) {
         try {
           await client.query(statements[index])
@@ -89,7 +92,7 @@ try {
         }
       }
       await client.query(
-        'INSERT INTO schema_migrations (migration_name, checksum) VALUES ($1, $2)',
+        'INSERT INTO public.schema_migrations (migration_name, checksum) VALUES ($1, $2)',
         [fileName, checksum],
       )
       await client.query('COMMIT')

@@ -1,6 +1,6 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { BookCatalog } from './BookCatalog'
 import { LegacyCatalogRedirect } from './LegacyCatalogRedirect'
 import { clearBookCartForTests, readBookCart } from './book-cart-store'
@@ -9,22 +9,87 @@ import { enhancedCatalog } from './enhanced-catalog-api'
 
 vi.mock('../auth/auth-storage', () => ({ getCurrentClaims: () => ({ userId: 99, role: 'Student', schoolId: 'TEST-99' }), getCurrentIdentity: () => ({ userId: 99, role: 'Student', schoolId: 'TEST-99' }) }))
 vi.mock('./book-catalog-api', () => ({ fetchBookCatalog: vi.fn(), fetchBookOverview: vi.fn(), reserveBookTitle: vi.fn() }))
-vi.mock('./enhanced-catalog-api', () => ({ enhancedCatalog: { options: vi.fn(), search: vi.fn(), detail: vi.fn() } }))
+vi.mock('./enhanced-catalog-api', () => ({ enhancedCatalog: { availability: vi.fn().mockResolvedValue({items:[]}), options: vi.fn(), search: vi.fn(), detail: vi.fn() } }))
 vi.mock('./CatalogDetailsPanel', () => ({ catalogInput: 'field', CatalogDetailsPanel: () => <p>Digital files and catalog metadata</p> }))
 
 const record = { id: 42, title: 'Example book', kind: 'Book', author: 'Alex Writer', coverImagePath: '/cover.jpg', available: 1, copyCount: 1, copies: [], programs: [], courses: [], files: [] }
 const overview = { titleId: 42, title: 'Example book', author: 'Alex Writer', isbn: '123', publisher: 'Publisher', publicationYear: 2024, categoryName: 'Computing', shelfLocation: 'A1', callNumber: '001', currentAvailabilityStatus: 'Available', availableCopiesCount: 1, totalCopiesCount: 1, reservableMaterialId: 1, previewBarcode: 'BOOK1' }
 function Location() { const location = useLocation(); return <output data-testid="location">{location.pathname}{location.search}{location.hash}</output> }
 function setup(url = '/student/library') { render(<MemoryRouter initialEntries={[url]}><BookCatalog /><Location /></MemoryRouter>) }
+beforeAll(()=>{
+  Object.defineProperty(HTMLDialogElement.prototype,'showModal',{configurable:true,value(){this.setAttribute('open','')}})
+  Object.defineProperty(HTMLDialogElement.prototype,'close',{configurable:true,value(){this.removeAttribute('open')}})
+})
 
 beforeEach(() => {
+  vi.mocked(enhancedCatalog.availability).mockResolvedValue({items:[]})
   vi.mocked(fetchBookCatalog).mockResolvedValue({ items: [], viewer: { role: 'Student', activeBookCount: 0, bookLimit: 2 }, pagination: { page: 1, limit: 24, total: 1, totalPages: 1 } })
   vi.mocked(fetchBookOverview).mockResolvedValue(overview as never)
   vi.mocked(reserveBookTitle).mockResolvedValue({ reservationId: 1, queuePosition: 3, status: 'approved', statusLabel:'Preparing',instructions:'Wait for Ready for pickup.' })
   vi.mocked(enhancedCatalog.options).mockResolvedValue({ categories: [], programs: [], courses: [], types: [], locations: [] })
   vi.mocked(enhancedCatalog.search).mockResolvedValue({ items: [record, { ...record, id: 43, title: 'Research example', kind: 'Research/Thesis' }], pagination: { page: 1, limit: 24, total: 2 } } as never)
 })
-afterEach(() => { cleanup(); clearBookCartForTests(); vi.resetAllMocks() })
+afterEach(() => { cleanup(); clearBookCartForTests(); vi.useRealTimers(); vi.resetAllMocks() })
+
+it('refreshes catalog titles, availability, and filter options without losing the search', async () => {
+  setup('/student/library?q=Computing')
+  await screen.findByRole('heading', { name: 'Example book' })
+  await waitFor(() => expect(enhancedCatalog.availability).toHaveBeenCalledTimes(1))
+  vi.mocked(enhancedCatalog.search).mockResolvedValue({ items: [{ ...record, title: 'Updated book' }, { ...record, id: 43, title: 'Research example', kind: 'Research/Thesis' }], pagination: { page: 1, limit: 24, total: 2 } } as never)
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh catalog' }))
+  expect(await screen.findByRole('heading', { name: 'Updated book' })).toBeTruthy()
+  expect(enhancedCatalog.options).toHaveBeenCalledTimes(2)
+  expect(enhancedCatalog.availability).toHaveBeenCalledTimes(2)
+  expect(screen.getByRole('textbox', { name: 'Search title, author or ISBN' })).toHaveProperty('value', 'Computing')
+})
+
+it('updates stock without replacing the focused search, filter choices, card or open details',async()=>{
+  setup('/student/library?q=Computing&programId=1')
+  const card=await screen.findByRole('heading',{name:'Example book'})
+  fireEvent.click(screen.getAllByRole('button',{name:'View details'})[0])
+  const dialog=await screen.findByRole('dialog')
+  fireEvent.click(within(dialog).getByRole('button',{name:'Generate APA reference'}))
+  const citation=within(dialog).getByRole('textbox',{name:'APA 7th Edition reference'})
+  const input=screen.getByRole('textbox',{name:'Search title, author or ISBN'})
+  input.focus()
+  const searches=vi.mocked(enhancedCatalog.search).mock.calls.length
+  vi.mocked(enhancedCatalog.availability).mockResolvedValue({items:[{id:42,active:true,available:0,copyCount:1}]})
+  vi.useFakeTimers()
+  // Focus/resume starts a coordinated read immediately, including when a timer was
+  // installed before fake timers. The next cadence is then checked at one second.
+  await act(async()=>{window.dispatchEvent(new Event('focus'))})
+  const count=vi.mocked(enhancedCatalog.availability).mock.calls.length
+  await act(async()=>{await vi.advanceTimersByTimeAsync(1000)})
+  expect(enhancedCatalog.availability).toHaveBeenCalledTimes(count+1)
+  expect(screen.getAllByRole('heading',{name:'Example book'})).toContain(card)
+  expect(screen.getByRole('dialog')).toBe(dialog)
+  expect(within(dialog).getByRole('textbox',{name:'APA 7th Edition reference'})).toBe(citation)
+  expect(document.activeElement).toBe(input)
+  expect(input).toHaveProperty('value','Computing')
+  expect(screen.getByTestId('location').textContent).toContain('programId=1')
+  // A deliberate focus refresh may read metadata once; periodic stock reads do not.
+  expect(enhancedCatalog.search).toHaveBeenCalledTimes(searches+1)
+  expect(screen.getByRole('button',{name:'Reserve book'})).toBeTruthy()
+})
+
+it('keeps unrelated book actions usable while a reservation is pending and does not refetch the catalog after it', async () => {
+  let finish!: (value: Awaited<ReturnType<typeof reserveBookTitle>>) => void
+  vi.mocked(reserveBookTitle).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  vi.mocked(enhancedCatalog.search).mockResolvedValue({items:[{...record,available:0},{...record,id:44,title:'Another book'}],pagination:{page:1,limit:24,total:2}} as never)
+  setup()
+  const reserve = await screen.findByRole('button',{name:'Reserve book'})
+  const another = screen.getByRole('button',{name:'Borrow book'})
+  fireEvent.click(reserve)
+  fireEvent.click(reserve)
+  expect(reserveBookTitle).toHaveBeenCalledTimes(1)
+  expect(another).toHaveProperty('disabled',false)
+  fireEvent.click(another)
+  expect(readBookCart().map(item=>item.titleId)).toEqual([44])
+  const reads = vi.mocked(enhancedCatalog.search).mock.calls.length
+  finish({reservationId:5,queuePosition:1,status:'pending'})
+  await screen.findByRole('button',{name:'Reserved'})
+  expect(enhancedCatalog.search).toHaveBeenCalledTimes(reads)
+})
 
 it('shows covers and filters and adds locally without submitting a request', async () => {
   setup()

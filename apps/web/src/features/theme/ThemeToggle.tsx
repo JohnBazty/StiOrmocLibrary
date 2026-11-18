@@ -11,7 +11,7 @@ export function ThemeToggle({ className = '' }: { className?: string }) {
       title={isDark ? 'Light mode' : 'Dark mode'}
       className={
         className ||
-        'rounded-xl border border-[#003399]/15 bg-white p-2.5 text-[#003399]/65 transition hover:bg-[#003399]/5 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10'
+        'rounded-xl border border-[#0b5ea2]/15 bg-white p-2.5 text-[#0b5ea2]/65 transition hover:bg-[#0b5ea2]/5 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10'
       }
     >
       {isDark ? <Sun size={18} /> : <Moon size={18} />}

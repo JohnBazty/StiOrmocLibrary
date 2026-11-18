@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ResearchCatalog } from './ResearchCatalog'
 
@@ -19,24 +19,30 @@ describe('ResearchCatalog view-only UI', () => {
     api.fetchResearchOverview.mockResolvedValue(paper)
     render(<ResearchCatalog />)
 
-    expect(await screen.findByText('SmartLib Research')).toBeTruthy()
+    const desktop = within(await screen.findByRole('region', { name: 'Research records' }))
+    expect(desktop.getByRole('img', { name: 'SmartLib Research research cover' })).toBeTruthy()
     expect(screen.getByPlaceholderText('Search research...')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /borrow/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /add to cart/i })).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: 'View' }))
+    fireEvent.click(desktop.getByRole('button', { name: 'View' }))
     expect(await screen.findByText('This is the complete research abstract.')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /borrow/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /add to cart/i })).toBeNull()
     expect(screen.getByRole('button', { name: 'Generate APA reference' })).toBeTruthy()
   })
 
-  it('keeps the drawer mounted and shows a localized error when detail loading fails', async () => {
+  it('shows cover-first mobile cards and opens the same research details drawer', async () => {
     api.fetchResearchCatalog.mockResolvedValue({ items: [paper], pagination: { page: 1, limit: 25, total: 1, totalPages: 1 } })
     api.fetchResearchOverview.mockRejectedValue(new Error('Research details could not be loaded.'))
     render(<ResearchCatalog />)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'View' }))
+    const cards = within(await screen.findByRole('region', { name: 'Research cards' }))
+    expect(cards.getByRole('img', { name: 'SmartLib Research research cover' })).toBeTruthy()
+    expect(cards.getByRole('heading', { name: paper.title })).toBeTruthy()
+    expect(cards.getByText('Shelf: Thesis A-1')).toBeTruthy()
+    fireEvent.click(cards.getByRole('button', { name: 'View details for SmartLib Research' }))
+    expect(api.fetchResearchOverview).toHaveBeenCalledWith(12, expect.any(AbortSignal))
     expect(await screen.findByText('Research details unavailable')).toBeTruthy()
     expect(screen.getByText('Research details could not be loaded.')).toBeTruthy()
     expect(screen.getByRole('dialog')).toBeTruthy()

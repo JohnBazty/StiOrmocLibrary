@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { SelectedFilePreview } from '../../components/SelectedFilePreview'
 import { enhancedCatalog, type CatalogRecord, type Options } from './enhanced-catalog-api'
 import { Button } from '../../components/ui'
-export const catalogInput='mt-1 w-full rounded-xl border border-[#003399]/20 bg-white p-2 text-sm text-[#003399] dark:bg-[#001a4d] dark:text-white'
+export const catalogInput='mt-1 w-full rounded-xl border border-[#0b5ea2]/20 bg-white p-2 text-sm text-[#0b5ea2] dark:bg-[#001a4d] dark:text-white'
 export function CatalogDetailsPanel({titleId,editable=false}:{titleId:number;editable?:boolean}){
  const fileInput=useRef<HTMLInputElement>(null)
  const clearFile=()=>{setFile(null);if(fileInput.current)fileInput.current.value=''}
@@ -11,7 +11,7 @@ export function CatalogDetailsPanel({titleId,editable=false}:{titleId:number;edi
  async function act(fn:()=>Promise<void>){setBusy(true);setError('');setNotice('');try{await fn()}catch(e){setError(e instanceof Error?e.message:'Unable to save changes.')}finally{setBusy(false)}}
  if(!book)return <div className="mt-4 text-sm" role={error?'alert':undefined}>{error||'Loading catalog information…'}</div>
  const edit=(field:keyof CatalogRecord,value:unknown)=>setBook({...book,[field]:value})
- return <section className="mt-5 space-y-4 rounded-2xl border border-[#003399]/15 p-4 text-[#003399] dark:text-white" aria-label="Additional catalog information">
+ return <section className="mt-5 space-y-4 rounded-2xl border border-[#0b5ea2]/15 p-4 text-[#0b5ea2] dark:text-white" aria-label="Additional catalog information">
  <h3 className="font-bold">Catalog information & digital books</h3>
  {error&&<p role="alert" className="rounded-xl bg-[#b42318] p-3 text-white">{error}</p>}{notice&&<p role="status">{notice}</p>}
  {editable?<><div className="grid gap-3 sm:grid-cols-2">{(['copyrightYear','edition','pages'] as const).map(field=><label key={field}>{field==='copyrightYear'?'Copyright year':field==='pages'?'Pages':'Edition'}<input className={catalogInput} value={book[field]??''} onChange={e=>edit(field,e.target.value)}/></label>)}<label>Resource type<select className={catalogInput} value={book.typeId??''} onChange={e=>edit('typeId',Number(e.target.value)||null)}><option value="">Use book / research classification</option>{options?.types.filter(t=>t.status==='Active'&&t.recordKind===book.kind).map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label></div>

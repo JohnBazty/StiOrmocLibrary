@@ -1,0 +1,106 @@
+{
+  "title": "October 17 revisions - Phase 1 implementation and verification",
+  "why": "Keep book actions independent, update visible operational data at a one-second cadence without page reloads, and apply the requested Librarian navigation order.",
+  "dateCreated": "2026-10-22",
+  "dateLastUpdated": "2026-10-22",
+  "status": "built",
+  "scope": "Only Phase 1 of docs/revision oct 17.md. Phases 2-8 remain planned. CSV-only imports and extra profile fields remain deferred.",
+  "how": {
+    "reservations": "useBookReservations owns a per-title pending lock, stable retry request ID, success state and error. Card and selected-title details share that state. Reserving one title no longer disables every catalog action. A successful reservation refreshes borrower context, not the entire catalog. Existing server transaction, policy and duplicate-prevention checks remain authoritative.",
+    "liveReads": "useLiveQuery shares identical reads by key while consumers are mounted. Healthy visible reads start on a 1000 ms cadence, wait out slow requests, retain prior data on failure and reject stale/unmounted responses. Errors back off at 2/4/8/16/30 seconds; visibility, focus and online changes resume reads. Explicit post-mutation refresh waits for an older read before reading committed data. Reads do not dispatch human-activity events or renew authentication.",
+    "catalog": "Full filtered metadata is loaded on filter/page changes, explicit refresh and focus. One-second catalog polling uses a separate bounded stock endpoint for at most 25 visible title IDs. An archived visible title triggers an exceptional metadata reconciliation. Open book details update independently. Search text, filter choices, page, focus, citation state and dialog DOM survive background reads. Public open-detail metadata is not polled: only its counts and selected-copy states use the lightweight endpoint, preserving the original full-metadata rate limit.",
+    "stockEndpoint": "GET /api/public/catalog/availability?ids=... returns title IDs, active flags and available/total counts, plus already-public selected-copy fields only when detailId identifies one of the requested titles. At most 25 unique title IDs and one selected title are accepted. Queries are parameterized and preserve active-copy/material-bridge and archival rules. Identical pending public reads coalesce; completed results cache for 250 ms with a 256-entry bound. The separate 6000/minute IP budget supports shared-campus polling without changing existing full-catalog/download, login or mutation limits; production capacity is not claimed.",
+    "viewer": "GET /api/v1/catalog/books?viewer_only=1 reuses protected catalog access and current policy/count resolution while omitting the full catalog metadata query. It does not weaken login, role or account checks.",
+    "clearance": "Owner clearance reads compute current standing with cache updates disabled. One-second polling therefore does not repeatedly write clearance_statuses. Other operational write paths and standing rules are preserved.",
+    "navigation": "Librarian Book Reports links to the existing /librarian/reports route immediately after Dashboard. Maintenance is immediately after Fines. Other report types, routes and role restrictions are retained."
+  },
+  "pollingCoverage": [
+    "Public and signed-in visible catalog stock; selected book details",
+    "Signed-in borrowing context and completed-cart cleanup",
+    "Student/Faculty dashboard, My books, borrowing history, requests/reservations, in-library history and clearance",
+    "Librarian dashboard and workspace tasks",
+    "Circulation monitor and in-library desk assignments",
+    "Librarian reservation queue and library operating state/events",
+    "Attendance capacity; historical attendance analytics remain explicitly loaded",
+    "Notification inbox, unread badge and shared account-review notifications",
+    "Published floor-plan layout; editable floor-plan drafts are not polled"
+  ],
+  "timersIntentionallyUnchanged": [
+    "Sidebar avatar signed-URL maintenance remains a visible 60-second renewal with profile-update/focus events; it is not an operational table poll.",
+    "Session inactivity enforcement, login countdowns and the circulation desk's five-minute abandoned-scan cleanup retain their separate timing rules.",
+    "Notification schedule/reference options are loaded separately from the live inbox, avoiding repeated static work. Exports, file inspection, uploads and mutations never run on a poll timer."
+  ],
+  "verification": {
+    "reproducedBeforeRepair": "A regression test failed because the unrelated Borrow book button was disabled during another title's pending reservation.",
+    "apiSuite": {
+      "passed": 402,
+      "failed": 0,
+      "log": "output/oct17-phase1-api-tests.txt",
+      "note": "Repository API unit suite uses its MySQL mock environment; active Postgres was checked separately."
+    },
+    "webSuite": {
+      "passed": 276,
+      "failed": 0,
+      "files": 73,
+      "log": "output/oct17-phase1-web-tests.txt",
+      "note": "Full 276-test suite passed. The final lightweight public-copy polling changes also passed the affected 17 catalog tests afterward."
+    },
+    "build": {
+      "api": "passed",
+      "web": "passed",
+      "log": "output/oct17-phase1-build.txt",
+      "advisory": "Existing web chunk-size advisory remains."
+    },
+    "postgres": {
+      "command": "node apps/api/scripts/verify-oct17-phase1.ts",
+      "result": "passed",
+      "coverage": "Active stock, legacy material availability bridge, damaged/archived copies, archived titles/research, missing IDs and repeated reads; selected physical-book and native research copy state",
+      "isolation": "Only connection-local temporary tables inside a rolled-back transaction; no real school rows changed."
+    },
+    "http": {
+      "health": 200,
+      "webProxyStock": 200,
+      "invalidStockIds": 422,
+      "anonymousProtectedViewer": 401,
+      "twoClientSmoke": "Two local clients made three stock reads each at one-second waits; all succeeded in 2259 ms total. This is a small connectivity smoke check, not a campus-scale load test."
+    },
+    "browser": {
+      "realPublicCatalog": "Loaded current public catalog and individual 1984 copy details with no captured console errors. No borrowing action or real account login was submitted.",
+      "disposableUi": "A temporary browser fixture intercepted every API request in browser memory. During a delayed reservation, another book's Borrow button remained enabled and added it to the local fixture cart. Afterward the visible counter showed 1 full catalog read, 29 stock reads and 1 reservation submission.",
+      "mobile": "390 x 844 viewport: catalog controls and both cards visible without horizontal overflow; document scroll width and viewport width both 390. Mobile navigation order correct; Escape closed it and restored focus to Open navigation.",
+      "desktop": "Requested sidebar order visually inspected at the normal desktop viewport.",
+      "screenshots": [
+        "output/oct17-phase1-catalog.png",
+        "output/oct17-phase1-mobile.png",
+        "output/oct17-phase1-mobile-navigation.png",
+        "output/oct17-phase1-navigation.png"
+      ]
+    }
+  },
+  "database": {
+    "newMigrations": false,
+    "appliedProductFile": "029_october16_revisions.sql (existing tracker; not reapplied)",
+    "enrollment028": "Unapplied draft preserved",
+    "nextUnusedPostgres": "030",
+    "mysqlReference": "048 / next 049",
+    "schoolDataMutations": false
+  },
+  "cleanup": "Temporary phase1-qa.html and phase1-qa.tsx were removed. The fixture cart and dummy browser login were cleared through its cleanup control; fixture tab closed; viewport override reset. Postgres fixtures rolled back. The real public catalog remains open and local services are running. Prior unrelated working changes are preserved.",
+  "limits": [
+    "No real Student/Faculty or Librarian credentials were used for browser mutations. Authenticated UI interactions used disposable browser-only data; permission behavior uses API regression coverage and anonymous live rejection.",
+    "Campus-scale load, production network latency, physical devices, scanners/printers and final human Librarian acceptance remain for Phase 8. A 1000 ms polling cadence is not a promise of a strict one-second transaction-to-screen deadline.",
+    "This work adds no new notification event producers, DDC records, historical printing entry, supply metadata or merchandise maintenance; those belong to later phases.",
+    "No push, deployment, migration replay, password reset or real holdings import was performed."
+  ],
+  "implementationTracking": {
+    "phase1": "built",
+    "remainingPhases": "planned",
+    "overallPlan": "inprogress"
+  },
+  "changeLog": [
+    {
+      "date": "2026-10-22",
+      "change": "Implemented Phase 1, reproduced and repaired the global reservation disabled state, added coordinated lightweight live reads and navigation changes, verified automated/Postgres/HTTP/browser behavior and removed disposable fixtures."
+    }
+  ]
+}

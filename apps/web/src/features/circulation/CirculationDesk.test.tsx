@@ -41,6 +41,13 @@ it('shows the assigned copy but blocks handover when attendance is missing',asyn
  render(<CirculationDesk onChanged={()=>{}} borrowerRequest={{reservationId:9,key:1}} />)
  await screen.findByText('Queued book');expect(screen.queryByRole('button',{name:'Confirm handover'})).toBeNull()
  expect(api.checkoutRequest).not.toHaveBeenCalled();expect(attendance.scan).not.toHaveBeenCalled()
+ api.requestPreview.mockResolvedValue({borrower,preview:{copy:{id:42,title:'Queued book',barcode:'COPY-42',condition:'Good'},eligible:true,blockers:[]},reservationId:9,barcode:'COPY-42'})
+ fireEvent.click(screen.getByRole('button',{name:'Refresh pickup'}))
+ await screen.findByRole('button',{name:'Confirm handover'})
+ fireEvent.click(screen.getByRole('button',{name:'Refresh pickup'}))
+ await screen.findByRole('button',{name:'Confirm handover'})
+ expect(api.requestPreview).toHaveBeenCalledTimes(3)
+ expect(api.checkoutRequest).not.toHaveBeenCalled()
 })
 const openState = { entryOpen: true, allowBorrowing: true, available: 20 }
 beforeEach(() => {

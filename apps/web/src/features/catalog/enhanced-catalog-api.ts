@@ -1,7 +1,7 @@
 import { getAccessToken } from '../auth/auth-storage'
 export type Option={id:number;name:string;code?:string;programId?:number;recordKind?:string;status:string;version:number}
 export type Options=Record<'locations'|'programs'|'courses'|'types'|'categories',Option[]>
-export type CatalogRecord={id:number;title:string;kind:string;coverImagePath?:string|null;author:string;isbn:string|null;publicationYear:number|null;copyrightYear:number|null;publisher:string|null;category:string|null;edition:string|null;pages:number|null;synopsis:string;glossary:string;abstract:string;typeId:number|null;resourceType:string|null;version:number;available:number;copyCount:number;programs:Option[];courses:Option[];copies:Array<{id:number;accession:string;barcode:string;shelf:string;condition:string;availability:string}>;files:Array<{id:number;name:string;size:number}>}
+export type CatalogRecord={id:number;title:string;kind:string;coverImagePath?:string|null;author:string;department?:string|null;adviser?:string|null;isbn:string|null;publicationYear:number|null;copyrightYear:number|null;publisher:string|null;category:string|null;edition:string|null;pages:number|null;synopsis:string;glossary:string;abstract:string;typeId:number|null;resourceType:string|null;version:number;available:number;copyCount:number;programs:Option[];courses:Option[];copies:Array<{id:number;accession:string;barcode:string;shelf:string;condition:string;availability:string}>;files:Array<{id:number;name:string;size:number}>}
 export type Mapping={sheet:string;headerRow:number;columns:Record<string,number>;categoryId?:number;location?:string;programId?:number}
 export type Sheet={name:string;rowCount:number;headers:string[];mapping:Mapping;preview:string[][]}
 export type ImportCorrection={field:string;before:string;after:string;reason:'spaces'|'isbn'|'number'|'category'|'shelf'}
@@ -14,8 +14,9 @@ const send=<T>(path:string,body:unknown,method='POST')=>enhancedRequest<T>(base+
 const upload=(file:File,mapping?:Mapping[])=>{const form=new FormData();form.set('holdings',file);if(mapping)form.set('mapping',JSON.stringify(mapping));return form}
 export const enhancedCatalog={
  options:(maintenance=false)=>enhancedRequest<Options>(maintenance?`${base}/options`:'/api/public/catalog/options'),
- search:(query:URLSearchParams)=>enhancedRequest<{items:CatalogRecord[];pagination:{page:number;limit:number;total:number}}>(`/api/public/catalog/titles?${query}`),
- detail:(id:number)=>enhancedRequest<CatalogRecord>(`/api/public/catalog/titles/${id}`),
+ search:(query:URLSearchParams,signal?:AbortSignal)=>enhancedRequest<{items:CatalogRecord[];pagination:{page:number;limit:number;total:number}}>(`/api/public/catalog/titles?${query}`,{signal}),
+ availability:(ids:number[],signal?:AbortSignal,detailId?:number|null)=>enhancedRequest<{items:Array<{id:number;active:boolean;available:number;copyCount:number}>;selectedCopies?:CatalogRecord['copies']}>(`/api/public/catalog/availability?ids=${ids.join(',')}${detailId?`&detailId=${detailId}`:''}`,{signal}),
+ detail:(id:number,signal?:AbortSignal)=>enhancedRequest<CatalogRecord>(`/api/public/catalog/titles/${id}`,{signal}),
  saveDetails:(id:number,body:unknown)=>send<CatalogRecord>(`/titles/${id}/details`,body,'PUT'),
  saveFoundation:(kind:string,id:number|null,body:unknown)=>send<Options>(`/foundation/${kind}${id?`/${id}`:''}`,body,id?'PATCH':'POST'),
  digital:(id:number,file:File,note:string)=>{const form=new FormData();form.set('digital',file);form.set('permissionConfirmed','true');form.set('permissionNote',note);return send<CatalogRecord>(`/titles/${id}/files`,form)},

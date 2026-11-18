@@ -9,7 +9,7 @@ import { ThemeProvider } from '../theme/ThemeProvider'
 describe('authentication pages', () => {
   it('retains the borrowing selection when moving between login and registration', () => {
     const loginView=render(<MemoryRouter initialEntries={['/login?catalogTitleId=42']}><ThemeProvider><LoginPage /></ThemeProvider></MemoryRouter>)
-    expect(screen.getByRole('link',{name:'Register an account'}).getAttribute('href')).toBe('/register?catalogTitleId=42')
+    expect(screen.getByRole('link',{name:'Activate account'}).getAttribute('href')).toBe('/register?catalogTitleId=42')
     expect(screen.getByRole('link',{name:'Back to browsing'}).getAttribute('href')).toBe('/#catalog')
     loginView.unmount()
     render(<MemoryRouter initialEntries={['/register?catalogTitleId=42']}><RegistrationPage /></MemoryRouter>)
@@ -19,7 +19,7 @@ describe('authentication pages', () => {
     render(<MemoryRouter><ThemeProvider><LoginPage /></ThemeProvider></MemoryRouter>)
     expect(screen.queryByLabelText('Login as')).toBeNull()
     expect(screen.getByLabelText('Student Number / Faculty ID')).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Register an account' }).getAttribute('href')).toBe('/register')
+    expect(screen.getByRole('link', { name: 'Activate account' }).getAttribute('href')).toBe('/register')
     expect(screen.queryByRole('link', { name: 'System Administrator Login' })).toBeNull()
     expect(screen.getByRole('link', { name: 'Forgot Password?' }).getAttribute('href')).toBe('/forgot-password')
   })
@@ -27,7 +27,7 @@ describe('authentication pages', () => {
   it('pauses signup before the first semester starts and directs existing users to sign in', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { enabled: true, open: false } }) }))
     render(<MemoryRouter><RegistrationPage /></MemoryRouter>)
-    expect(await screen.findByText(/Student registration opens when the library starts the semester/)).toBeTruthy()
+    expect(await screen.findByText(/Student account activation opens when the library starts the semester/)).toBeTruthy()
     expect(screen.queryByLabelText('Register as')).toBeNull()
     expect(screen.queryByLabelText('Student ID')).toBeNull()
     expect(screen.getByRole('link', { name: 'Sign In Here' })).toBeTruthy()
@@ -56,9 +56,18 @@ describe('authentication pages', () => {
     fireEvent.change(await screen.findByLabelText('Email verification code'), { target: { value: '123456' } })
     expect(request.mock.calls[1][1]?.body).toBe(JSON.stringify({ school_id: '0001234' }))
     fireEvent.click(screen.getByRole('button', { name: 'Verify email code' }))
-    fireEvent.change(await screen.findByLabelText('Password'), { target: { value: 'ExamplePass123' } })
-    fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'ExamplePass123' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create account' }))
+    const password = await screen.findByLabelText<HTMLInputElement>('Password')
+    const confirmation = screen.getByLabelText<HTMLInputElement>('Confirm password')
+    const showPasswords = screen.getByRole('checkbox', { name: 'Show passwords' })
+    fireEvent.change(password, { target: { value: 'ExamplePass123' } })
+    fireEvent.change(confirmation, { target: { value: 'ExamplePass123' } })
+    expect([password.type, confirmation.type]).toEqual(['password', 'password'])
+    fireEvent.click(showPasswords)
+    expect([password.type, confirmation.type]).toEqual(['text', 'text'])
+    fireEvent.click(showPasswords)
+    expect([password.type, confirmation.type]).toEqual(['password', 'password'])
+    expect([password.value, confirmation.value]).toEqual(['ExamplePass123', 'ExamplePass123'])
+    fireEvent.click(screen.getByRole('button', { name: 'Activate account' }))
     expect(await screen.findByText('Sign in 0001234 ?catalogTitleId=42')).toBeTruthy()
   })
 
@@ -68,6 +77,31 @@ describe('authentication pages', () => {
     expect(screen.getByLabelText('School ID')).toBeTruthy()
     expect(screen.queryByLabelText('Login as')).toBeNull()
     expect(screen.getByRole('button', { name: 'Log In' })).toBeTruthy()
+  })
+
+  it('asks before switching after email verification and cancel makes no switch request', async () => {
+    const request = vi.fn(async (path: string, _options?: RequestInit) => ({
+      ok: true,
+      json: async () => ({ data: path.endsWith('/device') ? { enabled: true }
+        : path.endsWith('/login') ? { otpRequired: true, challengeId: 'test-challenge', emailHint: 'te***@ormoc.sti.edu.ph' }
+        : { deviceSwitchRequired: true, switchToken: 'test-switch' } }),
+    }))
+    vi.stubGlobal('fetch', request)
+    render(<MemoryRouter><ThemeProvider><LoginPage popup /></ThemeProvider></MemoryRouter>)
+    const remember = await screen.findByRole<HTMLInputElement>('checkbox', { name: /Remember this device/ })
+    expect(remember.checked).toBe(false)
+    fireEvent.click(remember)
+    fireEvent.change(screen.getByLabelText('Student Number / Faculty ID'), { target: { value: 'TEST-001' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'test-only' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Log In' }))
+    fireEvent.change(await screen.findByLabelText('Login code'), { target: { value: '123456' } })
+    const passwordRequest = request.mock.calls.find(([path]) => path.endsWith('/auth/login'))
+    expect(JSON.parse(String(passwordRequest?.[1]?.body)).remember_device).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Verify and sign in' }))
+    expect(await screen.findByRole('heading', { name: 'This account is signed in on another device.' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.getByRole('button', { name: 'Log In' })).toBeTruthy()
+    expect(request.mock.calls.some(([path]) => path.endsWith('/device/switch'))).toBe(false)
   })
 })
 

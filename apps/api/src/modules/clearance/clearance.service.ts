@@ -201,7 +201,8 @@ export function createClearanceService(database: Pool = db) {
         unknown: students.filter(item => !['Cleared', 'Not Cleared'].includes(item.status)).length,
       }
     },
-    async mine(actor: ClearanceActor) { return compute(await linkedUserId(database, actorAccountId(actor))) },
+    // Visible clearance polling reads the live standing without rewriting its cache.
+    async mine(actor: ClearanceActor) { return compute(await linkedUserId(database, actorAccountId(actor)), false) },
 
     async list(actor: ClearanceActor, query: Record<string, unknown>) {
       requireStaff(actor)

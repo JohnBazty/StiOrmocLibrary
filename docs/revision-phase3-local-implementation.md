@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Date created | 2026-10-11 |
-| Date last updated | 2026-10-16 |
+| Date last updated | 2026-11-10 |
 | Status | `built` — locally verified |
 
 ## Why
@@ -55,6 +55,8 @@ Supabase `021_revision_phase3_catalog.sql` applied on 2026-10-11. Next Postgres 
 
 ## Change log
 
+- **2026-11-10:** Updated the Student and Faculty Research & Thesis catalog with a two-column, cover-first phone layout. Both layouts open the same research details. Verified at 390 pixels wide with sample records and no horizontal overflow.
+- **2026-11-10:** Published the mobile Research & Thesis layout to Vercel (`dpl_9rvPXRR86PELWiteL8KE12iFa8au`). Verified that both hosted routes serve the updated build and that the API is healthy.
 - **2026-10-11:** Owner authorized Revision Phase 3. Read workbook layouts and revision requirements. Request librarian review for overlaps and clarify digital-access scope. No real holdings imported during development.
 - **2026-10-11:** Owner confirmed review of overlapping holdings before saving and visitor access to permitted digital files. Applied additive `021`, built catalog/import/Maintenance/Reports screens, and passed API/web type checks. Work resumed after an intentional interruption; final integration and browser verification remain in progress.
 - **2026-10-11:** Finished local acceptance checks, repaired header normalization/workbook footer handling, rejected malformed mapping payloads with a validation error, and made historical category-reference rejection understandable. Verified Reports downloads and fixture cleanup, restarted API, and marked Revision Phase 3 `built` locally.

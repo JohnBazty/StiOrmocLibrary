@@ -1,0 +1,195 @@
+{
+  "date": "2026-11-17",
+  "branch": "feat/phases-5-6",
+  "baseDeployment": "dpl_DQ84RhHxHCWQJcZaaqiHQhigsx7v",
+  "deployment": "dpl_GG7n9kzJDnDn33G5qT1Tvo4pZHww",
+  "url": "https://sti-ormoc-smart-library.vercel.app",
+  "releaseDirectory": "C:\\Users\\JOHN\\AppData\\Local\\Temp\\sti-vercel-phase56-20261117",
+  "overlay": [
+    {
+      "path": "apps/api/src/core/schema-readiness.ts",
+      "sha256": "eb849938595c80e0e73320dc9047536d29c4cd32cefd0e7f038e1701a8e8b662",
+      "normalizedLfSha256": "bc11ed949274e40f9015ad4e2397d2c601b05ec341eaeb4681026863f2c4aac3"
+    },
+    {
+      "path": "apps/api/src/modules/job-runner/job-runner.jobs.ts",
+      "sha256": "b3f430d44b78516ea36431b9940b3a3cb228d9a6085f935e8bff6df5772aadd9",
+      "normalizedLfSha256": "e88d2eb13e18b6fff51b8c9dc3030cc6e311a3c328bf60d1f03120b6ef9fb43a"
+    },
+    {
+      "path": "apps/api/src/modules/notifications/notifications.routes.ts",
+      "sha256": "042a87de2a55b304ee1e95b377f743da885c361be0745ab5b9e3e1c23db08a4e",
+      "normalizedLfSha256": "1967790783f7b80d90a0529faabb7716d6d6dcb7be15d6c63252e032d353d625"
+    },
+    {
+      "path": "apps/api/src/modules/notifications/notification.repository.ts",
+      "sha256": "40af66038bee1ec18732c1ac26b1449495f487ef0a561647135d1c7e86662110",
+      "normalizedLfSha256": "d5531f03e5c1ae224a14fdd161b5f18875a132cfed1abc52335925a07f7aa0b4"
+    },
+    {
+      "path": "apps/api/src/modules/notifications/web-push.ts",
+      "sha256": "1d1d5583b40262be8e5f29eb6e3c965ec1e544003d36f164118d7ad4fb631629",
+      "normalizedLfSha256": "a5a52f87e435cdc035689195caa5e5c70102af68d3c6201738a6e3f6f45bbf9c"
+    },
+    {
+      "path": "apps/api/src/modules/catalog/collection-review.service.ts",
+      "sha256": "40aa97159ce65a940e8730efc58ebfda3cc0c587fcacf64d784c1507098fb909",
+      "normalizedLfSha256": "7fc549494c1452eb06395882414b3b2c5a25dac04d55aeb5a47cf49ed7d9f7f9"
+    },
+    {
+      "path": "apps/api/src/modules/printing/printing.routes.ts",
+      "sha256": "d7c019c41e591541f27d64d5910148b9daa4158d08bb72ed8d39eb6e1026ac85",
+      "normalizedLfSha256": "09726ea356200b2bf57de4a802912f28a123390e8342ce40d27edf37c04f7714"
+    },
+    {
+      "path": "apps/api/src/modules/printing/printing.repository.ts",
+      "sha256": "53b72d6e755b8216cf52ac31daeb79799bf9af55d7811479602f6835be2c80e2",
+      "normalizedLfSha256": "aae83e6e59f990771c0c77f20a53f958e4b6b111df4f919dc162651192f46491"
+    },
+    {
+      "path": "apps/api/src/modules/printing/printing-phase-one.service.ts",
+      "sha256": "d36e42858ccc51002c8d6806d6ffba38a2fd507222ddd2c653cb77bd56de0fa8",
+      "normalizedLfSha256": "31d2a3ec31b180f08b693b4debad602ba29471aa1596396fb8ce14a4c51eb94d"
+    },
+    {
+      "path": "apps/api/src/modules/printing/printing.service.ts",
+      "sha256": "d01aad7e2524a1cbe0699ab4afe7f7715a1acf5a9bd560c6dfae8cb449c030b7",
+      "normalizedLfSha256": "48b9e1a3a21db0af2c4238e58df32ca83f6811589a6a3ec91f0199246ebdebae"
+    },
+    {
+      "path": "apps/api/src/modules/printing/printing.storage.ts",
+      "sha256": "85c6b1dd25e25901542d912cf58ba66421b959d2a6d7226b320377c439b3ba5d",
+      "normalizedLfSha256": "beaec73d0b9c4aabaf850879b81918fc892d80e5ad5f5acf12243b80a8358e62"
+    },
+    {
+      "path": "apps/api/src/modules/printing/document-retention.ts",
+      "sha256": "8aca6ea9a939cb415536a2a0824a93c416020e3327f279a9f1523167cdd1576e",
+      "normalizedLfSha256": "77b29af350cc84a232a28c1032e7cfd00489842496e665f89893df81a90daaed"
+    },
+    {
+      "path": "apps/api/scripts/apply-phase5.ts",
+      "sha256": "8967cd0231dd3c5db3892aa34001354afa3677c9447b821aef3b5dacef2f344c",
+      "normalizedLfSha256": "8967cd0231dd3c5db3892aa34001354afa3677c9447b821aef3b5dacef2f344c"
+    },
+    {
+      "path": "database/supabase/058_push_and_document_retention.sql",
+      "sha256": "fc541fd10859e3cbb81973cda2920f4d766c4e57ae5ed06ffda8a177239fb1b5",
+      "normalizedLfSha256": "6d9be7c0af5b7449bf407aa59a41f3556944ce32d47998ffde1eb0c982725141"
+    },
+    {
+      "path": "apps/web/public/push-worker.js",
+      "sha256": "62a6292430d249cfe2dcac47c65ea1075a13774ceda09e4d6881b42d2eec0a55",
+      "normalizedLfSha256": "62a6292430d249cfe2dcac47c65ea1075a13774ceda09e4d6881b42d2eec0a55"
+    },
+    {
+      "path": "apps/web/public/manifest.webmanifest",
+      "sha256": "ed442bcdd9da63487c6c599b9bcf9b0c0c0f1bdb6668b6f1f10ebd169ebc7e51",
+      "normalizedLfSha256": "ed442bcdd9da63487c6c599b9bcf9b0c0c0f1bdb6668b6f1f10ebd169ebc7e51"
+    },
+    {
+      "path": "apps/web/index.html",
+      "sha256": "1065f17b6a5dfa1520f232ee5bd1f8e76caa41b296d60e3ce602bb41fcdef61c",
+      "normalizedLfSha256": "b97c1c74270618b5b69fffec62799545f2a6d0fca4e8ee4e03314cfeed374303"
+    },
+    {
+      "path": "apps/web/src/features/notifications/DeviceNotifications.tsx",
+      "sha256": "8bb1164bbb54f0c92bac1e1e9c63c010dc9796a3ca557f28c5b28bf4ca654c8a",
+      "normalizedLfSha256": "8bb1164bbb54f0c92bac1e1e9c63c010dc9796a3ca557f28c5b28bf4ca654c8a"
+    },
+    {
+      "path": "apps/web/src/features/notifications/notification-api.ts",
+      "sha256": "9eea43d8c062fe557a32f76f6f959741d2039a9a11768610dd4639b7ff4a3979",
+      "normalizedLfSha256": "99f03b49f810b8c405c21c98f65369dc549325173bf64a10a5739730b2a1da16"
+    },
+    {
+      "path": "apps/web/src/features/notifications/NotificationCenterPage.tsx",
+      "sha256": "ea7108a1dbb7490d686ac35429f4f19c4f249862e9a08b307605f01c8851b704",
+      "normalizedLfSha256": "eb4eae12331b738c81f9bac69b9458b42c53f09b99b2e789215a266df655e603"
+    },
+    {
+      "path": "apps/web/src/features/printing/DocumentRetentionPanel.tsx",
+      "sha256": "04f7b753db8a9ef612d76d891630d2ff026c011bff3033af584c7f432ea751c2",
+      "normalizedLfSha256": "04f7b753db8a9ef612d76d891630d2ff026c011bff3033af584c7f432ea751c2"
+    },
+    {
+      "path": "apps/web/src/features/printing/printing-api.ts",
+      "sha256": "aba07a62843c96591f49fea99e48749df8b90c37493f597136ee9e5c1464e93a",
+      "normalizedLfSha256": "412c81d895c1762751c77c945d04db36739c9cbf1391043f23efb6f04e4fc9e4"
+    },
+    {
+      "path": "apps/web/src/features/printing/AdminPrintingQueuePage.tsx",
+      "sha256": "3176c154827d3498588387da1ff4fa1071affab5ce9871d5d5afae43412912a3",
+      "normalizedLfSha256": "07b6c001c63b0ef9015ed24c33b2471f5be172abc86ecf195780ba87070da659"
+    },
+    {
+      "path": "apps/web/src/features/printing/StudentPrintingPage.tsx",
+      "sha256": "315cb09c3dc846d30c012304c09f1eae00eea784110e905edb3ca6146e2802b4",
+      "normalizedLfSha256": "2f77a715b2a2ead61fc43b0e8cf0a0f5353ead331a5002af74f2c0d35d3b704f"
+    },
+    {
+      "path": "apps/web/src/features/dashboard/AdminDashboardPage.tsx",
+      "sha256": "82ef7f0ae121f9aaf9c40a0229e05895255bcd0a53166322671ec4ce679f8ceb",
+      "normalizedLfSha256": "b37975c7d930650c77f7add8b63dcbb0c3ee7bf405a63cc7390dfe205d5fc3fe"
+    },
+    {
+      "path": "apps/web/src/features/dashboard/ScheduledJobsPanel.tsx",
+      "sha256": "919e7b21e7b8aa10ea62649b24d82d3140000c8e0341954fce66a0019c95ceb5",
+      "normalizedLfSha256": "62728cd6330af0ad2c27f8e27c2d3c155d699ea5813907839a1ddd2be70b69e0"
+    },
+    {
+      "path": "apps/web/src/features/catalog/BookCatalog.tsx",
+      "sha256": "baa3cce88a32a2bff98b8a74be5cd786500bf02e1b39d9a5516e9944f13d48a8",
+      "normalizedLfSha256": "8882bc6857be79b9ec1c4dfcc9520ea3f69f7a95ab952dcaa4057ffb704b9cb4"
+    },
+    {
+      "path": "apps/web/src/features/catalog/CollectionReviewPage.tsx",
+      "sha256": "c16eaff544aae738e9104d0ca9d368e76e6ec746bf128e1d0d1e147ce5f52054",
+      "normalizedLfSha256": "7bb385971e5d10df604f6724adf42c8d00c9ea203c244b18079847411005886b"
+    },
+    {
+      "path": "apps/web/src/features/reservations/StudentReservations.tsx",
+      "sha256": "1079984cbd23bc6bd3ab95463f937afbf2b7d5744766bc9ea7f3b6350de5d3bf",
+      "normalizedLfSha256": "8f9fdcfb60edc2fddf43b4925c0ad35d2ecb3cc2e283993a897240ee31247a29"
+    },
+    {
+      "path": "apps/web/src/features/reservations/AdminReservationQueuePage.tsx",
+      "sha256": "dc45190da37ae5de427aab549920b1fdfc50cc196ff3362685f66a22f9f71bee",
+      "normalizedLfSha256": "0441b803de759628acffe2fb0dd10b8e12b84ed7bcee1b7e54280f2852e8b829"
+    },
+    {
+      "path": "apps/web/src/features/reservations/types.ts",
+      "sha256": "071abcd6cb38dc8df4731ef0c3950a2a2219eb2e74dae8d21474bac4fa8a5aeb",
+      "normalizedLfSha256": "6168ef35ac020388affc2b0b1b4dfadd472bd2b9995849a0d05a6c84dfbfd131"
+    },
+    {
+      "path": "apps/api/src/modules/reservations/reservation-query.repository.ts",
+      "sha256": "9bf74f1b80082d6ec8b7fc5b1e38ad9da4c2506da81e36da1606b88720507771",
+      "normalizedLfSha256": "43c67358c1f91adb5e36b03b22f7f9b34304df505f05c2447f549c0bd24df470"
+    },
+    {
+      "path": "apps/web/src/layouts/PortalLayout.tsx",
+      "sha256": "27060877f8e0dd575ff3df8afc4f9fe4a58ac7da2636640deb4bdc9f6bc8c4e1",
+      "normalizedLfSha256": "202dfaf8d51b856bd03ba0ec8b162bc0acd05c3214c61c17a6534273fe7b1ce3"
+    },
+    {
+      "path": "apps/web/src/index.css",
+      "sha256": "d0b55f992a2c908c8a90925290a05e946a042ad3eb41db8f669ea686d9c6311a",
+      "normalizedLfSha256": "b75023202313cff875a075d5ea890f01db0ba44b6cc5d29069d940657b6e192a"
+    },
+    {
+      "path": "apps/web/src/App.tsx",
+      "sha256": "11d8db5dde038ef773b0716eff01a35c7b5149bc1083fa1e8bcc5b5f3fdacdfe",
+      "normalizedLfSha256": "ed25fa6440b1b5f2ce61a9f1950def0f00e2d68532ff6fcc4480a16c653a963d"
+    },
+    {
+      "path": "apps/web/src/features/auth/ProtectedRoute.tsx",
+      "sha256": "8e03c0b189e6f243290b57b872021a75fbfc600bb2c7add82490a123a4181fd2",
+      "normalizedLfSha256": "f02dcb4525f7d2af8b7cceba5c8b51fcbdaf0474ec7802624dddc565b0c726ff"
+    },
+    {
+      "path": "apps/web/src/features/auth/LoginPage.tsx",
+      "sha256": "06a1faa2180587bad922f0d2fc4dbccfce4a01d47bfe8cb3a29429b7fdc64d7f",
+      "normalizedLfSha256": "44c1b45346dd4bc5a9d52d4102a7081991a4e69aafcaa9aa5c849513992548f9"
+    }
+  ]
+}

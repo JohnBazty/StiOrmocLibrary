@@ -27,12 +27,12 @@ function commonWhere(filters: CatalogSearchFilters, alias = 't') {
   if (filters.categoryId !== null) { where.push(`${alias}.category_id = ?`); parameters.push(filters.categoryId) }
   if (filters.publicationYear !== null) { where.push(`${alias}.publication_year = ?`); parameters.push(filters.publicationYear) }
   if (filters.author) {
-    where.push(`EXISTS (SELECT 1 FROM authors af WHERE af.title_id = ${alias}.title_id AND af.normalized_name LIKE ?)`)
-    parameters.push(`%${filters.author.toLocaleLowerCase('en-US')}%`)
+    where.push(`EXISTS (SELECT 1 FROM authors af WHERE af.title_id = ${alias}.title_id AND LOWER(af.author_name) LIKE ? ESCAPE '!')`)
+    parameters.push(`%${filters.author.toLocaleLowerCase('en-US').replace(/[!%_]/g,'!$&')}%`)
   }
   if (filters.query) {
-    where.push(`(${alias}.title LIKE ? OR ${alias}.isbn LIKE ? OR EXISTS (SELECT 1 FROM authors aq WHERE aq.title_id = ${alias}.title_id AND aq.author_name LIKE ?))`)
-    const like = `%${filters.query}%`
+    where.push(`(LOWER(${alias}.title) LIKE ? ESCAPE '!' OR LOWER(${alias}.isbn) LIKE ? ESCAPE '!' OR EXISTS (SELECT 1 FROM authors aq WHERE aq.title_id = ${alias}.title_id AND LOWER(aq.author_name) LIKE ? ESCAPE '!'))`)
+    const like = `%${filters.query.toLocaleLowerCase('en-US').replace(/[!%_]/g,'!$&')}%`
     parameters.push(like, like, like)
   }
   return { where, parameters }
@@ -55,25 +55,27 @@ export async function* iterateInventoryRows(
   batchSize = 250,
 ): AsyncGenerator<InventoryExportRow> {
   const safeBatchSize = Math.min(Math.max(Math.trunc(batchSize), 1), 1000)
-  if (filters.scope !== 'research') {
+  const copyAvailability="CASE WHEN pc.condition_status IN ('Lost','Damaged','ForRepair') THEN 'Unavailable' WHEN pc.availability_status='Available' THEN COALESCE(m.availability_status,pc.availability_status) ELSE pc.availability_status END"
+  if (filters.scope !== 'research' && filters.availability !== 'Available for Viewing') {
     let cursor = 0
     for (;;) {
       const common = commonWhere(filters)
-      const where = [...common.where, "t.record_type = 'Book'", 'pc.physical_copy_id > ?']
+      const where = [...common.where, "t.record_type = 'Book'", "pc.lifecycle_status = 'Active'", 'pc.physical_copy_id > ?']
       const parameters = [...common.parameters, cursor]
       if (filters.availability && filters.availability !== 'Available for Viewing') {
-        where.push('pc.availability_status = ?')
+        where.push(`${copyAvailability} = ?`)
         parameters.push(filters.availability)
       }
       const [rows] = await database.execute<RowDataPacket[]>(
         `SELECT pc.physical_copy_id, t.record_type, t.title, t.isbn, t.publication_year,
                 c.category_name, pc.accession_number, pc.barcode, pc.shelf_location,
-                pc.condition_status, pc.availability_status AS availability,
+                pc.condition_status, ${copyAvailability} AS availability,
                 (SELECT ${authorsAgg('a')}
                    FROM authors a WHERE a.title_id = t.title_id) AS authors,
                 NULL AS research_code, NULL AS adviser_name
            FROM physical_copies pc
            JOIN titles t ON t.title_id = pc.title_id
+           LEFT JOIN materials m ON m.material_id=pc.material_id
            LEFT JOIN categories c ON c.category_id = t.category_id
           WHERE ${where.join(' AND ')}
           ORDER BY pc.physical_copy_id ASC LIMIT ${safeBatchSize}`,
@@ -89,7 +91,7 @@ export async function* iterateInventoryRows(
     let cursor = 0
     for (;;) {
       const common = commonWhere(filters)
-      const where = [...common.where, "t.record_type = 'Research/Thesis'", 't.title_id > ?']
+      const where = [...common.where, "t.record_type = 'Research/Thesis'", "rr.viewing_status <> 'Archived'", 't.title_id > ?']
       const parameters = [...common.parameters, cursor]
       if (filters.availability === 'Available' || filters.availability === 'Available for Viewing') where.push("rr.viewing_status = 'Available for Viewing'")
       else if (filters.availability) { where.push('rr.viewing_status = ?'); parameters.push(filters.availability) }
@@ -115,7 +117,7 @@ export async function* iterateInventoryRows(
 }
 
 function safeSpreadsheetValue(value: string) {
-  return /^[=+\-@]/.test(value) ? `'${value}` : value
+  return /^\s*[=+\-@]/.test(value) ? `'${value}` : value
 }
 
 function csvCell(value: string) {
@@ -129,15 +131,21 @@ const CSV_COLUMNS: Array<[keyof InventoryExportRow, string]> = [
   ['availability', 'Availability'], ['researchCode', 'Research Code'], ['adviser', 'Adviser'],
 ]
 
-export function createCsvStream(rows: AsyncIterable<InventoryExportRow>) {
+function inventoryCriteria(filters?:CatalogSearchFilters) {
+  return `Current snapshot | Scope: ${filters?.scope??'all'} | Search: ${filters?.query||'All'} | Category: ${filters?.categoryId??'All'} | Author: ${filters?.author||'All'} | Publication year: ${filters?.publicationYear??'All'} | Availability: ${filters?.availability||'All'} | Generated ${new Date().toLocaleString('en-PH',{timeZone:'Asia/Manila'})} Asia/Manila`
+}
+
+export function createCsvStream(rows: AsyncIterable<InventoryExportRow>, filters?:CatalogSearchFilters) {
+  const criteria=inventoryCriteria(filters)
   async function* content() {
-    yield '\uFEFF' + CSV_COLUMNS.map(([, label]) => csvCell(label)).join(',') + '\r\n'
+    if(filters)yield '\uFEFF'+csvCell('REPORT CRITERIA')+','+csvCell(criteria)+'\r\n'
+    yield (filters?'':'\uFEFF') + CSV_COLUMNS.map(([, label]) => csvCell(label)).join(',') + '\r\n'
     for await (const row of rows) yield CSV_COLUMNS.map(([key]) => csvCell(row[key])).join(',') + '\r\n'
   }
   return createIntegrityProtectedCsvStream(content(), 'catalog_inventory', CSV_COLUMNS.length)
 }
 
-export function createInventoryPdf(rows: AsyncIterable<InventoryExportRow>) {
+export function createInventoryPdf(rows: AsyncIterable<InventoryExportRow>,filters?:CatalogSearchFilters) {
   const columns: Array<PdfTableColumn<InventoryExportRow>> = [
     { key: 'recordType', label: 'TYPE', width: 55 },
     { key: 'title', label: 'TITLE', width: 160 },
@@ -154,8 +162,8 @@ export function createInventoryPdf(rows: AsyncIterable<InventoryExportRow>) {
     { key: 'adviser', label: 'ADVISER', width: 96 },
   ]
   return createBrandedTablePdf(rows, {
-    title: 'COMPLETE INVENTORY REPORT',
-    subtitle: 'All active book and research inventory data',
+    title: 'CURRENT BOOK AND RESEARCH HOLDINGS',
+    subtitle: inventoryCriteria(filters),
     emptyMessage: 'No inventory records matched the selected filters.',
     columns,
   })

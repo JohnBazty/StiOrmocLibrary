@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Date created | 2026-11-09 |
-| Date last updated | 2026-11-09 |
+| Date last updated | 2026-11-10 |
 | Status | `built` |
 | Scope | Original Revision Phase 2 enrollment, semester controls, Student account verification and Semester Archive. |
 
@@ -107,7 +107,9 @@ Likely files to check: `apps/api/src/modules/auth/login-security.service.ts`, `a
 
 ## Rollout
 
-Apply only reviewed migration `031_semester_enrollment.sql` to the intended Postgres environment. Then set `ENROLLMENT_ROSTER_ENABLED=true` for its API, verify delivery to an approved test mailbox, and verify the operational job runner. While the job is unavailable, the server enforces the scheduled cutoff and the next enrollment overview or job run saves the archive. The Admin supplies the official dates, uploads the roster and starts the first semester.
+Migration `031_semester_enrollment.sql` was applied individually to the verified production database on 2026-11-09. Vercel deployment `dpl_CqDzCsYyfg18D4z92oscVUWEQTDs` enables enrollment. The release verified the Librarian overview and live API health. Existing account, catalog, and circulation record fingerprints matched before and after migration.
+
+The Admin supplies the official dates, uploads the roster and starts the first semester. School inbox delivery and the hosted operational scheduler still need verification. While the job is unavailable, the server enforces the scheduled cutoff and the next enrollment overview or job run saves the archive.
 
 ## Local verification
 
@@ -125,3 +127,4 @@ Apply only reviewed migration `031_semester_enrollment.sql` to the intended Post
 - **2026-11-09:** Confirmed that both CSV (.csv) and Excel (.xlsx) use the same roster upload and enrollment rules.
 - **2026-11-09:** Added automatic deactivation and session revocation for active Student accounts when their semester ends, plus a dedicated Semester Archive that preserves account and transaction history.
 - **2026-11-09:** Owner confirmed same-account restoration after password and school email verification for returning students. Implemented roster signup, semester controls and the archive behind an opt-in setting. Migration 031 is prepared for review. The live roster and deployment are pending.
+- **2026-11-10:** Clarified that Activate account is for first-time users and that returning students request their code through Sign In with their existing password. The activation screen no longer implies delivery was confirmed. Eight targeted web tests and six email sender tests passed. Local Gmail authenticated, and school inbox delivery remains unverified. This wording change is local.

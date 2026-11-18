@@ -1,7 +1,8 @@
 import { createApp } from './app.js'
 import { env } from './config/env.js'
 import { SYSTEM_SHORT_NAME } from './config/branding.ts'
-import { verifyDatabaseConnection, dbDriver } from './config/db.js'
+import { db, verifyDatabaseConnection, dbDriver } from './config/db.js'
+import { connectDatabaseAtStartup, databaseStartupErrorMessage } from './core/database-startup.ts'
 import { startOperationalJobWorker } from './modules/jobs/job-runner.ts'
 import { startReservationExpirationWorker } from './modules/reservations/reservation-expiration.worker.ts'
 import { startCirculationOverdueWorker } from './modules/circulation/circulation-overdue.worker.ts'
@@ -11,7 +12,9 @@ const port = env.port
 const app = createApp()
 
 try {
-  await verifyDatabaseConnection()
+  await connectDatabaseAtStartup(verifyDatabaseConnection, {
+    onRetry: ({ nextAttempt, totalAttempts, delayMs }) => console.warn(`Database connection temporarily unavailable. Retrying in ${delayMs / 1000} seconds (attempt ${nextAttempt}/${totalAttempts})…`),
+  })
   if(dbDriver==='postgres') startOperationalJobWorker()
   else {
     await startReservationExpirationWorker()
@@ -23,6 +26,7 @@ try {
     console.log(`Open the ${SYSTEM_SHORT_NAME} web application at ${env.webOrigin}/login`)
   })
 } catch (error) {
-  console.error('Unable to start the API. Check the configured database connection and required migrations.', error)
+  console.error(databaseStartupErrorMessage(error))
+  await db.end().catch(() => {})
   process.exitCode = 1
 }

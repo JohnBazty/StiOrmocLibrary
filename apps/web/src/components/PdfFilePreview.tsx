@@ -22,9 +22,9 @@ function PdfPage({ document, page }: { document: PDFDocumentProxy; page: number 
     }).catch(() => { if (active) setState('error') })
     return () => { active = false; render?.cancel() }
   }, [document, page])
-  return <div className="max-h-96 overflow-auto rounded-lg border border-[#003399]/15 bg-white p-1">
-    {state === 'loading' ? <p role="status" className="p-3 text-sm text-[#003399]">Drawing page…</p> : null}
-    {state === 'error' ? <p role="status" className="p-3 text-sm text-[#003399]">This page could not be displayed. Try another page or open the original PDF.</p> : null}
+  return <div className="max-h-96 overflow-auto rounded-lg border border-[#0b5ea2]/15 bg-white p-1">
+    {state === 'loading' ? <p role="status" className="p-3 text-sm text-[#0b5ea2]">Drawing page…</p> : null}
+    {state === 'error' ? <p role="status" className="p-3 text-sm text-[#0b5ea2]">This page could not be displayed. Try another page or open the original PDF.</p> : null}
     <canvas ref={canvas} role="img" aria-label={`Preview of PDF page ${page}`} className={`mx-auto h-auto w-full max-w-full ${state === 'ready' ? '' : 'hidden'}`} />
   </div>
 }

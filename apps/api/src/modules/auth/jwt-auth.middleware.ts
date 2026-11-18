@@ -5,8 +5,9 @@ import { db, dbDriver } from '../../config/db.js'
 import type { JwtRole } from './jwt-auth.service.ts'
 import { hasLibraryPermission, type LibraryPermission } from '../../core/library-permissions.ts'
 import { semesterAccessEnded } from '../enrollment/enrollment-policy.ts'
+import { DEVICE_DEADLINE_SQL, DEVICE_IDLE_SQL, loginDevicesEnabled } from './login-device-policy.ts'
 
-export type AuthenticatedJwtUser = { id: number; accountId: number; schoolId: string; role: JwtRole; authVersion: number; sessionId?: string }
+export type AuthenticatedJwtUser = { id: number; accountId: number; schoolId: string; role: JwtRole; authVersion: number; sessionId?: string; deviceSession?: boolean; rememberedUntil?: number }
 
 export function bearerToken(request: Request) {
   const authorization = request.get('authorization') ?? ''
@@ -14,9 +15,9 @@ export function bearerToken(request: Request) {
   return match?.[1] ?? null
 }
 
-export function verifyAccessToken(token: string): AuthenticatedJwtUser {
+export function verifyAccessToken(token: string, { ignoreExpiration = false } = {}): AuthenticatedJwtUser {
   const decoded = jwt.verify(token, env.jwt.secret, {
-    algorithms: ['HS256'], issuer: env.jwt.issuer, audience: env.jwt.audience,
+    algorithms: ['HS256'], issuer: env.jwt.issuer, audience: env.jwt.audience, ignoreExpiration,
   }) as JwtPayload
   const id = Number(decoded.accountId ?? decoded.userId ?? decoded.sub)
   const schoolId = typeof decoded.schoolId === 'string' ? decoded.schoolId : ''
@@ -26,7 +27,11 @@ export function verifyAccessToken(token: string): AuthenticatedJwtUser {
     throw new Error('Token claims are invalid.')
   }
   const sessionId = typeof decoded.sessionId === 'string' ? decoded.sessionId : undefined
-  return { id, accountId: id, schoolId, role: role as JwtRole, authVersion, ...(sessionId ? { sessionId } : {}) }
+  return {
+    id, accountId: id, schoolId, role: role as JwtRole, authVersion, ...(sessionId ? { sessionId } : {}),
+    ...(decoded.deviceSession === true ? { deviceSession: true } : {}),
+    ...(Number.isSafeInteger(decoded.rememberedUntil) ? { rememberedUntil: decoded.rememberedUntil as number } : {}),
+  }
 }
 
 /** Check current state on every request so older bearer tokens stop working immediately. */
@@ -50,7 +55,13 @@ export function createActiveJwtAccountGuard(database: Pick<typeof db, 'execute'>
       return
     }
     if (identity.sessionId) {
-      const [sessions] = await database.execute('SELECT 1 FROM library_login_sessions WHERE session_id=? AND account_id=? AND auth_version=? AND revoked_at IS NULL AND last_activity_at>NOW()-INTERVAL \'10 minutes\'', [identity.sessionId, identity.accountId, identity.authVersion])
+      const devices = loginDevicesEnabled()
+      if (identity.deviceSession && !devices) {
+        response.status(401).json({ success: false, code: 'SESSION_EXPIRED', message: 'Sign in again to continue.' })
+        return
+      }
+      const deadline = devices ? ` AND ${DEVICE_DEADLINE_SQL}` : ''
+      const [sessions] = await database.execute(`SELECT 1 FROM library_login_sessions WHERE session_id=? AND account_id=? AND auth_version=? AND revoked_at IS NULL AND ${DEVICE_IDLE_SQL}${deadline}`, [identity.sessionId, identity.accountId, identity.authVersion])
       if (!(sessions as unknown[]).length) { response.status(401).json({ success: false, code: 'SESSION_EXPIRED', message: 'Your session expired after 10 minutes of inactivity. Sign in again.' }); return }
     }
     next()

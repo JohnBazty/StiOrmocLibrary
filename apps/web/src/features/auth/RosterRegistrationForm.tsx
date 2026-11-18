@@ -16,6 +16,7 @@ export function RosterRegistrationForm({ fieldClass, busy, onBusy, onComplete }:
   const [grant, setGrant] = useState('')
   const [password, setPassword] = useState('')
   const [confirmation, setConfirmation] = useState('')
+  const [showPasswords, setShowPasswords] = useState(false)
   const [retryAt, setRetryAt] = useState(0)
   const [canResend, setCanResend] = useState(false)
   const [error, setError] = useState('')
@@ -72,6 +73,7 @@ export function RosterRegistrationForm({ fieldClass, busy, onBusy, onComplete }:
     setCode('')
     setPassword('')
     setConfirmation('')
+    setShowPasswords(false)
     setError('')
   }
 
@@ -84,25 +86,30 @@ export function RosterRegistrationForm({ fieldClass, busy, onBusy, onComplete }:
           onChange={event => setSchoolId(event.target.value)} />
       </label>
     </> : !grant ? <>
-      <p role="status" className="text-sm">If your ID is eligible, a code was sent to your school email. Check your inbox and spam folder. If you already have an account, sign in instead.</p>
+      <p role="status" className="text-sm">A code can only be sent if you are on the current roster and have a school email and no existing account. Check your inbox and junk folder. If you still need help, contact the library.</p>
       <label className="block space-y-2 text-sm font-bold">Email verification code
         <input required autoFocus inputMode="numeric" maxLength={6} autoComplete="one-time-code" className={fieldClass}
           value={code} disabled={busy} onChange={event => setCode(event.target.value.replace(/\D/g, ''))} />
       </label>
     </> : <>
-      <p role="status" className="text-sm">School email verified. Set a password to finish creating your account.</p>
+      <p role="status" className="text-sm">School email verified. Set a password to activate your account.</p>
       <label className="block space-y-2 text-sm font-bold">Password
-        <input required autoFocus type="password" minLength={8} maxLength={72} autoComplete="new-password"
+        <input required autoFocus type={showPasswords ? 'text' : 'password'} minLength={8} maxLength={72} autoComplete="new-password"
           className={fieldClass} value={password} disabled={busy} onChange={event => setPassword(event.target.value)} />
       </label>
       <label className="block space-y-2 text-sm font-bold">Confirm password
-        <input required type="password" minLength={8} maxLength={72} autoComplete="new-password"
+        <input required type={showPasswords ? 'text' : 'password'} minLength={8} maxLength={72} autoComplete="new-password"
           className={fieldClass} value={confirmation} disabled={busy} onChange={event => setConfirmation(event.target.value)} />
       </label>
+      <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm font-semibold">
+        <input type="checkbox" checked={showPasswords} onChange={event => setShowPasswords(event.target.checked)}
+          className="h-4 w-4 accent-[#0b5ea2]" />
+        Show passwords
+      </label>
     </>}
-    <button className="min-h-12 w-full rounded-xl bg-[#FFF200] px-4 font-bold text-[#003399] disabled:opacity-55"
+    <button className="min-h-12 w-full rounded-xl bg-[#FFF200] px-4 font-bold text-[#0b5ea2] disabled:opacity-55"
       disabled={busy || (!challengeId ? !validId : !grant && code.length !== 6)}>
-      {busy ? 'Please wait…' : !challengeId ? 'Send email code' : !grant ? 'Verify email code' : 'Create account'}
+      {busy ? 'Please wait…' : !challengeId ? 'Send email code' : !grant ? 'Verify email code' : 'Activate account'}
     </button>
     {challengeId && <div className="flex flex-wrap gap-3 text-sm">
       {!grant && <button type="button" disabled={busy || !canResend} onClick={() => void run(requestCode)}
