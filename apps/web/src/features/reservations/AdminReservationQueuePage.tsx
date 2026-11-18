@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { RefreshCw, PackageCheck } from 'lucide-react'
 import { Button, PageHeader, SectionCard, StatusBadge } from '../../components/ui'
 import { getCurrentIdentity } from '../auth/auth-storage'
 import { reservationApi } from './reservation-api'
+import { AdminScheduledBorrowing } from './AdminScheduledBorrowing'
 import { pickupDateLabel } from './borrowing-schedule-api'
 import type { ReservationFilters, ReservationQueueItem, ReservationStatus } from './types'
 const field='min-h-11 w-full rounded-xl border border-[#0b5ea2]/20 bg-white px-3 text-sm text-[#0b5ea2]'
@@ -11,16 +12,27 @@ const initial:ReservationFilters={status:'active',dateFrom:'',dateTo:'',user:'',
 const when=(s:string)=>new Date(s).toLocaleString('en-PH',{timeZone:'Asia/Manila',dateStyle:'medium',timeStyle:'short'})
 const label=(r:ReservationQueueItem)=>r.statusLabel??({pending:'Waiting for a copy',approved:r.assignedCopyId?'Preparing':'Waiting for a copy',ready_for_pickup:'Ready for pickup',claimed:'Collected',expired:'Expired',cancelled:'Cancelled'}[r.status])
 export function AdminReservationQueuePage() {
+  const [params,setParams]=useSearchParams(),scheduled=params.get('tab')==='scheduled'
+  const [scheduleRefresh,setScheduleRefresh]=useState(0)
+  function chooseTab(value:boolean){const next=new URLSearchParams(params);if(value)next.set('tab','scheduled');else next.delete('tab');setParams(next,{replace:true})}
   const [items,setItems]=useState<ReservationQueueItem[]>([]),[filters,setFilters]=useState(initial),[page,setPage]=useState(1),[pages,setPages]=useState(1)
   const [loading,setLoading]=useState(true),[busy,setBusy]=useState<number|null>(null),[error,setError]=useState(''),[success,setSuccess]=useState(''),[cancel,setCancel]=useState<ReservationQueueItem|null>(null)
   const workspace=getCurrentIdentity()?.role==='Staff'?'/staff':'/librarian'
-  const load=useCallback(async()=>{setLoading(true);try{const r=await reservationApi.queue(filters,page);setItems(r.items);setPages(r.pagination.pages??1);setError('')}catch(e){setError(e instanceof Error?e.message:'Book requests unavailable.')}finally{setLoading(false)}},[filters,page])
+  const load=useCallback(async()=>{if(scheduled)return;setLoading(true);try{const r=await reservationApi.queue(filters,page);setItems(r.items);setPages(r.pagination.pages??1);setError('')}catch(e){setError(e instanceof Error?e.message:'Book requests unavailable.')}finally{setLoading(false)}},[filters,page,scheduled])
   useEffect(()=>{const t=setTimeout(()=>void load(),180);return()=>clearTimeout(t)},[load])
   useEffect(()=>{const t=setInterval(()=>void load(),30000);return()=>clearInterval(t)},[load])
   function filter(value:Partial<ReservationFilters>){setFilters(f=>({...f,...value}));setPage(1)}
   async function update(r:ReservationQueueItem,status:ReservationStatus){setBusy(r.reservationId);setSuccess('');setError('');try{await reservationApi.adjustStatus(r.reservationId,status);setCancel(null);await load();setSuccess(status==='ready_for_pickup'?r.scheduledPickupDate?`${r.materialTitle} is ready. Collect by closing time on ${pickupDateLabel(r.scheduledPickupDate)}.`:`${r.materialTitle} is ready. Its fixed one-open-day pickup timer has started.`:`${r.materialTitle} request cancelled.`)}catch(e){setError(e instanceof Error?e.message:'Request action failed.')}finally{setBusy(null)}}
   return <>
-    <PageHeader eyebrow="Circulation desk" title="Book queue" description="Pull the assigned copy and set it aside before Mark ready. Ordinary reservations have one open day to collect; scheduled holds end at closing on their chosen date." action={<Button variant="secondary" onClick={()=>void load()}><RefreshCw size={16}/> Refresh</Button>}/>
+    <PageHeader eyebrow="Circulation desk" title="Book queue" description="Pull the assigned copy and set it aside before Mark ready. Ordinary reservations have one open day to collect; scheduled holds end at closing on their chosen date." action={<Button variant="secondary" onClick={()=>{if(scheduled)setScheduleRefresh(value=>value+1);else void load()}}><RefreshCw size={16}/> Refresh</Button>}/>
+    <div role="tablist" aria-label="Book queue views" className="mb-5 flex gap-2 border-b border-[#0b5ea2]/15 pb-2" onKeyDown={e=>{
+      if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return
+      e.preventDefault();const next=e.key==='Home'?false:e.key==='End'?true:!scheduled;chooseTab(next);e.currentTarget.querySelector<HTMLButtonElement>(next?'#scheduled-tab':'#requests-tab')?.focus()
+    }}>
+      <button id="requests-tab" type="button" role="tab" aria-selected={!scheduled} aria-controls="requests-panel" tabIndex={scheduled?-1:0} onClick={()=>chooseTab(false)} className={`min-h-11 rounded-xl px-4 text-sm font-bold ${!scheduled?'bg-[#0b5ea2] text-white':'text-[#0b5ea2]'}`}>Book requests</button>
+      <button id="scheduled-tab" type="button" role="tab" aria-selected={scheduled} aria-controls="scheduled-panel" tabIndex={scheduled?0:-1} onClick={()=>chooseTab(true)} className={`min-h-11 rounded-xl px-4 text-sm font-bold ${scheduled?'bg-[#0b5ea2] text-white':'text-[#0b5ea2]'}`}>Scheduled</button>
+    </div>
+    {scheduled?<div role="tabpanel" id="scheduled-panel" aria-labelledby="scheduled-tab"><AdminScheduledBorrowing refreshKey={scheduleRefresh}/></div>:<div role="tabpanel" id="requests-panel" aria-labelledby="requests-tab">
     <p className="mb-5 text-sm opacity-75">Reservations and prepared scheduled pickups appear here. Available-book carts go directly to Borrow & return. A request is a place in line, not a loan. Mark the assigned copy ready after setting it aside; confirm handover in Borrow & return when the borrower collects it.</p>
     {error?<p role="alert" className="auth-error mb-4 rounded-xl p-4">{error}</p>:null}
     {success?<p role="status" className="mb-4 rounded-xl bg-[#FFF200] p-4 font-semibold">{success}</p>:null}
@@ -39,5 +51,6 @@ export function AdminReservationQueuePage() {
     </SectionCard>})}</div>:<SectionCard className="p-10 text-center">{filters.status==='active'?'No active reservations. Unavailable-book reservations will appear here.':'No book requests match these filters.'}</SectionCard>}
     <div className="mt-5 flex items-center justify-between gap-3"><Button variant="secondary" disabled={page<=1||loading} onClick={()=>setPage(p=>p-1)}>Previous</Button><span className="text-sm">Page {page} of {Math.max(1,pages)}</span><Button variant="secondary" disabled={page>=pages||loading} onClick={()=>setPage(p=>p+1)}>Next</Button></div>
     {cancel?<div role="dialog" aria-modal="true" aria-labelledby="cancel-request-title" className="fixed inset-0 z-50 flex items-center justify-center bg-[#001b50]/60 p-4"><SectionCard className="w-full max-w-md p-6"><h2 id="cancel-request-title" className="text-xl font-bold">Cancel this book request?</h2><p className="my-4">{cancel.materialTitle} for {cancel.userName}. The borrower will be notified and the held copy will be offered to the next eligible person waiting.</p><div className="flex justify-end gap-2"><Button variant="secondary" disabled={busy!==null} onClick={()=>setCancel(null)}>Keep request</Button><Button disabled={busy!==null} onClick={()=>void update(cancel,'cancelled')}>Confirm cancellation</Button></div></SectionCard></div>:null}
+    </div>}
   </>
 }

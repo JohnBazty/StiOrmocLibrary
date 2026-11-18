@@ -27,7 +27,7 @@ import { researchAssetRouter } from './modules/catalog/research-asset.routes.ts'
 import { adminCirculationRouter, borrowCartRouter, circulationRequestRouter, userCirculationRouter } from './modules/circulation/circulation.routes.ts'
 import { deskCirculationRouter,userInLibraryRouter } from './modules/circulation/desk-circulation.routes.ts'
 import { adminReservationsV1Router, userReservationsV1Router } from './modules/reservations/reservations.routes.ts'
-import { createBorrowingScheduleRouter } from './modules/reservations/borrowing-schedule.routes.ts'
+import { createBorrowingScheduleRouter, createAdminBorrowingScheduleRouter } from './modules/reservations/borrowing-schedule.routes.ts'
 import { adminAttendanceV1Router, userAttendanceV1Router } from './modules/attendance/attendance.routes.ts'
 import { adminUsersV1Router, selfProfileRouter } from './modules/users/users.routes.ts'
 import { adminPrintingV1Router, userPrintingV1Router } from './modules/printing/printing.routes.ts'
@@ -143,6 +143,7 @@ export function createApp() {
   app.use('/api/v1/borrow', authenticateJwt, requireJwtRoles('Student', 'Faculty'), borrowCartRouter)
   app.use('/api/v1/circulation', authenticateJwt, requireJwtRoles('Student', 'Faculty', 'Librarian', 'Staff'), circulationRequestRouter)
   app.use('/api/v1/admin/reservations', authenticateJwt, requireLibraryPermission('desk.operate'), adminReservationsV1Router)
+  app.use('/api/v1/admin/borrowing-schedules', createAdminBorrowingScheduleRouter())
   app.use('/api/v1/admin/attendance', authenticateJwt, requireLibraryPermission('desk.operate'), adminAttendanceV1Router)
   app.use('/api/v1/attendance', authenticateJwt, requireJwtRoles('Librarian', 'Student', 'Faculty'), userAttendanceV1Router)
   app.use('/api/v1/admin/users', authenticateJwt, requireLibraryPermission('accounts.manage'), adminUsersV1Router)

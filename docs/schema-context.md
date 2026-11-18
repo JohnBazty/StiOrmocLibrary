@@ -627,6 +627,8 @@ Pending schedules do not own copies, consume loan/request allowances, block rene
 
 Scheduled holds end at closing time on the selected pickup date, including copies never marked ready. Ordinary reservations retain the one-open-day deadline after Mark ready. Closure changes cancel the scheduled request and release its hold; no automatic replacement date or post-date waitlist entry is created. Mark ready and both desk paths independently reject closed or elapsed scheduled dates, even if the worker is delayed. Repeat runs use transaction locks, a unique reservation link, bounded cursor batches and deduplicated notifications. User endpoints live under `/api/v1/borrowing-schedules`; list/create/cancel are scoped to the authenticated owner. Existing request responses add `scheduledPickupDate` for user and staff display.
 
+The Book queue's Scheduled tab lists pending schedules before preparation. `GET /api/v1/admin/borrowing-schedules` requires `desk.operate` (Librarian or Staff), supports borrower/book search, Student/Faculty role and pickup-date filters, and returns bounded pages ordered by pickup date and submission. It exposes borrower name/School ID, title, preferred pickup, calculated preparation start and the user's waiting reason. This planning view performs SELECTs only: no early preparation, barcode assignment, hold, loan or schedule mutation. Once prepared, the request is shown in the ordinary Book requests tab. No additional migration is required.
+
 
 ## Hosted payment release - 2026-11-15
 

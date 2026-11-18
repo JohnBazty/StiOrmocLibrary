@@ -1,5 +1,8 @@
 import { Router, type NextFunction, type Request, type Response } from 'express'
 import { createBorrowingScheduleService } from './borrowing-schedule.service.ts'
+import { requireLibraryPermission } from '../auth/jwt-auth.middleware.ts'
+import { db } from '../../config/db.js'
+import { queryBorrowingSchedules } from './borrowing-schedule-query.ts'
 
 export function createBorrowingScheduleRouter(service=createBorrowingScheduleService()) {
   const router=Router()
@@ -9,5 +12,13 @@ export function createBorrowingScheduleRouter(service=createBorrowingScheduleSer
   router.get('/',handle(async(_req,res)=>{res.json({success:true,data:await service.list(account(res))})}))
   router.post('/',handle(async(req,res)=>{res.status(201).json({success:true,data:await service.create(account(res),req.body)})}))
   router.put('/:scheduleId/cancel',handle(async(req,res)=>{res.json({success:true,data:await service.cancel(account(res),req.params.scheduleId)})}))
+  return router
+}
+
+export function createAdminBorrowingScheduleRouter(read=(filters:Record<string,unknown>)=>queryBorrowingSchedules(db,filters)) {
+  const router=Router()
+  router.get('/',requireLibraryPermission('desk.operate'),async(req,res,next)=>{
+    try{res.set('Cache-Control','private, no-store').json({success:true,data:await read(req.query as Record<string,unknown>)})}catch(error){next(error)}
+  })
   return router
 }
