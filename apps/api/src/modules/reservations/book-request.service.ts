@@ -8,6 +8,7 @@ import { createBorrowingPolicyService } from '../circulation/borrowing-policy.se
 import { cancelPendingCounterClaim } from './reservation-claim.repository.ts'
 import { positiveId } from './reservation.validation.ts'
 import { recordRequestEvent, requestEventStatus, requestLabels, requestInstructions } from './book-request-events.ts'
+import { notifyLibrarians } from '../notifications/library-alerts.ts'
 
 const active = "('pending','approved','ready_for_pickup')"
 const fail = (code: string, message: string) => new HttpError(422,code,message)
@@ -127,6 +128,10 @@ export async function releaseLostCopyHolds(q: PoolConnection,physicalCopyId:numb
       FROM reservations r JOIN users u ON u.user_id=r.user_id LEFT JOIN titles t ON t.title_id=r.book_title_id
       WHERE r.reservation_id=? ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
       [`book-request:${r.reservation_id}:copy-lost:${physicalCopyId}`,r.reservation_id])
+    // Supersedes the earlier "Prepare requested copy" notice that pointed at the lost copy.
+    await notifyLibrarians(q,{key:`reservation:${r.reservation_id}:copy-lost:${physicalCopyId}`,title:'Held copy reported lost',
+      body:`request ${r.reservation_id} is back on the waiting list. Do not prepare the lost copy; the next free copy will be assigned.`,
+      sourceId:Number(r.reservation_id),personUserId:Number(r.user_id),path:'/librarian/reservations?status=active',type:'Reservation Arrival'})
   }
   const titles=new Set(rows.filter(r=>r.request_kind!=='CartHandover'&&r.book_title_id).map(r=>Number(r.book_title_id)))
   for(const titleId of titles) await allocateWaitingRequests(q,titleId,now)

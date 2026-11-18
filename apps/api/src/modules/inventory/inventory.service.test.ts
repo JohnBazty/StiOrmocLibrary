@@ -4,13 +4,13 @@ import type { Pool } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { overrideInventoryCondition, setInventoryAvailability, verifyInventoryBarcode } from './inventory.service.ts'
 
-type Scenario = { activeLoan?: boolean; activeReservation?: boolean; availability?: string; condition?: string; materialId?: number | null }
+type Scenario = { activeLoan?: boolean; activeReservation?: boolean; availability?: string; condition?: string; materialId?: number | null; requestKind?: string }
 
 function fakeDatabase(scenario: Scenario = {}) {
   const state = {
     committed: 0, rolledBack: 0, copyUpdates: [] as unknown[][], materialUpdates: [] as unknown[][],
     reservationReleases: 0, audits: [] as unknown[][],
-    reservationSql: [] as Array<{ sql: string; parameters: unknown[] }>, lockOrder: [] as string[], notifications: [] as unknown[][],
+    reservationSql: [] as Array<{ sql: string; parameters: unknown[] }>, lockOrder: [] as string[], notifications: [] as unknown[][], claimCancels: [] as unknown[][],
   }
   const materialId = scenario.materialId === undefined ? 42 : scenario.materialId
   const copy = {
@@ -25,11 +25,12 @@ function fakeDatabase(scenario: Scenario = {}) {
       if (sql.includes("pc.availability_status='Available'")) { state.lockOrder.push('allocate'); return [[]] } // no spare copy
       if (sql.includes('INSERT INTO notifications')) { state.notifications.push(parameters); return [{ affectedRows: 1 }] }
       if (sql.includes('FROM physical_copies pc')) { state.lockOrder.push('copy'); return [[copy]] }
-      if (sql.includes('UPDATE borrow_transactions')) return [{ affectedRows: 0 }]
+      if (sql.includes('UPDATE borrow_transactions')) { state.claimCancels.push(parameters); return [{ affectedRows: 0 }] }
+      if (sql.includes('INSERT INTO book_request_events')) return [{ affectedRows: 1, insertId: 99 }]
       if (sql.includes('FROM borrow_transactions')) return [scenario.activeLoan ? [{ transaction_id: 9, transaction_status: 'Borrowed' }] : []]
       if (sql.includes('FROM reservations')) {
         state.reservationSql.push({ sql, parameters })
-        return [scenario.activeReservation ? [{ reservation_id: 11, reservation_status: 'ready_for_pickup', request_kind: 'Reservation', book_title_id: 3, accession_id: 42, assigned_physical_copy_id: 7 }] : []]
+        return [scenario.activeReservation ? [{ reservation_id: 11, user_id: 5, reservation_status: scenario.requestKind === 'CartHandover' ? 'approved' : 'ready_for_pickup', request_kind: scenario.requestKind ?? 'Reservation', book_title_id: 3, queue_position: 1, accession_id: 42, assigned_physical_copy_id: 7 }] : []]
       }
       if (sql.includes('UPDATE physical_copies')) { state.copyUpdates.push(parameters); return [{ affectedRows: 1 }] }
       if (sql.includes('UPDATE materials')) { state.materialUpdates.push(parameters); return [{ affectedRows: 1 }] }
@@ -93,6 +94,21 @@ test('lost copy releases the hold assigned to that physical copy and keeps the b
   assert.deepEqual(release?.parameters, [11])
   assert.ok(state.lockOrder.includes('allocate'), 'waiting list is offered another copy')
   assert.deepEqual(state.notifications[0], ['book-request:11:copy-lost:7', 11])
+  const librarianAlert = state.notifications.find((parameters) => parameters.includes('library:reservation:11:copy-lost:7'))
+  assert.ok(librarianAlert, 'librarians are told the held copy is gone')
+  assert.equal(librarianAlert?.at(-1), 5)
+  assert.equal(state.claimCancels.length, 1)
+})
+
+test('lost copy cancels a cart handover instead of queueing it', async () => {
+  const { database, state } = fakeDatabase({ availability: 'Reserved', activeReservation: true, requestKind: 'CartHandover' })
+  const result = await overrideInventoryCondition('BC-42', 'Lost', { userId: 1, label: 'Librarian' }, database)
+  assert.equal(result.released_reservations, 1)
+  const updates = state.reservationSql.filter(({ sql }) => sql.includes('UPDATE reservations'))
+  assert.deepEqual(updates[0]?.parameters, ['cancelled', 11])
+  assert.ok(!updates.some(({ sql }) => /reservation_status\s*=\s*'pending'/.test(sql)), 'cart is not put back on the waiting list')
+  assert.ok(!state.notifications.some((parameters) => parameters.some((value) => String(value).includes('copy-lost'))))
+  assert.equal(state.claimCancels.length, 1)
 })
 
 test('re-marking an already lost copy still releases holds left on it', async () => {
