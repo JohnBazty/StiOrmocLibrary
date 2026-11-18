@@ -1,8 +1,8 @@
 # Borrowing policy management archive
 
 - Date created: 2026-10-17
-- Date last updated: 2026-10-17
-- Status: built
+- Date last updated: 2026-11-18
+- Status: restored (2026-11-18, branch `fix/restore-borrowing-policies`)
 
 ## Why
 The owner requested archiving Borrowing policies for now. Preserve the feature for restoration and retain the saved operational rules.
@@ -33,3 +33,4 @@ No migration, database write or policy change. Applied Postgres remains 027; Pha
 - Original editor/client/router/service files remain available for restoration. No database write, migration, push or deployment.
 
 - 2026-10-17: Completed archive, scoped verification and local restart.
+- 2026-11-18: Restored on Ethan's request. app.js mounts `borrowingPolicyRouter` again, `/librarian/borrowing-policies` renders `AdminBorrowingPoliciesPage`, the Librarian menu shows "Borrowing policies", and the archive router and notice page were deleted. No migration or database change.

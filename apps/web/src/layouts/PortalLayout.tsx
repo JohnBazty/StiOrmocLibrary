@@ -7,6 +7,7 @@ import {
   CalendarClock,
   CircleDollarSign,
   ClipboardCheck,
+  Scale,
   FileBarChart,
   FileText,
   LayoutDashboard,
@@ -71,6 +72,7 @@ const adminNav: NavItem[] = [
 const librarianNav: NavItem[] = [
   { label: 'Dashboard', to: '/librarian/dashboard', icon: LayoutDashboard, section: 'Operations' },
   { label: 'Maintenance', to: '/librarian/maintenance', icon: Settings },
+  { label: 'Borrowing policies', to: '/librarian/borrowing-policies', icon: Scale },
   { label: 'Reports', to: '/librarian/reports', icon: FileBarChart },
   { label: 'Book register', to: '/librarian/book-register', icon: BookOpen },
   { label: 'Book archive', to: '/librarian/book-archive', icon: Archive },

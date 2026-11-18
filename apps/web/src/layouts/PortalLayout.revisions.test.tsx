@@ -59,3 +59,8 @@ it('keeps the collection and requests separate and offers three profile sections
   fireEvent.click(screen.getByText('My profile',{exact:true}))
   for(const [name,section] of [['Personal details','personal'],['School details','school'],['Profile photo','photo']])expect(screen.getByRole('link',{name}).getAttribute('href')).toBe(`/student/profile?section=${section}`)
 })
+it('links Librarians to the borrowing policy editor',()=>{
+  vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({success:true,data:{unreadCount:0}}))))
+  render(<MemoryRouter initialEntries={['/librarian/dashboard']}><ThemeProvider><Routes><Route element={<PortalLayout role="librarian"/>}><Route path="/librarian/dashboard" element={<h1>Dashboard content</h1>}/></Route></Routes></ThemeProvider></MemoryRouter>)
+  expect(screen.getByRole('link',{name:'Borrowing policies'}).getAttribute('href')).toBe('/librarian/borrowing-policies')
+})
