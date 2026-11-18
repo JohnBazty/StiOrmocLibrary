@@ -5,6 +5,7 @@ import { StudentReservations } from './StudentReservations'
 
 const api = vi.hoisted(() => ({ mine: vi.fn(), cancelMine: vi.fn() }))
 vi.mock('./reservation-api', () => ({ reservationApi: api }))
+vi.mock('./borrowing-schedule-api',()=>({borrowingScheduleApi:{mine:async()=>[]},pickupDateLabel:(date:string)=>date}))
 
 describe('StudentReservations', () => {
   it('renders the title cover returned by the reservation endpoint', async () => {

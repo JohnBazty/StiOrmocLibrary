@@ -16,6 +16,7 @@ import { calculateOperatingFine, loadFineContext } from '../fines/fine-calculato
 import { assertTokenMatchesEvaluation, evaluateCheckoutRules, signPreflightToken, sortedWarningCodes, throwFirstBlocker, type CheckoutEvaluationContext, type CheckoutFlow } from './circulation-preflight.ts'
 import { createBorrowingPolicyService } from './borrowing-policy.service.ts'
 import { isMaterialBorrowable, roleBookLimit } from './borrowing-policy.types.ts'
+import { requireScheduledPickup } from '../reservations/borrowing-schedule-calendar.ts'
 import { createRenewalService, type RenewalActor } from './renewal.service.ts'
 import { borrowerEligibility, borrowingPolicy, requireEligible, requireLoanSlot, policyDueDate } from './desk-circulation.policy.ts'
 import { prepareReturnedCopy } from './returned-copy-preparation.ts'
@@ -648,10 +649,11 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         }
         let ownClaimReservationId: number | null = null
         if(queueHead&&Number(queueHead.user_id)===Number(borrower.user_id)){
-          const [claimRows]=await connection.execute<RowDataPacket[]>('SELECT assigned_physical_copy_id,pickup_deadline,request_kind FROM reservations WHERE reservation_id=?',[queueHead.reservation_id])
+          const [claimRows]=await connection.execute<RowDataPacket[]>('SELECT assigned_physical_copy_id,pickup_deadline,request_kind,to_jsonb(reservations)->>\'scheduled_pickup_date\' AS scheduled_pickup_date FROM reservations WHERE reservation_id=?',[queueHead.reservation_id])
           const claim=claimRows[0]
+          const scheduledDeadline=claim?await requireScheduledPickup(connection,claim,clock()):null
           const cartHandover=claim?.request_kind==='CartHandover'&&queueHead.reservation_status==='approved'
-          const readyReservation=queueHead.reservation_status==='ready_for_pickup'&&claim?.pickup_deadline&&localTimestamp(claim.pickup_deadline)>clock().getTime()
+          const readyReservation=queueHead.reservation_status==='ready_for_pickup'&&claim?.pickup_deadline&&(scheduledDeadline?.getTime()??localTimestamp(claim.pickup_deadline))>clock().getTime()
           if(Number(claim?.assigned_physical_copy_id)!==Number(copy.physical_copy_id)||(!cartHandover&&!readyReservation))throw new HttpError(422,'CIRCULATION_RESERVATION_CLAIM_NOT_READY','This copy is not ready for pickup or its pickup deadline has expired.')
           ownClaimReservationId = Number(queueHead.reservation_id)
         }

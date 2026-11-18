@@ -11,7 +11,8 @@ export function requestEventStatus(status: string, assigned = false): RequestEve
   if (status === 'approved') return 'preparing'
   return status as RequestEventStatus
 }
-export function requestInstructions(status: RequestEventStatus, deadline: Date | null = null) {
+export function requestInstructions(status: RequestEventStatus, deadline: Date | null = null, pickupDate: string | null = null) {
+  if(pickupDate && status==='ready_for_pickup')return `Your scheduled book is ready. Pick up by ${deadline ? new Intl.DateTimeFormat('en-PH',{timeZone:'Asia/Manila',dateStyle:'medium',timeStyle:'short'}).format(deadline) : `closing time on ${pickupDate}`} (Philippine time). Check in for Borrow books before collecting it.`
   switch (status) {
     case 'received': return 'Your request was received. Check your book requests for progress.'
     case 'waiting': return 'You are on the ordered waiting list. We will notify you when a copy is being prepared.'
@@ -26,7 +27,7 @@ export function requestInstructions(status: RequestEventStatus, deadline: Date |
 /** Event + notification + email outbox are committed with the copy allocation. */
 export async function recordRequestEvent(q: PoolConnection, id: number, status: RequestEventStatus, now = new Date()) {
   const [rows] = await q.execute<RowDataPacket[]>(`SELECT r.user_id,r.request_kind,r.assigned_physical_copy_id,
-      (r.pickup_deadline AT TIME ZONE 'Asia/Manila') AS deadline,u.email,u.user_role,COALESCE(t.title,m.title) AS title
+      (r.pickup_deadline AT TIME ZONE 'Asia/Manila') AS deadline,to_jsonb(r)->>'scheduled_pickup_date' AS scheduled_pickup_date,u.email,u.user_role,COALESCE(t.title,m.title) AS title
     FROM reservations r JOIN users u ON u.user_id=r.user_id JOIN materials m ON m.material_id=r.material_id
     LEFT JOIN titles t ON t.title_id=r.book_title_id WHERE r.reservation_id=?`, [id])
   const r = rows[0]
@@ -37,7 +38,7 @@ export async function recordRequestEvent(q: PoolConnection, id: number, status: 
   if (!insert.affectedRows) return
   const cart = r.request_kind === 'CartHandover'
   const label = cart && status === 'received' ? 'Cart sent to library desk' : requestLabels[status]
-  const instructions = cart && status === 'received' ? 'Bring the selected book to the library desk. Your loan starts only when staff confirm handover.' : requestInstructions(status, r.deadline ? new Date(r.deadline) : null)
+  const instructions = cart && status === 'received' ? 'Bring the selected book to the library desk. Your loan starts only when staff confirm handover.' : requestInstructions(status, r.deadline ? new Date(r.deadline) : null, r.scheduled_pickup_date??null)
   const body = `${r.title}: ${instructions}`
   const path = r.user_role === 'Faculty' ? '/faculty/reservations' : '/student/reservations'
   await q.execute(`INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,

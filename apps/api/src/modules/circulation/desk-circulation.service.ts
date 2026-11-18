@@ -1,4 +1,5 @@
 import { resolveManualBorrower } from './manual-borrower.ts'
+import { requireScheduledPickup } from '../reservations/borrowing-schedule-calendar.ts'
 import { libraryState, closeAttendanceAtCutoff } from '../attendance/attendance-operations.service.ts'
 import { manilaDate } from '../attendance/attendance-intervals.ts'
 import { createHash } from 'node:crypto'
@@ -57,13 +58,15 @@ async function copyBlockers(q:PoolConnection,c:RowDataPacket,userId:number,mode:
  if(mode==='InLibrary'&&loans.length)blockers.push('A copy held for a take-home request cannot be assigned for in-library use.')
  const [queue]=await q.execute<RowDataPacket[]>(`SELECT r.* FROM reservations r WHERE r.book_title_id=? AND r.reservation_status IN ('pending','approved','ready_for_pickup') ORDER BY queue_position,reserved_at,reservation_id FOR UPDATE`,[c.title_id])
  const assigned=queue.find(r=>Number(r.assigned_physical_copy_id)===Number(c.physical_copy_id))
+ let scheduledDeadline:Date|null=null
+ if(assigned?.scheduled_pickup_date){try{scheduledDeadline=await requireScheduledPickup(q,assigned,now)}catch(error){if(error instanceof HttpError)blockers.push(error.message);else throw error}}
  const own=queue.find(r=>Number(r.user_id)===userId)
  const claim=assigned??queue.find(r=>!r.assigned_physical_copy_id)
  if(claim&&Number(claim.user_id)!==userId)blockers.push('This copy is held for another user or the waiting queue.')
  if(mode==='InLibrary'&&queue.length)blockers.push('A queued title must be prepared for its waiting borrower.')
  const cartHandover=own?.request_kind==='CartHandover'&&own.reservation_status==='approved'
  if(own&&((!cartHandover&&own.reservation_status!=='ready_for_pickup')||Number(own.assigned_physical_copy_id)!==Number(c.physical_copy_id)))blockers.push('Use the assigned copy. Reservations must first be marked Ready for pickup.')
- if(assigned?.pickup_deadline&&localTimestamp(assigned.pickup_deadline)<=now.getTime())blockers.push('The pickup deadline has expired.')
+ if(assigned?.pickup_deadline&&(scheduledDeadline?.getTime()??localTimestamp(assigned.pickup_deadline))<=now.getTime())blockers.push('The pickup deadline has expired.')
  if(!['Available','Reserved'].includes(String(c.availability_status)))blockers.push('This physical copy is not available for checkout.')
  if(c.availability_status==='Reserved'&&!loans.length&&!queue.length)blockers.push('This copy is reserved without a matching claim. Ask the Librarian to review it.')
  if(mode==='TakeHome'){

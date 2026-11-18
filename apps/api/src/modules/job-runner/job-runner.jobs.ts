@@ -8,6 +8,7 @@ import { createEnrollmentService } from '../enrollment/enrollment.service.ts'
 import { generateNotifications } from '../notifications/notification.worker.ts'
 import { deliverBookRequestEmails } from '../reservations/book-request-email.worker.ts'
 import { createBookRequestService } from '../reservations/book-request.service.ts'
+import { createBorrowingScheduleService, parseScheduleCursor } from '../reservations/borrowing-schedule.service.ts'
 import { expireReadyReservations } from '../reservations/reservation-expiration.service.ts'
 import { parseOverdueCursor } from './job-runner.rules.ts'
 import { createPaymentOperations } from '../payments/payments.operations.ts'
@@ -20,6 +21,7 @@ export const JOB_NAMES = [
   'in-library-unreturned',
   'reservation-expiration',
   'book-request-advance',
+  'borrowing-schedules',
   'circulation-overdue',
   'notifications',
   'book-request-emails',
@@ -47,6 +49,10 @@ export function createJobHandlers(database: Pool = db, clock = () => new Date(),
     'in-library-unreturned': async () => ({ result: counts(await flagUnreturnedInLibrary(database, clock())) }),
     'reservation-expiration': async () => ({ result: counts(await expireReadyReservations(database, clock())) }),
     'book-request-advance': async () => ({ result: counts(await createBookRequestService(database, clock).advanceWaiting(clock())) }),
+    'borrowing-schedules': async ({cursor}) => {
+      const {nextCursor,...result}=await createBorrowingScheduleService(database,clock).process(parseScheduleCursor(cursor))
+      return {result:counts(result),cursor:nextCursor}
+    },
     'circulation-overdue': async ({ cursor }) => {
       const after = parseOverdueCursor(cursor)
       if (cursor && !after) console.warn('[Job runner] circulation-overdue cursor could not be read; the scan restarts from the oldest loan.')

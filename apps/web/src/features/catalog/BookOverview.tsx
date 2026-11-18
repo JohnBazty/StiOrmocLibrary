@@ -9,6 +9,7 @@ import type { BookCatalogItem } from './book-catalog-types'
 import { BookCoverThumbnail } from './BookCoverThumbnail'
 import { CatalogDetailsPanel } from './CatalogDetailsPanel'
 import { ConfirmBookActionDialog } from './ConfirmBookActionDialog'
+import { ScheduleBorrowingForm } from '../reservations/ScheduleBorrowingForm'
 
 type Props = {
   titleId: number
@@ -37,6 +38,7 @@ export function BookOverview({ titleId, role, activeBookCount, bookLimit, select
   const [citationVisible, setCitationVisible] = useState(false)
   const [copied, setCopied] = useState(false)
   const [pending, setPending] = useState<'borrow' | 'reserve' | null>(null)
+  const [scheduling,setScheduling]=useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -109,6 +111,7 @@ export function BookOverview({ titleId, role, activeBookCount, bookLimit, select
             </dl>
 
             <CatalogDetailsPanel titleId={book.titleId}/>
+            {['Student','Faculty'].includes(role)&&book.totalCopiesCount>0 ? scheduling?<ScheduleBorrowingForm key={titleId} titleId={titleId} title={book.title} role={role} onClose={()=>setScheduling(false)}/>:<button type="button" className="mt-5 min-h-11 rounded-xl border border-[#0b5ea2]/25 px-4 text-sm font-bold text-[#0b5ea2]" onClick={()=>setScheduling(true)}>Schedule borrowing</button>:null}
             <section className="mt-5 rounded-2xl border border-[#0b5ea2]/10 p-4" aria-label="Individual book copies">
               <h3 className="font-bold text-[#0b5ea2]">Individual copies</h3>
               <div className="mt-3 space-y-2">{book.copies?.length ? book.copies.map(copy => <div key={copy.copyId} className="grid gap-1 rounded-xl border border-[#0b5ea2]/15 p-3 text-xs text-[#0b5ea2] sm:grid-cols-2"><strong>{copy.accessionNumber}</strong><span className="font-mono">{copy.barcode}</span><span>Availability: {copy.availability}</span><span>Condition: {copy.condition}</span><span className="sm:col-span-2">Shelf: {copy.shelf}</span></div>) : <p className="text-sm text-[#0b5ea2]/60">No active copies are recorded.</p>}</div>

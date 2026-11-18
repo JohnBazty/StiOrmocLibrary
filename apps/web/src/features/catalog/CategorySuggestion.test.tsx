@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AddMultipleCopiesModal } from './AddMultipleCopiesModal'
@@ -25,7 +26,7 @@ async function lookUp() {
 describe('category help from the lookup subjects', () => {
   it('selects the matching category and its shelf', async () => {
     api.lookupIsbn.mockResolvedValue(found(['Computers', 'Computer science']))
-    render(<AddMultipleCopiesModal categories={categories} onCreated={() => undefined} onClose={() => undefined} />)
+    render(<MemoryRouter><AddMultipleCopiesModal categories={categories} onCreated={() => undefined} onClose={() => undefined} /></MemoryRouter>)
     await lookUp()
     expect(await screen.findByText(/Category set to Computer Science from the subject “Computer science”/)).toBeTruthy()
     expect((screen.getByLabelText(/Category \*/i) as HTMLSelectElement).value).toBe('2')
@@ -34,7 +35,7 @@ describe('category help from the lookup subjects', () => {
 
   it('never changes a category staff already chose', async () => {
     api.lookupIsbn.mockResolvedValue(found(['Computer science']))
-    render(<AddMultipleCopiesModal categories={categories} onCreated={() => undefined} onClose={() => undefined} />)
+    render(<MemoryRouter><AddMultipleCopiesModal categories={categories} onCreated={() => undefined} onClose={() => undefined} /></MemoryRouter>)
     fireEvent.change(screen.getByLabelText(/Category \*/i), { target: { value: '1' } })
     await lookUp()
     await screen.findByText(/Subjects from the lookup/)
@@ -45,13 +46,14 @@ describe('category help from the lookup subjects', () => {
     api.lookupIsbn.mockResolvedValue(found(['Software engineering']))
     categoryApi.listShelves.mockResolvedValue([{ id: 7, label: 'Shelf S', columnCount: 2, rowCount: 2 }])
     categoryApi.create.mockResolvedValue({ categoryId: 9, categoryName: 'Software engineering', shelfLocation: 'Shelf S', shelfColumn: 1, shelfRow: 1 })
-    render(<AddMultipleCopiesModal categories={categories} locations={['Shelf F', 'Shelf C', 'Shelf S']} onCreated={() => undefined} onClose={() => undefined} />)
+    render(<MemoryRouter><AddMultipleCopiesModal categories={categories} locations={['Shelf F', 'Shelf C', 'Shelf S']} onCreated={() => undefined} onClose={() => undefined} /></MemoryRouter>)
     await lookUp()
     fireEvent.click(await screen.findByRole('button', { name: 'Create category “Software engineering”' }))
     const name = await screen.findByLabelText(/Category name \*/i) as HTMLInputElement
     expect(name.value).toBe('Software engineering')
     fireEvent.change(screen.getByLabelText(/Shelf location \*/i), { target: { value: 'Shelf S' } })
     fireEvent.submit(name.closest('form')!)
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
     await waitFor(() => expect(categoryApi.create).toHaveBeenCalledWith(expect.objectContaining({ categoryName: 'Software engineering', shelfLocation: 'Shelf S' })))
     expect(await screen.findByText(/Category Software engineering created and selected/)).toBeTruthy()
     expect((screen.getByLabelText(/^Category \*/i) as HTMLSelectElement).value).toBe('9')

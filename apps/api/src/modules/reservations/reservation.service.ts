@@ -17,7 +17,7 @@ export function createReservationService(database: Pool = db, clock: () => Date 
       if (!userId) throw new HttpError(422, 'CIRCULATION_PROFILE_NOT_LINKED', 'This login account is not linked to a circulation profile.')
       const [rows] = await database.execute<RowDataPacket[]>(
         `SELECT r.reservation_id, r.queue_position, r.reservation_status, r.reserved_at, r.pickup_deadline, ${'r.request_kind,'}
-                COALESCE(t.title, m.title) AS title, t.title_id, t.cover_image_path,
+                COALESCE(t.title, m.title) AS title, t.title_id, t.cover_image_path,to_jsonb(r)->>'scheduled_pickup_date' AS scheduled_pickup_date,
                 assigned_pc.accession_number, COALESCE(assigned_pc.barcode, assigned.barcode) AS barcode,
                 COALESCE(assigned_pc.condition_status, source_pc.condition_status) AS condition_status
                 ${`, (r.pickup_deadline AT TIME ZONE 'Asia/Manila') AS deadline_iso,
@@ -37,10 +37,10 @@ export function createReservationService(database: Pool = db, clock: () => Date 
       return rows.map((row) => ({ requestKind:row.request_kind??'Reservation', reservationId: Number(row.reservation_id), title: row.title, titleId: row.title_id ? Number(row.title_id) : null,
         coverImagePath: row.cover_image_path ? String(row.cover_image_path) : null, queuePosition: Number(row.queue_position),
         status: row.reservation_status, reservedAt: row.requested_iso,
-        pickupDeadline: row.deadline_iso,
+        pickupDeadline: row.deadline_iso,scheduledPickupDate:row.scheduled_pickup_date??null,
         requestStatus: requestEventStatus(String(row.reservation_status),Boolean(row.barcode)),
         statusLabel: row.request_kind==='CartHandover'&&row.reservation_status==='approved'?'Awaiting handover':requestLabels[requestEventStatus(String(row.reservation_status),Boolean(row.barcode))],
-        instructions: row.request_kind==='CartHandover'&&row.reservation_status==='approved'?'Bring your selected book to the library desk. Staff will confirm handover before the loan starts.':requestInstructions(requestEventStatus(String(row.reservation_status),Boolean(row.barcode)),row.deadline_iso ? new Date(row.deadline_iso) : null),
+        instructions: row.request_kind==='CartHandover'&&row.reservation_status==='approved'?'Bring your selected book to the library desk. Staff will confirm handover before the loan starts.':requestInstructions(requestEventStatus(String(row.reservation_status),Boolean(row.barcode)),row.deadline_iso ? new Date(row.deadline_iso) : null,row.scheduled_pickup_date??null),
         events: row.events ?? [], emailStatus: row.email_status ?? null,
         accessionNumber: row.accession_number ?? null, barcode: row.barcode ?? null,
         conditionStatus: row.condition_status ? String(row.condition_status) : null }))

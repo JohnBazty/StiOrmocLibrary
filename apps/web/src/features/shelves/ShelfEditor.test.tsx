@@ -36,7 +36,7 @@ it('shows the shortage and permits staff to choose another compartment', () => {
 })
 
 it('opens shelf setup when capacity is not configured', () => {
-  const unconfigured = { ...shelf, capacityConfigured: false, compartments: undefined }
+  const unconfigured = { ...shelf, capacityConfigured: false, compartments: [] }
   render(<MemoryRouter><ShelfPlacementFields shelves={[unconfigured]} value={{ shelfLocation: 'Shelf A', locationId: 1, shelfColumn: 1, shelfRow: 1 }} onChange={vi.fn()} /></MemoryRouter>)
   expect(screen.getByRole('link', { name: /Capacity not configured/ }).getAttribute('href')).toBe('/librarian/maintenance?tab=locations&editShelf=1')
 })

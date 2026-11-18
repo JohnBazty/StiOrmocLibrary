@@ -8,6 +8,7 @@ import { createBorrowingPolicyService } from '../circulation/borrowing-policy.se
 import { cancelPendingCounterClaim } from './reservation-claim.repository.ts'
 import { positiveId } from './reservation.validation.ts'
 import { recordRequestEvent, requestEventStatus, requestLabels, requestInstructions } from './book-request-events.ts'
+import { requireScheduledPickup } from './borrowing-schedule-calendar.ts'
 
 const active = "('pending','approved','ready_for_pickup')"
 const fail = (code: string, message: string) => new HttpError(422,code,message)
@@ -19,7 +20,7 @@ function requestKey(v: unknown) {
 }
 type AccountHold = { total: number; loans: number | null; requests: number | null }
 
-async function accountHold(q: PoolConnection, userId: number): Promise<AccountHold> {
+export async function accountHold(q: PoolConnection, userId: number): Promise<AccountHold> {
   const [rows] = await q.execute<RowDataPacket[]>(`SELECT
     (SELECT COUNT(*) AS total FROM (
       SELECT DISTINCT COALESCE(pc.title_id,-bt.material_id) AS title_id FROM borrow_transactions bt
@@ -71,7 +72,7 @@ export function borrowLimitMessage(limit: number, hold: AccountHold, cartSize = 
 async function commitments(q: PoolConnection, userId: number) {
   return (await accountHold(q, userId)).total
 }
-async function lock(q: PoolConnection) {
+export async function lock(q: PoolConnection) {
   // Consistent lock order with attendance, Phase 5 returns and desk receipts.
   await q.execute('SELECT settings_id FROM library_profile_settings WHERE settings_id=1 FOR UPDATE')
 }
@@ -82,7 +83,7 @@ async function requestRow(q: PoolConnection,id:number) {
   if (!rows[0]) throw new HttpError(404,'RESERVATION_NOT_FOUND','The book request does not exist.')
   return rows[0]
 }
-async function linkedUser(q: PoolConnection, accountId:number, staff=false) {
+export async function linkedUser(q: PoolConnection, accountId:number, staff=false) {
   const [rows] = await q.execute<RowDataPacket[]>('SELECT user_id,role,account_status FROM accounts WHERE account_id=? FOR UPDATE',[accountId])
   const a=rows[0]
   if(!a?.user_id || a.account_status!=='Active') throw fail('CIRCULATION_PROFILE_NOT_LINKED','This account must be active and linked to a library profile.')
@@ -91,7 +92,7 @@ async function linkedUser(q: PoolConnection, accountId:number, staff=false) {
 }
 
 /** The caller holds the shared circulation lock. Honor prior reservations first. */
-async function availableCopies(q: PoolConnection, titleId: number) {
+export async function availableCopies(q: PoolConnection, titleId: number) {
   const [rows] = await q.execute<RowDataPacket[]>(`SELECT pc.* FROM physical_copies pc JOIN titles t ON t.title_id=pc.title_id
     WHERE pc.title_id=? AND pc.lifecycle_status='Active' AND t.lifecycle_status='Active' AND t.record_type='Book'
       AND pc.material_id IS NOT NULL AND pc.availability_status='Available' AND pc.condition_status NOT IN ('Lost','Damaged','For Repair')
@@ -282,6 +283,7 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
       return transaction(async q=> {
         await linkedUser(q,positiveId(accountId,'accountId'),true)
         let r=await requestRow(q,positiveId(id,'reservationId'))
+        const scheduledDeadline=await requireScheduledPickup(q,r,clock())
         if(r.request_kind==='CartHandover') throw fail('CART_HANDOVER_USE_DESK','This cart is awaiting handover. Open Borrow & return and choose Start checkout.')
         if(r.reservation_status==='ready_for_pickup') return {...result(r),replayed:true}
         if(!['pending','approved'].includes(r.reservation_status)) throw fail('RESERVATION_TRANSITION_INVALID','This request can no longer be prepared.')
@@ -301,7 +303,7 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
           AND pc.availability_status='Reserved' AND pc.condition_status NOT IN ('Lost','Damaged','For Repair') FOR UPDATE OF pc,t`,[r.assigned_physical_copy_id])
         if(!copies.length) throw fail('DESK_COPY_BLOCKED','The assigned copy is unavailable. Review its physical condition before marking ready.')
         if(input.status==='approved') return result(r) // Compatible legacy Prepare action, never another approval gate.
-        const now=clock(),deadline=await policyDueDate(q,now,{borrowing_days:1})
+        const now=clock(),deadline=scheduledDeadline??await policyDueDate(q,now,{borrowing_days:1})
         await q.execute(`UPDATE reservations SET reservation_status='ready_for_pickup',ready_at=?,
           pickup_deadline=(?::timestamptz AT TIME ZONE 'Asia/Manila'),updated_at=NOW() WHERE reservation_id=?`,[now,deadline,r.reservation_id])
         await recordRequestEvent(q,Number(r.reservation_id),'ready_for_pickup',now)
@@ -311,6 +313,7 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
     async expire(now:Date,batchSize=100) {
       return transaction(async q=> {
         const [rows]=await q.execute<RowDataPacket[]>(`SELECT r.* FROM reservations r WHERE reservation_status='ready_for_pickup'
+          AND to_jsonb(r)->>'scheduled_pickup_date' IS NULL
           AND pickup_deadline<=(?::timestamptz AT TIME ZONE 'Asia/Manila') ORDER BY pickup_deadline,reservation_id LIMIT ? FOR UPDATE`,[now,Math.min(500,Math.max(1,batchSize))])
         for(const r of rows) await releaseBookRequest(q,r,'expired',null,now)
         return {expiredCount:rows.length,releasedAccessions:rows.filter(r=>r.accession_id).map(r=>Number(r.accession_id))}

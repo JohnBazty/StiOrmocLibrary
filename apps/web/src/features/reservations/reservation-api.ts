@@ -6,7 +6,7 @@ export class ReservationApiError extends Error {
 }
 let csrfToken: string | null = null
 
-async function request<T>(url: string, options: RequestInit = {}) {
+export async function reservationRequest<T>(url: string, options: RequestInit = {}) {
   const method = options.method?.toUpperCase() ?? 'GET'
   const headers = new Headers(options.headers)
   headers.set('Accept', 'application/json')
@@ -27,6 +27,7 @@ async function request<T>(url: string, options: RequestInit = {}) {
   if (!response.ok) throw new ReservationApiError(payload.message ?? 'The reservation request failed.', payload.code ?? 'REQUEST_FAILED')
   return payload.data as T
 }
+const request=reservationRequest
 
 function query(filters: ReservationFilters) {
   const parameters = new URLSearchParams()

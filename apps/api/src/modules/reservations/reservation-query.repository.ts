@@ -34,7 +34,7 @@ export function buildReservationQueueQuery(filters: QueueFilters) {
        r.accession_id, COALESCE(pc.accession_number, assigned.barcode) AS accession_number,
        COALESCE(pc.barcode,assigned.barcode) AS barcode, pc.shelf_location,
        r.assigned_physical_copy_id,r.queue_position, r.reservation_status, r.reserved_at,
-       r.pickup_deadline, r.created_at, r.updated_at
+       r.pickup_deadline, r.created_at, r.updated_at,to_jsonb(r)->>'scheduled_pickup_date' AS scheduled_pickup_date
        ${`, (r.pickup_deadline AT TIME ZONE 'Asia/Manila') AS deadline_iso,
          (r.reserved_at AT TIME ZONE 'Asia/Manila') AS requested_iso,
          r.preparation_started_at,r.ready_at,
@@ -63,7 +63,7 @@ export async function queryReservationQueue(database: Pool, filters: QueueFilter
     categoryName: row.category_name, accessionId: row.accession_id ? Number(row.accession_id) : null,
     accessionNumber: row.accession_number, barcode: row.barcode, queuePosition: Number(row.queue_position),
     status: row.reservation_status, reservedAt: row.requested_iso,
-    pickupDeadline: row.deadline_iso,
+    pickupDeadline: row.deadline_iso,scheduledPickupDate:row.scheduled_pickup_date??null,
     assignedCopyId: row.assigned_physical_copy_id ? Number(row.assigned_physical_copy_id) : null,
     shelfLocation:row.shelf_location??null,emailStatus:row.email_status??null,
     statusLabel:requestLabels[requestEventStatus(String(row.reservation_status),Boolean(row.assigned_physical_copy_id))],

@@ -101,8 +101,8 @@ Always know and document:
 | --- | --- |
 | Migrations directory | `database/supabase/` (Postgres only; MySQL was retired 2026-11-10) |
 | Latest applied migration | `045_attendance_user_confirmation.sql` (live checksum and protections verified 2026-11-15) |
-| Files pending review | Payment drafts `040`–`043`; `046_shelf_capacity.sql` is a local, unapplied shelf-capacity draft |
-| **Next available number** | **`047`** (046 reserved for shelf dimensions/capacity; unapplied) |
+| Files pending review | Payment drafts `040`–`043`; `046_shelf_capacity.sql` and `047_scheduled_borrowing.sql` remain unapplied on hosted Supabase (047 verified on the isolated local test database) |
+| **Next available number** | **`048`** (046 shelf capacity and 047 scheduled borrowing are local, unapplied drafts) |
 
 Applied enrollment 031 supersedes the removed 028 draft. Keep applied filenames and source bytes, including line endings. The 003 source still needs checksum reconciliation. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set.
 

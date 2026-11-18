@@ -5,10 +5,11 @@ import { createBookRequestService } from './book-request.service.ts'
 import { requestInstructions } from './book-request-events.ts'
 import { borrowerEligibilityRows } from '../attendance/attendance-test-fixtures.ts'
 
-function fixture(closedDates:string[]=[],openDays=[1,2,3,4,5,6]) {
+function fixture(closedDates:string[]=[],openDays=[1,2,3,4,5,6],scheduledDate:string|null=null) {
  const state={deadline:null as Date|null,commits:0,rollbacks:0}
- const row={reservation_id:9,user_id:7,book_title_id:2,request_kind:'Reservation',reservation_status:'approved',assigned_physical_copy_id:30,accession_id:3,title:'QA Pickup'}
+ const row={reservation_id:9,user_id:7,book_title_id:2,request_kind:'Reservation',reservation_status:'approved',assigned_physical_copy_id:30,accession_id:3,title:'QA Pickup',scheduled_pickup_date:scheduledDate}
  const q={async beginTransaction(){},async commit(){state.commits++},async rollback(){state.rollbacks++},release(){},async execute(sql:string,values:any[]=[]):Promise<any>{
+  if(sql.includes('SELECT day_of_week,is_open,opens_at'))return [openDays.map(day_of_week=>({day_of_week,is_open:true,opens_at:'07:00:00',closes_at:'17:00:00'}))]
   if(sql.includes('SELECT day_of_week,is_open'))return [openDays.map(day_of_week=>({day_of_week,is_open:true}))]
   if(sql.includes('to_char(closed_date'))return [closedDates.map(closed_date=>({closed_date}))]
   if(sql.includes('SELECT user_id,role,account_status FROM accounts'))return [[{user_id:1,role:'Librarian',account_status:'Active'}]]
@@ -40,4 +41,15 @@ test('missing operating days rolls back instead of inventing a deadline',async()
 test('pickup instructions describe an open library day, not 24 hours',()=>{
  const text=requestInstructions('ready_for_pickup',new Date('2026-11-16T07:17:00Z'))
  assert.match(text,/one open library day/i);assert.doesNotMatch(text,/24 hours/)
+})
+test('Mark ready keeps scheduled pickup closing rather than starting the ordinary timer',async()=>{
+ const {state,pool}=fixture([],[1,2,3,4,5,6],'2026-11-24')
+ await createBookRequestService(pool,()=>new Date('2026-11-23T02:00:00Z')).adjustStatus(1,9,{status:'ready_for_pickup'})
+ assert.equal(state.deadline?.toISOString(),'2026-11-24T09:00:00.000Z')
+ assert.doesNotMatch(requestInstructions('ready_for_pickup',state.deadline,'2026-11-24'),/one open library day/)
+})
+test('Mark ready refuses a newly closed scheduled date even before the job runs',async()=>{
+ const {state,pool}=fixture(['2026-11-24'],[1,2,3,4,5,6],'2026-11-24')
+ await assert.rejects(createBookRequestService(pool,()=>new Date('2026-11-23T02:00:00Z')).adjustStatus(1,9,{status:'ready_for_pickup'}),{code:'SCHEDULE_PICKUP_CLOSED'})
+ assert.equal(state.commits,0)
 })

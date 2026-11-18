@@ -619,6 +619,14 @@ The existing operational overdue runner opens a unique Long Overdue case using t
 
 See docs/plans/2026-11-13-circulation-audit-remediation.md for release boundaries, separate policy plans, verification and the still-inactive production schedule.
 
+### Scheduled borrowing — local draft 047
+
+`047_scheduled_borrowing.sql` adds API-only `borrowing_schedules` and nullable `reservations.scheduled_pickup_date`. Latest hosted application remains 045; this draft has not been applied live. Student and Faculty accounts may hold two pending schedules, independent of active borrowing limits, for an open pickup date tomorrow through seven calendar days ahead (Asia/Manila).
+
+Pending schedules do not own copies, consume loan/request allowances, block renewals or enter the ordinary waitlist. The existing job runner attempts preparation from the previous open library day's opening until pickup-day closing, preserving ordinary queue priority and rechecking eligibility, same-title commitments, borrowing limits, reservation limits and title queue capacity. A prepared schedule links exactly one normal reservation, automatically assigns its barcode and consumes its normal request allowance. Staff still Mark ready and confirm physical handover. Only handover starts a loan and its existing due-date/fine rules.
+
+Scheduled holds end at closing time on the selected pickup date, including copies never marked ready. Ordinary reservations retain the one-open-day deadline after Mark ready. Closure changes cancel the scheduled request and release its hold; no automatic replacement date or post-date waitlist entry is created. Mark ready and both desk paths independently reject closed or elapsed scheduled dates, even if the worker is delayed. Repeat runs use transaction locks, a unique reservation link, bounded cursor batches and deduplicated notifications. User endpoints live under `/api/v1/borrowing-schedules`; list/create/cancel are scoped to the authenticated owner. Existing request responses add `scheduledPickupDate` for user and staff display.
+
 
 ## Hosted payment release - 2026-11-15
 
