@@ -41,7 +41,9 @@ export async function recordRequestEvent(q: PoolConnection, id: number, status: 
   const copyKey = r.assigned_physical_copy_id && (status === 'preparing' || status === 'ready_for_pickup') ? `:copy:${r.assigned_physical_copy_id}` : ''
   const cart = r.request_kind === 'CartHandover'
   const label = cart && status === 'received' ? 'Cart sent to library desk' : requestLabels[status]
-  const instructions = cart && status === 'received' ? 'Bring the selected book to the library desk. Your loan starts only when staff confirm handover.' : requestInstructions(status, r.deadline ? new Date(r.deadline) : null)
+  const cartText = status === 'received' ? 'Bring the selected book to the library desk. Your loan starts only when staff confirm handover.'
+    : status === 'expired' ? 'Your cart handover expired at closing. Add the books again if you still want them.' : null
+  const instructions = cart && cartText ? cartText : requestInstructions(status, r.deadline ? new Date(r.deadline) : null)
   const body = `${r.title}: ${instructions}`
   if (!cart && (status === 'ready_for_pickup' || status === 'expired')) {
     await notifyLibrarians(q, {key:`reservation:${id}:${status}${copyKey}`, title: status === 'expired' ? 'Reservation pickup expired' : 'Reservation ready for pickup',

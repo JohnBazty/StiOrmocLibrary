@@ -97,7 +97,7 @@ export async function releaseBookRequest(q: PoolConnection,r:RowDataPacket,statu
   if(!['pending','approved','ready_for_pickup'].includes(String(r.reservation_status))) return false
   // Keep the assignment and fixed deadline as history; terminal states no longer own the copy.
   await q.execute('UPDATE reservations SET reservation_status=?,updated_at=NOW() WHERE reservation_id=?',[status,r.reservation_id])
-  await cancelPendingCounterClaim(q,Number(r.reservation_id),actor,status==='expired'?'Pickup deadline expired.':'Book request cancelled.')
+  await cancelPendingCounterClaim(q,Number(r.reservation_id),actor,status==='expired'?(r.request_kind==='CartHandover'?'Cart handover expired at closing.':'Pickup deadline expired.'):'Book request cancelled.')
   if(r.assigned_physical_copy_id) {
     await q.execute(`UPDATE physical_copies SET availability_status=CASE WHEN lifecycle_status='Active' AND condition_status NOT IN ('Lost','Damaged','For Repair') THEN 'Available' ELSE 'Unavailable' END,
       row_version=row_version+1,updated_at=NOW() WHERE physical_copy_id=? AND availability_status='Reserved'`,[r.assigned_physical_copy_id])
@@ -176,11 +176,14 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
     const copies=await availableCopies(q,titleId)
     if(kind==='Reservation' && copies.length) throw fail('BOOK_AVAILABLE_USE_CART','This book has an available copy. Add it to your cart instead of reserving it.')
     if(kind==='CartHandover' && !copies.length) throw fail('BOOK_NO_LONGER_AVAILABLE',`${titles[0].title} has no available copy now. Your cart has been kept. Remove it from the cart and use Reserve book in the catalog to join its waiting list.`)
+    // A cart handover is held until the next closing time, then expires.
+    let cartDeadline:Date|null=null
+    if(kind==='CartHandover') {const hoursOpen=await loadOpeningHours(q,now);cartDeadline=nextCloseAfter(now,hoursOpen.schedule,hoursOpen.closedDates)}
     const [queue]=await q.execute<RowDataPacket[]>(`SELECT COALESCE(MAX(queue_position),0)+1 AS position FROM reservations WHERE book_title_id=? AND request_kind='Reservation' AND reservation_status IN ${active}`,[titleId])
     const [insert]=await q.execute<ResultSetHeader>(`INSERT INTO reservations(user_id,material_id,book_title_id,borrowing_policy_version_id,
-      queue_position,reservation_status,reserved_at,client_request_id,request_kind,accession_id,assigned_physical_copy_id,preparation_started_at)
-      VALUES (?,?,?,?,?,?,(?::timestamptz AT TIME ZONE 'Asia/Manila'),?,?,?,?,?)`,
-      [userId,titles[0].material_id,titleId,policy.versionId,kind==='Reservation'?queue[0].position:1,kind==='Reservation'?'pending':'approved',now,key,kind,kind==='CartHandover'?copies[0].material_id:null,kind==='CartHandover'?copies[0].physical_copy_id:null,kind==='CartHandover'?now:null])
+      queue_position,reservation_status,reserved_at,client_request_id,request_kind,accession_id,assigned_physical_copy_id,preparation_started_at,pickup_deadline)
+      VALUES (?,?,?,?,?,?,(?::timestamptz AT TIME ZONE 'Asia/Manila'),?,?,?,?,?,(?::timestamptz AT TIME ZONE 'Asia/Manila'))`,
+      [userId,titles[0].material_id,titleId,policy.versionId,kind==='Reservation'?queue[0].position:1,kind==='Reservation'?'pending':'approved',now,key,kind,kind==='CartHandover'?copies[0].material_id:null,kind==='CartHandover'?copies[0].physical_copy_id:null,kind==='CartHandover'?now:null,cartDeadline])
     const id=Number(insert.insertId)
     await recordRequestEvent(q,id,'received',now)
     if(kind==='CartHandover') {
@@ -279,7 +282,7 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
     },
     async expire(now:Date,batchSize=100) {
       return transaction(async q=> {
-        const [rows]=await q.execute<RowDataPacket[]>(`SELECT r.* FROM reservations r WHERE reservation_status='ready_for_pickup'
+        const [rows]=await q.execute<RowDataPacket[]>(`SELECT r.* FROM reservations r WHERE (reservation_status='ready_for_pickup' OR (request_kind='CartHandover' AND reservation_status='approved'))
           AND pickup_deadline<=(?::timestamptz AT TIME ZONE 'Asia/Manila') ORDER BY pickup_deadline,reservation_id LIMIT ? FOR UPDATE`,[now,Math.min(500,Math.max(1,batchSize))])
         for(const r of rows) await releaseBookRequest(q,r,'expired',null,now)
         return {expiredCount:rows.length,releasedAccessions:rows.filter(r=>r.accession_id).map(r=>Number(r.accession_id))}

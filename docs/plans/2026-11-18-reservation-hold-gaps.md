@@ -166,7 +166,7 @@ Migration tracker in `.cursor/agent-protocol.md` and `docs/schema-context.md`. T
 ## Implementation tracking
 
 - [x] 1. `pickup-deadline.ts` plus tests, wired into Mark ready
-- [ ] 2. Cart deadline on submit, cart expiry plus notice
+- [x] 2. Cart deadline on submit, cart expiry plus notice
 - [ ] 3. Damaged or For Repair release and reallocation
 - [ ] 4. Migration 042 (skip columns plus `reservation_audit_events`), skip reason write and clear, `kind` parameter on the staff query
 - [ ] 5. swap-copy and move endpoints plus audit plus RBAC
