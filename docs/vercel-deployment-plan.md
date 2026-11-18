@@ -6,6 +6,17 @@
 | Date last updated | 2026-11-18 |
 | Status | `inprogress` |
 
+## Current production: restored pre-main version — November 18, 2026
+
+At the owner's explicit request, the public URL now uses archived deployment
+`dpl_6VS6DpgeoHtMXbnRhVkqGpeUacHG`, created at 08:24 Asia/Manila before this
+session deployed main. The earlier fines-only rollback did not restore the
+expected dashboard. The exact prior web/API deployment has now been promoted;
+public alias identity, home/login HTTP 200, and healthy schema readiness were
+verified. Its entry asset is `/assets/index-CCch3xA9.js`. No database changes or
+Git application-code changes were made. Production now intentionally differs
+from current main's application source. See [restoration record](plans/2026-11-18-restore-before-main-deployment.md).
+
 ## Fines merge rollback — November 18, 2026
 
 The owner requested undoing merge d3e5fe3 and its deployment. A history-preserving
