@@ -3,9 +3,10 @@ import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import {
   findActiveLoan, findActiveReservation, getInventorySummary, listInventoryCopies,
-  lockInventoryCopy, recordInventoryAudit, releaseLostCopyReservations,
+  lockInventoryCopy, recordInventoryAudit,
   synchronizeLegacyAvailability, type InventoryActor,
 } from './inventory.repository.ts'
+import { releaseLostCopyHolds } from '../reservations/book-request.service.ts'
 import type { InventoryCondition, InventoryListFilters, ManualAvailability } from './inventory.validation.ts'
 
 export const inventorySummary = (database: Pool = db) => getInventorySummary(database)
@@ -54,15 +55,20 @@ export async function overrideInventoryCondition(
   const connection = await database.getConnection()
   try {
     await connection.beginTransaction()
-    const copy = ensureActive(await lockInventoryCopy(connection, barcode))
     const isLost = conditionState === 'Lost'
+    // Same lock order as book requests (circulation lock, then copies) so releasing holds cannot deadlock.
+    if (isLost) await connection.execute('SELECT settings_id FROM library_profile_settings WHERE settings_id=1 FOR UPDATE')
+    const copy = ensureActive(await lockInventoryCopy(connection, barcode))
     if (isLost) {
       const loan = await findActiveLoan(connection, copy.circulation_material_id)
       if (loan || copy.availability_status === 'Borrowed') throw new HttpError(422, 'PHYSICAL_COPY_HAS_ACTIVE_LOAN', 'Report the loss from the active loan in Circulation so the borrower and charge are recorded.')
       if (copy.condition_status === 'Lost') {
+        // Repairs holds the earlier accession_id lookup left on lost copies.
+        const releasedReservations = await releaseLostCopyHolds(connection, copy.physical_copy_id, actor.userId)
         await connection.commit()
         return { physical_copy_id: copy.physical_copy_id, item_title: copy.title, accession_number: copy.accession_number,
-          barcode: copy.barcode, condition_status: 'Lost', availability_status: 'Unavailable', already_reported: true }
+          barcode: copy.barcode, condition_status: 'Lost', availability_status: 'Unavailable', already_reported: true,
+          released_reservations: releasedReservations }
       }
     }
     const nextAvailability = isLost ? 'Unavailable' : copy.availability_status
@@ -75,7 +81,7 @@ export async function overrideInventoryCondition(
     let releasedReservations = 0
     if (isLost) {
       await synchronizeLegacyAvailability(connection, copy.material_id, 'Unavailable')
-      releasedReservations = await releaseLostCopyReservations(connection, copy.physical_copy_id)
+      releasedReservations = await releaseLostCopyHolds(connection, copy.physical_copy_id, actor.userId)
     }
     await recordInventoryAudit(
       connection,
