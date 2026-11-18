@@ -14,7 +14,15 @@ const legacyPolicyRow = {
   long_overdue_after_days: null, change_reason: 'Legacy baseline', created_by_user_id: null, created_at: '2000-01-01',
 }
 
-function reservationPool(role: 'Student' | 'Faculty', activeCount: number, materialType = 'Book', activeBorrowStatus: string | null = null) {
+function reservationPool(
+  role: 'Student' | 'Faculty',
+  activeCount: number,
+  materialType = 'Book',
+  activeBorrowStatus: string | null = null,
+  options: { activeCopies?: number; waitlistCount?: number } = {},
+) {
+  const activeCopies = options.activeCopies ?? 2
+  const waitlistCount = options.waitlistCount ?? 0
   const state = { commits: 0, rollbacks: 0, releases: 0, inserted: false, activeCountQueried: false }
   const connection = {
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() { state.releases += 1 },
@@ -25,6 +33,12 @@ function reservationPool(role: 'Student' | 'Faculty', activeCount: number, mater
       if (sql.includes('SELECT t.*,MIN(pc.material_id)')) return [[{ title_id: 9, material_id: 17, title: 'Clean Code', record_type: materialType }]]
       if (sql.includes('UNION ALL SELECT bt.transaction_id')) return [activeBorrowStatus ? [{ transaction_id: 71 }] : []]
       if (sql.includes('COUNT(*) AS total FROM (')) return [[{ total: activeCount }]]
+      if (sql.includes("COUNT(*) AS n FROM physical_copies") && sql.includes("lifecycle_status='Active'")) {
+        return [[{ n: activeCopies }]]
+      }
+      if (sql.includes("COUNT(*) AS n FROM reservations") && sql.includes("request_kind='Reservation'") && sql.includes('book_title_id=?')) {
+        return [[{ n: waitlistCount }]]
+      }
       if (sql.includes('COUNT(*) AS n FROM reservations')) { state.activeCountQueried = true; return [[{ n: activeCount }]] }
       if (sql.includes('AS position FROM reservations')) return [[{ position: 3 }]]
       if (sql.includes('SELECT pc.* FROM physical_copies') || sql.includes('SELECT pc.*,t.title')) return [[]]
@@ -95,6 +109,20 @@ test('borrower cannot reserve the same title already held in a pending or active
     assert.equal(state.commits, 0)
     assert.equal(state.rollbacks, 1)
   }
+})
+
+test('waitlist rejects a new reservation when active requests already equal active copies', async () => {
+  const { state, database } = reservationPool('Student', 0, 'Book', null, { activeCopies: 2, waitlistCount: 2 })
+  await assert.rejects(createReservationService(database).create(4, { materialId: 17 }), (error: unknown) => {
+    assert.ok(error instanceof HttpError)
+    assert.equal(error.status, 422)
+    assert.equal(error.code, 'WAITLIST_FULL')
+    assert.match(error.message, /waiting list|waitlist|full/i)
+    return true
+  })
+  assert.equal(state.inserted, false)
+  assert.equal(state.commits, 0)
+  assert.equal(state.rollbacks, 1)
 })
 
 test('administrator cannot approve a legacy queue row when the user already has the same book', async () => {

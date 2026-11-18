@@ -142,6 +142,16 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
     const reservationLimit=roleReservationLimit(policy,String(eligible.user?.user_role))
     const [counts]=await q.execute<RowDataPacket[]>(`SELECT COUNT(*) AS n FROM reservations WHERE user_id=? AND request_kind='Reservation' AND reservation_status IN ${active}`,[userId])
     if(kind==='Reservation' && reservationLimit!==null && Number(counts[0]?.n)>=reservationLimit) throw fail('STUDENT_BORROW_LIMIT_REACHED',`The approved reservation limit is ${reservationLimit}.`)
+    if(kind==='Reservation') {
+      const [copyTotals]=await q.execute<RowDataPacket[]>(`SELECT COUNT(*) AS n FROM physical_copies WHERE title_id=? AND lifecycle_status='Active'`,[titleId])
+      const [waitTotals]=await q.execute<RowDataPacket[]>(`SELECT COUNT(*) AS n FROM reservations WHERE book_title_id=? AND request_kind='Reservation' AND reservation_status IN ${active}`,[titleId])
+      const copyCap=Number(copyTotals[0]?.n ?? 0)
+      if(copyCap<=0 || Number(waitTotals[0]?.n ?? 0)>=copyCap) {
+        throw fail('WAITLIST_FULL', copyCap<=0
+          ? 'This title has no active copy for a waiting list.'
+          : `The waiting list for this title is full (${copyCap} ${copyCap===1?'copy':'copies'}).`)
+      }
+    }
     await allocateWaitingRequests(q,titleId,now)
     const copies=await availableCopies(q,titleId)
     if(kind==='Reservation' && copies.length) throw fail('BOOK_AVAILABLE_USE_CART','This book has an available copy. Add it to your cart instead of reserving it.')

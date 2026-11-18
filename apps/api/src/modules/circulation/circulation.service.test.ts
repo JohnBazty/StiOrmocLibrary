@@ -32,7 +32,13 @@ test('cart reconciliation reads only the owner active loans and queue titles wit
   assert.equal(calls,4)
 })
 
-function checkoutPool(role: 'Student' | 'Faculty', activeCount = 0, readyClaim: boolean | 'cart' = false, condition = 'Good') {
+function checkoutPool(
+  role: 'Student' | 'Faculty',
+  activeCount = 0,
+  readyClaim: boolean | 'cart' = false,
+  condition = 'Good',
+  sameTitleActive = false,
+) {
   const state = { commits: 0, rollbacks: 0, borrowInserts: 0, queueCompactions: 0, notifications: 0, overrideInserts: 0 }
   const connection = {
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() {},
@@ -51,9 +57,18 @@ function checkoutPool(role: 'Student' | 'Faculty', activeCount = 0, readyClaim: 
       if (sql.includes('FROM users u INNER JOIN roles')) return [[{ user_id: 7, full_name: 'Test Borrower', institutional_id: 'STI-7', school_id: 'STI-7', role_name: role, account_status: 'Active' }]]
       if (sql.includes('FROM physical_copies pc INNER JOIN titles')) return [[{ physical_copy_id: 20, title_id: 10, material_id: 30, accession_number: 'ACC-20', barcode: 'BOOK-20', condition_status: condition, availability_status: 'Available', lifecycle_status: 'Active', title_status: 'Active', record_type: 'Book', title: 'Clean Code', material_type: 'Book' }]]
       if (sql.includes('SELECT transaction_id, user_id, transaction_status')) return [readyClaim ? [{ transaction_id: 54, user_id: 7, transaction_status: 'Pending', request_group_id: 'group-1', reservation_id: readyClaim === true ? 99 : null }] : []]
-      if (sql.includes('FROM reservations') && sql.includes('queue_position ASC')) return [readyClaim === true ? [{ reservation_id: 99, user_id: 7, queue_position: 1, reservation_status: 'ready_for_pickup' }] : []]
+      if (sql.includes('FROM reservations') && sql.includes('queue_position ASC')) {
+        return [readyClaim === true
+          ? [{ reservation_id: 99, user_id: 7, queue_position: 1, reservation_status: 'ready_for_pickup', request_kind: 'Reservation' }]
+          : []]
+      }
+      if (sql.includes('UNION ALL SELECT bt.transaction_id::text') || sql.includes("UNION ALL SELECT bt.transaction_id")) {
+        return [sameTitleActive && !readyClaim ? [{ id: '71' }] : []]
+      }
       if (sql.includes('SELECT queue_position FROM reservations')) return [[{ queue_position: 1 }]]
-      if (sql.includes('COUNT(DISTINCT activity.title_id)')) return [[{ active_count: activeCount, target_already_active: 0 }]]
+      if (sql.includes('COUNT(DISTINCT activity.title_id)')) {
+        return [[{ active_count: activeCount, target_already_active: sameTitleActive || readyClaim ? 1 : 0 }]]
+      }
       if (sql.includes("transaction_status IN ('Borrowed','Overdue')")) return [[{ active_count: 0 }]]
       if (sql.includes('FROM library_closed_days')) return [[]]
       if (sql.includes('INSERT INTO borrow_transactions')) { state.borrowInserts += 1; return [{ insertId: 55, affectedRows: 1 }] }
@@ -98,6 +113,23 @@ test('preflight performs no database writes', async () => {
   assert.equal(state.borrowInserts, 0)
   assert.equal(state.commits, 0)
   assert.equal(state.overrideInserts, 0)
+})
+
+test('desk walk-in rejects a title the borrower already holds on loan or request', async () => {
+  const { state, database } = checkoutPool('Student', 1, false, 'Good', true)
+  await assert.rejects(
+    createCirculationService(database).confirmCheckout(1, { barcode: 'book-20', school_id: 'sti-7' }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError)
+      assert.equal(error.status, 422)
+      assert.equal(error.code, 'BOOK_ALREADY_IN_ACCOUNT')
+      assert.match(error.message, /already have this title/i)
+      return true
+    },
+  )
+  assert.equal(state.borrowInserts, 0)
+  assert.equal(state.commits, 0)
+  assert.equal(state.rollbacks, 1)
 })
 
 test('physical desk fulfillment activates only the matching ready reservation claim', async () => {

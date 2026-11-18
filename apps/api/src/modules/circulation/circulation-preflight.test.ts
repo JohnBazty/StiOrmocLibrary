@@ -44,6 +44,21 @@ test('student at the two-book limit receives a blocker', () => {
   assert.equal(result.blockers[0]?.code, 'STUDENT_LIMIT')
 })
 
+test('walk-in of a title already on loan or request is blocked', () => {
+  const result = evaluateCheckoutRules(baseContext({ targetTitleAlreadyActive: true }))
+  assert.equal(result.decision, 'blocked')
+  assert.equal(result.blockers[0]?.code, 'TITLE_ALREADY_ACTIVE')
+  assert.equal(result.blockers[0]?.httpCode, 'BOOK_ALREADY_IN_ACCOUNT')
+})
+
+test('ready claim for the same title is allowed through the same-title guard', () => {
+  const result = evaluateCheckoutRules(baseContext({
+    targetTitleAlreadyActive: true,
+    queueHead: { reservationId: 99, userId: 7, status: 'ready_for_pickup', requestKind: 'Reservation' },
+  }))
+  assert.equal(result.decision, 'ready')
+})
+
 test('faculty bypasses the student limit', () => {
   const result = evaluateCheckoutRules(baseContext({
     borrower: { found: true, userId: 7, schoolId: 'STI-7', name: 'Faculty', role: 'Faculty', accountStatus: 'Active' },

@@ -119,6 +119,7 @@ async function loadCheckoutEvaluationContext(
         reservationId: Number(queueRows[0].reservation_id),
         userId: Number(queueRows[0].user_id),
         status: String(queueRows[0].reservation_status),
+        requestKind: queueRows[0].request_kind ? String(queueRows[0].request_kind) : null,
       }
     }
   }
@@ -645,12 +646,14 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
           const [own]=await connection.execute<RowDataPacket[]>(`SELECT assigned_physical_copy_id FROM reservations WHERE user_id=? AND book_title_id=? AND reservation_status IN ${ACTIVE_RESERVATIONS}`,[borrower.user_id,copy.title_id])
           if(own.length && Number(own[0].assigned_physical_copy_id)!==Number(copy.physical_copy_id)) throw new HttpError(422,'DESK_REQUEST_COPY_MISMATCH','Scan the copy assigned to this book request.')
         }
+        let ownClaimReservationId: number | null = null
         if(queueHead&&Number(queueHead.user_id)===Number(borrower.user_id)){
           const [claimRows]=await connection.execute<RowDataPacket[]>('SELECT assigned_physical_copy_id,pickup_deadline,request_kind FROM reservations WHERE reservation_id=?',[queueHead.reservation_id])
           const claim=claimRows[0]
           const cartHandover=claim?.request_kind==='CartHandover'&&queueHead.reservation_status==='approved'
           const readyReservation=queueHead.reservation_status==='ready_for_pickup'&&claim?.pickup_deadline&&localTimestamp(claim.pickup_deadline)>clock().getTime()
           if(Number(claim?.assigned_physical_copy_id)!==Number(copy.physical_copy_id)||(!cartHandover&&!readyReservation))throw new HttpError(422,'CIRCULATION_RESERVATION_CLAIM_NOT_READY','This copy is not ready for pickup or its pickup deadline has expired.')
+          ownClaimReservationId = Number(queueHead.reservation_id)
         }
         if (requirePendingDeskClaim && !pendingClaim) {
           throw new HttpError(422, 'CIRCULATION_PENDING_CLAIM_NOT_FOUND', 'This borrower and barcode do not match a pending counter claim.')
@@ -662,6 +665,21 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         }
         if (queueHead && Number(queueHead.user_id) !== Number(borrower.user_id)) throw new HttpError(422, 'CIRCULATION_QUEUE_PRIORITY_LOCKED', 'This title is reserved for the first user in the waiting queue.')
         if (input.reservationId && (!queueHead || Number(queueHead.reservation_id) !== input.reservationId)) throw new HttpError(422, 'CIRCULATION_RESERVATION_NOT_FIRST', 'The selected reservation is not currently first in the queue.')
+        {
+          const [duplicates] = await connection.execute<RowDataPacket[]>(
+            `SELECT reservation_id::text AS id FROM reservations
+              WHERE user_id=? AND book_title_id=? AND reservation_status IN ${ACTIVE_RESERVATIONS}
+                AND reservation_id IS DISTINCT FROM ?
+             UNION ALL SELECT bt.transaction_id::text AS id FROM borrow_transactions bt
+              JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id
+              WHERE bt.user_id=? AND pc.title_id=? AND bt.transaction_status IN ${ACTIVE_LOANS}
+                AND NOT (bt.transaction_status='Pending' AND bt.physical_copy_id=? AND bt.user_id=?)`,
+            [borrower.user_id, copy.title_id, ownClaimReservationId, borrower.user_id, copy.title_id, copy.physical_copy_id, borrower.user_id],
+          )
+          if (duplicates.length) {
+            throw new HttpError(422, 'BOOK_ALREADY_IN_ACCOUNT', 'You already have this title in a book request or active loan.')
+          }
+        }
         const borrowedAt = clock()
         const policy = await policyService.resolveActive(connection, borrowedAt)
         const flow: CheckoutFlow = requirePendingDeskClaim ? 'claim' : 'walk_in'

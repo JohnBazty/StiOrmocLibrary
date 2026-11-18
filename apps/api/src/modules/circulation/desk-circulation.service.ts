@@ -69,6 +69,20 @@ async function copyBlockers(q:PoolConnection,c:RowDataPacket,userId:number,mode:
  if(mode==='TakeHome'){
   const [rules]=await q.execute<RowDataPacket[]>('SELECT is_borrowable FROM borrowing_policy_material_rules WHERE borrowing_policy_version_id=? AND material_type=?',[policyId,c.material_type])
   if(c.record_type!=='Book'||!rules[0]?.is_borrowable)blockers.push('This material is for in-library reading only.')
+  const fulfillingOwn=Boolean(
+    (assigned && Number(assigned.user_id)===userId && (
+      assigned.reservation_status==='ready_for_pickup'
+      || (assigned.request_kind==='CartHandover' && assigned.reservation_status==='approved')
+    ))
+    || loans.some(l=>l.transaction_status==='Pending' && Number(l.user_id)===userId),
+  )
+  if(!fulfillingOwn){
+   const [duplicates]=await q.execute<RowDataPacket[]>(`SELECT reservation_id FROM reservations WHERE user_id=? AND book_title_id=? AND reservation_status IN ('pending','approved','ready_for_pickup')
+     UNION ALL SELECT bt.transaction_id FROM borrow_transactions bt JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id
+     WHERE bt.user_id=? AND pc.title_id=? AND bt.transaction_status IN ('Pending','Borrowed','Overdue')
+       AND NOT (bt.transaction_status='Pending' AND bt.physical_copy_id=? AND bt.user_id=?)`,[userId,c.title_id,userId,c.title_id,c.physical_copy_id,userId])
+   if(duplicates.length)blockers.push('You already have this title in a book request or active loan.')
+  }
  }
  return blockers
 }
