@@ -47,6 +47,7 @@ import { adminNotificationsRouter } from './modules/users/admin-notifications.ro
 import { archivedBorrowingPolicyRouter } from './modules/circulation/borrowing-policy-archive.routes.ts'
 import { publicCatalogRouter, catalogMaintenanceRouter } from './modules/catalog/catalog-enhancements.routes.ts'
 import { collectionReviewRouter } from './modules/catalog/collection-review.routes.ts'
+import { reservationSettingsRouter } from './modules/reservations/reservation-settings.routes.ts'
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
 const publicDirectory = path.resolve(currentDirectory, '../public')
@@ -106,6 +107,7 @@ export function createApp() {
   app.use('/api/v1/admin/borrowing-policies', requireLibraryPermission('library.manage'), archivedBorrowingPolicyRouter)
   app.use('/api/v1/admin/maintenance', requireLibraryPermission('library.manage'), catalogMaintenanceRouter)
   app.use('/api/v1/admin/collection-review', requireLibraryPermission('library.manage'), collectionReviewRouter)
+  app.use('/api/v1/admin/reservation-settings', requireLibraryPermission('library.manage'), reservationSettingsRouter)
   app.use('/api/v1/profile/avatar', profileAvatarRouter)
   app.use('/api/v1/profile', selfProfileRouter)
   app.get('/api/v1/admin/account-dashboard', requireLibraryPermission('accounts.manage'), async (_request, response, next) => {
