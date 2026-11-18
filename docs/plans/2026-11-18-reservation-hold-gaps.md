@@ -70,20 +70,20 @@ Gap 1 (a held copy reported Lost stranded the borrower) is being fixed on `fix/l
 
 ## Acceptance criteria
 
-- [ ] R1: Damaged or For Repair on a held copy re-assigns another copy, or returns the request to pending at the same position (API test)
-- [ ] R1: a ready hold swapped by R1 goes back to preparing, and Mark ready gives a fresh R7 deadline
-- [ ] R2: a cart deadline equals the next closing time (3 cases), and expiry releases the copy with one notification
-- [ ] R2: a cart submitted exactly at closing expires at the next open day's closing
-- [ ] R1: a Damaged copy becomes `Unavailable`, and back to Good makes it `Available` and allocates
-- [ ] R3: Book queue shows cart rows with the auto-cancel time under the kind filter
-- [ ] R4: the skip reason is set on skip and cleared on assign or end
-- [ ] R5: swap-copy succeeds and covers its 4 error cases
-- [ ] R6: move up and down keep positions 1..n unique and cover the noop, assigned-above, reason and RBAC errors
-- [ ] R7: the helper passes the 8 calendar cases above and is used by Mark ready and cart submit
-- [ ] NOT: a student request never returns another borrower's `last_skip_reason` (API test as student)
-- [ ] NOT: the R7 deadline is never earlier than `readyAt + 24h` (property test over random ready times)
-- [ ] NOT: R1, R2 and R5 never assign or release a copy that another active hold owns (SQL-shape tested; no Postgres harness in repo)
-- [ ] `npm test`, `npm run typecheck` and `npm run build` pass
+- [x] R1: Damaged or For Repair on a held copy re-assigns another copy, or returns the request to pending at the same position (API test)
+- [x] R1: a ready hold swapped by R1 goes back to preparing, and Mark ready gives a fresh R7 deadline
+- [x] R2: a cart deadline equals the next closing time (3 cases), and expiry releases the copy with one notification
+- [x] R2: a cart submitted exactly at closing expires at the next open day's closing
+- [x] R1: a Damaged copy becomes `Unavailable`, and back to Good makes it `Available` and allocates
+- [x] R3: Book queue shows cart rows with the auto-cancel time under the kind filter
+- [x] R4: the skip reason is set on skip and cleared on assign or end
+- [x] R5: swap-copy succeeds and covers its 4 error cases
+- [x] R6: move up and down keep positions 1..n unique and cover the noop, assigned-above, reason and RBAC errors
+- [x] R7: the helper passes the 8 calendar cases above and is used by Mark ready and cart submit
+- [x] NOT: a student request never returns another borrower's `last_skip_reason` (API test as student)
+- [x] NOT: the R7 deadline is never earlier than `readyAt + 24h` (property test over random ready times)
+- [x] NOT: R1, R2 and R5 never assign or release a copy that another active hold owns (SQL-shape tested; no Postgres harness in repo)
+- [x] `npm test`, `npm run typecheck` and `npm run build` pass
 
 ## Edge coverage
 
