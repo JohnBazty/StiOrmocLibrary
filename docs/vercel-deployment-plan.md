@@ -10,8 +10,9 @@
 
 The owner requested undoing merge d3e5fe3 and its deployment. A history-preserving
 revert restores the application to pre-merge main 1f30126. Applied migrations 038
-and 040 and current library-hour data remain intact. The reverted application is
-verified and deployed using the same Production project and environment. See
+and 040 and current library-hour data remain intact. Revert commit c44d5bb is
+live as deployment dpl_DUmFUZLVSvXciGXJyFj1Yc57fyDL on the same Production project
+and environment. Six public routing, schema-health, catalog, and asset checks passed. See
 [rollback tracking](plans/2026-11-18-undo-fines-merge.md).
 
 ## Main branch release — November 18, 2026

@@ -1,0 +1,42 @@
+{
+  "date": "2026-11-18",
+  "sourceCommit": "c44d5bb3530396df4125328e372aa7f9ec73f747",
+  "revertedMerge": "d3e5fe3663f11c4112088383ea37b5465d79667d",
+  "deploymentId": "dpl_DUmFUZLVSvXciGXJyFj1Yc57fyDL",
+  "canonicalUrl": "https://sti-ormoc-smart-library.vercel.app",
+  "checks": [
+    {
+      "path": "/",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "path": "/login",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "path": "/librarian/borrowing-policies",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "path": "/api/health",
+      "status": 200,
+      "passed": true,
+      "schemaReady": true
+    },
+    {
+      "path": "/api/public/catalog/titles",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "path": "/assets/index-lRjjL8cE.js",
+      "status": 200,
+      "fineRulesRouteAbsent": true,
+      "passed": true
+    }
+  ],
+  "passed": true
+}
