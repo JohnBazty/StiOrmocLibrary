@@ -5,7 +5,7 @@ import { RefreshCw, PackageCheck } from 'lucide-react'
 import { Button, PageHeader, SectionCard, StatusBadge } from '../../components/ui'
 import { getCurrentIdentity } from '../auth/auth-storage'
 import { reservationApi } from './reservation-api'
-import { MoveDialog, SwapCopyDialog } from './ReservationQueueDialogs'
+import { DialogShell, MoveDialog, SwapCopyDialog } from './ReservationQueueDialogs'
 import type { ReservationFilters, ReservationQueueItem, ReservationStatus } from './types'
 const field='min-h-11 w-full rounded-xl border border-[#0b5ea2]/20 bg-white px-3 text-sm text-[#0b5ea2]'
 const initial:ReservationFilters={status:'active',dateFrom:'',dateTo:'',user:'',role:'',kind:'Reservation'}
@@ -48,6 +48,6 @@ export function AdminReservationQueuePage() {
     <div className="mt-5 flex items-center justify-between gap-3"><Button variant="secondary" disabled={page<=1||loading} onClick={()=>setPage(p=>p-1)}>Previous</Button><span className="text-sm">Page {page} of {Math.max(1,pages)}</span><Button variant="secondary" disabled={page>=pages||loading} onClick={()=>setPage(p=>p+1)}>Next</Button></div>
     {swap?<SwapCopyDialog item={swap} onClose={()=>setSwap(null)} onDone={done}/>:null}
     {move?<MoveDialog item={move.item} direction={move.direction} onClose={()=>setMove(null)} onDone={done}/>:null}
-    {cancel?<div role="dialog" aria-modal="true" aria-labelledby="cancel-request-title" className="fixed inset-0 z-50 flex items-center justify-center bg-[#001b50]/60 p-4"><SectionCard className="w-full max-w-md p-6"><h2 id="cancel-request-title" className="text-xl font-bold">Cancel this book request?</h2><p className="my-4">{cancel.materialTitle} for {cancel.userName}. The borrower will be notified and the held copy will be offered to the next eligible person waiting.</p><div className="flex justify-end gap-2"><Button variant="secondary" disabled={busy!==null} onClick={()=>setCancel(null)}>Keep request</Button><Button disabled={busy!==null} onClick={()=>void update(cancel,'cancelled')}>Confirm cancellation</Button></div></SectionCard></div>:null}
+    {cancel?<DialogShell titleId="cancel-request-title" title="Cancel this book request?" busy={busy!==null} onClose={()=>setCancel(null)}><p className="my-4">{cancel.materialTitle} for {cancel.userName}. The borrower will be notified and the held copy will be offered to the next eligible person waiting.</p><div className="flex justify-end gap-2"><Button variant="secondary" disabled={busy!==null} onClick={()=>setCancel(null)}>Keep request</Button><Button disabled={busy!==null} onClick={()=>void update(cancel,'cancelled')}>Confirm cancellation</Button></div></DialogShell>:null}
   </>
 }

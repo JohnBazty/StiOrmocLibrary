@@ -80,3 +80,18 @@ it('swaps the copy from the list of eligible copies',async()=>{
  fireEvent.click([...dialog.querySelectorAll('button')].find(b=>b.textContent==='Swap copy') as HTMLElement)
  await waitFor(()=>expect(api.swapCopy).toHaveBeenCalledWith(81,6))
 })
+it('closes the cancel dialog on Escape without cancelling',async()=>{
+ open();await screen.findByText('Waiting title')
+ fireEvent.click(screen.getAllByRole('button',{name:'Cancel request'})[0])
+ expect(screen.getByRole('dialog',{name:'Cancel this book request?'})).toBeTruthy()
+ fireEvent.keyDown(document,{key:'Escape'})
+ expect(screen.queryByRole('dialog')).toBeNull()
+ expect(api.adjustStatus).not.toHaveBeenCalled()
+})
+it('shows only the load error when swap candidates fail',async()=>{
+ api.queue.mockResolvedValue({items:[{...row,status:'approved',assignedCopyId:4,barcode:'SAMPLE-COPY'}],pagination:{pages:1,total:1}})
+ api.swapCandidates.mockRejectedValue(new Error('Could not load copies.'))
+ open();fireEvent.click(await screen.findByRole('button',{name:'Swap copy'}))
+ expect((await screen.findByRole('alert')).textContent).toBe('Could not load copies.')
+ expect(screen.queryByText('No other copy is available to swap to.')).toBeNull()
+})

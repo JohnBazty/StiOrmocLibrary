@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Button, SectionCard } from '../../components/ui'
 import { reservationApi } from './reservation-api'
 import type { ReservationQueueItem, SwapCandidate } from './types'
@@ -7,10 +7,10 @@ const MIN_REASON = 5
 const MAX_REASON = 500
 
 /** Modal shell: focus moves in, Tab stays inside, Escape closes (unless saving). */
-function DialogShell({ titleId, title, busy, onClose, children }: { titleId: string; title: string; busy: boolean; onClose: () => void; children: ReactNode }) {
+export function DialogShell({ titleId, title, busy, onClose, children }: { titleId: string; title: string; busy: boolean; onClose: () => void; children: ReactNode }) {
   const dialog = useRef<HTMLDivElement>(null)
   const state = useRef({ busy, onClose })
-  state.current = { busy, onClose }
+  useLayoutEffect(() => { state.current = { busy, onClose } })
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null
     dialog.current?.focus()
@@ -58,7 +58,7 @@ export function SwapCopyDialog({ item, onClose, onDone }: DialogProps) {
       {others.map(c => <label key={c.physicalCopyId} className="flex min-h-11 items-center gap-3 rounded-xl border border-[#003399]/20 p-2 text-sm">
         <input type="radio" name="swap-copy" checked={chosen === c.physicalCopyId} onChange={() => setChosen(c.physicalCopyId)} />
         <span><span className="font-mono font-bold">{c.barcode ?? 'No barcode'}</span> · {c.accessionNumber ?? 'No accession'} · {c.shelfLocation ?? 'Location not recorded'}</span>
-      </label>)}</fieldset> : <p className="mb-4 text-sm">No other copy is available to swap to.</p>}
+      </label>)}</fieldset> : error ? null : <p className="mb-4 text-sm">No other copy is available to swap to.</p>}
     <div className="flex justify-end gap-2"><Button variant="secondary" disabled={busy} onClick={onClose}>Close</Button><Button disabled={busy || chosen === null} onClick={() => void confirm()}>{busy ? 'Working…' : 'Swap copy'}</Button></div>
   </DialogShell>
 }
