@@ -88,14 +88,14 @@ describe('BorrowingHistory', () => {
     })
     clearance.reportLost.mockResolvedValue({ lostBookReportId: 3, status: 'Pending' })
     render(<BorrowingHistory />)
-    fireEvent.click((await screen.findAllByRole('button', { name: 'Report lost' }))[0]!)
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Report as lost' }))[0]!)
     expect(screen.getByRole('dialog', { name: 'Report this book as lost?' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Submit lost report' }))
     await waitFor(() => expect(clearance.reportLost).toHaveBeenCalledWith(21))
     expect(await screen.findByText('Clean Code was reported lost. Library staff have been notified.')).toBeTruthy()
   })
 
-  it('hides Request renewal when canRequestRenewal is false', async () => {
+  it('hides Renew this book when canRequestRenewal is false', async () => {
     api.history.mockResolvedValue({
       summary: { role: 'Student', activeLoans: 1, activeReservations: 0, activeStackCount: 1, loanLimit: 2, remainingLoanSlots: 1, nextDueAt: '2026-10-11T08:59:00', dueCutoffLabel: '8:59 AM' },
       items: [{
@@ -109,7 +109,7 @@ describe('BorrowingHistory', () => {
     })
     render(<BorrowingHistory />)
     expect((await screen.findAllByText('Clean Code')).length).toBeGreaterThan(0)
-    expect(screen.queryByRole('button', { name: 'Request renewal' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Renew this book' })).toBeNull()
   })
 
   it('renews an eligible loan with one stable request key and refreshes history', async () => {
@@ -137,7 +137,7 @@ describe('BorrowingHistory', () => {
         blockers: [], idempotent: false,
       })
     render(<BorrowingHistory />)
-    fireEvent.click((await screen.findAllByRole('button', { name: 'Request renewal' }))[0]!)
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Renew this book' }))[0]!)
     expect(await screen.findByText('Proposed due')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Confirm renewal' }))
     expect(await screen.findByText('Temporary connection problem.')).toBeTruthy()
