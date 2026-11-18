@@ -28,6 +28,7 @@ import { StudentPrintingPage } from './printing/StudentPrintingPage'
 import { AdminReservationQueuePage } from './reservations/AdminReservationQueuePage'
 import { StudentReservations } from './reservations/StudentReservations'
 import { AdminUsersPage } from './users/AdminUsersPage'
+import { StudentQrRosterPage } from './users/StudentQrRosterPage'
 import { EnrollmentPage } from './users/EnrollmentPage'
 import { CollectionReviewPage } from './catalog/CollectionReviewPage'
 import { BookCatalog } from './catalog/BookCatalog'
@@ -43,7 +44,7 @@ const controls = [
   [<AdminFinesPage />, 'Refresh'], [<StudentFinesPage />, 'Refresh'], [<FloorPlanImagePage />, 'Refresh'], [<InventoryDashboard />, 'Refresh'],
   [<AdminAnnouncementsPage />, 'Refresh'], [<AdminNotificationsPage />, 'Refresh'], [<LibraryActivityPage />, 'Refresh'], [<NotificationCenterPage />, 'Refresh'], [<NotificationCenterPage operations />, 'Refresh'],
   [<AdminPrintingQueuePage />, 'Refresh'], [<AdminPrintSuppliesPage />, 'Refresh'], [<StaffPrintingQueuePage />, 'Refresh'], [<StudentPrintingPage />, 'Refresh'],
-  [<AdminReservationQueuePage />, 'Refresh'], [<StudentReservations />, 'Refresh'], [<AdminUsersPage />, 'Refresh'], [<AdminUsersPage archive />, 'Refresh'], [<EnrollmentPage />, 'Refresh'],
+  [<AdminReservationQueuePage />, 'Refresh'], [<StudentReservations />, 'Refresh'], [<AdminUsersPage />, 'Refresh'], [<StudentQrRosterPage />, 'Refresh'], [<EnrollmentPage />, 'Refresh'],
   [<CollectionReviewPage />, 'Refresh'], [<BookCatalog />, 'Refresh catalog'], [<StockItemsPanel kind="merchandise" />, 'Reload records'],
   [<HistoricalPrintingPage />, 'Reload records'], [<SupplyDetailsPanel />, 'Reload records'],
 ] as const

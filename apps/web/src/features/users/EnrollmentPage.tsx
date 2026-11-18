@@ -150,7 +150,7 @@ function RosterUpload({term,onSaved}:{term:Semester;onSaved:(message:string)=>vo
     try{
       const body=new FormData();body.set('roster',file);body.set('sourceDate',sourceDate);body.set('scope',scope)
       const result=await enrollmentApi.upload(term.semester_id,body)
-      onSaved(result.alreadyUploaded?'This roster was already uploaded.':`Roster uploaded. ${result.students} student records accepted.${result.missingEmail?` ${result.missingEmail} need a school email before registration.`:''}`)
+      onSaved(result.alreadyUploaded?'Roster refreshed. New QR codes are ready. Previously saved codes no longer work.':`Roster uploaded. ${result.students} student records accepted. New QR codes are ready; previously saved codes no longer work.${result.missingEmail?` ${result.missingEmail} need a school email before registration.`:''}`)
       remove()
     }catch(e){setError(errorText(e));if(e instanceof EnrollmentError)setIssues(e.issues)}
     finally{setBusy(false)}
@@ -158,7 +158,7 @@ function RosterUpload({term,onSaved}:{term:Semester;onSaved:(message:string)=>vo
   return <SectionCard className="p-5"><UnsavedGuard className="contents" cleanOnSubmit><form className="space-y-4" onSubmit={upload}>
     <h2 className="text-balance text-lg font-bold">Upload roster</h2>
     <p className="text-pretty text-sm">Choose the registrar CSV or Excel file. A successful upload marks matching students as enrolled automatically.</p>
-    <p className="text-pretty text-sm">A complete roster replaces the enrollment list. A partial update changes only the Student IDs in that file.</p>
+    <p className="text-pretty text-sm">A complete roster replaces the enrollment list. A partial update changes only the Student IDs in that file. Every successful upload replaces QR codes for this semester’s registered students, even when the file is unchanged. Previously saved codes will stop working.</p>
     <div className="grid gap-3 sm:grid-cols-2">
       <label className="text-sm font-semibold">Roster date<input className={field} type="date" value={sourceDate} onChange={e=>setSourceDate(e.target.value)} required/></label>
       <label className="text-sm font-semibold">Roster type<select className={field} value={scope} onChange={e=>setScope(e.target.value)}><option value="Complete">Complete school roster</option><option value="Partial">Partial update</option></select></label>

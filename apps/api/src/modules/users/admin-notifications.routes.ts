@@ -22,7 +22,7 @@ export async function listAdminNotifications(database: Pick<typeof db, 'execute'
       body: profile ? `${row.full_name} (${row.school_id}) changed ${fields.join(', ') || 'profile details'}.`
         : `${row.full_name} (${row.school_id}) was ${created ? 'set up as Staff' : deactivated ? 'deactivated' : 'reactivated'}.`,
       createdAt: timestamp(row.created_at),
-      actionPath: row.account_status === 'Active' ? `${prefix}/users` : `${prefix}/user-archive` }
+      actionPath: `${prefix}/users` }
   })
   return { activity }
 }

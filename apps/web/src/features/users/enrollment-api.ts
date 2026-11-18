@@ -32,6 +32,8 @@ async function request<T>(path:string, body?:unknown, signal?:AbortSignal) {
   return payload.data as T
 }
 export const enrollmentApi={
+  qrSemesters:(signal?:AbortSignal)=>request<Pick<Semester,'semester_id'|'academic_year'|'term_name'|'status'>[]>('/qr-semesters',undefined,signal),
+  qrRoster:(id:number,page:number,q:string,signal?:AbortSignal)=>request<{rows:StudentQrCard[];more:boolean}>(`/semesters/${id}/qr-roster?${new URLSearchParams({page:String(page),q})}`,undefined,signal),
   overview:(signal?:AbortSignal)=>request<Semester[]>('',undefined,signal),
   save:(body:unknown)=>request<{semesterId:number}>('/semesters',body),
   start:(id:number)=>request(`/semesters/${id}/start`,{}),
@@ -44,3 +46,5 @@ export const enrollmentApi={
   upload:(id:number,body:FormData)=>request<{alreadyUploaded:boolean;students:number;missingEmail:number}>(`/semesters/${id}/roster`,body),
   roster:(id:number,page:number,q:string,signal?:AbortSignal)=>request<{rows:RosterRow[];more:boolean;archived:boolean}>(`/semesters/${id}/roster?${new URLSearchParams({page:String(page),q})}`,undefined,signal),
 }
+
+export type StudentQrCard = { school_id:string;student_name:string;program:string|null;year_level:string|null;qr_image:string|null;qr_status:string }

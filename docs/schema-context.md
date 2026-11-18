@@ -1,5 +1,17 @@
 # Database Schema Context
 
+## Student QR roster and replacement on upload — November 18, 2026
+
+Every successful enrollment roster upload now replaces registered students' QR
+credentials, including identical-file uploads. Existing roster records remain
+deduplicated. Revocation and replacement use the existing
+`attendance_qr_credentials` version/public ID/hash fields in the roster import
+transaction; a failed upload preserves previous passes. Old saved QR codes fail
+validation after commit. Sign-ins and services reuse the current credential until
+the next roster upload. No schema migration is required. The Admin/Librarian
+Student QR roster replaces the separate User archive screen; inactive account
+history remains in Library users. See [implementation and checks](plans/2026-11-18-student-qr-roster.md).
+
 ## Fines and borrowing policies integration — November 18, 2026
 
 Read-only checks confirm applied migrations `038_fine_policy_maintenance.sql` and

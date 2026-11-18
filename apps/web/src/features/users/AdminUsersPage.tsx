@@ -9,10 +9,10 @@ import { usersApi, type AccountStatus, type ActiveUser, type DirectoryUser, type
 const field = 'h-10 w-full rounded-xl border border-[#0b5ea2]/20 bg-white px-3 text-sm text-[#0b5ea2] outline-none focus:border-[#0b5ea2]'
 const initial: UserFilters = { q: '', role: '', program: '', clearance: '', status: 'Active', page: 1, limit: 25 }
 
-export function AdminUsersPage({ archive = false }: { archive?: boolean }) {
+export function AdminUsersPage() {
   const role = getCurrentIdentity()?.role
   const canManage = role === 'Admin' || role === 'Librarian'
-  const [filters, setFilters] = useState<UserFilters>(() => ({ ...initial, status: archive ? 'Inactive' : 'Active' }))
+  const [filters, setFilters] = useState<UserFilters>(() => ({ ...initial, status: 'Active' }))
   const [refresh, setRefresh] = useState(0)
   const [summary, setSummary] = useState<UserSummary | null>(null)
   const [programs, setPrograms] = useState<string[]>([])
@@ -78,9 +78,9 @@ export function AdminUsersPage({ archive = false }: { archive?: boolean }) {
   }
 
   return <>
-    <PageHeader eyebrow="Access management" title={archive ? 'User archive' : 'Library users'} action={<div className="flex flex-wrap gap-2">
+    <PageHeader eyebrow="Access management" title="Library users" action={<div className="flex flex-wrap gap-2">
       {canManage && <a href={`/${role === 'Admin' ? 'admin' : 'librarian'}/users/enrollment`} className="inline-flex items-center rounded-xl border border-current/20 px-4 py-2 text-sm font-semibold">Student enrollment</a>}
-      {canManage && !archive && <Button onClick={() => { setNotice(''); setStaffSetup(true) }}>Set up Staff account</Button>}
+      {canManage && <Button onClick={() => { setNotice(''); setStaffSetup(true) }}>Set up Staff account</Button>}
       <Button variant="secondary" onClick={() => setRefresh(value => value + 1)}><RefreshCw size={15} /> Refresh</Button>
     </div>} />
     {error && <p role="alert" className="mb-4 rounded-xl bg-[#FFF200] p-3 text-sm font-bold text-[#0b5ea2]">{error}</p>}
@@ -96,12 +96,12 @@ export function AdminUsersPage({ archive = false }: { archive?: boolean }) {
       <select aria-label="Account status" className={field} value={filters.status} onChange={event => {
         const status = event.target.value
         update(status === 'Not registered' || unregistered ? { status, role: '', program: '', clearance: '' } : { status })
-      }}>{archive ? <><option value="Inactive">Deactivated and archived</option><option>Deactivated</option><option>Archived</option></> : <><option>Active</option><option value="">All statuses</option><option>Not registered</option><option>Deactivated</option><option>Archived</option></>}</select>
+      }}><option>Active</option><option value="">All statuses</option><option>Not registered</option><option>Deactivated</option><option>Archived</option></select>
       <select aria-label="User role" className={field} disabled={unregistered} value={unregistered ? 'Student' : filters.role} onChange={event => update({ role: event.target.value })}><option value="">All roles</option>{['Student', 'Faculty', 'Librarian', 'Staff', 'Admin'].map(role => <option key={role}>{role}</option>)}</select>
       <select aria-label="Program" className={field} value={filters.program} onChange={event => update({ program: event.target.value })}><option value="">All programs</option>{programs.map(program => <option key={program}>{program}</option>)}</select>
       <select aria-label="Clearance" className={field} disabled={unregistered} value={filters.clearance} onChange={event => update({ clearance: event.target.value })}><option value="">{unregistered ? 'Clearance does not apply' : 'All clearance states'}</option><option>Cleared</option><option>Not Cleared</option></select>
     </div></SectionCard>
-    <SectionCard><div className="border-b border-[#0b5ea2]/15 p-5"><h2 className="font-bold text-[#0b5ea2]">{unregistered ? 'Students without accounts' : archive ? 'Deactivated and archived accounts' : 'Account directory'}</h2><p className="text-xs text-[#0b5ea2]/65">{loading ? 'Loading…' : unregistered ? `${pagination.total.toLocaleString('en-PH')} matching students from the most recently imported open semester` : `${pagination.total} matching accounts · Profile details are edited by account owners`}</p></div>
+    <SectionCard><div className="border-b border-[#0b5ea2]/15 p-5"><h2 className="font-bold text-[#0b5ea2]">{unregistered ? 'Students without accounts' : 'Account directory'}</h2><p className="text-xs text-[#0b5ea2]/65">{loading ? 'Loading…' : unregistered ? `${pagination.total.toLocaleString('en-PH')} matching students from the most recently imported open semester` : `${pagination.total} matching accounts · Profile details are edited by account owners`}</p></div>
       <ResponsiveTable><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-[#0b5ea2] text-white"><tr>{['User', 'School ID', 'Role', 'Program / unit', 'Year / level', 'Clearance', 'Status', 'Action'].map(label => <th key={label} className="px-5 py-3 text-xs">{label}</th>)}</tr></thead><tbody>
         {loading ? <tr><td colSpan={8} className="p-10 text-center text-[#0b5ea2]">Loading users…</td></tr> : rows.length === 0 ? <tr><td colSpan={8} className="p-10 text-center text-[#0b5ea2]">{unregistered ? 'No unregistered students match these filters.' : 'No accounts match these filters.'}</td></tr> : rows.map(user => <tr key={user.school_id} className="border-b border-[#0b5ea2]/10 text-[#0b5ea2]"><td className="px-5 py-4"><b>{user.full_name}</b><p className="text-xs opacity-70">{user.email}</p></td><td className="px-5 py-4 font-mono text-xs">{user.school_id}</td><td className="px-5 py-4">{user.role}</td><td className="px-5 py-4">{user.program}</td><td className="px-5 py-4">{user.year_or_unit}</td><td className="px-5 py-4">{user.clearance_status}</td><td className="px-5 py-4"><span className="rounded-full bg-[#0b5ea2] px-2 py-1 text-xs font-bold text-white">{user.account_status}</span></td><td className="px-5 py-4">{user.id === null ? <span className="text-xs">Account not created</span> : <button className="font-bold underline" onClick={() => void open(user)}>View record</button>}</td></tr>)}
       </tbody></table></ResponsiveTable><div className="flex justify-end gap-2 p-4"><Button variant="secondary" disabled={filters.page <= 1} onClick={() => update({ page: filters.page - 1 })}>Previous</Button><span className="self-center text-xs font-bold text-[#0b5ea2]">Page {pagination.page} of {Math.max(1, pagination.total_pages)}</span><Button variant="secondary" disabled={filters.page >= pagination.total_pages} onClick={() => update({ page: filters.page + 1 })}>Next</Button></div>
@@ -112,7 +112,7 @@ export function AdminUsersPage({ archive = false }: { archive?: boolean }) {
       {notice && <p role="status" className="mt-4 rounded-xl border border-[#0b5ea2]/20 p-3 text-sm font-bold">{notice}</p>}
       <div className="mt-6 grid gap-3 sm:grid-cols-2"><h3 className="sm:col-span-2 font-bold">Profile details</h3>{([['School email', detail.email], ['First name', detail.first_name], ['Last name', detail.last_name], ['Program / strand', detail.program_strand], ['Year / grade level', detail.year_grade_level]] as const).map(([label, value]) => <p key={label} className="rounded-xl border border-[#0b5ea2]/15 p-3 text-sm"><span className="block text-xs opacity-70">{label}</span>{value || '—'}</p>)}</div>
       {canManage && detail.role !== 'Admin' ? <>
-        <div className="mt-6 border-t border-[#0b5ea2]/15 pt-5"><h3 className="font-bold">Account status</h3><p className="mt-1 text-sm">Deactivating prevents sign-in and moves this account to User Archive. All records remain available here.</p><div className="mt-3 flex flex-wrap gap-2">{(detail.account_status === 'Active' ? ['Deactivated'] : ['Active']).map(status => <button key={status} onClick={() => { setNextStatus(status as AccountStatus); setStatusReason('') }} className="rounded-xl border border-[#0b5ea2] px-3 py-2 text-sm font-bold">{status === 'Active' ? 'Reactivate' : 'Deactivate'}</button>)}</div>
+        <div className="mt-6 border-t border-[#0b5ea2]/15 pt-5"><h3 className="font-bold">Account status</h3><p className="mt-1 text-sm">Deactivating prevents sign-in. Find this account in Library users by selecting Deactivated under Account status. All records remain available here.</p><div className="mt-3 flex flex-wrap gap-2">{(detail.account_status === 'Active' ? ['Deactivated'] : ['Active']).map(status => <button key={status} onClick={() => { setNextStatus(status as AccountStatus); setStatusReason('') }} className="rounded-xl border border-[#0b5ea2] px-3 py-2 text-sm font-bold">{status === 'Active' ? 'Reactivate' : 'Deactivate'}</button>)}</div>
           {nextStatus && <div className="mt-4 rounded-xl border border-[#0b5ea2]/20 p-4"><p className="font-bold">Confirm {nextStatus.toLowerCase()} status</p><label className="mt-2 block text-xs font-bold">Audit reason<input className={`${field} mt-1`} value={statusReason} onChange={event => setStatusReason(event.target.value)} placeholder="Why is this status changing?" /></label><div className="mt-3 flex gap-2"><Button disabled={saving || statusReason.trim().length < 3} onClick={() => void saveStatus()}>Confirm</Button><Button variant="secondary" onClick={() => setNextStatus(null)}>Cancel</Button></div></div>}
         </div>
       </> : <p className="mt-5 text-sm">This account is view-only here. Account owners edit their own profile details.</p>}

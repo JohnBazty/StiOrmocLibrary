@@ -66,7 +66,7 @@ const userNav = (role: 'student' | 'faculty'): NavItem[] => {
 const adminNav: NavItem[] = [
   { label: 'Dashboard', to: '/admin/dashboard', icon: LayoutDashboard, section: 'Accounts' },
   { label: 'Users', to: '/admin/users', icon: Users },
-  { label: 'User archive', to: '/admin/user-archive', icon: Archive },
+  { label: 'Student QR roster', to: '/admin/student-qr-roster', icon: QrCode },
   { label: 'Clearance', to: '/admin/clearance', icon: ClipboardCheck },
   { label: 'Notifications', to: '/admin/notifications', icon: Bell },
 ]
@@ -92,7 +92,7 @@ const librarianNav: NavItem[] = [
   { label: 'Announcements', to: '/librarian/announcements', icon: Megaphone },
   { label: 'Account overview', to: '/librarian/accounts', icon: LayoutDashboard, section: 'Account administration' },
   { label: 'Users', to: '/librarian/users', icon: Users },
-  { label: 'User archive', to: '/librarian/user-archive', icon: Archive },
+  { label: 'Student QR roster', to: '/librarian/student-qr-roster', icon: QrCode },
   { label: 'Notifications', to: '/librarian/notifications', icon: Bell },
   { label: 'My profile', to: '/librarian/profile', icon: UserRound },
 ]

@@ -5,6 +5,8 @@ import { HttpError } from '../../core/http-error.ts'
 import { requireLibraryActor } from '../../core/library-permissions.ts'
 import { enrollmentEnabled, lockEnrollment, currentRosterSql } from './enrollment-policy.ts'
 import { parseEnrollmentFile } from './enrollment-parser.ts'
+import QRCode from 'qrcode'
+import { existingAttendancePayload, issueAttendanceCredential } from '../attendance/attendance-credential.service.ts'
 
 const fail = (message: string) => new HttpError(422, 'SEMESTER_INVALID', message)
 const object = (value: unknown) => value && typeof value === 'object' ? value as Record<string, unknown> : {}
@@ -81,6 +83,22 @@ async function closeDue(q: PoolConnection) {
   return Boolean(rows[0])
 }
 
+/** Runs in the import transaction, so a rejected import cannot invalidate passes. */
+export async function replenishRosterCredentials(q: PoolConnection, semesterId: number) {
+  const [previous] = await q.execute<RowDataPacket[]>(`SELECT DISTINCT u.user_id
+    FROM enrollment_roster_students r JOIN enrollment_roster_imports b USING(roster_id)
+    JOIN accounts a ON a.school_id=r.school_id AND a.role='Student'
+    JOIN users u ON u.user_id=a.user_id WHERE b.semester_id=?`, [semesterId])
+  for (const row of previous) {
+    await q.execute(`UPDATE attendance_qr_credentials SET credential_status='Revoked',revoked_at=NOW(),updated_at=NOW()
+      WHERE user_id=?`, [row.user_id])
+  }
+  const [current] = await q.execute<RowDataPacket[]>(`SELECT u.user_id FROM (${currentRosterSql}) r
+    JOIN accounts a ON a.school_id=r.school_id AND a.role='Student' AND a.account_status='Active'
+    JOIN users u ON u.user_id=a.user_id AND u.account_status='Active'`, [semesterId])
+  for (const row of current) await issueAttendanceCredential(q, Number(row.user_id))
+}
+
 export function createEnrollmentService(database: Pool = db, enabled = enrollmentEnabled) {
   async function run<T>(actor: number | null, write: boolean, work: (q: PoolConnection) => Promise<T>) {
     if (!enabled()) throw new HttpError(503,'ENROLLMENT_NOT_ENABLED','Student enrollment is not enabled for this installation.')
@@ -96,6 +114,37 @@ export function createEnrollmentService(database: Pool = db, enabled = enrollmen
     finally { q.release() }
   }
   return {
+    async qrSemesters(actor: number) {
+      return run(actor,false,async q => {
+        const [rows] = await q.execute<RowDataPacket[]>(`SELECT semester_id,academic_year,term_name,${status} AS status
+          FROM enrollment_semesters ORDER BY created_at DESC LIMIT 100`)
+        return rows
+      })
+    },
+    async qrRoster(actor: number, semesterId: unknown, pageValue: unknown, query: unknown) {
+      return run(actor,false,async q => {
+        const term = await semester(q,semesterId)
+        const page = pageValue === undefined ? 1 : id(pageValue)
+        const [rows] = await q.execute<RowDataPacket[]>(`SELECT r.school_id,r.student_name,r.program,r.year_level,
+          a.account_status,u.account_status AS user_status,c.user_id,c.public_id,c.credential_version,c.credential_status,c.secret_hash
+          FROM (${currentRosterSql}) r
+          LEFT JOIN accounts a ON a.school_id=r.school_id AND a.role='Student'
+          LEFT JOIN users u ON u.user_id=a.user_id
+          LEFT JOIN attendance_qr_credentials c ON c.user_id=u.user_id
+          WHERE STRPOS(LOWER(CONCAT_WS(' ',r.school_id,r.student_name)),LOWER(?))>0
+          ORDER BY r.school_id LIMIT 25 OFFSET ?`, [term.semester_id,text(query).slice(0,100),(page-1)*24])
+        const ended = Boolean(term.ended_at) || Boolean(term.started_at && new Date(term.scheduled_end_at) <= new Date())
+        const cards = await Promise.all(rows.slice(0,24).map(async row => {
+          const active = !ended && row.account_status === 'Active' && row.user_status === 'Active'
+          const pass = active ? existingAttendancePayload(row) : null
+          const qr_status = !row.account_status ? 'Registration needed' : !active ? 'Account inactive' : pass ? 'Ready' : 'Open My permanent library QR to prepare a pass'
+          return { school_id: String(row.school_id), student_name: String(row.student_name),
+            program: row.program as string | null, year_level: row.year_level as string | null, qr_status,
+            qr_image: pass ? await QRCode.toDataURL(pass,{ width: 256, margin: 4, errorCorrectionLevel: 'M', color: { dark: '#003399', light: '#FFFFFF' } }) : null }
+        }))
+        return { rows: cards, more: rows.length > 24 }
+      })
+    },
     async closeDue() { if (!enabled()) return false; return run(null,true,closeDue) },
     async overview(actor: number) {
       return run(actor,true,async q => {
@@ -175,7 +224,10 @@ export function createEnrollmentService(database: Pool = db, enabled = enrollmen
           (semester_id,source_date,complete,file_hash,file_name,student_count,uploaded_by) VALUES (?,?,?,?,?,?,?)
           ON CONFLICT (semester_id,file_hash,complete) DO NOTHING`,[term.semester_id,sourceDate,scope==='Complete',roster.fingerprint,
           basename(file.originalname).replace(/[\u0000-\u001f]/g,'').slice(0,240),roster.rows.length,actor])
-        if (!save.insertId) return { alreadyUploaded:true, students:roster.rows.length, missingEmail:roster.warnings }
+        if (!save.insertId) {
+          await replenishRosterCredentials(q,Number(term.semester_id))
+          return { alreadyUploaded:true, students:roster.rows.length, missingEmail:roster.warnings }
+        }
         await q.execute(`INSERT INTO enrollment_roster_students(roster_id,school_id,student_name,first_name,last_name,school_email,program,year_level)
           SELECT ?,r."schoolId",r.name,r."firstName",r."lastName",NULLIF(r.email,''),r.program,r."yearLevel"
           FROM jsonb_to_recordset(?::jsonb) r("schoolId" text,name text,"firstName" text,"lastName" text,email text,program text,"yearLevel" text)`,
@@ -184,6 +236,7 @@ export function createEnrollmentService(database: Pool = db, enabled = enrollmen
           GROUP BY LOWER(school_email) HAVING COUNT(*)>1 LIMIT 1`,[term.semester_id])
         if (duplicates.length) throw fail('Two Student IDs share the same school email in the resulting roster. Correct the file and upload it again.')
         if (term.started_at) await addRosterMembers(q,Number(term.semester_id))
+        await replenishRosterCredentials(q,Number(term.semester_id))
         return { alreadyUploaded:false, students:roster.rows.length, missingEmail:roster.warnings }
       })
     },

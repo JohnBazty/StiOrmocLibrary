@@ -12,6 +12,7 @@ import { BookRegisterPage } from './features/catalog/BookRegisterPage'
 import { AdminAttendancePage } from './features/attendance/AdminAttendancePage'
 import { StaffAttendancePage } from './features/attendance/StaffAttendancePage'
 import { AdminUsersPage } from './features/users/AdminUsersPage'
+import { StudentQrRosterPage } from './features/users/StudentQrRosterPage'
 import { EnrollmentPage } from './features/users/EnrollmentPage'
 import { CatalogManagementPage } from './features/catalog/CatalogManagementPage'
 import { CategoryManagementPage } from './features/categories/CategoryManagementPage'
@@ -94,7 +95,8 @@ export default function App() {
           <Route path="/admin/dashboard" element={<AdminAccountDashboardPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />
           <Route path="/admin/users/enrollment" element={<EnrollmentPage area="admin" />} />
-          <Route path="/admin/user-archive" element={<AdminUsersPage archive />} />
+          <Route path="/admin/student-qr-roster" element={<StudentQrRosterPage />} />
+          <Route path="/admin/user-archive" element={<Navigate to="/admin/student-qr-roster" replace />} />
           <Route path="/admin/approvals" element={<Navigate to="/admin/users" replace />} />
           <Route path="/admin/notifications" element={<AdminNotificationsPage />} />
           <Route path="/admin/clearance" element={<AdminClearancePage />} />
@@ -107,7 +109,8 @@ export default function App() {
           <Route path="/librarian/accounts" element={<AdminAccountDashboardPage />} />
           <Route path="/librarian/users" element={<AdminUsersPage />} />
           <Route path="/librarian/users/enrollment" element={<EnrollmentPage />} />
-          <Route path="/librarian/user-archive" element={<AdminUsersPage archive />} />
+          <Route path="/librarian/student-qr-roster" element={<StudentQrRosterPage />} />
+          <Route path="/librarian/user-archive" element={<Navigate to="/librarian/student-qr-roster" replace />} />
           <Route path="/librarian/approvals" element={<Navigate to="/librarian/users" replace />} />
           <Route path="/librarian/notifications" element={<LibrarianNotificationsPage />} />
           <Route path="/librarian/catalog" element={<Navigate to="/librarian/maintenance" replace />} />

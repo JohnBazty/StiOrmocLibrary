@@ -23,6 +23,16 @@ function payload(publicId: string, secret: string) {
   return `${prefix}.${publicId}.${secret}`
 }
 
+/** Reconstruct an existing pass without issuing or restoring a revoked credential. */
+export function existingAttendancePayload(row: RowDataPacket): string | null {
+  if (row.credential_status !== 'Active') return null
+  const secret = credentialSecret(String(row.public_id), Number(row.user_id), Number(row.credential_version))
+  const stored = row.secret_hash as Buffer | undefined
+  const supplied = digest(secret)
+  return stored && stored.length === supplied.length && timingSafeEqual(stored, supplied)
+    ? payload(String(row.public_id), secret) : null
+}
+
 export function purposeAttendanceQr(base: string, purpose: AttendancePurpose, now = new Date()) {
   if (!attendancePurposes.includes(purpose)) throw new HttpError(422,'ATTENDANCE_PURPOSE_REQUIRED','Choose a valid visit purpose.')
   const parsed = parseAttendanceQr(base)
