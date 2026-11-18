@@ -54,7 +54,8 @@ export function RosterPreviewTable({ preview }: { preview: RosterPreview }) {
               <td className="min-w-36 p-2">
                 {row.errors.length > 0 && <p className="text-red-700 dark:text-red-300">{row.errors.join(' ')}</p>}
                 {row.warnings.length > 0 && <p className="text-amber-800 dark:text-amber-300">{row.warnings.join(' ')}</p>}
-                {!row.errors.length && !row.warnings.length && 'Ready'}
+                {row.status && <p>{row.status}</p>}
+                {!row.status && !row.errors.length && !row.warnings.length && 'Ready'}
               </td>
             </tr>)}
           </tbody>

@@ -5,7 +5,8 @@ import { SelectedFilePreview } from '../../components/SelectedFilePreview'
 import { enrollmentApi, EnrollmentError, type RosterPreview, type RowIssue, type Semester } from './enrollment-api'
 import { RosterPreviewTable } from './RosterPreviewTable'
 import { usersApi, type UserDetail } from './users-api'
-import { UnsavedGuard } from '../../components/UnsavedChanges'
+import { LateEnrollment } from './LateEnrollment'
+import { UnsavedGuard, confirmLeave } from '../../components/UnsavedChanges'
 
 const field='mt-1 block min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-950 dark:border-slate-600 dark:bg-slate-900 dark:text-white'
 const displayTime=(value:string|null)=>value?new Intl.DateTimeFormat('en-PH',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Manila'}).format(new Date(value)):'—'
@@ -15,6 +16,7 @@ const errorText=(error:unknown)=>error instanceof Error?error.message:'The actio
 export function EnrollmentPage({area='librarian'}:{area?:'admin'|'librarian'}) {
   const [terms,setTerms]=useState<Semester[]>([]),[loading,setLoading]=useState(true),[revision,setRevision]=useState(0)
   const [selected,setSelected]=useState<number|null>(null),[archive,setArchive]=useState(false),[editor,setEditor]=useState<'new'|'edit'|null>(null)
+  const [lateOpen,setLateOpen]=useState(false)
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('')
   useEffect(()=>{
     const controller=new AbortController()
@@ -24,7 +26,7 @@ export function EnrollmentPage({area='librarian'}:{area?:'admin'|'librarian'}) {
     return ()=>controller.abort()
   },[revision])
   const visible=terms.filter(term=>archive?term.status==='Ended':term.status!=='Ended')
-  const term=visible.find(t=>Number(t.semester_id)===selected)??visible[0]
+  const term=visible.find(t=>Number(t.semester_id)===selected)??visible.find(t=>t.status==='Active')??visible[0]
   const hasActive=terms.some(t=>t.status==='Active')
   function reload(){setRevision(v=>v+1)}
   async function transition(action:'start'|'end'){
@@ -40,8 +42,8 @@ export function EnrollmentPage({area='librarian'}:{area?:'admin'|'librarian'}) {
   return <div className="space-y-5 text-slate-950 dark:text-white">
     <PageHeader eyebrow="User management" title="Student enrollment" action={<Link className="rounded-xl border border-current/20 px-4 py-2 text-sm font-semibold" to={`/${area}/users`}>Back to users</Link>}/>
     <div className="flex flex-wrap gap-2" aria-label="Enrollment sections">
-      <Button variant={archive?'secondary':'primary'} onClick={()=>{setArchive(false);setEditor(null);setSelected(null)}}>Semesters</Button>
-      <Button variant={archive?'primary':'secondary'} onClick={()=>{setArchive(true);setEditor(null);setSelected(null)}}>Semester Archive</Button>
+      <Button variant={archive?'secondary':'primary'} onClick={()=>confirmLeave(()=>{setArchive(false);setEditor(null);setSelected(null);setLateOpen(false)})}>Semesters</Button>
+      <Button variant={archive?'primary':'secondary'} onClick={()=>confirmLeave(()=>{setArchive(true);setEditor(null);setSelected(null);setLateOpen(false)})}>Semester Archive</Button>
       {!archive&&<Button variant="secondary" onClick={()=>setEditor('new')}>+ Add Semester</Button>}
       <Button variant="ghost" onClick={reload}>Refresh</Button>
     </div>
@@ -53,7 +55,7 @@ export function EnrollmentPage({area='librarian'}:{area?:'admin'|'librarian'}) {
     {term&&<>
       <SectionCard className="space-y-4 p-5">
         <label className="block max-w-lg text-sm font-semibold">Choose semester
-          <select className={field} value={term.semester_id} onChange={e=>{setSelected(Number(e.target.value));setEditor(null)}}>
+          <select className={field} value={term.semester_id} onChange={e=>{confirmLeave(()=>{setSelected(Number(e.target.value));setEditor(null);setLateOpen(false)})}}>
             {visible.map(t=><option key={t.semester_id} value={t.semester_id}>{t.academic_year} · {t.term_name} · {t.status}</option>)}
           </select>
         </label>
@@ -62,7 +64,7 @@ export function EnrollmentPage({area='librarian'}:{area?:'admin'|'librarian'}) {
           <div><p className="font-semibold">Scheduled end</p><p>End of {term.end_date} (Philippine time)</p></div>
           <div><p className="font-semibold">{term.status==='Ended'?'Ended on':'Earliest manual end'}</p><p>{displayTime(term.ended_at??term.manual_end_at)}{term.end_kind? ` · ${term.end_kind}`:''}</p></div>
         </div>
-        {term.latest_roster?<p className="break-words text-sm">Latest upload: {term.latest_roster.file_name} · {term.latest_roster.student_count} rows · {term.latest_roster.complete?'Complete':'Partial'}</p>:<p className="text-sm">No roster uploaded yet.</p>}
+        {term.latest_roster?<p className="break-words text-sm">Latest entry: {term.latest_roster.source_kind==='LateEnrollmentForm'?'Entered by the library':term.latest_roster.file_name} · {term.latest_roster.student_count} rows · {term.latest_roster.complete?'Complete':'Partial'}</p>:<p className="text-sm">No roster uploaded yet.</p>}
         {term.status==='Draft'&&<div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={()=>setEditor('edit')}>Edit end dates</Button>
           <SemesterAction action="start" disabled={busy||hasActive||!term.has_complete} onConfirm={()=>transition('start')}/>
@@ -70,10 +72,12 @@ export function EnrollmentPage({area='librarian'}:{area?:'admin'|'librarian'}) {
           {!term.has_complete&&<p className="w-full text-sm">Upload the complete school roster to start this semester.</p>}
         </div>}
         {term.status==='Active'&&<div className="space-y-2">
+          <Button onClick={()=>setLateOpen(true)}>Add late students</Button>
           {!term.can_end&&<p className="text-sm">Can be ended from {displayTime(term.manual_end_at)}. Refresh when that time arrives.</p>}
           <SemesterAction action="end" disabled={busy||!term.can_end} count={Number(term.active_accounts)} onConfirm={()=>transition('end')}/>
         </div>}
       </SectionCard>
+      {term.status==='Active'&&lateOpen&&<LateEnrollment key={term.semester_id} term={term} onSaved={()=>reload()} onClose={()=>confirmLeave(()=>setLateOpen(false))}/>}
       {term.status!=='Ended'&&<RosterUpload key={`upload-${term.semester_id}`} term={term} onSaved={message=>{setNotice(message);reload()}}/>}
       <RosterRecords key={`records-${term.semester_id}`} term={term} revision={revision}/>
     </>}
@@ -128,6 +132,7 @@ function RosterUpload({term,onSaved}:{term:Semester;onSaved:(message:string)=>vo
   const input=useRef<HTMLInputElement>(null)
   const [preview, setPreview] = useState<RosterPreview | null>(null)
   const [previewError, setPreviewError] = useState('')
+  const [replacementConfirmed,setReplacementConfirmed]=useState(false)
   const [retry, setRetry] = useState(0)
   function selectFile(next: File | null) {
     setPreview(null)
@@ -140,15 +145,16 @@ function RosterUpload({term,onSaved}:{term:Semester;onSaved:(message:string)=>vo
   useEffect(() => {
     if (!file) return
     const controller = new AbortController()
-    enrollmentApi.preview(term.semester_id, file, controller.signal)
+    setPreview(null);setPreviewError('');setReplacementConfirmed(false)
+    enrollmentApi.preview(term.semester_id, file, controller.signal, {sourceDate,scope})
       .then(result => { if (!controller.signal.aborted) setPreview(result) })
       .catch(error => { if (!controller.signal.aborted) setPreviewError(errorText(error)) })
     return () => controller.abort()
-  }, [file, term.semester_id, retry])
+  }, [file, term.semester_id, retry,sourceDate,scope])
   async function upload(e:FormEvent){
-    e.preventDefault();if(!file || !preview || preview.errorCount || busy)return;setError('');setIssues([]);setBusy(true)
+    e.preventDefault();if(!file || !preview || preview.errorCount || busy || (preview.replacement?.omittedStudentIds.length&&!replacementConfirmed))return;setError('');setIssues([]);setBusy(true)
     try{
-      const body=new FormData();body.set('roster',file);body.set('sourceDate',sourceDate);body.set('scope',scope)
+      const body=new FormData();body.set('roster',file);body.set('sourceDate',sourceDate);body.set('scope',scope);if(preview.replacement)body.set('replacementToken',preview.replacement.reviewToken)
       const result=await enrollmentApi.upload(term.semester_id,body)
       onSaved(result.alreadyUploaded?'This roster was already uploaded.':`Roster uploaded. ${result.students} student records accepted.${result.missingEmail?` ${result.missingEmail} need a school email before registration.`:''}`)
       remove()
@@ -170,8 +176,13 @@ function RosterUpload({term,onSaved}:{term:Semester;onSaved:(message:string)=>vo
       <p>{previewError}</p><Button type="button" variant="secondary" onClick={() => { setPreviewError(''); setRetry(value => value + 1) }}>Retry preview</Button>
     </div>}
     {preview && <RosterPreviewTable preview={preview}/>}
+    {!!preview?.replacement?.omittedStudentIds.length&&<div className="space-y-2 rounded-xl border border-current/30 p-3">
+      <p>This complete roster would remove these late students from the effective enrollment list.</p>
+      <p className="break-words">{preview.replacement.omittedStudentIds.join(', ')}</p>
+      <label className="flex items-start gap-2"><input type="checkbox" checked={replacementConfirmed} onChange={e=>setReplacementConfirmed(e.target.checked)}/>I reviewed these omissions and confirm the registrar replacement.</label>
+    </div>}
     {error&&<div role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-900"><p>{error}</p>{issues.length>0&&<ul className="mt-2 list-disc pl-5">{issues.map(issue=><li key={issue.sheet+issue.row}>{issue.sheet}, row {issue.row}: {issue.errors.join(' ')}</li>)}</ul>}</div>}
-    <Button disabled={busy||!preview||preview.errorCount>0} type="submit">{busy?'Importing…':'Import roster'}</Button>
+    <Button disabled={busy||!preview||preview.errorCount>0||Boolean(preview.replacement?.omittedStudentIds.length&&!replacementConfirmed)} type="submit">{busy?'Importing…':'Import roster'}</Button>
   </form></UnsavedGuard></SectionCard>
 }
 

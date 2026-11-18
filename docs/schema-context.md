@@ -10,7 +10,8 @@ Read-only checks confirm applied migrations `038_fine_policy_maintenance.sql` an
 `040_library_hours_8am_5pm.sql` with exact source checksum matches. The fine-policy
 change reason and three CHECK constraints exist; RLS is enabled and browser roles
 have no table access. Open days run 08:00–17:00; Sunday remains closed. Latest
-applied migration is **040**, **039** remains reserved, next unused is **041**.
+applied migration is **040**, **039** remains reserved, **041** is pending review,
+and the next unused number is **042**.
 No database writes or migration replays occurred during this integration.
 
 Historical integration behavior (reverted on 2026-11-18): Borrowing policies and Fine rules were available only to the Librarian. New fine
@@ -444,6 +445,12 @@ Applied Postgres migration `031_semester_enrollment.sql` supersedes draft 028. E
 - `enrollment_semester_members` preserves the account and Student ID for the Semester Archive. Closure saves each status and revokes sessions. The closure version identifies accounts eligible for restoration with a matching next-term roster and successful password and email verification.
 - `enrollment_signup_challenges` binds hashed codes and one-time password setup grants to the effective roster row. A returning student's login challenge is bound to the active semester via `login_otp_challenges.restoration_semester_id`. New enrollment tables use RLS and are accessible through the private API.
 - Enforcement requires Postgres and `ENROLLMENT_ROSTER_ENABLED=true`. The first semester start switches Student registration and new borrowing to the roster. The server enforces the cutoff even if a job is delayed. The existing job runner or a subsequent enrollment overview saves scheduled closure.
+
+### Late student enrollment — migration pending review (2026-11-18)
+
+- `041_late_student_enrollment.sql` adds `enrollment_roster_imports.source_kind`. Existing imports and ordinary uploads use `RosterUpload`. `LateEnrollmentForm` and `LateEnrollmentFile` must have `complete=false`. The existing private roster tables keep their privileges and row-level security.
+- Late enrollment writes the reviewed batch, new roster rows and matching active Student memberships using 031's existing lifecycle lock and tables. Regular complete uploads remain authoritative and require confirming which late students they would omit. A late confirmation date does not change date ordering for ordinary uploads.
+- Apply 041 before deploying the updated enrollment service. Latest recorded applied is 040 and the next unused number is 042. See [late enrollment plan](plans/2026-11-18-late-student-enrollment.md).
 
 ### Account setup without a review queue — local implementation
 

@@ -6,7 +6,7 @@ import { enrollmentApi, type Semester } from './enrollment-api'
 import { RosterPreviewTable } from './RosterPreviewTable'
 
 vi.mock('./enrollment-api', () => ({
-  enrollmentApi: { overview: vi.fn(), roster: vi.fn(), end: vi.fn(), preview: vi.fn() },
+  enrollmentApi: { overview: vi.fn(), roster: vi.fn(), end: vi.fn(), preview: vi.fn(), lateReview: vi.fn(), lateSave: vi.fn() },
 }))
 afterEach(cleanup)
 
@@ -80,4 +80,47 @@ it('blocks early closure and shows ended semesters and their records in the dedi
   expect(screen.getByText('Deactivated when semester ended')).toBeTruthy()
   expect(screen.getByRole('button', { name: 'View saved records' })).toBeTruthy()
   expect(screen.queryByRole('button', { name: 'End Semester' })).toBeNull()
+})
+
+it('opens late enrollment on the active semester ahead of a draft', async () => {
+  const term: Semester = { semester_id: 9, academic_year: '2026-2027', term_name: '1st Semester',
+    end_date: '2026-12-18', manual_end_at: '2026-12-18T16:00:00Z', scheduled_end_at: '2026-12-18T16:00:00Z',
+    started_at: '2026-11-09T01:00:00Z', ended_at: null, end_kind: null, status: 'Active', can_end: false,
+    has_complete: true, active_accounts: 0, latest_roster: null }
+  vi.mocked(enrollmentApi.overview).mockResolvedValue([{...term, semester_id: 10, status: 'Draft', started_at: null}, term])
+  vi.mocked(enrollmentApi.roster).mockResolvedValue({rows: [], more: false, archived: false})
+  render(<MemoryRouter><EnrollmentPage /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', {name: 'Add late students'}))
+  expect((screen.getByLabelText('Choose semester') as HTMLSelectElement).value).toBe('9')
+  expect(screen.getByRole('button', {name: 'Review additions'})).toBeTruthy()
+  expect(screen.queryByRole('button', {name: 'Add to semester roster'})).toBeNull()
+})
+
+it('shows an existing roster match using its review status', () => {
+  render(<RosterPreviewTable preview={{studentCount: 1, errorCount: 0, warningCount: 0,
+    sheets: [{name: 'Students', headings: ['Student ID'], rows: [
+      {row: 2, cells: ['TEST-1'], errors: [], warnings: [], status: 'Already on roster'}
+    ]}]}}/>)
+  expect(screen.getByText('Already on roster')).toBeTruthy()
+  expect(screen.queryByText('Ready')).toBeNull()
+})
+
+it('clears a failed preview when the corrected source date is reviewed', async () => {
+  vi.mocked(enrollmentApi.preview).mockRejectedValueOnce(new Error('Correct the source date.')).mockResolvedValue({
+    studentCount: 1, errorCount: 0, warningCount: 0,
+    sheets: [{name: 'Students', headings: ['Student ID'], rows: [{row: 2, cells: ['TEST-1'], errors: [], warnings: []}]}],
+  })
+  vi.mocked(enrollmentApi.overview).mockResolvedValue([{
+    semester_id: 1, academic_year: '2026-2027', term_name: '1st Semester', end_date: '2026-12-18',
+    manual_end_at: '2026-12-16T01:00:00Z', scheduled_end_at: '2026-12-18T16:00:00Z',
+    started_at: null, ended_at: null, end_kind: null, status: 'Draft', can_end: false,
+    has_complete: false, active_accounts: 0, latest_roster: null,
+  }])
+  vi.mocked(enrollmentApi.roster).mockResolvedValue({rows: [], more: false, archived: false})
+  render(<MemoryRouter><EnrollmentPage/></MemoryRouter>)
+  fireEvent.change(await screen.findByLabelText('Roster file'), {target: {files: [new File(['test'], 'test.csv')]}})
+  expect(await screen.findByText('Correct the source date.')).toBeTruthy()
+  fireEvent.change(screen.getByLabelText('Roster date'), {target: {value: '2026-11-18'}})
+  await screen.findByText('TEST-1')
+  expect(screen.queryByText('Correct the source date.')).toBeNull()
 })

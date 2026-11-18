@@ -30,11 +30,13 @@
 --   022_revision_phase4_attendance.sql        — attendance policy, events, scan receipts and checkout provenance (applied)
 --   023_revision_phase5_desk_circulation.sql   — in-library use and deduplicated desk confirmations (applied)
 --   024_revision_phase5_reading_materials.sql  — native physical thesis links for in-library use (applied)
--- Latest applied migration: 036_sign_in_hardening.sql (on PR #19's branch).
+-- Latest recorded applied migration: 040_library_hours_8am_5pm.sql (2026-11-18).
 -- 034_job_runner_hardening.sql (job table RLS in the repo, open-loan cursor index) was applied 2026-11-11.
 -- 033_rename_system_brand.sql is pending review. 035 is reserved by PR #20, not applied.
 -- 037_book_register.sql (register columns, per-copy cost) was applied 2026-11-13 from feat/book-register, for Ethan's test.
--- Next unused number: 040 (`038_fine_policy_maintenance.sql` applied 2026-11-18 from feat/fines-maintenance; `039` reserved for the mobile refresh token).
+-- 038_fine_policy_maintenance.sql applied 2026-11-18. 039 is reserved for the mobile refresh token.
+-- 041_late_student_enrollment.sql adds private roster source tracking. Pending review.
+-- Next unused number: 042.
 -- 031_semester_enrollment.sql supersedes the removed, unapplied 028 draft.
 -- Preserve the original bytes of applied files. The 003 source still needs checksum reconciliation.
 -- See docs/main-branch-integration.md for the live ledger audit.

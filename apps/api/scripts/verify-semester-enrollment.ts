@@ -86,10 +86,11 @@ const password = 'FakeFixturePass123'
 
 let created = false
 try {
-  const [base, roles, qr, loginDdl, enrollment, events, recoveryDdl, devicesDdl] = await Promise.all([
+  const [base, roles, qr, loginDdl, enrollment, events, recoveryDdl, devicesDdl, lateEnrollment] = await Promise.all([
     file('001_from_baseline.sql'), file('015_phase6_registration_roles.sql'), file('005_main_product_gapfill.sql'),
     file('029_october16_revisions.sql'), file('031_semester_enrollment.sql'),
     file('011_phase2_user_management.sql'), file('020_revision_phase1_password_recovery.sql'), file('032_login_devices.sql'),
+    file('041_late_student_enrollment.sql'),
   ])
   await connection.execute(`CREATE SCHEMA ${schema}`)
   created = true
@@ -108,6 +109,7 @@ try {
     ]
     await q.execute(fixtures.join('\n'))
     await q.execute(enrollment)
+    await q.execute(lateEnrollment)
     await q.execute(devicesDdl)
     await q.execute(`WITH inserted AS (
       INSERT INTO roles(role_name) VALUES ('Librarian'),('Staff'),('Library Staff'),('Faculty'),('Student') RETURNING role_id,role_name
@@ -141,7 +143,7 @@ try {
   await assert.rejects(service.saveSemester(staff, setup), { status: 403 })
   const { semesterId } = await service.saveSemester(library, setup)
   const { semesterId: nextId } = await service.saveSemester(library, { ...setup, termName: '2nd Semester' })
-  const scope = { sourceDate, scope: 'Complete' }
+  const scope = { sourceDate: manilaDate(time - 86_400_000), scope: 'Complete' }
   await assert.rejects(service.start(library, semesterId), { code: 'SEMESTER_INVALID' })
   await assert.rejects(service.upload(library, semesterId, csv(newStudent, newStudent), scope), { code: 'ROSTER_ROWS_INVALID' })
   const workbook = new ExcelJS.Workbook()
@@ -182,14 +184,92 @@ try {
   assert.equal((await enrollmentDecision(pool, '00000001', 'Student')).allowed, false)
   assert.equal((await enrollmentDecision(pool, 'QA-FAC', 'Faculty')).allowed, true)
 
+  const late = { schoolId: '00000901', firstName: 'QA Late', lastName: 'Student', program: 'BSIT', yearLevel: '1Y',
+    email: 'late-fixture@ormoc.sti.edu.ph', sourceDate }
+  const lateRow = [late.schoolId, `${late.firstName} ${late.lastName}`, late.program, late.yearLevel, late.email]
+  const noEmail = ['00000902', 'QA Missing Email', 'BSIT', '1Y', '']
+  const excelStudent = ['00000903', 'QA Excel Student', 'BSIT', '1Y', 'excel-late-fixture@ormoc.sti.edu.ph']
+  const confirmed = { confirmed: true }
+  await assert.rejects(service.reviewLateEnrollment(staff, semesterId, undefined, late), { status: 403 })
+  await assert.rejects(service.reviewLateEnrollment(library, nextId, undefined, late), { code: 'LATE_ENROLLMENT_CLOSED' })
+  await assert.rejects(service.reviewLateEnrollment(library, semesterId, undefined, { ...late, complete: true }), { code: 'SEMESTER_INVALID' })
+  const otherAccount = await service.reviewLateEnrollment(library, semesterId, undefined, { ...late, email: newStudent[4] })
+  assert.equal(otherAccount.errorCount, 1)
+  const facultyCollision = await service.reviewLateEnrollment(library, semesterId, undefined, { ...late, schoolId: 'QA-FAC' })
+  assert.equal(facultyCollision.errorCount, 1)
+  const existingEmail = await service.reviewLateEnrollment(library, semesterId, undefined, { ...late, email: 'staff-fixture@ormoc.sti.edu.ph' })
+  assert.equal(existingEmail.errorCount, 1)
+  await assert.rejects(service.reviewLateEnrollment(library, semesterId, {
+    originalname: 'wrong-term.csv',
+    buffer: Buffer.from(`${header.join(',')},Semester\n${lateRow.join(',')},2nd Semester`),
+  }, { sourceDate }).then(result => {
+    assert.equal(result.errorCount, 1)
+    return service.saveLateEnrollment(library, semesterId, {
+      originalname: 'wrong-term.csv',
+      buffer: Buffer.from(`${header.join(',')},Semester\n${lateRow.join(',')},2nd Semester`),
+    }, { sourceDate, reviewToken: result.reviewToken, ...confirmed })
+  }), { code: 'ROSTER_ROWS_INVALID' })
+
+  const firstLateReview = await service.reviewLateEnrollment(library, semesterId, undefined, late)
+  assert.equal(firstLateReview.added, 1)
+  assert.equal(firstLateReview.errorCount, 0)
+  assert.equal(firstLateReview.sheets[0].rows[0].cells[0], late.schoolId)
+  await assert.rejects(service.saveLateEnrollment(library, semesterId, undefined, { ...late, reviewToken: firstLateReview.reviewToken }),
+    { code: 'ENROLLMENT_CONFIRMATION_REQUIRED' })
+  const afterReview = { ...late, schoolId: '00000904', email: 'other-late-fixture@ormoc.sti.edu.ph' }
+  await assert.rejects(service.saveLateEnrollment(library, semesterId, undefined, { ...afterReview, ...confirmed, reviewToken: firstLateReview.reviewToken }),
+    { code: 'ENROLLMENT_REVIEW_CHANGED' })
+  const firstLateSave = { ...late, ...confirmed, reviewToken: firstLateReview.reviewToken }
+  const simultaneous = await Promise.all([
+    service.saveLateEnrollment(library, semesterId, undefined, firstLateSave),
+    service.saveLateEnrollment(library, semesterId, undefined, firstLateSave),
+  ])
+  assert.deepEqual(simultaneous.map(item => item.added).sort(), [0, 1])
+  assert.equal((await service.overview(library)).find(term => Number(term.semester_id) === semesterId)?.latest_roster.source_kind, 'LateEnrollmentForm')
+
+  const lateWorkbook = new ExcelJS.Workbook()
+  lateWorkbook.addWorksheet('Late').addRows([header, excelStudent])
+  const lateExcel = { originalname: 'late.xlsx', buffer: Buffer.from(await lateWorkbook.xlsx.writeBuffer()) }
+  const staleReview = await service.reviewLateEnrollment(library, semesterId, lateExcel, { sourceDate })
+  const mixedLate = csv(lateRow, noEmail)
+  const mixedReview = await service.reviewLateEnrollment(library, semesterId, mixedLate, { sourceDate })
+  assert.equal(mixedReview.alreadyListed, 1)
+  assert.equal(mixedReview.sheets[0].rows[0].status, 'Already on roster')
+  assert.deepEqual(await service.saveLateEnrollment(library, semesterId, mixedLate, { sourceDate, ...confirmed, reviewToken: mixedReview.reviewToken }), {
+    added: 1, alreadyListed: 1, missingEmail: 1, missingEmailStudentIds: [noEmail[0]],
+  })
+  await assert.rejects(service.saveLateEnrollment(library, semesterId, lateExcel, { sourceDate, ...confirmed, reviewToken: staleReview.reviewToken }),
+    { code: 'ENROLLMENT_REVIEW_CHANGED' })
+  const xlsxReview = await service.reviewLateEnrollment(library, semesterId, lateExcel, { sourceDate })
+  assert.equal((await service.saveLateEnrollment(library, semesterId, lateExcel, { sourceDate, ...confirmed, reviewToken: xlsxReview.reviewToken })).added, 1)
+  assert.equal((await enrollmentDecision(pool, noEmail[0], 'Student')).allowed, true)
+  assert.equal((await enrollmentDecision(pool, newStudent[0], 'Student')).allowed, true)
+  assert.equal(Number((await row('SELECT COUNT(*) n FROM accounts')).n), 4)
+
+  const completeReplacement = csv(newStudent, restrictedStudent, missingEmail, lateRow, noEmail)
+  const replacementReview = await service.preview(library, semesterId, completeReplacement, scope)
+  assert.deepEqual(replacementReview.replacement?.omittedStudentIds, [excelStudent[0]])
+  await assert.rejects(service.upload(library, semesterId, completeReplacement, scope), { code: 'ENROLLMENT_REVIEW_CHANGED' })
+  await service.upload(library, semesterId, completeReplacement, { ...scope, replacementToken: replacementReview.replacement?.reviewToken })
+  assert.equal((await enrollmentDecision(pool, excelStudent[0], 'Student')).allowed, false)
+  assert.equal((await enrollmentDecision(pool, late.schoolId, 'Student')).allowed, true)
+  const reconfirmed = await service.reviewLateEnrollment(library, semesterId, lateExcel, { sourceDate })
+  assert.equal((await service.saveLateEnrollment(library, semesterId, lateExcel, { sourceDate, ...confirmed, reviewToken: reconfirmed.reviewToken })).added, 1)
+  assert.equal(Number((await row("SELECT COUNT(*) n FROM enrollment_roster_imports WHERE source_kind='LateEnrollmentFile'")).n), 3)
+
   const deliveries: { email: string; code: string }[] = []
   const sender = async (email: string, code: string) => { deliveries.push({ email, code }) }
   const signup = createRosterRegistration(pool, sender)
-  for (const school_id of ['00000001', '00000456', '00000789']) {
+  for (const school_id of ['00000001', '00000456', '00000789', noEmail[0]]) {
     const result = await signup.begin({ school_id })
     assert.deepEqual(Object.keys(result), ['challengeId'])
   }
   assert.equal(deliveries.length, 0)
+  const lateChallenge = await signup.begin({ school_id: late.schoolId })
+  assert.equal(deliveries.at(-1)?.email, late.email)
+  const lateGrant = await signup.verify({ challenge_id: lateChallenge.challengeId, code: deliveries.pop()?.code })
+  assert.deepEqual(await signup.complete({ challenge_id: lateChallenge.challengeId, grant: lateGrant.grant, password, confirm_password: password }),
+    { schoolId: late.schoolId, status: 'Active' })
   const { challengeId } = await signup.begin({ school_id: newStudent[0], school_email: 'ignored@example.invalid' })
   assert.equal(deliveries[0].email, newStudent[4])
   await assert.rejects(signup.verify({ challenge_id: challengeId, code: deliveries[0].code === '000000' ? '000001' : '000000' }), { code: 'ROSTER_CODE_INVALID' })
@@ -240,6 +320,7 @@ try {
   await pool.execute(`UPDATE enrollment_semesters SET started_at=clock_timestamp()-interval '2 days',
     manual_end_at=clock_timestamp()-interval '1 minute',scheduled_end_at=clock_timestamp()-interval '1 second'
     WHERE semester_id=?`, [semesterId])
+  await assert.rejects(service.saveLateEnrollment(library, semesterId, undefined, firstLateSave), { code: 'LATE_ENROLLMENT_CLOSED' })
   assert.equal(await semesterAccessEnded(pool, Number(student.account_id)), true)
   assert.equal(await service.closeDue(), true)
   assert.equal(await service.closeDue(), false)
@@ -250,14 +331,20 @@ try {
   assert.equal(archive.archived, true)
   assert.equal(archive.rows[0].closed_status, 'Deactivated')
   assert.equal(archive.rows[0].deactivated_at_end, true)
+  const archivedLate = await service.roster(library, semesterId, 1, late.schoolId)
+  assert.equal(archivedLate.rows[0].closed_status, 'Deactivated')
+  assert.equal(archivedLate.rows[0].deactivated_at_end, true)
   assert.deepEqual(await row('SELECT * FROM loan_fixture'), loan)
   assert.equal((await row("SELECT account_status FROM accounts WHERE role='Faculty'")).account_status, 'Active')
   await assert.rejects(security.login(credentials), { code: 'ACCOUNT_DEACTIVATED' })
 
-  const nextRoster = csv(newStudent, restrictedStudent)
+  const nextRoster = csv(restrictedStudent)
   await service.upload(library, nextId, nextRoster, { ...scope, scope: 'Partial' })
   assert.equal((await service.upload(library, nextId, nextRoster, scope)).alreadyUploaded, false)
   await service.start(library, nextId)
+  const returningRow = csv(newStudent)
+  const returningLate = await service.reviewLateEnrollment(library, nextId, returningRow, { sourceDate })
+  assert.equal((await service.saveLateEnrollment(library, nextId, returningRow, { sourceDate, ...confirmed, reviewToken: returningLate.reviewToken })).added, 1)
   loginTime += 61_000
   await pool.execute("UPDATE accounts SET password_hash=? WHERE school_id='00000456'", [await bcrypt.hash(password, 4)])
   await assert.rejects(security.login({ ...credentials, school_id: restrictedStudent[0] }), { code: 'ACCOUNT_DEACTIVATED' })
@@ -276,6 +363,7 @@ try {
   await pool.execute("UPDATE enrollment_semesters SET started_at=clock_timestamp()-interval '2 minutes',manual_end_at=clock_timestamp()-interval '1 minute' WHERE semester_id=?", [nextId])
   await service.end(library, nextId)
   await service.end(library, nextId)
+  await assert.rejects(service.reviewLateEnrollment(library, nextId, undefined, late), { code: 'LATE_ENROLLMENT_CLOSED' })
   assert.equal((await row('SELECT end_kind FROM enrollment_semesters WHERE semester_id=?', [nextId])).end_kind, 'Manual')
   assert.equal(Number((await row('SELECT COUNT(*) n FROM enrollment_semester_members WHERE account_id=?', [student.account_id])).n), 2)
   const provisioned = await createStaffAccount(library, {

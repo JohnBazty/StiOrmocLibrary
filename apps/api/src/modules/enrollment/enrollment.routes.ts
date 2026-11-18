@@ -21,12 +21,16 @@ export function createEnrollmentRouter(service=enrollmentService) {
   router.get('/semesters/:id/roster',run((req,actor)=>service.roster(actor,req.params.id,req.query.page,req.query.q)))
   router.post('/semesters/:id/roster/preview',upload.single('roster'),run((req,actor)=>{
     if(!req.file)throw new HttpError(422,'ENROLLMENT_FILE_REQUIRED','Choose a CSV or Excel roster.')
-    return service.preview(actor,req.params.id,req.file)
+    return service.preview(actor,req.params.id,req.file,req.body)
   }))
   router.post('/semesters/:id/roster',upload.single('roster'),run((req,actor)=>{
     if(!req.file)throw new HttpError(422,'ENROLLMENT_FILE_REQUIRED','Choose a CSV or Excel roster.')
     return service.upload(actor,req.params.id,req.file,req.body)
   }))
+  router.post('/semesters/:id/late-enrollment/review',upload.single('roster'),
+    run((req,actor)=>service.reviewLateEnrollment(actor,req.params.id,req.file,req.body)))
+  router.post('/semesters/:id/late-enrollment',upload.single('roster'),
+    run((req,actor)=>service.saveLateEnrollment(actor,req.params.id,req.file,req.body)))
   return router
 }
 export const enrollmentRouter=createEnrollmentRouter()
