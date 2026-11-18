@@ -64,3 +64,12 @@ it('links Librarians to the borrowing policy editor',()=>{
   render(<MemoryRouter initialEntries={['/librarian/dashboard']}><ThemeProvider><Routes><Route element={<PortalLayout role="librarian"/>}><Route path="/librarian/dashboard" element={<h1>Dashboard content</h1>}/></Route></Routes></ThemeProvider></MemoryRouter>)
   expect(screen.getByRole('link',{name:'Borrowing policies'}).getAttribute('href')).toBe('/librarian/borrowing-policies')
 })
+it('shows the Fine rules entry to Librarians only',()=>{
+  vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({success:true,data:{unreadCount:0}}))))
+  const view=(role:'librarian'|'staff',path:string)=>render(<MemoryRouter initialEntries={[path]}><ThemeProvider><Routes><Route element={<PortalLayout role={role}/>}><Route path={path} element={<h1>Content</h1>}/></Route></Routes></ThemeProvider></MemoryRouter>)
+  view('librarian','/librarian/dashboard')
+  expect(screen.getByRole('link',{name:'Fine rules'}).getAttribute('href')).toBe('/librarian/fine-policies')
+  cleanup()
+  view('staff','/staff/dashboard')
+  expect(screen.queryByRole('link',{name:'Fine rules'})).toBeNull()
+})
