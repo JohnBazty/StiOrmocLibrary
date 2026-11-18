@@ -1,0 +1,71 @@
+{
+  "date": "2026-11-18",
+  "sourceCommit": "d3e5fe3663f11c4112088383ea37b5465d79667d",
+  "deploymentId": "dpl_9NVvcHmvT1ZiBzmoRQm9LALMEFaQ",
+  "canonicalUrl": "https://sti-ormoc-smart-library.vercel.app",
+  "deploymentUrl": "https://sti-ormoc-smart-library-2dpm8nekw-ssl19.vercel.app",
+  "checks": [
+    {
+      "path": "/",
+      "status": 200,
+      "passed": true,
+      "contentType": "text/html; charset=utf-8",
+      "title": "STI College Ormoc Integrated Library Management System",
+      "scripts": [
+        "/assets/index-DVwKLK7c.js"
+      ]
+    },
+    {
+      "path": "/login",
+      "status": 200,
+      "passed": true,
+      "contentType": "text/html; charset=utf-8"
+    },
+    {
+      "path": "/staff",
+      "status": 200,
+      "passed": true,
+      "contentType": "text/html; charset=utf-8"
+    },
+    {
+      "path": "/librarian/fine-policies",
+      "status": 200,
+      "passed": true,
+      "contentType": "text/html; charset=utf-8"
+    },
+    {
+      "path": "/librarian/borrowing-policies",
+      "status": 200,
+      "passed": true,
+      "contentType": "text/html; charset=utf-8"
+    },
+    {
+      "path": "/api/health",
+      "status": 200,
+      "passed": true,
+      "contentType": "application/json; charset=utf-8",
+      "healthy": true,
+      "schemaReady": true
+    },
+    {
+      "path": "/api/public/catalog/titles",
+      "status": 200,
+      "passed": true,
+      "contentType": "application/json; charset=utf-8",
+      "success": true
+    },
+    {
+      "path": "/api/v1/admin/fine-policies",
+      "status": 401,
+      "passed": true,
+      "contentType": "application/json; charset=utf-8"
+    },
+    {
+      "path": "/assets/index-DVwKLK7c.js",
+      "status": 200,
+      "passed": true,
+      "contentType": "application/javascript; charset=utf-8"
+    }
+  ],
+  "passed": true
+}

@@ -3,8 +3,32 @@
 | Field | Value |
 | --- | --- |
 | Date created | 2026-09-25 |
-| Date last updated | 2026-11-10 |
+| Date last updated | 2026-11-18 |
 | Status | `inprogress` |
+
+## Main branch release — November 18, 2026
+
+Deployed main source commit `d3e5fe3663f11c4112088383ea37b5465d79667d` to
+Vercel Production as `dpl_9NVvcHmvT1ZiBzmoRQm9LALMEFaQ` using a clean Git archive.
+The deployment includes the resolved fines and borrowing-policy integration.
+Existing Production environment variables were reused; local environment files
+and temporary artifacts were excluded. No database migration or test writes ran.
+
+Built the production candidate without changing the public alias, checked database
+health, catalog reads, page routing, and the Fine rules authentication boundary,
+then promoted it to <https://sti-ormoc-smart-library.vercel.app>. The prior release
+was `dpl_6VS6DpgeoHtMXbnRhVkqGpeUacHG`.
+
+Nine unauthenticated public checks passed after promotion: home, sign-in, staff
+sign-in, Fine rules and borrowing-policy deep links, API/database schema health,
+public catalog, expected HTTP 401 for the protected Fine rules API, and the deployed
+JavaScript asset. These checks verify routing and read-only API availability;
+signed-in write workflows were not repeated. Before deployment, the merged source
+passed 517 API and 383 frontend tests, type checks, and production build.
+See [release evidence](releases/2026-11-18-main-vercel-deployment.json).
+
+Historical deployment limitations below describe earlier releases. This entry
+records this deployment's checked scope; it does not re-audit scheduled job setup.
 
 ## Why
 
@@ -109,6 +133,7 @@ Deployment `dpl_HdKxDuSyxfFWZkNSFguAEsvuA1fU` replaced `dpl_6H2Foy8G6mjmLm6GUUAN
 
 | Date | Change |
 | --- | --- |
+| 2026-11-18 | Deployed main d3e5fe3 to Production, verified the candidate, promoted the public alias, and passed nine unauthenticated live checks. |
 | 2026-11-11 | Aligned the active localhost preview with the saved production source and enrollment/device settings; preserved unrelated local work and payment commits. Build, authentication tests and eight local/live route comparisons passed without publishing. |
 | 2026-09-25 | Started Vercel deployment configuration following the completed historical database cutover. |
 | 2026-09-25 | Deployed the Vite website and compiled Express API; verified Supabase health and production registration/login. Kept status in progress for worker scheduling and durable file storage. |
