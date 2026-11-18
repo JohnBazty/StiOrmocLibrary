@@ -130,7 +130,7 @@ test('user portal rejects staff credentials without revealing the stored role', 
     (error: unknown) => error instanceof HttpError
       && error.status === 401
       && error.code === 'INVALID_CREDENTIALS'
-      && error.message === 'Wrong credentials.',
+      && error.message === 'Your ID or password is wrong.',
   )
 })
 

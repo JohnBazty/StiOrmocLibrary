@@ -65,7 +65,7 @@ describe('authentication pages', () => {
   it('provides a shared personnel login without a selectable role', () => {
     render(<MemoryRouter><ThemeProvider><AdminLoginPage /></ThemeProvider></MemoryRouter>)
     expect(screen.getByRole('heading', { name: 'Library Personnel Login' })).toBeTruthy()
-    expect(screen.getByLabelText('School ID')).toBeTruthy()
+    expect(screen.getByLabelText('Personnel ID')).toBeTruthy()
     expect(screen.queryByLabelText('Login as')).toBeNull()
     expect(screen.getByRole('button', { name: 'Log In' })).toBeTruthy()
   })

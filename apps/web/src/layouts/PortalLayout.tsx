@@ -123,6 +123,7 @@ function Sidebar({ role, open, onClose }: { role: Role; open: boolean; onClose: 
 
 export function PortalLayout({ role }: { role: Role }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [confirmSignOut, setConfirmSignOut] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
   const [signOutError, setSignOutError] = useState('')
   const location = useLocation()
@@ -160,6 +161,7 @@ export function PortalLayout({ role }: { role: Role }) {
     setSignOutError('')
     try {
       await logout()
+      setConfirmSignOut(false)
       navigate('/login', { replace: true })
     } catch {
       setSignOutError('Sign out could not be confirmed. Check your connection and try again.')
@@ -176,7 +178,7 @@ export function PortalLayout({ role }: { role: Role }) {
           <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
             {role === 'admin' ? <button onClick={() => navigate('/admin/notifications')} aria-label="Notifications" className="rounded-xl border border-[#0b5ea2]/15 bg-white p-2.5 text-[#0b5ea2]/65 transition hover:bg-[#0b5ea2]/5 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><Bell size={18} /></button> : <NotificationShortcut path={`/${role}/notifications`} />}
-            <button onClick={signOut} disabled={signingOut} aria-label="Sign out" title="Sign out" className="rounded-xl border border-[#0b5ea2]/15 bg-white p-2.5 text-[#0b5ea2]/65 transition hover:bg-[#0b5ea2]/5 disabled:opacity-50 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><LogOut size={18} /></button>
+            <button onClick={() => { setSignOutError(''); setConfirmSignOut(true) }} disabled={signingOut} aria-label="Sign out" title="Sign out" className="rounded-xl border border-[#0b5ea2]/15 bg-white p-2.5 text-[#0b5ea2]/65 transition hover:bg-[#0b5ea2]/5 disabled:opacity-50 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><LogOut size={18} /></button>
           </div>
         </header>
         {signOutError && <p role="alert" className="m-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">{signOutError}</p>}
@@ -184,6 +186,7 @@ export function PortalLayout({ role }: { role: Role }) {
         {role !== 'admin' ? <AttendanceConfirmationPrompt /> : null}
         {role !== 'admin' ? <AttendanceFab role={role} /> : null}
       </div>
+      {confirmSignOut ? <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#0b5ea2]/80 p-4" onKeyDown={(event) => { if (event.key === 'Escape' && !signingOut) setConfirmSignOut(false) }}><div role="alertdialog" aria-modal="true" aria-labelledby="sign-out-title" aria-describedby="sign-out-text" className="w-full max-w-md rounded-2xl bg-white p-5 text-[#0b5ea2] shadow-2xl dark:bg-[#001a4d] dark:text-white"><h2 id="sign-out-title" className="text-lg font-black">Are you sure you want to sign out?</h2><p id="sign-out-text" className="mt-2 text-sm opacity-75">You will need to sign in again to use this portal.</p><div className="mt-5 flex flex-wrap justify-end gap-2"><button type="button" disabled={signingOut} onClick={() => setConfirmSignOut(false)} className="h-11 rounded-xl border border-[#0b5ea2] px-4 text-sm font-bold disabled:opacity-50 dark:border-white/40">Cancel</button><button type="button" disabled={signingOut} onClick={() => void signOut()} className="h-11 rounded-xl bg-[#0b5ea2] px-4 text-sm font-bold text-white disabled:opacity-50">{signingOut ? 'Signing out…' : 'Sign out now'}</button></div></div></div> : null}
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CategoryManagementPage } from './CategoryManagementPage'
 
@@ -6,6 +7,10 @@ const api = vi.hoisted(() => ({ list: vi.fn(), listShelves: vi.fn(), create: vi.
 vi.mock('./category-api', () => ({ categoryApi: api, CategoryApiError: class extends Error {} }))
 const catalog = vi.hoisted(() => ({ searchSubjects: vi.fn() }))
 vi.mock('../catalog/catalog-api', () => ({ catalogApi: catalog }))
+
+function renderPage() {
+  return render(<MemoryRouter><CategoryManagementPage /></MemoryRouter>)
+}
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -16,7 +21,7 @@ describe('CategoryManagementPage', () => {
     api.list.mockResolvedValueOnce([category]).mockResolvedValue([moved])
     api.listShelves.mockResolvedValue([{ id: 1, label: 'Shelf A', columnCount: 3, rowCount: 5 }, { id: 2, label: 'Shelf B', columnCount: 2, rowCount: 3 }])
     api.update.mockResolvedValue({ ...moved, bookCopies: 3, researchCopies: 1 })
-    render(<CategoryManagementPage />)
+    renderPage()
     await screen.findByText('Programming')
     fireEvent.click(screen.getByLabelText('Actions for Programming'))
     expect(screen.queryByRole('button', { name: /Edit shelf location/i })).toBeNull()
@@ -42,7 +47,7 @@ describe('CategoryManagementPage', () => {
     api.list.mockResolvedValue([{ categoryId: 8, categoryName: 'Science', description: '', shelfLocation: 'Shelf A', shelfColumn: 1, shelfRow: 1, totalBooksCount: 0, totalThesisCount: 0, createdAt: '2026-09-25T00:00:00Z', updatedAt: null }])
     api.listShelves.mockResolvedValue([{ id: 1, label: 'Shelf A', columnCount: 3, rowCount: 5 }])
     api.update.mockRejectedValueOnce(new Error('Shelf location could not be saved.'))
-    render(<CategoryManagementPage />)
+    renderPage()
     await screen.findByText('Science')
     fireEvent.click(screen.getByLabelText('Actions for Science'))
     fireEvent.click(screen.getByRole('button', { name: 'Edit Science' }))
@@ -57,7 +62,7 @@ describe('CategoryManagementPage', () => {
   it('does not show managed shelves on the categories screen', async () => {
     api.list.mockResolvedValue([])
     api.listShelves.mockResolvedValue([{ id: 1, label: 'Shelf A', status: 'Active', columnCount: 1, rowCount: 1 }])
-    render(<CategoryManagementPage />)
+    renderPage()
     await screen.findByText('No categories have been registered.')
     expect(screen.queryByRole('heading', { name: 'Managed shelves' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Add shelf' })).toBeNull()
@@ -66,7 +71,7 @@ describe('CategoryManagementPage', () => {
   it('shows the canonical category details and keeps assigned categories out of direct delete', async () => {
     api.list.mockResolvedValue([{ categoryId: 7, categoryName: 'Programming', description: 'Software development books', shelfLocation: 'Shelf A', shelfColumn: 1, shelfRow: 2, totalBooksCount: 3, totalThesisCount: 0, createdAt: '2026-09-25T00:00:00.000Z', updatedAt: null }])
     api.listShelves.mockResolvedValue([{ id: 1, label: 'Shelf A', columnCount: 3, rowCount: 5 }])
-    render(<CategoryManagementPage />)
+    renderPage()
     expect(await screen.findByText('Software development books')).toBeTruthy()
     expect(screen.getByText('7')).toBeTruthy()
     expect(screen.getByText('Sep 25, 2026')).toBeTruthy()
@@ -81,7 +86,7 @@ describe('CategoryManagementPage', () => {
     api.list.mockResolvedValue([{ categoryId: 7, categoryName: 'Computer programming', description: '', shelfLocation: 'Shelf A', shelfColumn: 1, shelfRow: 1, totalBooksCount: 0, totalThesisCount: 0, createdAt: '2026-09-25T00:00:00Z', updatedAt: null }])
     api.listShelves.mockResolvedValue([{ id: 1, label: 'Shelf A', columnCount: 3, rowCount: 5 }])
     catalog.searchSubjects.mockResolvedValue({ subjects: [{ name: 'Computer programming', workCount: 6386 }, { name: 'Object-oriented programming', workCount: 1967 }] })
-    render(<CategoryManagementPage />)
+    renderPage()
     await screen.findAllByText('Computer programming')
     fireEvent.change(screen.getByLabelText('Subject to search'), { target: { value: 'programming' } })
     fireEvent.click(screen.getByRole('button', { name: 'Search subjects' }))

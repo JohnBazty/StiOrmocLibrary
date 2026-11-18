@@ -4,11 +4,13 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { PortalLayout } from './PortalLayout'
 import { ThemeProvider } from '../features/theme/ThemeProvider'
 import { NotificationCenterPage } from '../features/notifications/NotificationCenterPage'
+const authApi = vi.hoisted(() => ({ logout: vi.fn(async () => undefined) }))
+vi.mock('../features/auth/auth-api', () => authApi)
 vi.mock('../features/auth/auth-storage',()=>({getCsrfToken:()=>'fixture-token',getCurrentIdentity:()=>({role:'Student',schoolId:'EXAMPLE',userId:999001})}))
 vi.mock('../features/auth/SessionActivity',()=>({SessionActivity:()=>null}))
 vi.mock('./SidebarAccountCard',()=>({SidebarAccountCard:()=>null}))
 vi.mock('../features/attendance/AttendanceFab',()=>({AttendanceFab:()=>null}))
-afterEach(()=>{cleanup();vi.unstubAllGlobals()})
+afterEach(()=>{cleanup();vi.clearAllMocks();vi.unstubAllGlobals()})
 it('uses grouped navigation for the combined Librarian/Admin workspace',()=>{
  vi.stubGlobal('fetch',vi.fn(async()=>Response.json({success:true,data:{unreadCount:0,request:null}})))
  render(<MemoryRouter initialEntries={['/librarian/funds']}><ThemeProvider><Routes><Route element={<PortalLayout role="librarian"/>}><Route path="/librarian/funds" element={<h1>Funds content</h1>}/></Route></Routes></ThemeProvider></MemoryRouter>)
@@ -74,4 +76,18 @@ it('keeps the collection and requests separate and offers three profile sections
   expect(screen.getByRole('link',{name:'Requests & reservations'}).getAttribute('href')).toBe('/student/reservations')
   fireEvent.click(screen.getByText('My profile',{exact:true}))
   for(const [name,section] of [['Personal details','personal'],['School details','school'],['Profile photo','photo']])expect(screen.getByRole('link',{name}).getAttribute('href')).toBe(`/student/profile?section=${section}`)
+})
+it.each(['student', 'faculty', 'admin', 'librarian', 'staff'] as const)('asks before signing out of the %s portal', async (role) => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ success: true, data: { unreadCount: 0, request: null } })))
+  render(<MemoryRouter initialEntries={[`/${role}/dashboard`]}><ThemeProvider><Routes><Route element={<PortalLayout role={role} />}><Route path={`/${role}/dashboard`} element={<h1>Workspace content</h1>} /><Route path="/login" element={<h1>Login page</h1>} /></Route></Routes></ThemeProvider></MemoryRouter>)
+  fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+  const dialog = screen.getByRole('alertdialog', { name: 'Are you sure you want to sign out?' })
+  expect(authApi.logout).not.toHaveBeenCalled()
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+  expect(screen.queryByRole('alertdialog')).toBeNull()
+  expect(authApi.logout).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Sign out now' }))
+  await waitFor(() => expect(authApi.logout).toHaveBeenCalledTimes(1))
+  expect(await screen.findByRole('heading', { name: 'Login page' })).toBeTruthy()
 })

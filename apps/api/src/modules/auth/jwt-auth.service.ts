@@ -13,7 +13,7 @@ export type JwtRole = 'Admin' | 'Librarian' | 'Student' | 'Faculty' | 'Staff'
 const JWT_ROLES = new Set<JwtRole>(['Admin', 'Librarian', 'Student', 'Faculty', 'Staff'])
 const USER_PORTAL_ROLES = new Set<JwtRole>(['Student', 'Faculty'])
 const STAFF_PORTAL_ROLES = new Set<JwtRole>(['Admin', 'Librarian', 'Staff'])
-const INVALID_CREDENTIALS_MESSAGE = 'Wrong credentials.'
+const INVALID_CREDENTIALS_MESSAGE = 'Your ID or password is wrong.'
 
 export function dashboardForJwtRole(role: JwtRole) {
   return ({ Admin: '/admin/dashboard', Librarian: '/librarian/dashboard', Faculty: '/faculty/dashboard', Student: '/student/dashboard', Staff: '/staff/dashboard' })[role]
@@ -45,7 +45,7 @@ export function createJwtAuthService(database: Pool = db, passwordHasher = bcryp
     )
     const user = rows[0]
     const matches = await passwordHasher.compare(validation.password, user?.password_hash ?? DUMMY_BCRYPT_HASH)
-    if (!user || !matches) throw new HttpError(401, 'INVALID_CREDENTIALS', 'Wrong credentials.')
+    if (!user || !matches) throw new HttpError(401, 'INVALID_CREDENTIALS', INVALID_CREDENTIALS_MESSAGE)
     if (!user.account_id || user.account_status !== 'Active' || user.linked_status !== 'Active') {
       if (!(verifyOnly && user.user_role==='Student' && user.account_id && await restorationEvidence(database,Number(user.account_id),String(user.school_id),String(user.email??''))))
         throw new HttpError(403, 'ACCOUNT_DEACTIVATED', 'Your account is currently deactivated. Please coordinate with the campus librarian.')

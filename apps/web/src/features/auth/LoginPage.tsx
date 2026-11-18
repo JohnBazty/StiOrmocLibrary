@@ -54,7 +54,7 @@ export function LoginPage({ popup = false }: { popup?: boolean }) {
     else if (state?.registrationSuccess || new URLSearchParams(location.search).has('registered')) {
       if (state?.registrationSchoolId) setSchoolId(state.registrationSchoolId)
       setMessageError(false)
-      setMessage('Your school email is verified. Sign in using your School ID and password.')
+      setMessage('Your school email is verified. Sign in using your Student Number or Faculty ID and password.')
     } else if (state?.rememberedExpired) { setMessage('Your remembered sign-in has expired. Sign in again to continue.')
     } else if (state?.sessionExpired) { setMessage('Your sign-in has ended. Sign in to continue.')
     } else if (state?.passwordChanged) { setMessageError(false); setMessage(state.passwordChanged)
@@ -116,8 +116,8 @@ export function LoginPage({ popup = false }: { popup?: boolean }) {
     event.preventDefault()
     const normalizedSchoolId = schoolId.trim().toUpperCase()
     const nextErrors: Record<string, string> = {}
-    if (!normalizedSchoolId) nextErrors.school_id = 'School ID is required.'
-    else if (!SCHOOL_ID.test(normalizedSchoolId)) nextErrors.school_id = 'Enter a valid STI school ID.'
+    if (!normalizedSchoolId) nextErrors.school_id = 'Student Number or Faculty ID is required.'
+    else if (!SCHOOL_ID.test(normalizedSchoolId)) nextErrors.school_id = 'Enter a valid Student Number or Faculty ID.'
     if (!password) nextErrors.password = 'Password is required.'
     if (Object.keys(nextErrors).length) { setErrors(nextErrors); setMessage(''); return }
 

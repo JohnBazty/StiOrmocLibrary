@@ -26,7 +26,7 @@ function lockoutDatabase() {
   return { rows, database: { execute, getConnection: async () => connection } as never }
 }
 let clock = Date.UTC(2026, 10, 11, 1, 0, 0)
-const wrongPassword = async () => { throw new HttpError(401, 'INVALID_CREDENTIALS', 'Wrong credentials.') }
+const wrongPassword = async () => { throw new HttpError(401, 'INVALID_CREDENTIALS', 'Your ID or password is wrong.') }
 const attempt = (service: ReturnType<typeof createLoginSecurityService>) =>
   service.login({ school_id: '02000123456', password: 'wrong-password' }).then(() => null, (error: HttpError) => error)
 
@@ -42,9 +42,9 @@ test('five wrong passwords pause sign-in for 15 minutes with the remaining-attem
   const replies = []
   for (let index = 0; index < 4; index++) replies.push(await attempt(service))
   assert.deepEqual(replies.map(error => [error?.status, error?.code]), Array(4).fill([401, 'INVALID_CREDENTIALS']))
-  assert.equal(replies[0]?.message, 'Wrong credentials.')
-  assert.equal(replies[1]?.message, 'Wrong credentials. 3 attempts remaining.')
-  assert.equal(replies[3]?.message, 'Wrong credentials. 1 attempts remaining.')
+  assert.equal(replies[0]?.message, 'Your ID or password is wrong.')
+  assert.equal(replies[1]?.message, 'Your ID or password is wrong. 3 attempts remaining.')
+  assert.equal(replies[3]?.message, 'Your ID or password is wrong. 1 attempts remaining.')
   const fifth = await attempt(service)
   assert.equal(fifth?.status, 429)
   assert.equal(fifth?.code, 'LOGIN_PAUSED')

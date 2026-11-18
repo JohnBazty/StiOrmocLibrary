@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Button, SectionCard } from '../../components/ui'
 import { categoryApi } from '../categories/category-api'
 import { ShelfEditor } from './ShelfEditor'
@@ -6,10 +7,19 @@ import { useManagedShelves } from './useManagedShelves'
 import type { ManagedShelf, ShelfPayload } from './types'
 
 export function ShelfManagement({ shelves, onRefresh }: { shelves: ManagedShelf[]; onRefresh: () => Promise<void> }) {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [editor, setEditor] = useState<{ shelf: ManagedShelf | null } | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  useEffect(() => {
+    if (searchParams.get('addShelf') !== '1') return
+    setError('')
+    setEditor({ shelf: null })
+    const params = new URLSearchParams(searchParams)
+    params.delete('addShelf')
+    setSearchParams(params, { replace: true })
+  }, [searchParams, setSearchParams])
   async function save(payload: ShelfPayload) {
     if (!editor) return
     setSaving(true); setError(''); setNotice('')

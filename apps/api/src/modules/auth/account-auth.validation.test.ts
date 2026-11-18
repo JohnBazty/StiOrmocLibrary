@@ -42,7 +42,7 @@ test('login validator requires a supported portal, school ID, and password', () 
   const invalid = validateRoleLogin({ portal: 'Visitor', school_id: '', password: '' })
   assert.equal(invalid.isValid, false)
   assert.ok(invalid.errors.portal)
-  assert.ok(invalid.errors.school_id)
+  assert.equal(invalid.errors.school_id, 'ID is required.')
   assert.ok(invalid.errors.password)
 })
 

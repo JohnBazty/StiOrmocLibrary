@@ -1,10 +1,12 @@
 import { createPortal } from 'react-dom'
 import { type FormEvent, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { X } from 'lucide-react'
 import type { Category, CategoryPayload } from './types'
 import { confirmLeave, UnsavedGuard } from '../../components/UnsavedChanges'
 
 const inputClass = 'h-11 w-full rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] px-3 text-sm text-[#0b5ea2] outline-none focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/10'
+export const addShelfFromCategoryPath = '/librarian/maintenance?tab=locations&addShelf=1'
 
 export function CreateCategoryModal({ category, initialName, shelves, saving, errors, onSubmit, onClose }: {
   category: Category | null
@@ -16,6 +18,7 @@ export function CreateCategoryModal({ category, initialName, shelves, saving, er
   onSubmit: (payload: CategoryPayload) => Promise<void>
   onClose: () => void
 }) {
+  const navigate = useNavigate()
   const currentShelfIsManaged = !category || shelves.some((shelf) => shelf.label === category.shelfLocation)
   const [shelfLabel, setShelfLabel] = useState(currentShelfIsManaged ? category?.shelfLocation ?? '' : '')
   const selectedShelf = shelves.find((shelf) => shelf.label === shelfLabel)
@@ -38,7 +41,7 @@ export function CreateCategoryModal({ category, initialName, shelves, saving, er
         <p className="text-sm text-[#0b5ea2]/70">Shelf, column, and row are the default for new copies. Existing copies keep their assigned locations.</p>
         <label className="block"><span className="mb-1.5 block text-xs font-bold uppercase text-[#0b5ea2]">Category name *</span><input name="categoryName" required maxLength={100} defaultValue={category?.categoryName ?? initialName ?? ''} className={inputClass} />{errors.categoryName ? <span className="mt-1 block text-xs font-semibold text-[#0b5ea2]">{errors.categoryName}</span> : null}</label>
         <label className="block"><span className="mb-1.5 block text-xs font-bold uppercase text-[#0b5ea2]">Description</span><textarea name="description" maxLength={255} rows={3} defaultValue={category?.description ?? ''} placeholder="What books belong in this category?" className={`${inputClass} min-h-20 py-2`} />{errors.description ? <span className="mt-1 block text-xs font-semibold text-[#0b5ea2]">{errors.description}</span> : null}</label>
-        <label className="block"><span className="mb-1.5 block text-xs font-bold uppercase text-[#0b5ea2]">Shelf location *</span><select name="shelfLocation" required value={shelfLabel} onChange={(event) => setShelfLabel(event.target.value)} className={inputClass}><option value="">{currentShelfIsManaged ? 'Select a shelf' : `Current location “${category?.shelfLocation}” is not managed — select a shelf`}</option>{shelves.map((shelf) => <option key={shelf.id} value={shelf.label}>{shelf.label}</option>)}</select>{errors.shelfLocation ? <span className="mt-1 block text-xs font-semibold text-[#0b5ea2]">{errors.shelfLocation}</span> : null}{!shelves.length ? <span className="mt-1 block text-xs text-[#0b5ea2]/65">Add a shelf in Maintenance → Locations first.</span> : null}</label>
+        <label className="block"><span className="mb-1.5 block text-xs font-bold uppercase text-[#0b5ea2]">Shelf location *</span><select name="shelfLocation" required value={shelfLabel} onChange={(event) => setShelfLabel(event.target.value)} className={inputClass}><option value="">{currentShelfIsManaged ? 'Select a shelf' : `Current location “${category?.shelfLocation}” is not managed — select a shelf`}</option>{shelves.map((shelf) => <option key={shelf.id} value={shelf.label}>{shelf.label}</option>)}</select>{errors.shelfLocation ? <span className="mt-1 block text-xs font-semibold text-[#0b5ea2]">{errors.shelfLocation}</span> : null}<p className="mt-1 text-xs text-[#0b5ea2]/65">{!shelves.length ? 'No managed shelves yet. ' : 'Need another shelf? '}<Link to={addShelfFromCategoryPath} className="font-semibold underline" onClick={(event) => { event.preventDefault(); confirmLeave(() => { onClose(); navigate(addShelfFromCategoryPath) }) }}>Add a new shelf</Link></p></label>
         {selectedShelf ? <div key={selectedShelf.id} className="grid gap-3 sm:grid-cols-2"><label className="block"><span className="mb-1.5 block text-xs font-bold uppercase text-[#0b5ea2]">Column *</span><select name="shelfColumn" defaultValue={category?.shelfLocation===shelfLabel?category.shelfColumn:1} className={inputClass}>{Array.from({length:selectedShelf.columnCount},(_,index)=><option key={index+1} value={index+1}>Column {index+1}</option>)}</select>{errors.shelfColumn?<span className="mt-1 block text-xs font-semibold">{errors.shelfColumn}</span>:null}</label><label className="block"><span className="mb-1.5 block text-xs font-bold uppercase text-[#0b5ea2]">Row *</span><select name="shelfRow" defaultValue={category?.shelfLocation===shelfLabel?category.shelfRow:1} className={inputClass}>{Array.from({length:selectedShelf.rowCount},(_,index)=><option key={index+1} value={index+1}>Row {index+1}</option>)}</select>{errors.shelfRow?<span className="mt-1 block text-xs font-semibold">{errors.shelfRow}</span>:null}</label></div>:null}
         <div className="flex justify-end gap-2 pt-2"><button type="button" disabled={saving} onClick={() => confirmLeave(onClose)} className="h-11 rounded-xl border border-[#0b5ea2] bg-[#FFFFFF] px-5 font-bold text-[#0b5ea2] disabled:opacity-40">Cancel</button><button disabled={saving || !selectedShelf} type="submit" className="h-11 rounded-xl bg-[#0b5ea2] px-5 font-bold text-[#FFFFFF] disabled:opacity-50">{saving ? 'Saving…' : 'Save category'}</button></div>
       </form></UnsavedGuard>
