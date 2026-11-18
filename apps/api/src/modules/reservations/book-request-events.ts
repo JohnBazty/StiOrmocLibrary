@@ -32,16 +32,19 @@ export async function recordRequestEvent(q: PoolConnection, id: number, status: 
     LEFT JOIN titles t ON t.title_id=r.book_title_id WHERE r.reservation_id=?`, [id])
   const r = rows[0]
   if (!r) return
+  // No conflict target: works with the 025 and the 041 uniqueness rule, so deploy order does not matter.
   const [insert] = await q.execute<ResultSetHeader>(`INSERT INTO book_request_events
     (reservation_id,event_status,physical_copy_id,occurred_at,pickup_deadline) VALUES (?,?,?,?,?)
-    ON CONFLICT (reservation_id,event_status) DO NOTHING`, [id,status,r.assigned_physical_copy_id,now,r.deadline])
+    ON CONFLICT DO NOTHING`, [id,status,r.assigned_physical_copy_id,now,r.deadline])
   if (!insert.affectedRows) return
+  // A hold set aside again on another copy (after a lost copy) must notify again.
+  const copyKey = r.assigned_physical_copy_id && (status === 'preparing' || status === 'ready_for_pickup') ? `:copy:${r.assigned_physical_copy_id}` : ''
   const cart = r.request_kind === 'CartHandover'
   const label = cart && status === 'received' ? 'Cart sent to library desk' : requestLabels[status]
   const instructions = cart && status === 'received' ? 'Bring the selected book to the library desk. Your loan starts only when staff confirm handover.' : requestInstructions(status, r.deadline ? new Date(r.deadline) : null)
   const body = `${r.title}: ${instructions}`
   if (!cart && (status === 'ready_for_pickup' || status === 'expired')) {
-    await notifyLibrarians(q, {key:`reservation:${id}:${status}`, title: status === 'expired' ? 'Reservation pickup expired' : 'Reservation ready for pickup',
+    await notifyLibrarians(q, {key:`reservation:${id}:${status}${copyKey}`, title: status === 'expired' ? 'Reservation pickup expired' : 'Reservation ready for pickup',
       body:`${r.title}: request ${id} is ${status === 'expired' ? 'expired. Review the released copy and waiting list.' : 'ready for collection.'}`,
       sourceId:id,personUserId:Number(r.user_id),path:`/librarian/reservations?status=${status}`,type:'Reservation Arrival'})
   }
@@ -49,7 +52,7 @@ export async function recordRequestEvent(q: PoolConnection, id: number, status: 
   await q.execute(`INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,
     action_path,priority,dedupe_key,scheduled_for,delivered_at) VALUES (?,?,?,'Reservation Arrival','Reservation',?,?,?, ?,NOW(),NOW())
     ON CONFLICT(user_id,dedupe_key) DO NOTHING`, [r.user_id,label,body,id,path,
-      status === 'ready_for_pickup' ? 'Urgent' : 'Important',`book-request:${id}:${status}`])
+      status === 'ready_for_pickup' ? 'Urgent' : 'Important',`book-request:${id}:${status}${copyKey}`])
   if (r.email) {
     let deliveryStatus = 'Pending'
     try { requireVerificationSender(String(r.email)) } catch { deliveryStatus = 'Disabled' }
