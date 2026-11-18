@@ -11,6 +11,7 @@ import { requireCatalogManager } from '../catalog/catalog.rbac.ts'
 import { changeAvailability, changeCondition, exportCsv, exportPdf, getCopies, getSummary, scanBarcode } from './inventory.controller.ts'
 import { validateAvailabilityMutation, validateConditionMutation } from './inventory.validation.ts'
 import { thesisInventoryRouter } from './thesis-inventory.routes.ts'
+import { stocktakeRouter } from './stocktake.routes.ts'
 import { inventoryActor } from './inventory-actor.ts'
 
 export const inventoryRouter = Router()
@@ -23,6 +24,7 @@ inventoryRouter.patch('/copies/availability', requireCatalogManager, validateAva
 inventoryRouter.get('/export.csv', requireCatalogManager, exportCsv)
 inventoryRouter.get('/export.pdf', requireCatalogManager, exportPdf)
 inventoryRouter.use('/thesis', thesisInventoryRouter)
+inventoryRouter.use('/stocktakes', stocktakeRouter)
 
 inventoryRouter.patch('/copies/:copyId', requireCatalogManager, async (request, response, next) => {
   try {

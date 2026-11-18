@@ -9,10 +9,15 @@ function isLoopback(request: Request) {
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1'
 }
 
+// A reverse proxy makes the socket look local, so also refuse forwarded requests and non-local Host headers.
+function isDirectLocalRequest(request: Request) {
+  return isLoopback(request) && !request.get('x-forwarded-for') && ['localhost', '127.0.0.1', '::1', '[::1]'].includes(request.hostname)
+}
+
 inventoryPreviewRouter.post('/session', (request, response, next) => {
   if (!env.inventoryPreviewEnabled || env.isProduction) return response.status(404).json({ success: false, message: 'Route not found.' })
   const origin = request.get('origin')
-  if (!isLoopback(request) || (origin && origin !== env.webOrigin)) {
+  if (!isDirectLocalRequest(request) || (origin && origin !== env.webOrigin)) {
     return response.status(403).json({ success: false, code: 'INVENTORY_PREVIEW_FORBIDDEN', message: 'Inventory preview is available only from the configured local web application.' })
   }
   return request.session.regenerate((error) => {
@@ -21,7 +26,7 @@ inventoryPreviewRouter.post('/session', (request, response, next) => {
       id: null,
       fullName: 'admin_authenticated',
       email: '',
-      role: 'System Administrator',
+      role: 'Librarian',
     }
     request.session.csrfToken = createCsrfToken()
     request.session.lastActivity = Date.now()
@@ -30,7 +35,7 @@ inventoryPreviewRouter.post('/session', (request, response, next) => {
       return response.json({
         success: true,
         data: {
-          session: { user_id: null, username: 'admin_authenticated', role: 'Admin', school_id: '' },
+          session: { user_id: null, username: 'admin_authenticated', role: 'Librarian', school_id: '' },
           csrf_token: request.session.csrfToken,
         },
       })
