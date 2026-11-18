@@ -13,6 +13,7 @@ vi.mock('./book-catalog-api', () => ({ fetchBookCatalog: vi.fn(), fetchBookOverv
 vi.mock('./book-cart-api', () => ({ fetchCartState: vi.fn() }))
 vi.mock('./enhanced-catalog-api', () => ({ enhancedCatalog: { options: vi.fn(), search: vi.fn(), detail: vi.fn() } }))
 vi.mock('./CatalogDetailsPanel', () => ({ catalogInput: 'field', CatalogDetailsPanel: () => <p>Digital files and catalog metadata</p> }))
+vi.mock('../reservations/borrowing-schedule-api', () => ({ borrowingScheduleApi: { dates: async () => ({ available: true, dates: ['2026-11-24'] }) }, pickupDateLabel: (date: string) => date }))
 
 const record = { id: 42, title: 'Example book', kind: 'Book', author: 'Alex Writer', coverImagePath: '/cover.jpg', available: 1, copyCount: 1, copies: [], programs: [], courses: [], files: [] }
 const overview = { titleId: 42, title: 'Example book', author: 'Alex Writer', isbn: '123', publisher: 'Publisher', publicationYear: 2024, categoryName: 'Computing', shelfLocation: 'A1', callNumber: '001', currentAvailabilityStatus: 'Available', availableCopiesCount: 1, totalCopiesCount: 1, reservableMaterialId: 1, previewBarcode: 'BOOK1' }
@@ -195,4 +196,22 @@ it('allows local selection with a clear notice if eligibility cannot be loaded',
   expect(readBookCart()).toHaveLength(1)
   expect(screen.getByText(/eligibility will be checked when you submit/i)).toBeTruthy()
   expect(reserveBookTitle).not.toHaveBeenCalled()
+})
+it.each([1,0])('opens the pickup-date form directly from the catalog calendar with %s available copies',async available=>{
+  vi.mocked(enhancedCatalog.search).mockResolvedValue({items:[{...record,available}],pagination:{page:1,limit:24,total:1}} as never)
+  setup('/student/library?q=Computing')
+  const calendar=await screen.findByRole('button',{name:'Schedule borrowing for Example book'})
+  expect(calendar.getAttribute('title')).toBe('Schedule borrowing')
+  fireEvent.click(calendar)
+  expect(await screen.findByLabelText('Preferred pickup date')).toBeTruthy()
+  expect(screen.getByTestId('location').textContent).toContain('q=Computing')
+  expect(readBookCart()).toHaveLength(0)
+  expect(reserveBookTitle).not.toHaveBeenCalled()
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button',{name:'Close'}))
+  expect(screen.getByTestId('location').textContent).toBe('/student/library?q=Computing')
+})
+it('does not offer scheduled borrowing for digital-only titles',async()=>{
+  vi.mocked(enhancedCatalog.search).mockResolvedValue({items:[{...record,copyCount:0}],pagination:{page:1,limit:24,total:1}} as never)
+  setup();await screen.findByRole('button',{name:'Digital only'})
+  expect(screen.queryByRole('button',{name:'Schedule borrowing for Example book'})).toBeNull()
 })

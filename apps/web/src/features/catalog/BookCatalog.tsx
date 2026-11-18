@@ -1,4 +1,4 @@
-import { RefreshCw, ShoppingBag, ListChecks } from 'lucide-react'
+import { CalendarDays, RefreshCw, ShoppingBag, ListChecks } from 'lucide-react'
 
 import { useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from '../../hooks/useLiveQuery'
@@ -73,13 +73,13 @@ export function BookCatalog() {
 
   const base = viewer.role === 'Faculty' ? '/faculty' : '/student'
 
-  function openBook(id: number) {
+  function openBook(id: number, schedule = false) {
 
     setError(''); setNotice('')
 
     const next = new URLSearchParams(params)
 
-    next.set('titleId', String(id)); setParams(next)
+    next.set('titleId', String(id)); if(schedule)next.set('schedule','1');else next.delete('schedule'); setParams(next)
 
   }
 
@@ -87,7 +87,7 @@ export function BookCatalog() {
 
     const next = new URLSearchParams(params)
 
-    next.delete('titleId'); next.delete('request'); setParams(next, { replace: true })
+    next.delete('titleId'); next.delete('request'); next.delete('schedule'); setParams(next, { replace: true })
 
   }
 
@@ -119,9 +119,9 @@ export function BookCatalog() {
 
   function bookAction(book: CatalogRecord) {
     const id = Number(book.id), selected = cartBooks.has(id), unavailable = Number(book.available) === 0
-    return <div className="space-y-2"><button onClick={() => { if (holdIfAlreadyActive(id, book.title)) return; setConfirmBook({ kind: unavailable ? 'reserve' : 'borrow', book }) }} disabled={Number(book.copyCount) === 0 || reservations.pending.has(id) || reservations.reserved.has(id) || (!unavailable && selected)} className="min-h-11 rounded-full bg-[#0b5ea2] px-3 py-2 text-white disabled:opacity-50">
+    return <div className="space-y-2"><div className="flex items-center gap-1.5"><button onClick={() => { if (holdIfAlreadyActive(id, book.title)) return; setConfirmBook({ kind: unavailable ? 'reserve' : 'borrow', book }) }} disabled={Number(book.copyCount) === 0 || reservations.pending.has(id) || reservations.reserved.has(id) || (!unavailable && selected)} className="min-h-11 min-w-0 flex-1 rounded-full bg-[#0b5ea2] px-2 py-2 text-sm text-white disabled:opacity-50">
       {Number(book.copyCount) === 0 ? 'Digital only' : reservations.reserved.has(id) ? 'Reserved' : reservations.pending.has(id) ? 'Reserving…' : unavailable ? 'Reserve book' : selected ? 'In cart' : 'Borrow book'}
-    </button>{reservations.errors.has(id) && <p role="alert" className="text-xs text-red-700">{reservations.errors.get(id)}</p>}</div>
+    </button>{Number(book.copyCount)>0?<button type="button" aria-label={`Schedule borrowing for ${book.title}`} title="Schedule borrowing" onClick={()=>{if(!holdIfAlreadyActive(id,book.title))openBook(id,true)}} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#0b5ea2]/25 text-[#0b5ea2] hover:bg-[#0b5ea2]/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0b5ea2]"><CalendarDays size={18} aria-hidden="true"/></button>:null}</div>{reservations.errors.has(id) && <p role="alert" className="text-xs text-red-700">{reservations.errors.get(id)}</p>}</div>
   }
 
   return <>
@@ -139,7 +139,7 @@ export function BookCatalog() {
 
     <PublicCatalogPage embedded refreshKey={refreshKey} onViewBook={openBook} renderBookAction={bookAction}/>
 
-    {selectedTitleId !== null && <BookOverview titleId={selectedTitleId} role={viewer.role} activeBookCount={viewerReady ? viewer.activeBookCount : 0} bookLimit={viewer.bookLimit} selectedBookCount={cart.length} alreadySelected={cartBooks.has(selectedTitleId)} alreadyReserved={reservations.reserved.has(selectedTitleId)} onAddToCart={selectBook} onReserve={book => void reserveBook(book)} requestDisabled={reservations.pending.has(selectedTitleId)} onClose={closeBook} requestError={reservations.errors.get(selectedTitleId) ?? error} requestNotice={notice}/>}
+    {selectedTitleId !== null && <BookOverview scheduleOnOpen={params.get('schedule')==='1'} titleId={selectedTitleId} role={viewer.role} activeBookCount={viewerReady ? viewer.activeBookCount : 0} bookLimit={viewer.bookLimit} selectedBookCount={cart.length} alreadySelected={cartBooks.has(selectedTitleId)} alreadyReserved={reservations.reserved.has(selectedTitleId)} onAddToCart={selectBook} onReserve={book => void reserveBook(book)} requestDisabled={reservations.pending.has(selectedTitleId)} onClose={closeBook} requestError={reservations.errors.get(selectedTitleId) ?? error} requestNotice={notice}/>}
     {confirmBook ? <ConfirmBookActionDialog kind={confirmBook.kind} title={confirmBook.book.title} onCancel={() => setConfirmBook(null)} onConfirm={() => { const choice = confirmBook; setConfirmBook(null); if (choice.kind === 'borrow') addBook(choice.book); else void reserveBook({ titleId: Number(choice.book.id), title: choice.book.title }) }} /> : null}
     {heldTitle ? <TitleAlreadyActiveDialog titles={[heldTitle]} onClose={() => setHeldTitle(null)} /> : null}
     {waitingTitle ? <div className="fixed inset-0 z-[130] flex items-center justify-center bg-[#0b5ea2]/60 p-4"><section role="dialog" aria-modal="true" aria-labelledby="waiting-list-title" className="w-full max-w-md rounded-2xl bg-white p-6 text-[#0b5ea2] shadow-2xl"><h2 id="waiting-list-title" className="font-display text-xl font-bold">On the waiting list</h2><p className="mt-3 text-sm leading-6">We will notify you when a copy of {waitingTitle} is ready.</p><div className="mt-5 flex justify-end"><button type="button" autoFocus onClick={() => setWaitingTitle(null)} className="h-11 rounded-xl bg-[#0b5ea2] px-5 text-sm font-bold text-white">OK</button></div></section></div> : null}

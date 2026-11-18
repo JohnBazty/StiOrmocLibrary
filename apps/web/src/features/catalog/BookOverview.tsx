@@ -12,6 +12,7 @@ import { ConfirmBookActionDialog } from './ConfirmBookActionDialog'
 import { ScheduleBorrowingForm } from '../reservations/ScheduleBorrowingForm'
 
 type Props = {
+  scheduleOnOpen?: boolean
   titleId: number
   role: AuthRole
   activeBookCount: number
@@ -32,7 +33,7 @@ function Metadata({ label, value }: { label: string; value: string | number | nu
   return <div className="rounded-xl border border-[#0b5ea2]/10 bg-[#FFFFFF] p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-[#0b5ea2]/55">{label}</dt><dd className="mt-1 text-sm font-semibold text-[#0b5ea2]">{value || 'Not recorded'}</dd></div>
 }
 
-export function BookOverview({ titleId, role, activeBookCount, bookLimit, selectedBookCount, alreadySelected, alreadyReserved = false, onAddToCart, onClose, onReserve, onRequest, requestDisabled = false, requestError, requestNotice }: Props) {
+export function BookOverview({ scheduleOnOpen = false, titleId, role, activeBookCount, bookLimit, selectedBookCount, alreadySelected, alreadyReserved = false, onAddToCart, onClose, onReserve, onRequest, requestDisabled = false, requestError, requestNotice }: Props) {
   const [book, setBook] = useState<BookCatalogItem | null>(null)
   const [error, setError] = useState('')
   const [citationVisible, setCitationVisible] = useState(false)
@@ -43,12 +44,13 @@ export function BookOverview({ titleId, role, activeBookCount, bookLimit, select
   useEffect(() => {
     const controller = new AbortController()
     setBook(null)
+    setScheduling(scheduleOnOpen)
     setError('')
     fetchBookOverview(titleId, controller.signal).then(setBook).catch((reason: unknown) => {
       if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Unable to load this book.')
     })
     return () => controller.abort()
-  }, [titleId])
+  }, [titleId, scheduleOnOpen])
 
   const citation = useMemo(() => book ? buildApaBookReference(book) : '', [book])
   const addToCart = () => {
@@ -84,6 +86,7 @@ export function BookOverview({ titleId, role, activeBookCount, bookLimit, select
           {error ? <div role="alert" className="mb-4 rounded-xl border border-[#0b5ea2] bg-[#FFF200] p-3 text-sm font-semibold text-[#0b5ea2]">{error}</div> : null}
           {!book && !error ? <div className="py-20 text-center text-sm font-semibold text-[#0b5ea2]">Loading book details…</div> : null}
           {book ? <>
+            {scheduleOnOpen && scheduling ? <><p className="font-bold text-[#0b5ea2]">{book.title}</p><ScheduleBorrowingForm key={titleId} titleId={titleId} title={book.title} role={role} onClose={()=>setScheduling(false)}/></> : null}
             <section className="rounded-2xl border border-[#0b5ea2]/15 bg-[#FFFFFF] p-5 sm:p-7">
               <div className="flex justify-center">
                 <BookCoverThumbnail
@@ -111,7 +114,7 @@ export function BookOverview({ titleId, role, activeBookCount, bookLimit, select
             </dl>
 
             <CatalogDetailsPanel titleId={book.titleId}/>
-            {['Student','Faculty'].includes(role)&&book.totalCopiesCount>0 ? scheduling?<ScheduleBorrowingForm key={titleId} titleId={titleId} title={book.title} role={role} onClose={()=>setScheduling(false)}/>:<button type="button" className="mt-5 min-h-11 rounded-xl border border-[#0b5ea2]/25 px-4 text-sm font-bold text-[#0b5ea2]" onClick={()=>setScheduling(true)}>Schedule borrowing</button>:null}
+            {['Student','Faculty'].includes(role)&&book.totalCopiesCount>0 ? scheduling? scheduleOnOpen ? null : <ScheduleBorrowingForm key={titleId} titleId={titleId} title={book.title} role={role} onClose={()=>setScheduling(false)}/>:<button type="button" className="mt-5 min-h-11 rounded-xl border border-[#0b5ea2]/25 px-4 text-sm font-bold text-[#0b5ea2]" onClick={()=>setScheduling(true)}>Schedule borrowing</button>:null}
             <section className="mt-5 rounded-2xl border border-[#0b5ea2]/10 p-4" aria-label="Individual book copies">
               <h3 className="font-bold text-[#0b5ea2]">Individual copies</h3>
               <div className="mt-3 space-y-2">{book.copies?.length ? book.copies.map(copy => <div key={copy.copyId} className="grid gap-1 rounded-xl border border-[#0b5ea2]/15 p-3 text-xs text-[#0b5ea2] sm:grid-cols-2"><strong>{copy.accessionNumber}</strong><span className="font-mono">{copy.barcode}</span><span>Availability: {copy.availability}</span><span>Condition: {copy.condition}</span><span className="sm:col-span-2">Shelf: {copy.shelf}</span></div>) : <p className="text-sm text-[#0b5ea2]/60">No active copies are recorded.</p>}</div>
