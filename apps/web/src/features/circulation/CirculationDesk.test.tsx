@@ -42,6 +42,17 @@ it('shows the assigned copy but blocks handover when attendance is missing',asyn
  await screen.findByText('Queued book');expect(screen.queryByRole('button',{name:'Confirm handover'})).toBeNull()
  expect(api.checkoutRequest).not.toHaveBeenCalled();expect(attendance.scan).not.toHaveBeenCalled()
 })
+it('explains a closed library and a missing check-in as one checkout notice',async()=>{
+ attendance.state.mockResolvedValue({...openState,state:'Closed',entryOpen:false,allowBorrowing:false})
+ api.requestPreview.mockResolvedValue({borrower:{...borrower,eligible:false,hasAttendance:false,blockers:['Check in at the library entrance before borrowing.','The library is not accepting borrowing at this time.']},preview:{copy:{id:42,title:'Queued book',barcode:'COPY-42',condition:'Good'},eligible:false,blockers:[]},reservationId:9,barcode:'COPY-42'})
+ render(<CirculationDesk onChanged={()=>{}} borrowerRequest={{reservationId:9,key:1}} />)
+ await screen.findByText('The library is closed. Checkout can continue when it opens.')
+ const alert = screen.getByRole('alert')
+ expect(alert.textContent).toContain('This checkout cannot be confirmed yet')
+ expect(alert.textContent).toContain('This borrower has no check-in for today.')
+ expect(screen.queryByText('The library is not accepting borrowing at this time.')).toBeNull()
+ expect(screen.queryByRole('button',{name:'Confirm handover'})).toBeNull()
+})
 const openState = { entryOpen: true, allowBorrowing: true, available: 20 }
 beforeEach(() => {
  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() })
@@ -151,7 +162,7 @@ describe('Quick circulation counter', () => {
  it.each([
   [{ ...openState, entryOpen: false }, 'Entry is closed'],
   [{ ...openState, available: 0 }, 'The library is at capacity.'],
-  [{ ...openState, allowBorrowing: false }, 'Borrowing entry is restricted'],
+  [{ ...openState, allowBorrowing: false }, 'Borrowing is turned off right now'],
  ])('preserves entry restrictions at the counter: %o', async (state, message) => {
   attendance.state.mockResolvedValue(state)
   api.borrower.mockResolvedValue({ ...borrower, eligible: false, hasAttendance: false, blockers: ['Check in first.'] })

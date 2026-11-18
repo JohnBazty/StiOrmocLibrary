@@ -1,4 +1,4 @@
-import { BookOpen, CheckCircle2, RotateCcw, UserRound } from 'lucide-react'
+import { BookOpen, CheckCircle2, CircleAlert, RotateCcw, UserRound } from 'lucide-react'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -11,6 +11,7 @@ import { DeskScanInput } from './DeskScanInput'
 import { CirculationReturnDialog } from './CirculationReturnDialog'
 
 import { attendanceApi, type OperationalState } from '../attendance/attendance-api'
+import { BORROWING_CLOSED, borrowingClosedMessage, checkoutBlockerLines } from './checkout-blockers'
 
 const when = (value: string) => new Date(value).toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' })
 
@@ -208,7 +209,8 @@ export function CirculationDesk({ onChanged, returnBarcode, borrowerRequest, onB
 
   useEffect(() => {
 
-    if (!payload || !borrower || borrower.hasAttendance !== false) return
+    const needsLibraryState = Boolean(borrower && (borrower.hasAttendance === false || borrower.blockers.includes(BORROWING_CLOSED)))
+    if (!needsLibraryState) return
 
     let active = true
 
@@ -220,7 +222,7 @@ export function CirculationDesk({ onChanged, returnBarcode, borrowerRequest, onB
 
     return () => { active = false }
 
-  }, [borrower?.user.userId, borrower?.hasAttendance, entryAttempt])
+  }, [borrower?.user.userId, borrower?.hasAttendance, borrower?.blockers, entryAttempt])
 
   useEffect(() => {
 
@@ -270,6 +272,7 @@ export function CirculationDesk({ onChanged, returnBarcode, borrowerRequest, onB
   }
 
   const visibleBlockers = borrower?.blockers.filter(blocker => !payload || borrower.hasAttendance !== false || blocker !== 'Check in at the library entrance before borrowing.') ?? []
+  const noticeLines = checkoutBlockerLines(visibleBlockers, entryState?.state)
 
   const entryAllowed = Boolean(entryState?.entryOpen && entryState.allowBorrowing && entryState.available > 0)
 
@@ -316,9 +319,9 @@ export function CirculationDesk({ onChanged, returnBarcode, borrowerRequest, onB
 
             </div>
 
-            {visibleBlockers.length ? <ul role="alert" className="auth-error mb-4 list-inside list-disc rounded-xl p-3 text-sm">{visibleBlockers.map(blocker => <li key={blocker}>{blocker}</li>)}</ul> : null}
+            {noticeLines.length ? <div role="alert" className="mb-4 flex items-start gap-3 rounded-xl p-4 text-sm"><CircleAlert className="mt-0.5 shrink-0" size={18} aria-hidden /><div><p className="font-semibold">This checkout cannot be confirmed yet</p><ul className="mt-1.5 list-disc space-y-1 pl-4">{noticeLines.map(line => <li key={line}>{line}</li>)}</ul></div></div> : null}
 
-            {borrower.hasAttendance === false && !payload ? <div className="mb-4 rounded-xl border border-[#0b5ea2]/15 p-4 text-sm">Record entry with the user's permanent QR at the attendance scanner, then <Button disabled={busy} variant="secondary" onClick={() => { if (pickupContext) void loadPickup(pickupContext) }}>Refresh pickup</Button>.</div> : borrower.hasAttendance === false ? <div className="mb-4 rounded-xl border border-[#0b5ea2]/15 p-4 dark:border-white/15"><p className="text-sm font-semibold">Attendance is not recorded yet.</p><p className="mt-1 text-xs opacity-65">{manual?"Record entry here after checking the borrower’s School ID.":"Use this QR to record entry here. No second scan is needed."}</p>{!entryState && !entryError ? <p role="status" className="mt-2 text-xs">Checking entry availability…</p> : null}{entryState && !entryAllowed ? <p className="mt-2 text-xs font-semibold">{!entryState.entryOpen ? 'Entry is closed for the current operating hours or closing cutoff.' : !entryState.allowBorrowing ? 'Borrowing entry is restricted at this time.' : 'The library is at capacity.'}</p> : null}{entryError ? <p role="alert" className="auth-error mt-2 rounded-xl p-2 text-xs">{entryError}</p> : null}<div className="mt-3 flex flex-wrap gap-2"><Button disabled={busy || !entryAllowed} onClick={() => void checkInHere()}>Check in here</Button>{!entryAllowed ? <Button variant="ghost" disabled={busy} onClick={() => setEntryAttempt(value => value + 1)}>Check availability again</Button> : null}</div></div> : null}
+            {borrower.hasAttendance === false && !payload ? <div className="mb-4 rounded-xl border border-[#0b5ea2]/15 p-4 text-sm">Record entry with the user's permanent QR at the attendance scanner, then <Button disabled={busy} variant="secondary" onClick={() => { if (pickupContext) void loadPickup(pickupContext) }}>Refresh pickup</Button>.</div> : borrower.hasAttendance === false ? <div className="mb-4 rounded-xl border border-[#0b5ea2]/15 p-4 dark:border-white/15"><p className="text-sm font-semibold">Attendance is not recorded yet.</p><p className="mt-1 text-xs opacity-65">{manual?"Record entry here after checking the borrower’s School ID.":"Use this QR to record entry here. No second scan is needed."}</p>{!entryState && !entryError ? <p role="status" className="mt-2 text-xs">Checking entry availability…</p> : null}{entryState && !entryAllowed ? <p className="mt-2 text-xs font-semibold">{!entryState.entryOpen ? 'Entry is closed for the current operating hours or closing cutoff.' : !entryState.allowBorrowing ? borrowingClosedMessage(entryState.state) : 'The library is at capacity.'}</p> : null}{entryError ? <p role="alert" className="auth-error mt-2 rounded-xl p-2 text-xs">{entryError}</p> : null}<div className="mt-3 flex flex-wrap gap-2"><Button disabled={busy || !entryAllowed} onClick={() => void checkInHere()}>Check in here</Button>{!entryAllowed ? <Button variant="ghost" disabled={busy} onClick={() => setEntryAttempt(value => value + 1)}>Check availability again</Button> : null}</div></div> : null}
 
             {borrower.eligible || pickupContext ? <>
 
