@@ -59,3 +59,12 @@ it('keeps the collection and requests separate and offers three profile sections
   fireEvent.click(screen.getByText('My profile',{exact:true}))
   for(const [name,section] of [['Personal details','personal'],['School details','school'],['Profile photo','photo']])expect(screen.getByRole('link',{name}).getAttribute('href')).toBe(`/student/profile?section=${section}`)
 })
+it('shows the Fine rules entry to Librarians only',()=>{
+  vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({success:true,data:{unreadCount:0}}))))
+  const view=(role:'librarian'|'staff',path:string)=>render(<MemoryRouter initialEntries={[path]}><ThemeProvider><Routes><Route element={<PortalLayout role={role}/>}><Route path={path} element={<h1>Content</h1>}/></Route></Routes></ThemeProvider></MemoryRouter>)
+  view('librarian','/librarian/dashboard')
+  expect(screen.getByRole('link',{name:'Fine rules'}).getAttribute('href')).toBe('/librarian/fine-policies')
+  cleanup()
+  view('staff','/staff/dashboard')
+  expect(screen.queryByRole('link',{name:'Fine rules'})).toBeNull()
+})

@@ -308,7 +308,7 @@ The application service calculates the fine and writes the audit inputs. The dat
 
 Migration `20260902_031_cash_fines_and_receipts.sql` implements the current cash-only fines scope:
 
-- `fine_policy_versions` versions hourly, daily, and maximum-penalty policy values.
+- `fine_policy_versions` versions hourly, daily, and maximum-penalty policy values. Supabase `038_fine_policy_maintenance.sql` (drafted 2026-11-18, not applied) adds `change_reason` and value checks; Librarians publish new versions from the Fine rules page (`/api/v1/admin/fine-policies`), and each overdue fine uses the version in force on its loan's due date.
 - `fine_infractions` documents non-circulation incidents and the staff member who issued them.
 - `fine_payment_receipts` is an immutable cash receipt header with a unique receipt number, idempotency key, receiving staff member, and reversible audit state.
 - `fine_payment_allocations` applies one receipt to fine or lost-book balances and snapshots each before/after balance. Fine payments may be partial; lost-book replacement charges require full payment.

@@ -44,6 +44,7 @@ import { StudentClearancePage } from './features/clearance/StudentClearancePage'
 import { AdminClearancePage } from './features/clearance/AdminClearancePage'
 import { AdminFinesPage } from './features/fines/AdminFinesPage'
 import { StudentFinesPage } from './features/fines/StudentFinesPage'
+import { AdminFinePoliciesPage } from './features/fines/AdminFinePoliciesPage'
 import { PublicCatalogPage } from './features/catalog/PublicCatalogPage'
 import { BorrowingPoliciesArchivedPage } from './features/borrowing-policies/BorrowingPoliciesArchivedPage'
 import { CatalogMaintenancePage } from './features/catalog/CatalogMaintenancePage'
@@ -110,6 +111,7 @@ export default function App() {
           <Route path="/librarian/notifications" element={<LibrarianNotificationsPage />} />
           <Route path="/librarian/catalog" element={<Navigate to="/librarian/maintenance" replace />} />
           <Route path="/librarian/borrowing-policies" element={<BorrowingPoliciesArchivedPage />} />
+          <Route path="/librarian/fine-policies" element={<AdminFinePoliciesPage />} />
           <Route path="/librarian/maintenance" element={<CatalogMaintenancePage />} />
           <Route path="/librarian/reports" element={<CatalogReportsPage />} />
           <Route path="/librarian/collection-review" element={<CollectionReviewPage />} />

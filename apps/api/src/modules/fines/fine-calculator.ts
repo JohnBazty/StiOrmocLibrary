@@ -6,7 +6,7 @@ export type FineCalendar = { openDays: Set<number>; closedDates: Set<string> }
 const DEFAULT_POLICY: FinePolicy = { hourlyRate: 2, dailyRate: 10, maximumPenalty: 500 }
 const DEFAULT_OPEN_DAYS = new Set([1,2,3,4,5,6])
 
-function manilaDate(value: Date) {
+export function manilaDate(value: Date) {
   const parts = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(value)
   const get=(type:string)=>parts.find((part)=>part.type===type)?.value??''
   return `${get('year')}-${get('month')}-${get('day')}`
@@ -35,16 +35,23 @@ export function calculateOperatingFine(dueAt:Date,evaluatedAt:Date,policy:FinePo
   return{amount:Math.min(rawAmount,policy.maximumPenalty),rawAmount,units,rate:policy.dailyRate,basis:'Daily' as const,capApplied:rawAmount>policy.maximumPenalty}
 }
 
+export type FinePolicyVersion = { effectiveFrom: Date; policy: FinePolicy }
+
+/** versions are newest first. The rule in force on the due date applies to the whole fine. */
+export function selectFinePolicy(versions:FinePolicyVersion[],dueAt:Date):FinePolicy{
+  return (versions.find((version)=>version.effectiveFrom<=dueAt)??versions.at(-1))?.policy??DEFAULT_POLICY
+}
+
+/** `from` is the earliest due date in the batch. Use `policyFor(dueAt)` for each loan. */
 export async function loadFineContext(executor:Pool|PoolConnection,from:Date,to:Date){
   const [policies]=await executor.execute<RowDataPacket[]>(
-    `SELECT hourly_rate,daily_rate,maximum_penalty FROM fine_policy_versions
-      WHERE is_active=1 AND effective_from<=? AND (effective_until IS NULL OR effective_until>=?)
-      ORDER BY effective_from DESC,fine_policy_id DESC LIMIT 1`,[to,from],
+    `SELECT hourly_rate,daily_rate,maximum_penalty,effective_from FROM fine_policy_versions
+      WHERE is_active=1 ORDER BY effective_from DESC,fine_policy_id DESC`,[],
   )
-  const policyRow=policies[0]
-  const policy:FinePolicy=policyRow?{hourlyRate:Number(policyRow.hourly_rate),dailyRate:Number(policyRow.daily_rate),maximumPenalty:Number(policyRow.maximum_penalty)}:DEFAULT_POLICY
+  const versions:FinePolicyVersion[]=policies.map((row)=>({effectiveFrom:row.effective_from instanceof Date?row.effective_from:new Date(String(row.effective_from)),policy:{hourlyRate:Number(row.hourly_rate),dailyRate:Number(row.daily_rate),maximumPenalty:Number(row.maximum_penalty)}}))
+  const policyFor=(dueAt:Date)=>selectFinePolicy(versions,dueAt)
   const [schedule]=await executor.execute<RowDataPacket[]>('SELECT day_of_week,is_open FROM library_operating_schedule')
   const openDays=schedule.length?new Set(schedule.filter((row)=>Boolean(row.is_open)).map((row)=>Number(row.day_of_week))):DEFAULT_OPEN_DAYS
   const [closures]=await executor.execute<RowDataPacket[]>('SELECT closed_date FROM library_closed_days WHERE closed_date BETWEEN DATE(?) AND DATE(?)',[from,to])
-  return{policy,calendar:{openDays,closedDates:new Set(closures.map((row)=>sqlDate(row.closed_date)))}}
+  return{policyFor,calendar:{openDays,closedDates:new Set(closures.map((row)=>sqlDate(row.closed_date)))}}
 }
