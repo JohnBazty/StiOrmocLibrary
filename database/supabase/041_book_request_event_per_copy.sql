@@ -4,12 +4,34 @@
 -- emails. Stages recorded without a copy (received, waiting) stay single because
 -- NULLS NOT DISTINCT treats the missing copy as equal. Existing rows are already unique
 -- on (reservation_id, event_status), so the new constraint cannot fail on current data.
--- No IF EXISTS: if the 025 constraint has another name, stop instead of keeping both.
--- The runner applies statements without a transaction: if the DROP fails after the ADD,
--- drop the old constraint by its real name by hand (check pg_constraint) before a rerun.
--- Deploy order does not matter: recordRequestEvent uses ON CONFLICT DO NOTHING.
-ALTER TABLE book_request_events
-  ADD CONSTRAINT book_request_events_reservation_status_copy_key
-  UNIQUE NULLS NOT DISTINCT (reservation_id, event_status, physical_copy_id);
-ALTER TABLE book_request_events
-  DROP CONSTRAINT book_request_events_reservation_id_event_status_key;
+-- One DO block is one statement, so the swap is atomic even though the runner does not
+-- wrap files in a transaction, and a rerun is a no-op. The old 025 rule is found by its
+-- columns, not its generated name. Deploy order does not matter: recordRequestEvent uses
+-- ON CONFLICT DO NOTHING.
+DO $$
+DECLARE
+  old_name name;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'public.book_request_events'::regclass
+       AND conname = 'book_request_events_reservation_status_copy_key'
+  ) THEN
+    ALTER TABLE public.book_request_events
+      ADD CONSTRAINT book_request_events_reservation_status_copy_key
+      UNIQUE NULLS NOT DISTINCT (reservation_id, event_status, physical_copy_id);
+  END IF;
+
+  FOR old_name IN
+    SELECT c.conname FROM pg_constraint c
+     WHERE c.conrelid = 'public.book_request_events'::regclass
+       AND c.contype = 'u'
+       AND (SELECT array_agg(a.attname::text ORDER BY a.attname::text)
+              FROM unnest(c.conkey) AS k(attnum)
+              JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum)
+           = ARRAY['event_status', 'reservation_id']
+  LOOP
+    EXECUTE format('ALTER TABLE public.book_request_events DROP CONSTRAINT %I', old_name);
+  END LOOP;
+END
+$$;
