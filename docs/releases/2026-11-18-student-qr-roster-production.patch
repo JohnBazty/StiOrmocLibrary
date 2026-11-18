@@ -1,152 +1,152 @@
 --- a/apps/api/src/modules/attendance/attendance-credential.service.ts
 +++ b/apps/api/src/modules/attendance/attendance-credential.service.ts
 @@ -21,6 +21,16 @@
- 
- function payload(publicId: string, secret: string) {
-   return `${prefix}.${publicId}.${secret}`
-+}
-+
-+/** Reconstruct an existing pass without issuing or restoring a revoked credential. */
-+export function existingAttendancePayload(row: RowDataPacket): string | null {
-+  if (row.credential_status !== 'Active') return null
-+  const secret = credentialSecret(String(row.public_id), Number(row.user_id), Number(row.credential_version))
-+  const stored = row.secret_hash as Buffer | undefined
-+  const supplied = digest(secret)
-+  return stored && stored.length === supplied.length && timingSafeEqual(stored, supplied)
-+    ? payload(String(row.public_id), secret) : null
- }
- 
- export function purposeAttendanceQr(base: string, purpose: AttendancePurpose, now = new Date()) {
+ 
+ function payload(publicId: string, secret: string) {
+   return `${prefix}.${publicId}.${secret}`
++}
++
++/** Reconstruct an existing pass without issuing or restoring a revoked credential. */
++export function existingAttendancePayload(row: RowDataPacket): string | null {
++  if (row.credential_status !== 'Active') return null
++  const secret = credentialSecret(String(row.public_id), Number(row.user_id), Number(row.credential_version))
++  const stored = row.secret_hash as Buffer | undefined
++  const supplied = digest(secret)
++  return stored && stored.length === supplied.length && timingSafeEqual(stored, supplied)
++    ? payload(String(row.public_id), secret) : null
+ }
+ 
+ export function purposeAttendanceQr(base: string, purpose: AttendancePurpose, now = new Date()) {
 @@ -47,41 +57,61 @@
- }
- 
- export async function issueAttendanceCredential(executor: Executor, userId: number): Promise<AttendanceCredential> {
--  const [existing] = await executor.execute<RowDataPacket[]>(
--    `SELECT credential_id,user_id,public_id,credential_version,issued_at,credential_status
--       FROM attendance_qr_credentials WHERE user_id=? LIMIT 1`, [userId],
--  )
-+  for (let attempt = 0; attempt < 3; attempt += 1) {
-+    const [existing] = await executor.execute<RowDataPacket[]>(
-+      `SELECT credential_id,user_id,public_id,credential_version,issued_at,credential_status,secret_hash
-+         FROM attendance_qr_credentials WHERE user_id=? LIMIT 1`, [userId],
-+    )
-+    const issued = await reuseOrRotate(executor, userId, existing[0])
-+    if (issued) return issued
-+  }
-+  throw new HttpError(500, 'ATTENDANCE_QR_ISSUE_FAILED', 'Unable to issue an attendance pass.')
-+}
-+
-+// Returns null when another request rotated the row first or a public id collided, so the caller re-reads.
-+async function reuseOrRotate(executor: Executor, userId: number, row: RowDataPacket | undefined): Promise<AttendanceCredential | null> {
-+  const existing = row ? [row] : []
-   if (existing[0]?.credential_status === 'Active') {
-     const version = Number(existing[0].credential_version)
-     const publicId = String(existing[0].public_id)
-     const secret = credentialSecret(publicId, userId, version)
--    return { credentialId: Number(existing[0].credential_id), userId, publicId, payload: payload(publicId, secret), issuedAt: new Date(existing[0].issued_at) }
-+    // Only reuse when the stored hash still matches the secret derived from the
-+    // current ATTENDANCE_QR_SECRET. If the secret changed since issuance the
-+    // derived pass would never validate, so fall through and rotate (rewriting
-+    // secret_hash) instead of handing out a permanently invalid QR.
-+    const stored = existing[0].secret_hash as Buffer | undefined
-+    const supplied = digest(secret)
-+    if (stored && stored.length === supplied.length && timingSafeEqual(stored, supplied)) {
-+      return { credentialId: Number(existing[0].credential_id), userId, publicId, payload: payload(publicId, secret), issuedAt: new Date(existing[0].issued_at) }
-+    }
-   }
- 
--  for (let attempt = 0; attempt < 3; attempt += 1) {
--    const publicId = randomToken(12)
--    const version = Number(existing[0]?.credential_version ?? 0) + 1
--    const secret = credentialSecret(publicId, userId, version)
--    try {
--      if (existing[0]) {
--        await executor.execute(
--          `UPDATE attendance_qr_credentials
--              SET public_id=?,secret_hash=?,credential_status='Active',credential_version=credential_version+1,
--                  issued_at=NOW(),last_used_at=NULL,revoked_at=NULL,updated_at=NOW()
--            WHERE user_id=?`, [publicId, digest(secret), userId],
--        )
--        return { credentialId: Number(existing[0].credential_id), userId, publicId, payload: payload(publicId, secret), issuedAt: new Date() }
--      }
-+  const publicId = randomToken(12)
-+  const previousVersion = Number(existing[0]?.credential_version ?? 0)
-+  const version = previousVersion + 1
-+  const secret = credentialSecret(publicId, userId, version)
-+  try {
-+    if (existing[0]) {
-+      // Compare-and-set on the version so a concurrent rotation cannot leave a returned pass dead.
-       const [result] = await executor.execute(
--        `INSERT INTO attendance_qr_credentials(user_id,public_id,secret_hash,credential_version,credential_status,issued_at)
--         VALUES (?,?,?,?, 'Active',NOW())`, [userId, publicId, digest(secret), version],
--      ) as [{ insertId: number }, unknown]
--      return { credentialId: Number(result.insertId), userId, publicId, payload: payload(publicId, secret), issuedAt: new Date() }
--    } catch (error) {
--      if ((error as { code?: string }).code !== 'ER_DUP_ENTRY' || attempt === 2) throw error
-+        `UPDATE attendance_qr_credentials
-+            SET public_id=?,secret_hash=?,credential_status='Active',credential_version=?,
-+                issued_at=NOW(),last_used_at=NULL,revoked_at=NULL,updated_at=NOW()
-+          WHERE user_id=? AND credential_version=?`, [publicId, digest(secret), version, userId, previousVersion],
-+      ) as [{ affectedRows: number }, unknown]
-+      if (result.affectedRows === 0) return null
-+      return { credentialId: Number(existing[0].credential_id), userId, publicId, payload: payload(publicId, secret), issuedAt: new Date() }
-     }
-+    const [result] = await executor.execute(
-+      `INSERT INTO attendance_qr_credentials(user_id,public_id,secret_hash,credential_version,credential_status,issued_at)
-+       VALUES (?,?,?,?, 'Active',NOW())`, [userId, publicId, digest(secret), version],
-+    ) as [{ insertId: number }, unknown]
-+    return { credentialId: Number(result.insertId), userId, publicId, payload: payload(publicId, secret), issuedAt: new Date() }
-+  } catch (error) {
-+    // 23505 = Postgres unique violation (public_id collision, or a concurrent first insert for this user).
-+    if ((error as { code?: string }).code === '23505') return null
-+    throw error
-   }
--  throw new HttpError(500, 'ATTENDANCE_QR_ISSUE_FAILED', 'Unable to issue an attendance pass.')
- }
- 
- export async function validateAttendanceCredential(executor: Executor, value: unknown, lock = false, now = new Date(), allowInactiveReturn = false) {
+ }
+ 
+ export async function issueAttendanceCredential(executor: Executor, userId: number): Promise<AttendanceCredential> {
+-  const [existing] = await executor.execute<RowDataPacket[]>(
+-    `SELECT credential_id,user_id,public_id,credential_version,issued_at,credential_status
+-       FROM attendance_qr_credentials WHERE user_id=? LIMIT 1`, [userId],
+-  )
++  for (let attempt = 0; attempt < 3; attempt += 1) {
++    const [existing] = await executor.execute<RowDataPacket[]>(
++      `SELECT credential_id,user_id,public_id,credential_version,issued_at,credential_status,secret_hash
++         FROM attendance_qr_credentials WHERE user_id=? LIMIT 1`, [userId],
++    )
++    const issued = await reuseOrRotate(executor, userId, existing[0])
++    if (issued) return issued
++  }
++  throw new HttpError(500, 'ATTENDANCE_QR_ISSUE_FAILED', 'Unable to issue an attendance pass.')
++}
++
++// Returns null when another request rotated the row first or a public id collided, so the caller re-reads.
++async function reuseOrRotate(executor: Executor, userId: number, row: RowDataPacket | undefined): Promise<AttendanceCredential | null> {
++  const existing = row ? [row] : []
+   if (existing[0]?.credential_status === 'Active') {
+     const version = Number(existing[0].credential_version)
+     const publicId = String(existing[0].public_id)
+     const secret = credentialSecret(publicId, userId, version)
+-    return { credentialId: Number(existing[0].credential_id), userId, publicId, payload: payload(publicId, secret), issuedAt: new Date(existing[0].issued_at) }
++    // Only reuse when the stored hash still matches the secret derived from the
++    // current ATTENDANCE_QR_SECRET. If the secret changed since issuance the
++    // derived pass would never validate, so fall through and rotate (rewriting
++    // secret_hash) instead of handing out a permanently invalid QR.
++    const stored = existing[0].secret_hash as Buffer | undefined
++    const supplied = digest(secret)
++    if (stored && stored.length === supplied.length && timingSafeEqual(stored, supplied)) {
++      return { credentialId: Number(existing[0].credential_id), userId, publicId, payload: payload(publicId, secret), issuedAt: new Date(existing[0].issued_at) }
++    }
+   }
+ 
+-  for (let attempt = 0; attempt < 3; attempt += 1) {
+-    const publicId = randomToken(12)
+-    const version = Number(existing[0]?.credential_version ?? 0) + 1
+-    const secret = credentialSecret(publicId, userId, version)
+-    try {
+-      if (existing[0]) {
+-        await executor.execute(
+-          `UPDATE attendance_qr_credentials
+-              SET public_id=?,secret_hash=?,credential_status='Active',credential_version=credential_version+1,
+-                  issued_at=NOW(),last_used_at=NULL,revoked_at=NULL,updated_at=NOW()
+-            WHERE user_id=?`, [publicId, digest(secret), userId],
+-        )
+-        return { credentialId: Number(existing[0].credential_id), userId, publicId, payload: payload(publicId, secret), issuedAt: new Date() }
+-      }
++  const publicId = randomToken(12)
++  const previousVersion = Number(existing[0]?.credential_version ?? 0)
++  const version = previousVersion + 1
++  const secret = credentialSecret(publicId, userId, version)
++  try {
++    if (existing[0]) {
++      // Compare-and-set on the version so a concurrent rotation cannot leave a returned pass dead.
+       const [result] = await executor.execute(
+-        `INSERT INTO attendance_qr_credentials(user_id,public_id,secret_hash,credential_version,credential_status,issued_at)
+-         VALUES (?,?,?,?, 'Active',NOW())`, [userId, publicId, digest(secret), version],
+-      ) as [{ insertId: number }, unknown]
+-      return { credentialId: Number(result.insertId), userId, publicId, payload: payload(publicId, secret), issuedAt: new Date() }
+-    } catch (error) {
+-      if ((error as { code?: string }).code !== 'ER_DUP_ENTRY' || attempt === 2) throw error
++        `UPDATE attendance_qr_credentials
++            SET public_id=?,secret_hash=?,credential_status='Active',credential_version=?,
++                issued_at=NOW(),last_used_at=NULL,revoked_at=NULL,updated_at=NOW()
++          WHERE user_id=? AND credential_version=?`, [publicId, digest(secret), version, userId, previousVersion],
++      ) as [{ affectedRows: number }, unknown]
++      if (result.affectedRows === 0) return null
++      return { credentialId: Number(existing[0].credential_id), userId, publicId, payload: payload(publicId, secret), issuedAt: new Date() }
+     }
++    const [result] = await executor.execute(
++      `INSERT INTO attendance_qr_credentials(user_id,public_id,secret_hash,credential_version,credential_status,issued_at)
++       VALUES (?,?,?,?, 'Active',NOW())`, [userId, publicId, digest(secret), version],
++    ) as [{ insertId: number }, unknown]
++    return { credentialId: Number(result.insertId), userId, publicId, payload: payload(publicId, secret), issuedAt: new Date() }
++  } catch (error) {
++    // 23505 = Postgres unique violation (public_id collision, or a concurrent first insert for this user).
++    if ((error as { code?: string }).code === '23505') return null
++    throw error
+   }
+-  throw new HttpError(500, 'ATTENDANCE_QR_ISSUE_FAILED', 'Unable to issue an attendance pass.')
+ }
+ 
+ export async function validateAttendanceCredential(executor: Executor, value: unknown, lock = false, now = new Date(), allowInactiveReturn = false) {
 --- a/apps/api/src/modules/enrollment/enrollment.routes.ts
 +++ b/apps/api/src/modules/enrollment/enrollment.routes.ts
 @@ -1,39 +1,41 @@
--import { Router, type Request, type Response, type NextFunction } from 'express'
--import multer from 'multer'
--import { rateLimit } from 'express-rate-limit'
--import { requireLibraryPermission } from '../auth/jwt-auth.middleware.ts'
--import { enrollmentService, facultyEnrollmentService } from './enrollment.service.ts'
--import { HttpError } from '../../core/http-error.ts'
--
--const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:4*1024*1024,files:1,fields:3,fieldSize:4096}})
--export function createEnrollmentRouter(service=enrollmentService, role: 'Student' | 'Faculty' = 'Student') {
--  const router=Router()
--  router.use(requireLibraryPermission('accounts.manage'))
--  router.use(rateLimit({windowMs:60_000,limit:80,standardHeaders:true,legacyHeaders:false}))
--  const run=(work:(req:Request,actor:number)=>Promise<unknown>)=>(req:Request,res:Response,next:NextFunction)=>{
--    res.set('Cache-Control','private, no-store')
--    void work(req,Number(res.locals.authenticatedUser.accountId)).then(data=>res.json({success:true,data})).catch(next)
--  }
--  router.get('/',run((_req,actor)=>service.overview(actor)))
--  router.post('/semesters',run((req,actor)=>service.saveSemester(actor,req.body)))
--  router.post('/semesters/:id/start',run((req,actor)=>service.start(actor,req.params.id)))
--  router.post('/semesters/:id/end',run((req,actor)=>service.end(actor,req.params.id)))
--  router.get('/semesters/:id/roster',run((req,actor)=>service.roster(actor,req.params.id,req.query.page,req.query.q)))
--  router.post('/semesters/:id/roster/preview',upload.single('roster'),run((req,actor)=>{
--    if(!req.file)throw new HttpError(422,'ENROLLMENT_FILE_REQUIRED','Choose a CSV or Excel roster.')
--    return service.preview(actor,req.params.id,req.file,req.body)
--  }))
--  router.post('/semesters/:id/roster',upload.single('roster'),run((req,actor)=>{
--    if(!req.file)throw new HttpError(422,'ENROLLMENT_FILE_REQUIRED','Choose a CSV or Excel roster.')
--    return service.upload(actor,req.params.id,req.file,req.body)
--  }))
--  if (role === 'Student') {
--    router.post('/semesters/:id/late-enrollment/review',upload.single('roster'),
--      run((req,actor)=>service.reviewLateEnrollment(actor,req.params.id,req.file,req.body)))
--    router.post('/semesters/:id/late-enrollment',upload.single('roster'),
--      run((req,actor)=>service.saveLateEnrollment(actor,req.params.id,req.file,req.body)))
--  }
--  return router
--}
--export const enrollmentRouter=createEnrollmentRouter()
--export const facultyEnrollmentRouter=createEnrollmentRouter(facultyEnrollmentService,'Faculty')
+-import { Router, type Request, type Response, type NextFunction } from 'express'
+-import multer from 'multer'
+-import { rateLimit } from 'express-rate-limit'
+-import { requireLibraryPermission } from '../auth/jwt-auth.middleware.ts'
+-import { enrollmentService, facultyEnrollmentService } from './enrollment.service.ts'
+-import { HttpError } from '../../core/http-error.ts'
+-
+-const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:4*1024*1024,files:1,fields:3,fieldSize:4096}})
+-export function createEnrollmentRouter(service=enrollmentService, role: 'Student' | 'Faculty' = 'Student') {
+-  const router=Router()
+-  router.use(requireLibraryPermission('accounts.manage'))
+-  router.use(rateLimit({windowMs:60_000,limit:80,standardHeaders:true,legacyHeaders:false}))
+-  const run=(work:(req:Request,actor:number)=>Promise<unknown>)=>(req:Request,res:Response,next:NextFunction)=>{
+-    res.set('Cache-Control','private, no-store')
+-    void work(req,Number(res.locals.authenticatedUser.accountId)).then(data=>res.json({success:true,data})).catch(next)
+-  }
+-  router.get('/',run((_req,actor)=>service.overview(actor)))
+-  router.post('/semesters',run((req,actor)=>service.saveSemester(actor,req.body)))
+-  router.post('/semesters/:id/start',run((req,actor)=>service.start(actor,req.params.id)))
+-  router.post('/semesters/:id/end',run((req,actor)=>service.end(actor,req.params.id)))
+-  router.get('/semesters/:id/roster',run((req,actor)=>service.roster(actor,req.params.id,req.query.page,req.query.q)))
+-  router.post('/semesters/:id/roster/preview',upload.single('roster'),run((req,actor)=>{
+-    if(!req.file)throw new HttpError(422,'ENROLLMENT_FILE_REQUIRED','Choose a CSV or Excel roster.')
+-    return service.preview(actor,req.params.id,req.file,req.body)
+-  }))
+-  router.post('/semesters/:id/roster',upload.single('roster'),run((req,actor)=>{
+-    if(!req.file)throw new HttpError(422,'ENROLLMENT_FILE_REQUIRED','Choose a CSV or Excel roster.')
+-    return service.upload(actor,req.params.id,req.file,req.body)
+-  }))
+-  if (role === 'Student') {
+-    router.post('/semesters/:id/late-enrollment/review',upload.single('roster'),
+-      run((req,actor)=>service.reviewLateEnrollment(actor,req.params.id,req.file,req.body)))
+-    router.post('/semesters/:id/late-enrollment',upload.single('roster'),
+-      run((req,actor)=>service.saveLateEnrollment(actor,req.params.id,req.file,req.body)))
+-  }
+-  return router
+-}
+-export const enrollmentRouter=createEnrollmentRouter()
+-export const facultyEnrollmentRouter=createEnrollmentRouter(facultyEnrollmentService,'Faculty')
 +import { Router, type Request, type Response, type NextFunction } from 'express'
 +import multer from 'multer'
 +import { rateLimit } from 'express-rate-limit'
@@ -191,108 +191,108 @@
 --- a/apps/api/src/modules/enrollment/enrollment.service.ts
 +++ b/apps/api/src/modules/enrollment/enrollment.service.ts
 @@ -5,6 +5,8 @@
- import { requireLibraryActor } from '../../core/library-permissions.ts'
- import { enrollmentEnabled, lockEnrollment, rosterSql, type RosterRole } from './enrollment-policy.ts'
- import { parseEnrollmentFile, parseLateEnrollmentForm, type EnrollmentData, type EnrollmentRosterFile } from './enrollment-parser.ts'
-+import QRCode from 'qrcode'
-+import { existingAttendancePayload, issueAttendanceCredential } from '../attendance/attendance-credential.service.ts'
- import { inspectLateEnrollment, inspectReplacement, lateFingerprint, matchesReview, reviewChanged, reviewToken, rosterPreview } from './late-enrollment.ts'
- 
- type LateEnrollmentResult = { added: number; alreadyListed: number; missingEmail: number; missingEmailStudentIds: string[] }
+ import { requireLibraryActor } from '../../core/library-permissions.ts'
+ import { enrollmentEnabled, lockEnrollment, rosterSql, type RosterRole } from './enrollment-policy.ts'
+ import { parseEnrollmentFile, parseLateEnrollmentForm, type EnrollmentData, type EnrollmentRosterFile } from './enrollment-parser.ts'
++import QRCode from 'qrcode'
++import { existingAttendancePayload, issueAttendanceCredential } from '../attendance/attendance-credential.service.ts'
+ import { inspectLateEnrollment, inspectReplacement, lateFingerprint, matchesReview, reviewChanged, reviewToken, rosterPreview } from './late-enrollment.ts'
+ 
+ type LateEnrollmentResult = { added: number; alreadyListed: number; missingEmail: number; missingEmailStudentIds: string[] }
 @@ -110,6 +112,23 @@
-   return Boolean(rows[0])
- }
- 
-+/** Runs in the import transaction, so a rejected import cannot invalidate passes. */
-+export async function replenishRosterCredentials(q: PoolConnection, semesterId: number) {
-+  const currentRosterSql=rosterSql('Student')
-+  const [previous] = await q.execute<RowDataPacket[]>(`SELECT DISTINCT u.user_id
-+    FROM enrollment_roster_students r JOIN enrollment_roster_imports b USING(roster_id)
-+    JOIN accounts a ON a.school_id=r.school_id AND a.role='Student'
-+    JOIN users u ON u.user_id=a.user_id WHERE b.semester_id=? AND b.roster_role='Student'`, [semesterId])
-+  for (const row of previous) {
-+    await q.execute(`UPDATE attendance_qr_credentials SET credential_status='Revoked',revoked_at=NOW(),updated_at=NOW()
-+      WHERE user_id=?`, [row.user_id])
-+  }
-+  const [current] = await q.execute<RowDataPacket[]>(`SELECT u.user_id FROM (${currentRosterSql}) r
-+    JOIN accounts a ON a.school_id=r.school_id AND a.role='Student' AND a.account_status='Active'
-+    JOIN users u ON u.user_id=a.user_id AND u.account_status='Active'`, [semesterId])
-+  for (const row of current) await issueAttendanceCredential(q, Number(row.user_id))
-+}
-+
- export function createEnrollmentService(database: Pool = db, enabled = enrollmentEnabled, role: RosterRole = 'Student') {
-   const currentRosterSql=rosterSql(role)
-   async function run<T>(actor: number | null, lock: boolean | 'share', work: (q: PoolConnection) => Promise<T>) {
+   return Boolean(rows[0])
+ }
+ 
++/** Runs in the import transaction, so a rejected import cannot invalidate passes. */
++export async function replenishRosterCredentials(q: PoolConnection, semesterId: number) {
++  const currentRosterSql=rosterSql('Student')
++  const [previous] = await q.execute<RowDataPacket[]>(`SELECT DISTINCT u.user_id
++    FROM enrollment_roster_students r JOIN enrollment_roster_imports b USING(roster_id)
++    JOIN accounts a ON a.school_id=r.school_id AND a.role='Student'
++    JOIN users u ON u.user_id=a.user_id WHERE b.semester_id=? AND b.roster_role='Student'`, [semesterId])
++  for (const row of previous) {
++    await q.execute(`UPDATE attendance_qr_credentials SET credential_status='Revoked',revoked_at=NOW(),updated_at=NOW()
++      WHERE user_id=?`, [row.user_id])
++  }
++  const [current] = await q.execute<RowDataPacket[]>(`SELECT u.user_id FROM (${currentRosterSql}) r
++    JOIN accounts a ON a.school_id=r.school_id AND a.role='Student' AND a.account_status='Active'
++    JOIN users u ON u.user_id=a.user_id AND u.account_status='Active'`, [semesterId])
++  for (const row of current) await issueAttendanceCredential(q, Number(row.user_id))
++}
++
+ export function createEnrollmentService(database: Pool = db, enabled = enrollmentEnabled, role: RosterRole = 'Student') {
+   const currentRosterSql=rosterSql(role)
+   async function run<T>(actor: number | null, lock: boolean | 'share', work: (q: PoolConnection) => Promise<T>) {
 @@ -184,6 +203,37 @@
-   }
- 
-   return {
-+    async qrSemesters(actor: number) {
-+      return run(actor,false,async q => {
-+        const [rows] = await q.execute<RowDataPacket[]>(`SELECT semester_id,academic_year,term_name,${status} AS status
-+          FROM enrollment_semesters ORDER BY created_at DESC LIMIT 100`)
-+        return rows
-+      })
-+    },
-+    async qrRoster(actor: number, semesterId: unknown, pageValue: unknown, query: unknown) {
-+      return run(actor,false,async q => {
-+        const term = await semester(q,semesterId)
-+        const page = pageValue === undefined ? 1 : id(pageValue)
-+        const [rows] = await q.execute<RowDataPacket[]>(`SELECT r.school_id,r.student_name,r.program,r.year_level,
-+          a.account_status,u.account_status AS user_status,c.user_id,c.public_id,c.credential_version,c.credential_status,c.secret_hash
-+          FROM (${currentRosterSql}) r
-+          LEFT JOIN accounts a ON a.school_id=r.school_id AND a.role='Student'
-+          LEFT JOIN users u ON u.user_id=a.user_id
-+          LEFT JOIN attendance_qr_credentials c ON c.user_id=u.user_id
-+          WHERE STRPOS(LOWER(CONCAT_WS(' ',r.school_id,r.student_name)),LOWER(?))>0
-+          ORDER BY r.school_id LIMIT 25 OFFSET ?`, [term.semester_id,text(query).slice(0,100),(page-1)*24])
-+        const ended = Boolean(term.ended_at) || Boolean(term.started_at && new Date(term.scheduled_end_at) <= new Date())
-+        const cards = await Promise.all(rows.slice(0,24).map(async row => {
-+          const active = !ended && row.account_status === 'Active' && row.user_status === 'Active'
-+          const pass = active ? existingAttendancePayload(row) : null
-+          const qr_status = !row.account_status ? 'Registration needed' : !active ? 'Account inactive' : pass ? 'Ready' : 'Open My permanent library QR to prepare a pass'
-+          return { school_id: String(row.school_id), student_name: String(row.student_name),
-+            program: row.program as string | null, year_level: row.year_level as string | null, qr_status,
-+            qr_image: pass ? await QRCode.toDataURL(pass,{ width: 256, margin: 4, errorCorrectionLevel: 'M', color: { dark: '#003399', light: '#FFFFFF' } }) : null }
-+        }))
-+        return { rows: cards, more: rows.length > 24 }
-+      })
-+    },
-     async closeDue() { if (!enabled()) return false; return run(null,true,closeDue) },
-     async overview(actor: number) {
-       return run(actor,true,async q => {
+   }
+ 
+   return {
++    async qrSemesters(actor: number) {
++      return run(actor,false,async q => {
++        const [rows] = await q.execute<RowDataPacket[]>(`SELECT semester_id,academic_year,term_name,${status} AS status
++          FROM enrollment_semesters ORDER BY created_at DESC LIMIT 100`)
++        return rows
++      })
++    },
++    async qrRoster(actor: number, semesterId: unknown, pageValue: unknown, query: unknown) {
++      return run(actor,false,async q => {
++        const term = await semester(q,semesterId)
++        const page = pageValue === undefined ? 1 : id(pageValue)
++        const [rows] = await q.execute<RowDataPacket[]>(`SELECT r.school_id,r.student_name,r.program,r.year_level,
++          a.account_status,u.account_status AS user_status,c.user_id,c.public_id,c.credential_version,c.credential_status,c.secret_hash
++          FROM (${currentRosterSql}) r
++          LEFT JOIN accounts a ON a.school_id=r.school_id AND a.role='Student'
++          LEFT JOIN users u ON u.user_id=a.user_id
++          LEFT JOIN attendance_qr_credentials c ON c.user_id=u.user_id
++          WHERE STRPOS(LOWER(CONCAT_WS(' ',r.school_id,r.student_name)),LOWER(?))>0
++          ORDER BY r.school_id LIMIT 25 OFFSET ?`, [term.semester_id,text(query).slice(0,100),(page-1)*24])
++        const ended = Boolean(term.ended_at) || Boolean(term.started_at && new Date(term.scheduled_end_at) <= new Date())
++        const cards = await Promise.all(rows.slice(0,24).map(async row => {
++          const active = !ended && row.account_status === 'Active' && row.user_status === 'Active'
++          const pass = active ? existingAttendancePayload(row) : null
++          const qr_status = !row.account_status ? 'Registration needed' : !active ? 'Account inactive' : pass ? 'Ready' : 'Open My permanent library QR to prepare a pass'
++          return { school_id: String(row.school_id), student_name: String(row.student_name),
++            program: row.program as string | null, year_level: row.year_level as string | null, qr_status,
++            qr_image: pass ? await QRCode.toDataURL(pass,{ width: 256, margin: 4, errorCorrectionLevel: 'M', color: { dark: '#003399', light: '#FFFFFF' } }) : null }
++        }))
++        return { rows: cards, more: rows.length > 24 }
++      })
++    },
+     async closeDue() { if (!enabled()) return false; return run(null,true,closeDue) },
+     async overview(actor: number) {
+       return run(actor,true,async q => {
 @@ -266,7 +316,10 @@
-         if (role === 'Student' && scope === 'Complete' && term.started_at) {
-           const [existing] = await q.execute<RowDataPacket[]>(`SELECT 1 FROM enrollment_roster_imports
-             WHERE semester_id=? AND roster_role='Student' AND file_hash=? AND complete`, [term.semester_id, roster.fingerprint])
--          if (existing.length) return { alreadyUploaded:true, students:roster.rows.length, missingEmail:roster.warnings }
-+          if (existing.length) {
-+            await replenishRosterCredentials(q,Number(term.semester_id))
-+            return { alreadyUploaded:true, students:roster.rows.length, missingEmail:roster.warnings }
-+          }
-           const replacement = await inspectReplacement(q, actor, Number(term.semester_id), sourceDate, roster)
-           if (replacement && !matchesReview(input.replacementToken, replacement.reviewToken)) {
-             throw new HttpError(409, 'ENROLLMENT_REVIEW_CHANGED', 'This complete roster would omit late students. Review the affected Student IDs before replacing the roster.')
+         if (role === 'Student' && scope === 'Complete' && term.started_at) {
+           const [existing] = await q.execute<RowDataPacket[]>(`SELECT 1 FROM enrollment_roster_imports
+             WHERE semester_id=? AND roster_role='Student' AND file_hash=? AND complete`, [term.semester_id, roster.fingerprint])
+-          if (existing.length) return { alreadyUploaded:true, students:roster.rows.length, missingEmail:roster.warnings }
++          if (existing.length) {
++            await replenishRosterCredentials(q,Number(term.semester_id))
++            return { alreadyUploaded:true, students:roster.rows.length, missingEmail:roster.warnings }
++          }
+           const replacement = await inspectReplacement(q, actor, Number(term.semester_id), sourceDate, roster)
+           if (replacement && !matchesReview(input.replacementToken, replacement.reviewToken)) {
+             throw new HttpError(409, 'ENROLLMENT_REVIEW_CHANGED', 'This complete roster would omit late students. Review the affected Student IDs before replacing the roster.')
 @@ -279,7 +332,10 @@
-           (semester_id,source_date,complete,file_hash,file_name,student_count,uploaded_by,roster_role) VALUES (?,?,?,?,?,?,?,?)
-           ON CONFLICT (semester_id,roster_role,file_hash,complete) DO NOTHING`,[term.semester_id,sourceDate,scope==='Complete',roster.fingerprint,
-           safeFileName(file),roster.rows.length,actor,role])
--        if (!save.insertId) return { alreadyUploaded:true, students:roster.rows.length, missingEmail:roster.warnings }
-+        if (!save.insertId) {
-+          if(role==='Student') await replenishRosterCredentials(q,Number(term.semester_id))
-+          return { alreadyUploaded:true, students:roster.rows.length, missingEmail:roster.warnings }
-+        }
-         await insertRosterStudents(q, save.insertId, roster.rows.map(row => row.data))
-         const [duplicates]=await q.execute<RowDataPacket[]>(`SELECT 1 FROM (${currentRosterSql}) r WHERE school_email IS NOT NULL
-           GROUP BY LOWER(school_email) HAVING COUNT(*)>1 LIMIT 1`,[term.semester_id])
+           (semester_id,source_date,complete,file_hash,file_name,student_count,uploaded_by,roster_role) VALUES (?,?,?,?,?,?,?,?)
+           ON CONFLICT (semester_id,roster_role,file_hash,complete) DO NOTHING`,[term.semester_id,sourceDate,scope==='Complete',roster.fingerprint,
+           safeFileName(file),roster.rows.length,actor,role])
+-        if (!save.insertId) return { alreadyUploaded:true, students:roster.rows.length, missingEmail:roster.warnings }
++        if (!save.insertId) {
++          if(role==='Student') await replenishRosterCredentials(q,Number(term.semester_id))
++          return { alreadyUploaded:true, students:roster.rows.length, missingEmail:roster.warnings }
++        }
+         await insertRosterStudents(q, save.insertId, roster.rows.map(row => row.data))
+         const [duplicates]=await q.execute<RowDataPacket[]>(`SELECT 1 FROM (${currentRosterSql}) r WHERE school_email IS NOT NULL
+           GROUP BY LOWER(school_email) HAVING COUNT(*)>1 LIMIT 1`,[term.semester_id])
 @@ -292,6 +348,7 @@
-         const [otherRoster]=await q.execute<RowDataPacket[]>(`SELECT 1 FROM (${currentRosterSql}) r JOIN (${rosterSql(role==='Faculty'?'Student':'Faculty')}) other ON other.school_id=r.school_id OR (r.school_email IS NOT NULL AND LOWER(other.school_email)=LOWER(r.school_email)) LIMIT 1`,[term.semester_id,term.semester_id])
-         if(otherRoster.length)throw fail('A school ID or email is already listed in the other account-type roster. Review it before importing.')
-         if (term.started_at) await addRosterMembers(q,Number(term.semester_id),false,role)
-+        if(role==='Student') await replenishRosterCredentials(q,Number(term.semester_id))
-         return { alreadyUploaded:false, students:roster.rows.length, missingEmail:roster.warnings }
-       })
-     },
+         const [otherRoster]=await q.execute<RowDataPacket[]>(`SELECT 1 FROM (${currentRosterSql}) r JOIN (${rosterSql(role==='Faculty'?'Student':'Faculty')}) other ON other.school_id=r.school_id OR (r.school_email IS NOT NULL AND LOWER(other.school_email)=LOWER(r.school_email)) LIMIT 1`,[term.semester_id,term.semester_id])
+         if(otherRoster.length)throw fail('A school ID or email is already listed in the other account-type roster. Review it before importing.')
+         if (term.started_at) await addRosterMembers(q,Number(term.semester_id),false,role)
++        if(role==='Student') await replenishRosterCredentials(q,Number(term.semester_id))
+         return { alreadyUploaded:false, students:roster.rows.length, missingEmail:roster.warnings }
+       })
+     },
 --- /dev/null
 +++ b/apps/api/src/modules/enrollment/student-qr-roster.test.ts
 @@ -0,0 +1,99 @@
@@ -398,45 +398,45 @@
 --- a/apps/api/src/modules/users/admin-notifications.routes.ts
 +++ b/apps/api/src/modules/users/admin-notifications.routes.ts
 @@ -1,39 +1,39 @@
--import { Router, type NextFunction, type Request, type Response } from 'express'
--import type { RowDataPacket } from '../../config/db.js'
--import { db } from '../../config/db.js'
--
--type Notice = { id: string; kind: 'profile' | 'status' | 'lost'; title: string; body: string; createdAt: string; actionPath: string }
--const timestamp = (value: unknown) => new Date(value as string | number | Date).toISOString()
--
--export async function listAdminNotifications(database: Pick<typeof db, 'execute'> = db, prefix: '/admin' | '/librarian' = '/admin') {
--  const [events] = await database.execute<RowDataPacket[]>(`SELECT e.event_id,e.action_code,e.changed_fields,e.created_at,a.school_id,a.account_status,
--      COALESCE(NULLIF(u.full_name,''),a.school_id) AS full_name
--      FROM account_management_events e JOIN accounts a ON a.account_id=e.account_id
--      LEFT JOIN users u ON u.user_id=a.user_id
--      WHERE e.action_code IN ('ProfileEdited','Activated','Deactivated','StaffAccountCreated')
--      ORDER BY e.created_at DESC,e.event_id DESC LIMIT 30`, [])
--  const activity: Notice[] = events.map(row => {
--    const profile = row.action_code === 'ProfileEdited'
--    const created = row.action_code === 'StaffAccountCreated'
--    const deactivated = row.action_code === 'Deactivated'
--    const fields = String(row.changed_fields ?? '').split(',').filter(Boolean).map(field => field.replaceAll('_', ' '))
--    return { id: `event-${row.event_id}`, kind: profile ? 'profile' : 'status',
--      title: profile ? 'User updated their profile' : created ? 'Staff account created' : deactivated ? 'Account deactivated' : 'Account reactivated',
--      body: profile ? `${row.full_name} (${row.school_id}) changed ${fields.join(', ') || 'profile details'}.`
--        : `${row.full_name} (${row.school_id}) was ${created ? 'set up as Staff' : deactivated ? 'deactivated' : 'reactivated'}.`,
--      createdAt: timestamp(row.created_at),
--      actionPath: row.account_status === 'Active' ? `${prefix}/users` : `${prefix}/user-archive` }
--  })
--  const [reports] = await database.execute<RowDataPacket[]>(`SELECT admin_notification_id,message_title,message_body,created_at
--    FROM admin_notifications WHERE event_type='lost_book_reported'
--    ORDER BY created_at DESC,admin_notification_id DESC LIMIT 30`, [])
--  activity.push(...reports.map(row => ({ id: `lost-${row.admin_notification_id}`, kind: 'lost' as const,
--    title: String(row.message_title), body: String(row.message_body), createdAt: timestamp(row.created_at), actionPath: `${prefix}/clearance` })))
--  activity.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
--  return { activity: activity.slice(0, 30) }
--}
--
--export const adminNotificationsRouter = Router()
--adminNotificationsRouter.get('/', (request: Request, response: Response, next: NextFunction) => {
--  void listAdminNotifications(db, response.locals.authenticatedUser?.role === 'Librarian' ? '/librarian' : '/admin').then(data => response.set('Cache-Control', 'private, no-store').json({ success: true, data })).catch(next)
--})
+-import { Router, type NextFunction, type Request, type Response } from 'express'
+-import type { RowDataPacket } from '../../config/db.js'
+-import { db } from '../../config/db.js'
+-
+-type Notice = { id: string; kind: 'profile' | 'status' | 'lost'; title: string; body: string; createdAt: string; actionPath: string }
+-const timestamp = (value: unknown) => new Date(value as string | number | Date).toISOString()
+-
+-export async function listAdminNotifications(database: Pick<typeof db, 'execute'> = db, prefix: '/admin' | '/librarian' = '/admin') {
+-  const [events] = await database.execute<RowDataPacket[]>(`SELECT e.event_id,e.action_code,e.changed_fields,e.created_at,a.school_id,a.account_status,
+-      COALESCE(NULLIF(u.full_name,''),a.school_id) AS full_name
+-      FROM account_management_events e JOIN accounts a ON a.account_id=e.account_id
+-      LEFT JOIN users u ON u.user_id=a.user_id
+-      WHERE e.action_code IN ('ProfileEdited','Activated','Deactivated','StaffAccountCreated')
+-      ORDER BY e.created_at DESC,e.event_id DESC LIMIT 30`, [])
+-  const activity: Notice[] = events.map(row => {
+-    const profile = row.action_code === 'ProfileEdited'
+-    const created = row.action_code === 'StaffAccountCreated'
+-    const deactivated = row.action_code === 'Deactivated'
+-    const fields = String(row.changed_fields ?? '').split(',').filter(Boolean).map(field => field.replaceAll('_', ' '))
+-    return { id: `event-${row.event_id}`, kind: profile ? 'profile' : 'status',
+-      title: profile ? 'User updated their profile' : created ? 'Staff account created' : deactivated ? 'Account deactivated' : 'Account reactivated',
+-      body: profile ? `${row.full_name} (${row.school_id}) changed ${fields.join(', ') || 'profile details'}.`
+-        : `${row.full_name} (${row.school_id}) was ${created ? 'set up as Staff' : deactivated ? 'deactivated' : 'reactivated'}.`,
+-      createdAt: timestamp(row.created_at),
+-      actionPath: row.account_status === 'Active' ? `${prefix}/users` : `${prefix}/user-archive` }
+-  })
+-  const [reports] = await database.execute<RowDataPacket[]>(`SELECT admin_notification_id,message_title,message_body,created_at
+-    FROM admin_notifications WHERE event_type='lost_book_reported'
+-    ORDER BY created_at DESC,admin_notification_id DESC LIMIT 30`, [])
+-  activity.push(...reports.map(row => ({ id: `lost-${row.admin_notification_id}`, kind: 'lost' as const,
+-    title: String(row.message_title), body: String(row.message_body), createdAt: timestamp(row.created_at), actionPath: `${prefix}/clearance` })))
+-  activity.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+-  return { activity: activity.slice(0, 30) }
+-}
+-
+-export const adminNotificationsRouter = Router()
+-adminNotificationsRouter.get('/', (request: Request, response: Response, next: NextFunction) => {
+-  void listAdminNotifications(db, response.locals.authenticatedUser?.role === 'Librarian' ? '/librarian' : '/admin').then(data => response.set('Cache-Control', 'private, no-store').json({ success: true, data })).catch(next)
+-})
 +import { Router, type NextFunction, type Request, type Response } from 'express'
 +import type { RowDataPacket } from '../../config/db.js'
 +import { db } from '../../config/db.js'
@@ -479,125 +479,125 @@
 --- a/apps/web/src/App.tsx
 +++ b/apps/web/src/App.tsx
 @@ -8,6 +8,8 @@
- const AdminPaymentsPage = lazy(() => import('./features/payments/AdminPaymentsPage').then(m => ({ default: m.AdminPaymentsPage })))
- const LibraryFundsPage = lazy(() => import('./features/payments/LibraryFundsPage').then(m => ({ default: m.LibraryFundsPage })))
- const UserPaymentsPage = lazy(() => import('./features/payments/UserPaymentsPage').then(m => ({ default: m.UserPaymentsPage })))
-+
-+const StudentQrRosterPage = lazy(() => import('./features/users/StudentQrRosterPage').then(m => ({ default: m.StudentQrRosterPage })))
- 
- // Lazy-loaded pages - route-level code splitting
- const UserAttendancePage = lazy(() => import('./features/attendance/UserAttendancePage').then(m => ({ default: m.UserAttendancePage })))
+ const AdminPaymentsPage = lazy(() => import('./features/payments/AdminPaymentsPage').then(m => ({ default: m.AdminPaymentsPage })))
+ const LibraryFundsPage = lazy(() => import('./features/payments/LibraryFundsPage').then(m => ({ default: m.LibraryFundsPage })))
+ const UserPaymentsPage = lazy(() => import('./features/payments/UserPaymentsPage').then(m => ({ default: m.UserPaymentsPage })))
++
++const StudentQrRosterPage = lazy(() => import('./features/users/StudentQrRosterPage').then(m => ({ default: m.StudentQrRosterPage })))
+ 
+ // Lazy-loaded pages - route-level code splitting
+ const UserAttendancePage = lazy(() => import('./features/attendance/UserAttendancePage').then(m => ({ default: m.UserAttendancePage })))
 @@ -127,7 +129,8 @@
-           <Route path="/admin/users" element={<AppLayout><AdminUsersPage /></AppLayout>} />
-           <Route path="/admin/users/faculty-enrollment" element={<AppLayout><EnrollmentPage area="admin" role="Faculty" /></AppLayout>} />
-           <Route path="/admin/users/enrollment" element={<AppLayout><EnrollmentPage area="admin" /></AppLayout>} />
--          <Route path="/admin/user-archive" element={<AppLayout><AdminUsersPage archive /></AppLayout>} />
-+          <Route path="/admin/student-qr-roster" element={<AppLayout><StudentQrRosterPage /></AppLayout>} />
-+          <Route path="/admin/user-archive" element={<Navigate to="/admin/student-qr-roster" replace />} />
-           <Route path="/admin/approvals" element={<Navigate to="/admin/users" replace />} />
-           <Route path="/admin/library-schedule" element={<AppLayout><LibrarySchedulePage /></AppLayout>} />
-           <Route path="/admin/notifications" element={<AppLayout><WorkspaceNotificationsPage workspace="admin" /></AppLayout>} />
+           <Route path="/admin/users" element={<AppLayout><AdminUsersPage /></AppLayout>} />
+           <Route path="/admin/users/faculty-enrollment" element={<AppLayout><EnrollmentPage area="admin" role="Faculty" /></AppLayout>} />
+           <Route path="/admin/users/enrollment" element={<AppLayout><EnrollmentPage area="admin" /></AppLayout>} />
+-          <Route path="/admin/user-archive" element={<AppLayout><AdminUsersPage archive /></AppLayout>} />
++          <Route path="/admin/student-qr-roster" element={<AppLayout><StudentQrRosterPage /></AppLayout>} />
++          <Route path="/admin/user-archive" element={<Navigate to="/admin/student-qr-roster" replace />} />
+           <Route path="/admin/approvals" element={<Navigate to="/admin/users" replace />} />
+           <Route path="/admin/library-schedule" element={<AppLayout><LibrarySchedulePage /></AppLayout>} />
+           <Route path="/admin/notifications" element={<AppLayout><WorkspaceNotificationsPage workspace="admin" /></AppLayout>} />
 @@ -144,7 +147,8 @@
-           <Route path="/librarian/users" element={<AppLayout><AdminUsersPage /></AppLayout>} />
-           <Route path="/librarian/users/faculty-enrollment" element={<AppLayout><EnrollmentPage role="Faculty" /></AppLayout>} />
-           <Route path="/librarian/users/enrollment" element={<AppLayout><EnrollmentPage /></AppLayout>} />
--          <Route path="/librarian/user-archive" element={<AppLayout><AdminUsersPage archive /></AppLayout>} />
-+          <Route path="/librarian/student-qr-roster" element={<AppLayout><StudentQrRosterPage /></AppLayout>} />
-+          <Route path="/librarian/user-archive" element={<Navigate to="/librarian/student-qr-roster" replace />} />
-           <Route path="/librarian/approvals" element={<Navigate to="/librarian/users" replace />} />
-           <Route path="/librarian/library-schedule" element={<AppLayout><LibrarySchedulePage manage /></AppLayout>} />
-           <Route path="/librarian/notifications" element={<AppLayout><LibrarianNotificationsPage /></AppLayout>} />
+           <Route path="/librarian/users" element={<AppLayout><AdminUsersPage /></AppLayout>} />
+           <Route path="/librarian/users/faculty-enrollment" element={<AppLayout><EnrollmentPage role="Faculty" /></AppLayout>} />
+           <Route path="/librarian/users/enrollment" element={<AppLayout><EnrollmentPage /></AppLayout>} />
+-          <Route path="/librarian/user-archive" element={<AppLayout><AdminUsersPage archive /></AppLayout>} />
++          <Route path="/librarian/student-qr-roster" element={<AppLayout><StudentQrRosterPage /></AppLayout>} />
++          <Route path="/librarian/user-archive" element={<Navigate to="/librarian/student-qr-roster" replace />} />
+           <Route path="/librarian/approvals" element={<Navigate to="/librarian/users" replace />} />
+           <Route path="/librarian/library-schedule" element={<AppLayout><LibrarySchedulePage manage /></AppLayout>} />
+           <Route path="/librarian/notifications" element={<AppLayout><LibrarianNotificationsPage /></AppLayout>} />
 --- a/apps/web/src/features/attendance/UserAttendancePage.tsx
 +++ b/apps/web/src/features/attendance/UserAttendancePage.tsx
 @@ -18,7 +18,7 @@
-   const download=async()=>{if(!pass)return;setDownloading(true);setError('');try{await attendanceApi.downloadPass(pass.profile.schoolId)}catch(e){setError(e instanceof Error?e.message:'Unable to download your QR code.')}finally{setDownloading(false)}}
-   return <>
-     <PageHeader eyebrow="My account" title="My permanent library QR" description="Use this same QR for library entry and desk services. It stays the same when you sign out and sign in again. Save it on your phone for offline display." action={<Button variant="secondary" onClick={()=>void load()} disabled={loading}><RefreshCw size={15}/>Refresh</Button>}/>
--    <p className="mb-5 text-sm opacity-70">Keep this account open when your QR is scanned. Your entry or exit confirmation appears automatically on any portal page.</p>
-+    <p className="mb-5 text-sm opacity-70">Every student roster upload replaces QR codes, including identical files. Refresh and save your new QR; old codes stop working. Keep this account open when your QR is scanned. Your entry or exit confirmation appears automatically on any portal page.</p>
-     {error?<div className="mb-4 rounded-xl bg-[#FFF200] p-3 text-sm font-bold text-[#0b5ea2]">{error}</div>:null}
-     {loading&&!pass?<SectionCard className="p-10 text-center font-semibold">Preparing your permanent attendance pass…</SectionCard>:pass?<div className="grid gap-5 lg:grid-cols-[370px_1fr]">
-       <SectionCard className="overflow-hidden"><div className="bg-[#0b5ea2] p-5 text-white"><div className="flex items-center gap-3"><div className="rounded-xl bg-white/10 p-2"><QrCode size={21}/></div><div><p className="font-display font-bold">STI Library Pass</p><p className="text-xs text-white/65">One permanent QR for library services</p></div></div></div><div className="p-6 text-center"><p className="mb-4 text-sm">Show this QR when staff need to identify you. After an entrance scan, choose your visit purpose and confirm entry on this account. Scan again when leaving, then confirm exit.</p>{qrUrl?<img src={qrUrl} alt="Permanent STI Library attendance QR code" className="mx-auto aspect-square w-56 rounded-xl border-8 border-white shadow-lg ring-1 ring-[#0b5ea2]/15"/>:<div className="mx-auto aspect-square w-56 animate-pulse rounded-xl bg-[#0b5ea2]/5"/>}<p className="mt-5 font-display text-lg font-bold">{pass.profile.name}</p><p className="mt-1 text-xs text-[#0b5ea2]/65">{pass.profile.schoolId}{pass.profile.program?` · ${pass.profile.program}`:''}{pass.profile.section?` · ${pass.profile.section}`:''}</p><Button className="mt-5 w-full" onClick={download} disabled={downloading}><Download size={16}/>{downloading?'Preparing image…':'Download QR code'}</Button><p className="mt-3 text-xs leading-5 text-[#0b5ea2]/65">Keep this image private. If it is copied or lost, ask the library to replace it.</p></div></SectionCard>
+   const download=async()=>{if(!pass)return;setDownloading(true);setError('');try{await attendanceApi.downloadPass(pass.profile.schoolId)}catch(e){setError(e instanceof Error?e.message:'Unable to download your QR code.')}finally{setDownloading(false)}}
+   return <>
+     <PageHeader eyebrow="My account" title="My permanent library QR" description="Use this same QR for library entry and desk services. It stays the same when you sign out and sign in again. Save it on your phone for offline display." action={<Button variant="secondary" onClick={()=>void load()} disabled={loading}><RefreshCw size={15}/>Refresh</Button>}/>
+-    <p className="mb-5 text-sm opacity-70">Keep this account open when your QR is scanned. Your entry or exit confirmation appears automatically on any portal page.</p>
++    <p className="mb-5 text-sm opacity-70">Every student roster upload replaces QR codes, including identical files. Refresh and save your new QR; old codes stop working. Keep this account open when your QR is scanned. Your entry or exit confirmation appears automatically on any portal page.</p>
+     {error?<div className="mb-4 rounded-xl bg-[#FFF200] p-3 text-sm font-bold text-[#0b5ea2]">{error}</div>:null}
+     {loading&&!pass?<SectionCard className="p-10 text-center font-semibold">Preparing your permanent attendance pass…</SectionCard>:pass?<div className="grid gap-5 lg:grid-cols-[370px_1fr]">
+       <SectionCard className="overflow-hidden"><div className="bg-[#0b5ea2] p-5 text-white"><div className="flex items-center gap-3"><div className="rounded-xl bg-white/10 p-2"><QrCode size={21}/></div><div><p className="font-display font-bold">STI Library Pass</p><p className="text-xs text-white/65">One permanent QR for library services</p></div></div></div><div className="p-6 text-center"><p className="mb-4 text-sm">Show this QR when staff need to identify you. After an entrance scan, choose your visit purpose and confirm entry on this account. Scan again when leaving, then confirm exit.</p>{qrUrl?<img src={qrUrl} alt="Permanent STI Library attendance QR code" className="mx-auto aspect-square w-56 rounded-xl border-8 border-white shadow-lg ring-1 ring-[#0b5ea2]/15"/>:<div className="mx-auto aspect-square w-56 animate-pulse rounded-xl bg-[#0b5ea2]/5"/>}<p className="mt-5 font-display text-lg font-bold">{pass.profile.name}</p><p className="mt-1 text-xs text-[#0b5ea2]/65">{pass.profile.schoolId}{pass.profile.program?` · ${pass.profile.program}`:''}{pass.profile.section?` · ${pass.profile.section}`:''}</p><Button className="mt-5 w-full" onClick={download} disabled={downloading}><Download size={16}/>{downloading?'Preparing image…':'Download QR code'}</Button><p className="mt-3 text-xs leading-5 text-[#0b5ea2]/65">Keep this image private. If it is copied or lost, ask the library to replace it.</p></div></SectionCard>
 --- a/apps/web/src/features/users/AdminUsersPage.tsx
 +++ b/apps/web/src/features/users/AdminUsersPage.tsx
 @@ -13,10 +13,10 @@
- const field = 'h-10 w-full rounded-xl border border-[#0b5ea2]/20 bg-white px-3 text-sm text-[#0b5ea2] outline-none focus:border-[#0b5ea2]'
- const initial: UserFilters = { q: '', role: '', program: '', clearance: '', status: 'Active', page: 1, limit: 25 }
- 
--export function AdminUsersPage({ archive = false }: { archive?: boolean }) {
-+export function AdminUsersPage() {
-   const role = getCurrentIdentity()?.role
-   const canManage = role === 'Admin' || role === 'Librarian'
--  const [filters, setFilters] = useState<UserFilters>(() => ({ ...initial, status: archive ? 'Inactive' : 'Active' }))
-+  const [filters, setFilters] = useState<UserFilters>(() => ({ ...initial, status: 'Active' }))
-   const [refresh, setRefresh] = useState(0)
-   const [summary, setSummary] = useState<UserSummary | null>(null)
-   const [programs, setPrograms] = useState<string[]>([])
+ const field = 'h-10 w-full rounded-xl border border-[#0b5ea2]/20 bg-white px-3 text-sm text-[#0b5ea2] outline-none focus:border-[#0b5ea2]'
+ const initial: UserFilters = { q: '', role: '', program: '', clearance: '', status: 'Active', page: 1, limit: 25 }
+ 
+-export function AdminUsersPage({ archive = false }: { archive?: boolean }) {
++export function AdminUsersPage() {
+   const role = getCurrentIdentity()?.role
+   const canManage = role === 'Admin' || role === 'Librarian'
+-  const [filters, setFilters] = useState<UserFilters>(() => ({ ...initial, status: archive ? 'Inactive' : 'Active' }))
++  const [filters, setFilters] = useState<UserFilters>(() => ({ ...initial, status: 'Active' }))
+   const [refresh, setRefresh] = useState(0)
+   const [summary, setSummary] = useState<UserSummary | null>(null)
+   const [programs, setPrograms] = useState<string[]>([])
 @@ -82,11 +82,11 @@
-   }
- 
-   return <>
--    <PageHeader eyebrow="Access management" title={archive ? 'User archive' : 'Library users'} action={<div className="flex flex-wrap gap-2">
-+    <PageHeader eyebrow="Access management" title="Library users" action={<div className="flex flex-wrap gap-2">
-       {canManage && <a href={`/${role === 'Admin' ? 'admin' : 'librarian'}/users/enrollment`} className="inline-flex items-center rounded-xl border border-current/20 px-4 py-2 text-sm font-semibold">Student enrollment</a>}
-       {canManage && <a href={`/${role === 'Admin' ? 'admin' : 'librarian'}/users/faculty-enrollment`} className="inline-flex items-center rounded-xl border border-current/20 px-4 py-2 text-sm font-semibold">Faculty enrollment</a>}
--      {role==='Librarian'&&!archive&&<OwnershipTransferAction/>}
--      {canManage && !archive && <Button onClick={() => { setNotice(''); setStaffSetup(true) }}>Set up Staff account</Button>}
-+      {role==='Librarian'&&<OwnershipTransferAction/>}
-+      {canManage && <Button onClick={() => { setNotice(''); setStaffSetup(true) }}>Set up Staff account</Button>}
-       <Button variant="secondary" onClick={() => setRefresh(value => value + 1)}><RefreshCw size={15} /> Refresh</Button>
-     </div>} />
-     {error && <p role="alert" className="mb-4 rounded-xl bg-[#FFF200] p-3 text-sm font-bold text-[#0b5ea2]">{error}</p>}
+   }
+ 
+   return <>
+-    <PageHeader eyebrow="Access management" title={archive ? 'User archive' : 'Library users'} action={<div className="flex flex-wrap gap-2">
++    <PageHeader eyebrow="Access management" title="Library users" action={<div className="flex flex-wrap gap-2">
+       {canManage && <a href={`/${role === 'Admin' ? 'admin' : 'librarian'}/users/enrollment`} className="inline-flex items-center rounded-xl border border-current/20 px-4 py-2 text-sm font-semibold">Student enrollment</a>}
+       {canManage && <a href={`/${role === 'Admin' ? 'admin' : 'librarian'}/users/faculty-enrollment`} className="inline-flex items-center rounded-xl border border-current/20 px-4 py-2 text-sm font-semibold">Faculty enrollment</a>}
+-      {role==='Librarian'&&!archive&&<OwnershipTransferAction/>}
+-      {canManage && !archive && <Button onClick={() => { setNotice(''); setStaffSetup(true) }}>Set up Staff account</Button>}
++      {role==='Librarian'&&<OwnershipTransferAction/>}
++      {canManage && <Button onClick={() => { setNotice(''); setStaffSetup(true) }}>Set up Staff account</Button>}
+       <Button variant="secondary" onClick={() => setRefresh(value => value + 1)}><RefreshCw size={15} /> Refresh</Button>
+     </div>} />
+     {error && <p role="alert" className="mb-4 rounded-xl bg-[#FFF200] p-3 text-sm font-bold text-[#0b5ea2]">{error}</p>}
 @@ -96,18 +96,18 @@
-       setNotice(`Staff account ${schoolId} created. The staff member can select Set or reset Staff password on the personnel login page.`)
-       setRefresh(value => value + 1)
-     }} />}
--    {!archive ? <UserAccountTotals refreshKey={refresh} accounts={summary}/> : <div className="mb-5 grid gap-3 sm:grid-cols-3"><StatCard label="Active accounts" value={String(summary?.active_accounts ?? 0)} icon={UserCheck} /><StatCard label="Deactivated" value={String(summary?.deactivated_accounts ?? 0)} icon={Users} /><StatCard label="Archived" value={String(summary?.archived_accounts ?? 0)} icon={BadgeCheck} /></div>}
-+    <UserAccountTotals refreshKey={refresh} accounts={summary}/>
-     <SectionCard className="mb-5 p-4"><div className="grid gap-3 md:grid-cols-5">
-       <label className={`${field} flex items-center gap-2`}><Search size={15} /><input aria-label="Search users" className="w-full outline-none" placeholder="Name, ID, or email" value={filters.q} onChange={event => update({ q: event.target.value })} /></label>
-       <select aria-label="Account status" className={field} value={filters.status} onChange={event => {
-         const status = event.target.value
-         update(status === 'Not registered' || unregistered ? { status, role: '', program: '', clearance: '' } : { status })
--      }}>{archive ? <><option value="Inactive">Deactivated and archived</option><option>Deactivated</option><option>Archived</option></> : <><option>Active</option><option value="">All statuses</option><option>Not registered</option><option>Deactivated</option><option>Archived</option></>}</select>
-+      }}><option>Active</option><option value="">All statuses</option><option>Not registered</option><option>Deactivated</option><option>Archived</option></select>
-       <select aria-label="User role" className={field} disabled={unregistered} value={unregistered ? 'Student' : filters.role} onChange={event => update({ role: event.target.value })}><option value="">All roles</option>{['Student', 'Faculty', 'Librarian', 'Staff', 'Admin'].map(role => <option key={role}>{role}</option>)}</select>
-       <select aria-label="Program" className={field} value={filters.program} onChange={event => update({ program: event.target.value })}><option value="">All programs</option>{programs.map(program => <option key={program}>{program}</option>)}</select>
-       <select aria-label="Clearance" className={field} disabled={unregistered} value={filters.clearance} onChange={event => update({ clearance: event.target.value })}><option value="">{unregistered ? 'Clearance does not apply' : 'All clearance states'}</option><option>Cleared</option><option>Not Cleared</option></select>
-     </div></SectionCard>
--    <SectionCard><div className="border-b border-[#0b5ea2]/15 p-5"><h2 className="font-bold text-[#0b5ea2]">{unregistered ? 'Students without accounts' : archive ? 'Deactivated and archived accounts' : 'Account directory'}</h2><p className="text-xs text-[#0b5ea2]/65">{loading ? 'Loading…' : unregistered ? `${pagination.total.toLocaleString('en-PH')} matching students from the most recently imported open semester` : `${pagination.total} matching accounts · Profile details are edited by account owners`}</p></div>
-+    <SectionCard><div className="border-b border-[#0b5ea2]/15 p-5"><h2 className="font-bold text-[#0b5ea2]">{unregistered ? 'Students without accounts' : 'Account directory'}</h2><p className="text-xs text-[#0b5ea2]/65">{loading ? 'Loading…' : unregistered ? `${pagination.total.toLocaleString('en-PH')} matching students from the most recently imported open semester` : `${pagination.total} matching accounts · Profile details are edited by account owners`}</p></div>
-       <ResponsiveTable><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-[#0b5ea2] text-white"><tr>{['User', 'School ID', 'Role', 'Program / unit', 'Year / level', 'Clearance', 'Status', 'Action'].map(label => <th key={label} className="px-5 py-3 text-xs">{label}</th>)}</tr></thead><tbody>
-         {loading ? <tr><td colSpan={8} className="p-10 text-center text-[#0b5ea2]">Loading users…</td></tr> : rows.length === 0 ? <tr><td colSpan={8} className="p-10 text-center text-[#0b5ea2]">{unregistered ? 'No unregistered students match these filters.' : 'No accounts match these filters.'}</td></tr> : rows.map(user => <tr key={user.school_id} className="border-b border-[#0b5ea2]/10 text-[#0b5ea2]"><td className="px-5 py-4"><b>{user.full_name}</b><p className="text-xs opacity-70">{user.email}</p></td><td className="px-5 py-4 font-mono text-xs">{user.school_id}</td><td className="px-5 py-4">{user.role}</td><td className="px-5 py-4">{user.program}</td><td className="px-5 py-4">{user.year_or_unit}</td><td className="px-5 py-4">{user.clearance_status}</td><td className="px-5 py-4"><span className="rounded-full bg-[#0b5ea2] px-2 py-1 text-xs font-bold text-white">{user.account_status}</span></td><td className="px-5 py-4">{user.id === null ? <span className="text-xs">Account not created</span> : <button className="font-bold underline" onClick={() => void open(user)}>View record</button>}</td></tr>)}
-       </tbody></table></ResponsiveTable><div className="flex justify-end gap-2 p-4"><Button variant="secondary" disabled={filters.page <= 1} onClick={() => update({ page: filters.page - 1 })}>Previous</Button><span className="self-center text-xs font-bold text-[#0b5ea2]">Page {pagination.page} of {Math.max(1, pagination.total_pages)}</span><Button variant="secondary" disabled={filters.page >= pagination.total_pages} onClick={() => update({ page: filters.page + 1 })}>Next</Button></div>
+       setNotice(`Staff account ${schoolId} created. The staff member can select Set or reset Staff password on the personnel login page.`)
+       setRefresh(value => value + 1)
+     }} />}
+-    {!archive ? <UserAccountTotals refreshKey={refresh} accounts={summary}/> : <div className="mb-5 grid gap-3 sm:grid-cols-3"><StatCard label="Active accounts" value={String(summary?.active_accounts ?? 0)} icon={UserCheck} /><StatCard label="Deactivated" value={String(summary?.deactivated_accounts ?? 0)} icon={Users} /><StatCard label="Archived" value={String(summary?.archived_accounts ?? 0)} icon={BadgeCheck} /></div>}
++    <UserAccountTotals refreshKey={refresh} accounts={summary}/>
+     <SectionCard className="mb-5 p-4"><div className="grid gap-3 md:grid-cols-5">
+       <label className={`${field} flex items-center gap-2`}><Search size={15} /><input aria-label="Search users" className="w-full outline-none" placeholder="Name, ID, or email" value={filters.q} onChange={event => update({ q: event.target.value })} /></label>
+       <select aria-label="Account status" className={field} value={filters.status} onChange={event => {
+         const status = event.target.value
+         update(status === 'Not registered' || unregistered ? { status, role: '', program: '', clearance: '' } : { status })
+-      }}>{archive ? <><option value="Inactive">Deactivated and archived</option><option>Deactivated</option><option>Archived</option></> : <><option>Active</option><option value="">All statuses</option><option>Not registered</option><option>Deactivated</option><option>Archived</option></>}</select>
++      }}><option>Active</option><option value="">All statuses</option><option>Not registered</option><option>Deactivated</option><option>Archived</option></select>
+       <select aria-label="User role" className={field} disabled={unregistered} value={unregistered ? 'Student' : filters.role} onChange={event => update({ role: event.target.value })}><option value="">All roles</option>{['Student', 'Faculty', 'Librarian', 'Staff', 'Admin'].map(role => <option key={role}>{role}</option>)}</select>
+       <select aria-label="Program" className={field} value={filters.program} onChange={event => update({ program: event.target.value })}><option value="">All programs</option>{programs.map(program => <option key={program}>{program}</option>)}</select>
+       <select aria-label="Clearance" className={field} disabled={unregistered} value={filters.clearance} onChange={event => update({ clearance: event.target.value })}><option value="">{unregistered ? 'Clearance does not apply' : 'All clearance states'}</option><option>Cleared</option><option>Not Cleared</option></select>
+     </div></SectionCard>
+-    <SectionCard><div className="border-b border-[#0b5ea2]/15 p-5"><h2 className="font-bold text-[#0b5ea2]">{unregistered ? 'Students without accounts' : archive ? 'Deactivated and archived accounts' : 'Account directory'}</h2><p className="text-xs text-[#0b5ea2]/65">{loading ? 'Loading…' : unregistered ? `${pagination.total.toLocaleString('en-PH')} matching students from the most recently imported open semester` : `${pagination.total} matching accounts · Profile details are edited by account owners`}</p></div>
++    <SectionCard><div className="border-b border-[#0b5ea2]/15 p-5"><h2 className="font-bold text-[#0b5ea2]">{unregistered ? 'Students without accounts' : 'Account directory'}</h2><p className="text-xs text-[#0b5ea2]/65">{loading ? 'Loading…' : unregistered ? `${pagination.total.toLocaleString('en-PH')} matching students from the most recently imported open semester` : `${pagination.total} matching accounts · Profile details are edited by account owners`}</p></div>
+       <ResponsiveTable><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-[#0b5ea2] text-white"><tr>{['User', 'School ID', 'Role', 'Program / unit', 'Year / level', 'Clearance', 'Status', 'Action'].map(label => <th key={label} className="px-5 py-3 text-xs">{label}</th>)}</tr></thead><tbody>
+         {loading ? <tr><td colSpan={8} className="p-10 text-center text-[#0b5ea2]">Loading users…</td></tr> : rows.length === 0 ? <tr><td colSpan={8} className="p-10 text-center text-[#0b5ea2]">{unregistered ? 'No unregistered students match these filters.' : 'No accounts match these filters.'}</td></tr> : rows.map(user => <tr key={user.school_id} className="border-b border-[#0b5ea2]/10 text-[#0b5ea2]"><td className="px-5 py-4"><b>{user.full_name}</b><p className="text-xs opacity-70">{user.email}</p></td><td className="px-5 py-4 font-mono text-xs">{user.school_id}</td><td className="px-5 py-4">{user.role}</td><td className="px-5 py-4">{user.program}</td><td className="px-5 py-4">{user.year_or_unit}</td><td className="px-5 py-4">{user.clearance_status}</td><td className="px-5 py-4"><span className="rounded-full bg-[#0b5ea2] px-2 py-1 text-xs font-bold text-white">{user.account_status}</span></td><td className="px-5 py-4">{user.id === null ? <span className="text-xs">Account not created</span> : <button className="font-bold underline" onClick={() => void open(user)}>View record</button>}</td></tr>)}
+       </tbody></table></ResponsiveTable><div className="flex justify-end gap-2 p-4"><Button variant="secondary" disabled={filters.page <= 1} onClick={() => update({ page: filters.page - 1 })}>Previous</Button><span className="self-center text-xs font-bold text-[#0b5ea2]">Page {pagination.page} of {Math.max(1, pagination.total_pages)}</span><Button variant="secondary" disabled={filters.page >= pagination.total_pages} onClick={() => update({ page: filters.page + 1 })}>Next</Button></div>
 @@ -119,7 +119,7 @@
-       <div className="mt-6 grid gap-3 sm:grid-cols-2"><h3 className="sm:col-span-2 font-bold">Profile details</h3>{([['School email', detail.email], ['First name', detail.first_name], ['Last name', detail.last_name], ['Program / strand', detail.program_strand], ['Year / grade level', detail.year_grade_level]] as const).map(([label, value]) => <p key={label} className="rounded-xl border border-[#0b5ea2]/15 p-3 text-sm"><span className="block text-xs opacity-70">{label}</span>{value || '—'}</p>)}</div>
-       {role==='Librarian'&&detail.role==='Faculty'&&<FacultyDepartment key={detail.id} accountId={detail.id}/>}
-       {canManage && detail.role !== 'Admin' ? <>
--        <div className="mt-6 border-t border-[#0b5ea2]/15 pt-5"><h3 className="font-bold">Account status</h3><p className="mt-1 text-sm">Deactivating prevents sign-in and moves this account to User Archive. All records remain available here.</p><div className="mt-3 flex flex-wrap gap-2">{(detail.account_status === 'Active' ? ['Deactivated'] : ['Active']).map(status => <button key={status} onClick={() => { setNextStatus(status as AccountStatus); setStatusReason('') }} className="rounded-xl border border-[#0b5ea2] px-3 py-2 text-sm font-bold">{status === 'Active' ? 'Reactivate' : 'Deactivate'}</button>)}</div>
-+        <div className="mt-6 border-t border-[#0b5ea2]/15 pt-5"><h3 className="font-bold">Account status</h3><p className="mt-1 text-sm">Deactivating prevents sign-in. Find this account in Library users by selecting Deactivated under Account status. All records remain available here.</p><div className="mt-3 flex flex-wrap gap-2">{(detail.account_status === 'Active' ? ['Deactivated'] : ['Active']).map(status => <button key={status} onClick={() => { setNextStatus(status as AccountStatus); setStatusReason('') }} className="rounded-xl border border-[#0b5ea2] px-3 py-2 text-sm font-bold">{status === 'Active' ? 'Reactivate' : 'Deactivate'}</button>)}</div>
-           {nextStatus && <div className="mt-4 rounded-xl border border-[#0b5ea2]/20 p-4"><p className="font-bold">Confirm {nextStatus.toLowerCase()} status</p><label className="mt-2 block text-xs font-bold">Audit reason<input className={`${field} mt-1`} value={statusReason} onChange={event => setStatusReason(event.target.value)} placeholder="Why is this status changing?" /></label><div className="mt-3 flex gap-2"><Button disabled={saving || statusReason.trim().length < 3} onClick={() => void saveStatus()}>Confirm</Button><Button variant="secondary" onClick={() => setNextStatus(null)}>Cancel</Button></div></div>}
-         </div>
-         {detail.id !== getCurrentIdentity()?.userId && <SignInAccessPanel key={detail.id} accountId={detail.id} onChanged={() => void reloadDetail(detail.id).catch(() => undefined)} />}
+       <div className="mt-6 grid gap-3 sm:grid-cols-2"><h3 className="sm:col-span-2 font-bold">Profile details</h3>{([['School email', detail.email], ['First name', detail.first_name], ['Last name', detail.last_name], ['Program / strand', detail.program_strand], ['Year / grade level', detail.year_grade_level]] as const).map(([label, value]) => <p key={label} className="rounded-xl border border-[#0b5ea2]/15 p-3 text-sm"><span className="block text-xs opacity-70">{label}</span>{value || '—'}</p>)}</div>
+       {role==='Librarian'&&detail.role==='Faculty'&&<FacultyDepartment key={detail.id} accountId={detail.id}/>}
+       {canManage && detail.role !== 'Admin' ? <>
+-        <div className="mt-6 border-t border-[#0b5ea2]/15 pt-5"><h3 className="font-bold">Account status</h3><p className="mt-1 text-sm">Deactivating prevents sign-in and moves this account to User Archive. All records remain available here.</p><div className="mt-3 flex flex-wrap gap-2">{(detail.account_status === 'Active' ? ['Deactivated'] : ['Active']).map(status => <button key={status} onClick={() => { setNextStatus(status as AccountStatus); setStatusReason('') }} className="rounded-xl border border-[#0b5ea2] px-3 py-2 text-sm font-bold">{status === 'Active' ? 'Reactivate' : 'Deactivate'}</button>)}</div>
++        <div className="mt-6 border-t border-[#0b5ea2]/15 pt-5"><h3 className="font-bold">Account status</h3><p className="mt-1 text-sm">Deactivating prevents sign-in. Find this account in Library users by selecting Deactivated under Account status. All records remain available here.</p><div className="mt-3 flex flex-wrap gap-2">{(detail.account_status === 'Active' ? ['Deactivated'] : ['Active']).map(status => <button key={status} onClick={() => { setNextStatus(status as AccountStatus); setStatusReason('') }} className="rounded-xl border border-[#0b5ea2] px-3 py-2 text-sm font-bold">{status === 'Active' ? 'Reactivate' : 'Deactivate'}</button>)}</div>
+           {nextStatus && <div className="mt-4 rounded-xl border border-[#0b5ea2]/20 p-4"><p className="font-bold">Confirm {nextStatus.toLowerCase()} status</p><label className="mt-2 block text-xs font-bold">Audit reason<input className={`${field} mt-1`} value={statusReason} onChange={event => setStatusReason(event.target.value)} placeholder="Why is this status changing?" /></label><div className="mt-3 flex gap-2"><Button disabled={saving || statusReason.trim().length < 3} onClick={() => void saveStatus()}>Confirm</Button><Button variant="secondary" onClick={() => setNextStatus(null)}>Cancel</Button></div></div>}
+         </div>
+         {detail.id !== getCurrentIdentity()?.userId && <SignInAccessPanel key={detail.id} accountId={detail.id} onChanged={() => void reloadDetail(detail.id).catch(() => undefined)} />}
 --- a/apps/web/src/features/users/EnrollmentPage.tsx
 +++ b/apps/web/src/features/users/EnrollmentPage.tsx
 @@ -163,7 +163,7 @@
-     try{
-       const body=new FormData();body.set('roster',file);body.set('sourceDate',sourceDate);body.set('scope',scope);if(preview.replacement)body.set('replacementToken',preview.replacement.reviewToken)
-       const result=await enrollmentApi.upload(term.semester_id,body)
--      onSaved(result.alreadyUploaded?'This roster was already uploaded.':`Roster uploaded. ${result.students} ${role} records accepted.${result.missingEmail?` ${result.missingEmail} need a school email before registration.`:''}`)
-+      onSaved(role==='Student'&&result.alreadyUploaded?'Roster refreshed. New QR codes are ready; old codes no longer work.':result.alreadyUploaded?'This roster was already uploaded.':`Roster uploaded. ${result.students} ${role} records accepted.${role==='Student'?' New QR codes are ready; old codes no longer work.':''}${result.missingEmail?` ${result.missingEmail} need a school email before registration.`:''}`)
-       remove()
-     }catch(e){setError(errorText(e));if(e instanceof EnrollmentError)setIssues(e.issues)}
-     finally{setBusy(false)}
+     try{
+       const body=new FormData();body.set('roster',file);body.set('sourceDate',sourceDate);body.set('scope',scope);if(preview.replacement)body.set('replacementToken',preview.replacement.reviewToken)
+       const result=await enrollmentApi.upload(term.semester_id,body)
+-      onSaved(result.alreadyUploaded?'This roster was already uploaded.':`Roster uploaded. ${result.students} ${role} records accepted.${result.missingEmail?` ${result.missingEmail} need a school email before registration.`:''}`)
++      onSaved(role==='Student'&&result.alreadyUploaded?'Roster refreshed. New QR codes are ready; old codes no longer work.':result.alreadyUploaded?'This roster was already uploaded.':`Roster uploaded. ${result.students} ${role} records accepted.${role==='Student'?' New QR codes are ready; old codes no longer work.':''}${result.missingEmail?` ${result.missingEmail} need a school email before registration.`:''}`)
+       remove()
+     }catch(e){setError(errorText(e));if(e instanceof EnrollmentError)setIssues(e.issues)}
+     finally{setBusy(false)}
 @@ -172,6 +172,7 @@
-     <h2 className="text-balance text-lg font-bold">Upload roster</h2>
-     <p className="text-pretty text-sm">Choose the school CSV or Excel file. Review the recognized {role} roster below before importing.</p>
-     <p className="text-pretty text-sm">A complete roster replaces only the {role} enrollment list. A partial update changes only the IDs in that file. Student and Faculty share the semester dates and close together.</p>
-+    {role==='Student'&&<p className="text-pretty text-sm">Every successful upload replaces student QR codes, even when the file is unchanged. Previously saved codes stop working.</p>}
-     <div className="grid gap-3 sm:grid-cols-2">
-       <label className="text-sm font-semibold">Roster date<input className={field} type="date" value={sourceDate} onChange={e=>setSourceDate(e.target.value)} required/></label>
-       <label className="text-sm font-semibold">Roster type<select className={field} value={scope} onChange={e=>setScope(e.target.value)}><option value="Complete">Complete school roster</option><option value="Partial">Partial update</option></select></label>
+     <h2 className="text-balance text-lg font-bold">Upload roster</h2>
+     <p className="text-pretty text-sm">Choose the school CSV or Excel file. Review the recognized {role} roster below before importing.</p>
+     <p className="text-pretty text-sm">A complete roster replaces only the {role} enrollment list. A partial update changes only the IDs in that file. Student and Faculty share the semester dates and close together.</p>
++    {role==='Student'&&<p className="text-pretty text-sm">Every successful upload replaces student QR codes, even when the file is unchanged. Previously saved codes stop working.</p>}
+     <div className="grid gap-3 sm:grid-cols-2">
+       <label className="text-sm font-semibold">Roster date<input className={field} type="date" value={sourceDate} onChange={e=>setSourceDate(e.target.value)} required/></label>
+       <label className="text-sm font-semibold">Roster type<select className={field} value={scope} onChange={e=>setScope(e.target.value)}><option value="Complete">Complete school roster</option><option value="Partial">Partial update</option></select></label>
 --- /dev/null
 +++ b/apps/web/src/features/users/StudentQrRosterPage.test.tsx
 @@ -0,0 +1,27 @@
@@ -698,215 +698,215 @@
 --- a/apps/web/src/features/users/enrollment-api.ts
 +++ b/apps/web/src/features/users/enrollment-api.ts
 @@ -37,6 +37,8 @@
- export function createEnrollmentApi(role:'Student'|'Faculty'='Student'){
- const call=<T,>(path:string,body?:unknown,signal?:AbortSignal)=>request<T>(path,body,signal,role)
- return {
-+  qrSemesters:(signal?:AbortSignal)=>call<Pick<Semester,'semester_id'|'academic_year'|'term_name'|'status'>[]>('/qr-semesters',undefined,signal),
-+  qrRoster:(id:number,page:number,q:string,signal?:AbortSignal)=>call<{rows:StudentQrCard[];more:boolean}>(`/semesters/${id}/qr-roster?${new URLSearchParams({page:String(page),q})}`,undefined,signal),
-   overview:(signal?:AbortSignal)=>call<Semester[]>('',undefined,signal),
-   save:(body:unknown)=>call<{semesterId:number}>('/semesters',body),
-   start:(id:number)=>call(`/semesters/${id}/start`,{}),
+ export function createEnrollmentApi(role:'Student'|'Faculty'='Student'){
+ const call=<T,>(path:string,body?:unknown,signal?:AbortSignal)=>request<T>(path,body,signal,role)
+ return {
++  qrSemesters:(signal?:AbortSignal)=>call<Pick<Semester,'semester_id'|'academic_year'|'term_name'|'status'>[]>('/qr-semesters',undefined,signal),
++  qrRoster:(id:number,page:number,q:string,signal?:AbortSignal)=>call<{rows:StudentQrCard[];more:boolean}>(`/semesters/${id}/qr-roster?${new URLSearchParams({page:String(page),q})}`,undefined,signal),
+   overview:(signal?:AbortSignal)=>call<Semester[]>('',undefined,signal),
+   save:(body:unknown)=>call<{semesterId:number}>('/semesters',body),
+   start:(id:number)=>call(`/semesters/${id}/start`,{}),
 @@ -56,3 +58,5 @@
- }
- export const enrollmentApi=createEnrollmentApi()
- export const facultyEnrollmentApi=createEnrollmentApi('Faculty')
-+
-+export type StudentQrCard = { school_id:string;student_name:string;program:string|null;year_level:string|null;qr_image:string|null;qr_status:string }
+ }
+ export const enrollmentApi=createEnrollmentApi()
+ export const facultyEnrollmentApi=createEnrollmentApi('Faculty')
++
++export type StudentQrCard = { school_id:string;student_name:string;program:string|null;year_level:string|null;qr_image:string|null;qr_status:string }
 --- a/apps/web/src/layouts/PortalLayout.tsx
 +++ b/apps/web/src/layouts/PortalLayout.tsx
 @@ -1,192 +1,192 @@
--import { AdminSidebarNavigation } from './AdminSidebarNavigation'
--import { librarianNav } from './admin-navigation'
--import { AttendanceConfirmationPrompt } from '../features/attendance/AttendanceConfirmationPrompt'
--import {
--  Archive,
--  BadgeCheck,
--  Bell,
--  BookMarked,
--  BookOpen,
--  CalendarClock,
--  CircleDollarSign,
--  ClipboardCheck,
--  FileText,
--  LayoutDashboard,
--  LibraryBig,
--  LogOut,
--  Menu,
--  Map,
--  Megaphone,
--  Printer,
--  QrCode,
--  ShoppingCart,
--  Users,
--  UserRound,
--  X,
--  type LucideIcon,
--} from 'lucide-react'
--import { useEffect, useState } from 'react'
--import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
--import { cn } from '../components/ui'
--import { getCurrentIdentity } from '../features/auth/auth-storage'
--import { logout } from '../features/auth/auth-api'
--import { AttendanceFab } from '../features/attendance/AttendanceFab'
--import { useMockAuth } from '../features/inventory/MockAuthContext'
--import { ThemeToggle } from '../features/theme/ThemeToggle'
--import { SessionActivity } from '../features/auth/SessionActivity'
--import { NotificationShortcut } from '../features/notifications/NotificationShortcut'
--import { SidebarAccountCard } from './SidebarAccountCard'
--
--type Role = 'student' | 'faculty' | 'admin' | 'librarian' | 'staff'
--type NavItem = { label: string; to: string; icon: LucideIcon; section?: string }
--
--const userNav = (role: 'student' | 'faculty'): NavItem[] => {
--  const prefix = role === 'faculty' ? '/faculty' : '/student'
--  return [
--    { label: 'Dashboard', to: `${prefix}/dashboard`, icon: LayoutDashboard },
--    { label: 'Library catalog', to: `${prefix}/library`, icon: BookOpen, section: 'Explore library' },
--    { label: 'Research & thesis', to: `${prefix}/research`, icon: FileText },
--    { label: 'Library schedule', to: `${prefix}/library-schedule`, icon: CalendarClock },
--    { label: 'Library floor plan', to: `${prefix}/floor-plan`, icon: Map },
--    { label: 'Book cart', to: `${prefix}/cart`, icon: ShoppingCart, section: 'My borrowing' },
--    { label: 'Requests & reservations', to: `${prefix}/reservations`, icon: BookMarked },
--    { label: 'My books', to: `${prefix}/my-books`, icon: LibraryBig },
--    { label: 'Borrowing history', to: `${prefix}/borrowing`, icon: CalendarClock },
--    { label: 'Printing service', to: `${prefix}/printing`, icon: Printer, section: 'Services' },
--    { label: 'QR attendance', to: `${prefix}/attendance`, icon: QrCode },
--    { label: 'Fines', to: `${prefix}/fines`, icon: CircleDollarSign, section: 'Payments & clearance' },
--    { label: 'Transactions', to: `${prefix}/transactions`, icon: CircleDollarSign },
--    { label: 'Clearance status', to: `${prefix}/clearance`, icon: BadgeCheck },
--    { label: 'My profile', to: `${prefix}/profile`, icon: UserRound, section: 'My account' },
--  ]
--}
--
--const adminNav: NavItem[] = [
--  { label: 'Dashboard', to: '/admin/dashboard', icon: LayoutDashboard, section: 'Accounts' },
--  { label: 'Users', to: '/admin/users', icon: Users },
--  { label: 'User archive', to: '/admin/user-archive', icon: Archive },
--  { label: 'Clearance', to: '/admin/clearance', icon: ClipboardCheck },
--  { label: 'Library schedule', to: '/admin/library-schedule', icon: CalendarClock },
--  { label: 'Notifications', to: '/admin/notifications', icon: Bell },
--]
--const staffNav: NavItem[] = [
--  { label: 'Dashboard', to: '/staff/dashboard', icon: LayoutDashboard, section: 'My tasks' },
--  { label: 'Borrow & return', to: '/staff/circulation', icon: CalendarClock },
--  { label: 'Book queue', to: '/staff/reservations', icon: BookMarked },
--  { label: 'Printing queue', to: '/staff/printing', icon: Printer },
--  { label: 'Online payments', to: '/staff/payments', icon: CircleDollarSign },
--  { label: 'Attendance', to: '/staff/attendance', icon: QrCode },
--  { label: 'Announcements', to: '/staff/announcements', icon: Megaphone },
--  { label: 'Library schedule', to: '/staff/library-schedule', icon: CalendarClock },
--  { label: 'Notifications', to: '/staff/notifications', icon: Bell },
--  { label: 'My profile', to: '/staff/profile', icon: UserRound },
--]
--const navigation = (role: Role): NavItem[] => role === 'admin' ? adminNav : role === 'librarian' ? librarianNav : role === 'staff' ? staffNav : userNav(role)
--
--function Brand({ compact = false }: { compact?: boolean }) {
--  return (
--    <div className="flex items-center gap-3">
--      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#FFF200] text-[#0b5ea2] shadow-sm"><LibraryBig size={22} strokeWidth={2.5} /><span className="absolute bottom-0 h-1 w-full bg-[#0b5ea2]" /></div>
--      {!compact ? <div><p className="font-display text-sm font-black leading-tight tracking-tight text-white">STI COLLEGE ORMOC</p><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/70">ILMS</p></div> : null}
--    </div>
--  )
--}
--
--function Sidebar({ role, open, onClose, onSignOut, signingOut }: { role: Role; open: boolean; onClose: () => void; onSignOut: () => void; signingOut: boolean }) {
--  const [mobile, setMobile] = useState(() => window.matchMedia?.('(max-width: 1023px)').matches ?? false)
--  useEffect(() => {
--    const media = window.matchMedia?.('(max-width: 1023px)')
--    if (!media) return
--    const update = () => setMobile(media.matches)
--    media.addEventListener('change', update)
--    return () => media.removeEventListener('change', update)
--  }, [])
--  const nav = navigation(role)
--  const preview = useMockAuth()
--  const claims = preview.identity ?? getCurrentIdentity()
--  return (
--    <>
--      {open ? <button aria-label="Close navigation" onClick={onClose} className="fixed inset-0 z-40 bg-[#0b5ea2]/45 backdrop-blur-sm lg:hidden" /> : null}
--      <aside id="portal-navigation" aria-label="Portal navigation" inert={!open && mobile ? true : undefined} className={cn('portal-sidebar fixed inset-y-0 left-0 z-50 flex w-64 max-w-[calc(100vw-2rem)] flex-col bg-[#0b5ea2] text-white transition-transform duration-300 lg:max-w-none lg:translate-x-0', open ? 'translate-x-0' : '-translate-x-full')}>
--        <div className="flex h-20 items-center justify-between border-b border-white/10 px-5"><Brand /><button onClick={onClose} aria-label="Close navigation menu" className="min-h-11 min-w-11 shrink-0 rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white lg:hidden"><X size={18} /></button></div>
--        <nav className="flex-1 overflow-y-auto px-3 py-5">
--          {role === 'librarian' ? <AdminSidebarNavigation onNavigate={onClose}/> : nav.map((item) => {
--            const Icon = item.icon
--            return <div key={item.to}>{item.section ? <h2 className="mb-2 mt-4 px-3 text-xs font-bold uppercase text-white/65">{item.section}</h2> : null}<NavLink onClick={onClose} to={item.to} className={({ isActive }) => cn('mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition lg:py-2.5', isActive ? 'bg-white text-[#0b5ea2] shadow-sm dark:bg-[#FFF200]' : 'text-white/70 hover:bg-white/10 hover:text-white')}><Icon size={17} /><span>{item.label}</span></NavLink></div>
--          })}
--        </nav>
--        <div className="border-t border-white/10 p-3">{role === 'student' || role === 'faculty' || role === 'librarian' ? <button type="button" onClick={onSignOut} disabled={signingOut} className="mb-2 flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/75 hover:bg-white/10 disabled:opacity-50"><LogOut size={17} aria-hidden="true" />{signingOut ? 'Signing out…' : 'Sign out'}</button> : null}<SidebarAccountCard key={`${claims?.source}:${claims?.userId}`} identity={claims} preview={preview.enabled} /></div>
--      </aside>
--    </>
--  )
--}
--
--export function PortalLayout({ role }: { role: Role }) {
--  const [sidebarOpen, setSidebarOpen] = useState(false)
--  const [confirmSignOut, setConfirmSignOut] = useState(false)
--  const [signingOut, setSigningOut] = useState(false)
--  const [signOutError, setSignOutError] = useState('')
--  const location = useLocation()
--  const navigate = useNavigate()
--  const nav = navigation(role)
--  const current = [...nav, { label: 'Notifications', to: `/${role}/notifications` }].find((item) => location.pathname.startsWith(item.to))
--  useEffect(() => {
--    const media = window.matchMedia?.('(min-width: 1024px)')
--    const closeOnDesktop = () => { if (media?.matches) setSidebarOpen(false) }
--    media?.addEventListener('change', closeOnDesktop)
--    return () => media?.removeEventListener('change', closeOnDesktop)
--  }, [])
--  useEffect(() => {
--    if (!sidebarOpen) return
--    const previousOverflow = document.body.style.overflow
--    const previousFocus = document.activeElement as HTMLElement | null
--    document.body.style.overflow = 'hidden'
--    const sidebar = document.getElementById('portal-navigation')
--    const controls = () => [...(sidebar?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), summary') ?? [])].filter(control => control.getClientRects().length)
--    controls()[0]?.focus()
--    const keydown = (event: KeyboardEvent) => {
--      if (event.key === 'Escape') setSidebarOpen(false)
--      if (event.key === 'Tab') {
--        const items = controls()
--        if (!items.length) return
--        if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items.at(-1)?.focus() }
--        else if (!event.shiftKey && document.activeElement === items.at(-1)) { event.preventDefault(); items[0].focus() }
--      }
--    }
--    document.addEventListener('keydown', keydown)
--    return () => { document.body.style.overflow = previousOverflow; document.removeEventListener('keydown', keydown); previousFocus?.focus() }
--  }, [sidebarOpen])
--  const signOut = async () => {
--    setSigningOut(true)
--    setSignOutError('')
--    try {
--      await logout()
--      setConfirmSignOut(false)
--      navigate('/login', { replace: true })
--    } catch {
--      setSignOutError('Sign out could not be confirmed. Check your connection and try again.')
--    } finally { setSigningOut(false) }
--  }
--
--  return (
--    <div data-portal={role} className="portal-layout min-h-dvh bg-[#FFFFFF] text-[#0b5ea2] transition-colors dark:bg-[#14151b] dark:text-[#f2f6ff]">
--      <Sidebar role={role} open={sidebarOpen} onClose={() => setSidebarOpen(false)} onSignOut={() => { setSignOutError(''); setConfirmSignOut(true) }} signingOut={signingOut} />
--      <div className="lg:pl-64" inert={sidebarOpen ? true : undefined}>
--        <header className="sticky top-0 z-30 flex h-20 items-center border-b border-[#0b5ea2]/10 bg-white/90 px-4 backdrop-blur-xl transition-colors sm:px-6 lg:px-8 dark:border-white/10 dark:bg-[#001a4d]/92">
--          <button onClick={() => setSidebarOpen(true)} aria-label="Open navigation" aria-controls="portal-navigation" aria-expanded={sidebarOpen} className="mr-3 shrink-0 rounded-xl border border-[#0b5ea2]/15 p-2.5 text-[#0b5ea2]/65 lg:hidden dark:border-white/15 dark:text-white/70"><Menu size={19} /></button>
--          <div className="hidden sm:block"><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#0b5ea2]/45 dark:text-white/45">{role === 'admin' ? 'Admin workspace' : role === 'librarian' ? 'Library Admin workspace' : role === 'staff' ? 'Staff workspace' : role === 'faculty' ? 'Faculty portal' : 'Student portal'}</p><p className="mt-0.5 font-display text-sm font-bold text-[#0b5ea2] dark:text-white">{current?.label ?? 'STI College Ormoc ILMS'}</p></div>
--          <div className="ml-auto flex items-center gap-2">
--            <ThemeToggle />
--            <NotificationShortcut path={`/${role}/notifications`} />
--            <button onClick={() => { setSignOutError(''); setConfirmSignOut(true) }} disabled={signingOut} aria-label="Sign out" title="Sign out" className="rounded-xl border border-[#0b5ea2]/15 bg-white p-2.5 text-[#0b5ea2]/65 transition hover:bg-[#0b5ea2]/5 disabled:opacity-50 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><LogOut size={18} /></button>
--          </div>
--        </header>
--        {signOutError && <p role="alert" className="m-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">{signOutError}</p>}
--        <SessionActivity /><main className="portal-content mx-auto min-w-0 max-w-[1500px] p-4 sm:p-6 lg:p-8"><Outlet /></main>
--        {role !== 'admin' ? <AttendanceConfirmationPrompt /> : null}
--        {role !== 'admin' ? <AttendanceFab role={role} /> : null}
--      </div>
--      {confirmSignOut ? <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#0b5ea2]/80 p-4" onKeyDown={(event) => { if (event.key === 'Escape' && !signingOut) setConfirmSignOut(false) }}><div role="alertdialog" aria-modal="true" aria-labelledby="sign-out-title" aria-describedby="sign-out-text" className="w-full max-w-md rounded-2xl bg-white p-5 text-[#0b5ea2] shadow-2xl dark:bg-[#001a4d] dark:text-white"><h2 id="sign-out-title" className="text-lg font-black">Are you sure you want to sign out?</h2><p id="sign-out-text" className="mt-2 text-sm opacity-75">You will need to sign in again to use this portal.</p><div className="mt-5 flex flex-wrap justify-end gap-2"><button type="button" disabled={signingOut} onClick={() => setConfirmSignOut(false)} className="h-11 rounded-xl border border-[#0b5ea2] px-4 text-sm font-bold disabled:opacity-50 dark:border-white/40">Cancel</button><button type="button" disabled={signingOut} onClick={() => void signOut()} className="h-11 rounded-xl bg-[#0b5ea2] px-4 text-sm font-bold text-white disabled:opacity-50">{signingOut ? 'Signing out…' : 'Sign out now'}</button></div></div></div> : null}
--    </div>
--  )
--}
+-import { AdminSidebarNavigation } from './AdminSidebarNavigation'
+-import { librarianNav } from './admin-navigation'
+-import { AttendanceConfirmationPrompt } from '../features/attendance/AttendanceConfirmationPrompt'
+-import {
+-  Archive,
+-  BadgeCheck,
+-  Bell,
+-  BookMarked,
+-  BookOpen,
+-  CalendarClock,
+-  CircleDollarSign,
+-  ClipboardCheck,
+-  FileText,
+-  LayoutDashboard,
+-  LibraryBig,
+-  LogOut,
+-  Menu,
+-  Map,
+-  Megaphone,
+-  Printer,
+-  QrCode,
+-  ShoppingCart,
+-  Users,
+-  UserRound,
+-  X,
+-  type LucideIcon,
+-} from 'lucide-react'
+-import { useEffect, useState } from 'react'
+-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+-import { cn } from '../components/ui'
+-import { getCurrentIdentity } from '../features/auth/auth-storage'
+-import { logout } from '../features/auth/auth-api'
+-import { AttendanceFab } from '../features/attendance/AttendanceFab'
+-import { useMockAuth } from '../features/inventory/MockAuthContext'
+-import { ThemeToggle } from '../features/theme/ThemeToggle'
+-import { SessionActivity } from '../features/auth/SessionActivity'
+-import { NotificationShortcut } from '../features/notifications/NotificationShortcut'
+-import { SidebarAccountCard } from './SidebarAccountCard'
+-
+-type Role = 'student' | 'faculty' | 'admin' | 'librarian' | 'staff'
+-type NavItem = { label: string; to: string; icon: LucideIcon; section?: string }
+-
+-const userNav = (role: 'student' | 'faculty'): NavItem[] => {
+-  const prefix = role === 'faculty' ? '/faculty' : '/student'
+-  return [
+-    { label: 'Dashboard', to: `${prefix}/dashboard`, icon: LayoutDashboard },
+-    { label: 'Library catalog', to: `${prefix}/library`, icon: BookOpen, section: 'Explore library' },
+-    { label: 'Research & thesis', to: `${prefix}/research`, icon: FileText },
+-    { label: 'Library schedule', to: `${prefix}/library-schedule`, icon: CalendarClock },
+-    { label: 'Library floor plan', to: `${prefix}/floor-plan`, icon: Map },
+-    { label: 'Book cart', to: `${prefix}/cart`, icon: ShoppingCart, section: 'My borrowing' },
+-    { label: 'Requests & reservations', to: `${prefix}/reservations`, icon: BookMarked },
+-    { label: 'My books', to: `${prefix}/my-books`, icon: LibraryBig },
+-    { label: 'Borrowing history', to: `${prefix}/borrowing`, icon: CalendarClock },
+-    { label: 'Printing service', to: `${prefix}/printing`, icon: Printer, section: 'Services' },
+-    { label: 'QR attendance', to: `${prefix}/attendance`, icon: QrCode },
+-    { label: 'Fines', to: `${prefix}/fines`, icon: CircleDollarSign, section: 'Payments & clearance' },
+-    { label: 'Transactions', to: `${prefix}/transactions`, icon: CircleDollarSign },
+-    { label: 'Clearance status', to: `${prefix}/clearance`, icon: BadgeCheck },
+-    { label: 'My profile', to: `${prefix}/profile`, icon: UserRound, section: 'My account' },
+-  ]
+-}
+-
+-const adminNav: NavItem[] = [
+-  { label: 'Dashboard', to: '/admin/dashboard', icon: LayoutDashboard, section: 'Accounts' },
+-  { label: 'Users', to: '/admin/users', icon: Users },
+-  { label: 'User archive', to: '/admin/user-archive', icon: Archive },
+-  { label: 'Clearance', to: '/admin/clearance', icon: ClipboardCheck },
+-  { label: 'Library schedule', to: '/admin/library-schedule', icon: CalendarClock },
+-  { label: 'Notifications', to: '/admin/notifications', icon: Bell },
+-]
+-const staffNav: NavItem[] = [
+-  { label: 'Dashboard', to: '/staff/dashboard', icon: LayoutDashboard, section: 'My tasks' },
+-  { label: 'Borrow & return', to: '/staff/circulation', icon: CalendarClock },
+-  { label: 'Book queue', to: '/staff/reservations', icon: BookMarked },
+-  { label: 'Printing queue', to: '/staff/printing', icon: Printer },
+-  { label: 'Online payments', to: '/staff/payments', icon: CircleDollarSign },
+-  { label: 'Attendance', to: '/staff/attendance', icon: QrCode },
+-  { label: 'Announcements', to: '/staff/announcements', icon: Megaphone },
+-  { label: 'Library schedule', to: '/staff/library-schedule', icon: CalendarClock },
+-  { label: 'Notifications', to: '/staff/notifications', icon: Bell },
+-  { label: 'My profile', to: '/staff/profile', icon: UserRound },
+-]
+-const navigation = (role: Role): NavItem[] => role === 'admin' ? adminNav : role === 'librarian' ? librarianNav : role === 'staff' ? staffNav : userNav(role)
+-
+-function Brand({ compact = false }: { compact?: boolean }) {
+-  return (
+-    <div className="flex items-center gap-3">
+-      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#FFF200] text-[#0b5ea2] shadow-sm"><LibraryBig size={22} strokeWidth={2.5} /><span className="absolute bottom-0 h-1 w-full bg-[#0b5ea2]" /></div>
+-      {!compact ? <div><p className="font-display text-sm font-black leading-tight tracking-tight text-white">STI COLLEGE ORMOC</p><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/70">ILMS</p></div> : null}
+-    </div>
+-  )
+-}
+-
+-function Sidebar({ role, open, onClose, onSignOut, signingOut }: { role: Role; open: boolean; onClose: () => void; onSignOut: () => void; signingOut: boolean }) {
+-  const [mobile, setMobile] = useState(() => window.matchMedia?.('(max-width: 1023px)').matches ?? false)
+-  useEffect(() => {
+-    const media = window.matchMedia?.('(max-width: 1023px)')
+-    if (!media) return
+-    const update = () => setMobile(media.matches)
+-    media.addEventListener('change', update)
+-    return () => media.removeEventListener('change', update)
+-  }, [])
+-  const nav = navigation(role)
+-  const preview = useMockAuth()
+-  const claims = preview.identity ?? getCurrentIdentity()
+-  return (
+-    <>
+-      {open ? <button aria-label="Close navigation" onClick={onClose} className="fixed inset-0 z-40 bg-[#0b5ea2]/45 backdrop-blur-sm lg:hidden" /> : null}
+-      <aside id="portal-navigation" aria-label="Portal navigation" inert={!open && mobile ? true : undefined} className={cn('portal-sidebar fixed inset-y-0 left-0 z-50 flex w-64 max-w-[calc(100vw-2rem)] flex-col bg-[#0b5ea2] text-white transition-transform duration-300 lg:max-w-none lg:translate-x-0', open ? 'translate-x-0' : '-translate-x-full')}>
+-        <div className="flex h-20 items-center justify-between border-b border-white/10 px-5"><Brand /><button onClick={onClose} aria-label="Close navigation menu" className="min-h-11 min-w-11 shrink-0 rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white lg:hidden"><X size={18} /></button></div>
+-        <nav className="flex-1 overflow-y-auto px-3 py-5">
+-          {role === 'librarian' ? <AdminSidebarNavigation onNavigate={onClose}/> : nav.map((item) => {
+-            const Icon = item.icon
+-            return <div key={item.to}>{item.section ? <h2 className="mb-2 mt-4 px-3 text-xs font-bold uppercase text-white/65">{item.section}</h2> : null}<NavLink onClick={onClose} to={item.to} className={({ isActive }) => cn('mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition lg:py-2.5', isActive ? 'bg-white text-[#0b5ea2] shadow-sm dark:bg-[#FFF200]' : 'text-white/70 hover:bg-white/10 hover:text-white')}><Icon size={17} /><span>{item.label}</span></NavLink></div>
+-          })}
+-        </nav>
+-        <div className="border-t border-white/10 p-3">{role === 'student' || role === 'faculty' || role === 'librarian' ? <button type="button" onClick={onSignOut} disabled={signingOut} className="mb-2 flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/75 hover:bg-white/10 disabled:opacity-50"><LogOut size={17} aria-hidden="true" />{signingOut ? 'Signing out…' : 'Sign out'}</button> : null}<SidebarAccountCard key={`${claims?.source}:${claims?.userId}`} identity={claims} preview={preview.enabled} /></div>
+-      </aside>
+-    </>
+-  )
+-}
+-
+-export function PortalLayout({ role }: { role: Role }) {
+-  const [sidebarOpen, setSidebarOpen] = useState(false)
+-  const [confirmSignOut, setConfirmSignOut] = useState(false)
+-  const [signingOut, setSigningOut] = useState(false)
+-  const [signOutError, setSignOutError] = useState('')
+-  const location = useLocation()
+-  const navigate = useNavigate()
+-  const nav = navigation(role)
+-  const current = [...nav, { label: 'Notifications', to: `/${role}/notifications` }].find((item) => location.pathname.startsWith(item.to))
+-  useEffect(() => {
+-    const media = window.matchMedia?.('(min-width: 1024px)')
+-    const closeOnDesktop = () => { if (media?.matches) setSidebarOpen(false) }
+-    media?.addEventListener('change', closeOnDesktop)
+-    return () => media?.removeEventListener('change', closeOnDesktop)
+-  }, [])
+-  useEffect(() => {
+-    if (!sidebarOpen) return
+-    const previousOverflow = document.body.style.overflow
+-    const previousFocus = document.activeElement as HTMLElement | null
+-    document.body.style.overflow = 'hidden'
+-    const sidebar = document.getElementById('portal-navigation')
+-    const controls = () => [...(sidebar?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), summary') ?? [])].filter(control => control.getClientRects().length)
+-    controls()[0]?.focus()
+-    const keydown = (event: KeyboardEvent) => {
+-      if (event.key === 'Escape') setSidebarOpen(false)
+-      if (event.key === 'Tab') {
+-        const items = controls()
+-        if (!items.length) return
+-        if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items.at(-1)?.focus() }
+-        else if (!event.shiftKey && document.activeElement === items.at(-1)) { event.preventDefault(); items[0].focus() }
+-      }
+-    }
+-    document.addEventListener('keydown', keydown)
+-    return () => { document.body.style.overflow = previousOverflow; document.removeEventListener('keydown', keydown); previousFocus?.focus() }
+-  }, [sidebarOpen])
+-  const signOut = async () => {
+-    setSigningOut(true)
+-    setSignOutError('')
+-    try {
+-      await logout()
+-      setConfirmSignOut(false)
+-      navigate('/login', { replace: true })
+-    } catch {
+-      setSignOutError('Sign out could not be confirmed. Check your connection and try again.')
+-    } finally { setSigningOut(false) }
+-  }
+-
+-  return (
+-    <div data-portal={role} className="portal-layout min-h-dvh bg-[#FFFFFF] text-[#0b5ea2] transition-colors dark:bg-[#14151b] dark:text-[#f2f6ff]">
+-      <Sidebar role={role} open={sidebarOpen} onClose={() => setSidebarOpen(false)} onSignOut={() => { setSignOutError(''); setConfirmSignOut(true) }} signingOut={signingOut} />
+-      <div className="lg:pl-64" inert={sidebarOpen ? true : undefined}>
+-        <header className="sticky top-0 z-30 flex h-20 items-center border-b border-[#0b5ea2]/10 bg-white/90 px-4 backdrop-blur-xl transition-colors sm:px-6 lg:px-8 dark:border-white/10 dark:bg-[#001a4d]/92">
+-          <button onClick={() => setSidebarOpen(true)} aria-label="Open navigation" aria-controls="portal-navigation" aria-expanded={sidebarOpen} className="mr-3 shrink-0 rounded-xl border border-[#0b5ea2]/15 p-2.5 text-[#0b5ea2]/65 lg:hidden dark:border-white/15 dark:text-white/70"><Menu size={19} /></button>
+-          <div className="hidden sm:block"><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#0b5ea2]/45 dark:text-white/45">{role === 'admin' ? 'Admin workspace' : role === 'librarian' ? 'Library Admin workspace' : role === 'staff' ? 'Staff workspace' : role === 'faculty' ? 'Faculty portal' : 'Student portal'}</p><p className="mt-0.5 font-display text-sm font-bold text-[#0b5ea2] dark:text-white">{current?.label ?? 'STI College Ormoc ILMS'}</p></div>
+-          <div className="ml-auto flex items-center gap-2">
+-            <ThemeToggle />
+-            <NotificationShortcut path={`/${role}/notifications`} />
+-            <button onClick={() => { setSignOutError(''); setConfirmSignOut(true) }} disabled={signingOut} aria-label="Sign out" title="Sign out" className="rounded-xl border border-[#0b5ea2]/15 bg-white p-2.5 text-[#0b5ea2]/65 transition hover:bg-[#0b5ea2]/5 disabled:opacity-50 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><LogOut size={18} /></button>
+-          </div>
+-        </header>
+-        {signOutError && <p role="alert" className="m-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">{signOutError}</p>}
+-        <SessionActivity /><main className="portal-content mx-auto min-w-0 max-w-[1500px] p-4 sm:p-6 lg:p-8"><Outlet /></main>
+-        {role !== 'admin' ? <AttendanceConfirmationPrompt /> : null}
+-        {role !== 'admin' ? <AttendanceFab role={role} /> : null}
+-      </div>
+-      {confirmSignOut ? <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#0b5ea2]/80 p-4" onKeyDown={(event) => { if (event.key === 'Escape' && !signingOut) setConfirmSignOut(false) }}><div role="alertdialog" aria-modal="true" aria-labelledby="sign-out-title" aria-describedby="sign-out-text" className="w-full max-w-md rounded-2xl bg-white p-5 text-[#0b5ea2] shadow-2xl dark:bg-[#001a4d] dark:text-white"><h2 id="sign-out-title" className="text-lg font-black">Are you sure you want to sign out?</h2><p id="sign-out-text" className="mt-2 text-sm opacity-75">You will need to sign in again to use this portal.</p><div className="mt-5 flex flex-wrap justify-end gap-2"><button type="button" disabled={signingOut} onClick={() => setConfirmSignOut(false)} className="h-11 rounded-xl border border-[#0b5ea2] px-4 text-sm font-bold disabled:opacity-50 dark:border-white/40">Cancel</button><button type="button" disabled={signingOut} onClick={() => void signOut()} className="h-11 rounded-xl bg-[#0b5ea2] px-4 text-sm font-bold text-white disabled:opacity-50">{signingOut ? 'Signing out…' : 'Sign out now'}</button></div></div></div> : null}
+-    </div>
+-  )
+-}
 +import { AdminSidebarNavigation } from './AdminSidebarNavigation'
 +import { librarianNav } from './admin-navigation'
 +import { AttendanceConfirmationPrompt } from '../features/attendance/AttendanceConfirmationPrompt'
@@ -1102,11 +1102,11 @@
 --- a/apps/web/src/layouts/admin-navigation.ts
 +++ b/apps/web/src/layouts/admin-navigation.ts
 @@ -17,7 +17,7 @@
-     ]},
-     {id:'accounts',label:'Accounts',icon:Users,children:[
-       link('Users','users',Users),
--      link('User archive','user-archive',Archive),
-+      link('Student QR roster','student-qr-roster',QrCode),
-     ]},
-     link('Floor plan','floor-plan',Map),
-     link('Print supplies','supplies',PackageOpen),
+     ]},
+     {id:'accounts',label:'Accounts',icon:Users,children:[
+       link('Users','users',Users),
+-      link('User archive','user-archive',Archive),
++      link('Student QR roster','student-qr-roster',QrCode),
+     ]},
+     link('Floor plan','floor-plan',Map),
+     link('Print supplies','supplies',PackageOpen),
