@@ -9,6 +9,7 @@ import { ViewLocationButton } from '../floor-plan/ViewLocationButton'
 import { getCurrentIdentity } from '../auth/auth-storage'
 const labels:Record<string,string>={received:'Request received',waiting:'Waiting for a copy',preparing:'Preparing',ready_for_pickup:'Ready for pickup',claimed:'Collected',cancelled:'Cancelled',expired:'Expired'}
 const when=(s:string)=>new Date(s).toLocaleString('en-PH',{timeZone:'Asia/Manila',dateStyle:'medium',timeStyle:'short'})
+const day=(s:string)=>new Date(s).toLocaleDateString('en-PH',{timeZone:'Asia/Manila',dateStyle:'medium'})
 export function StudentReservations() {
   const catalogPath = getCurrentIdentity()?.role === 'Faculty' ? '/faculty/library' : '/student/library'
   const query=useLiveQuery('my-requests',()=>reservationApi.mine())
@@ -36,6 +37,7 @@ export function StudentReservations() {
         <p className="mt-4 rounded-xl bg-[#0b5ea2]/5 p-3 text-base dark:bg-white/10">{item.instructions??(state==='Preparing'?'Staff are preparing your copy. Wait for the Ready for pickup notice.':'Check this page for request updates.')}</p>
         {item.pickupDeadline?<p className="mt-3 font-semibold">Pickup deadline: {when(item.pickupDeadline)} (Philippine time)</p>:cancellable&&item.requestKind!=='CartHandover'?<p className="mt-3">Pickup timer not started.</p>:null}
         {item.requestKind!=='CartHandover'&&item.status==='pending'?<p className="mt-3">Queue position #{item.queuePosition}</p>:null}
+        {item.waitingExpiresAt?<p className="mt-3">Expires on {day(item.waitingExpiresAt)}</p>:null}
         {item.barcode?<p className="mt-3 text-sm">Assigned copy: <span className="break-all font-mono">{item.barcode}</span></p>:null}
         {item.emailStatus==='Failed'?<p className="mt-3">Email notice is delayed. Your request and in-app updates are saved.</p>:null}
         {item.events?.length?<details className="mt-4 border-t border-[#0b5ea2]/15 dark:border-white/15">
