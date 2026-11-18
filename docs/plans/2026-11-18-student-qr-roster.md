@@ -58,3 +58,11 @@ Combined release validation passed type checking, production build, 19 API tests
 Deployment `dpl_FXHfzuC8JxrhvPUeNUzdzw124ie8` was promoted to https://sti-ormoc-smart-library.vercel.app. Final live checks: health HTTP 200 / healthy, Admin and Librarian QR page URLs HTTP 200, protected QR-semesters API HTTP 401, and the lazy-loaded QR page asset contains the replacement notice. No live roster upload, credential rotation, schema migration, or student-data write was performed during release verification. Authenticated production QR rendering and physical scanning remain human acceptance checks.
 
 Source provenance and exact production integration changes are recorded in `docs/releases/2026-11-18-student-qr-roster-source.json` and `docs/releases/2026-11-18-student-qr-roster-production.patch`. The current live baseline includes unrelated releases beyond local main; the patch makes the deployed integration reproducible without importing those unrelated changes into this feature branch.
+
+## Shared QR design — 2026-11-18
+
+Owner supplied a reference personal library pass and requested the same appearance for all student QR codes. Personal-pass and roster generation now share `attendance-qr-image.ts`: 768 by 768 PNG, four-module white margin, STI blue `#003399` modules on white, and M error correction. Identity patterns remain unique. QR values and replacement rules are unchanged.
+
+Owner explicitly requested hosting before pushing and no further tests. One regression test had already been started before that instruction and failed against the earlier 256px roster output. No tests were run after the design implementation. Vercel's deployment build remains required to host the code. Production deployment status will be recorded after hosting, before the Git push.
+
+Shared design deployed as `dpl_AkcpJEwcJw5Pzvn8s9GZFxwW6VK5` and promoted to the public alias before committing/pushing the design change. Vercel deployment build completed successfully. No post-implementation tests were run, per owner request. Provenance is recorded in `docs/releases/2026-11-18-shared-student-qr-design-source.json`.

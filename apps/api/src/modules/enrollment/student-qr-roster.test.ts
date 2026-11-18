@@ -2,6 +2,30 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createEnrollmentService, replenishRosterCredentials } from './enrollment.service.ts'
 import { issueAttendanceCredential, validateAttendanceCredential } from '../attendance/attendance-credential.service.ts'
+import QRCode from 'qrcode'
+
+test('roster QR download matches the 768px blue-on-white library pass image', async () => {
+  let credential: Record<string, unknown> = {}
+  const writer = { execute: async (sql: string, values: unknown[] = []) => {
+    if (sql.includes('SELECT credential_id')) return [[]]
+    credential = { user_id: values[0], public_id: values[1], secret_hash: values[2], credential_version: values[3], credential_status: 'Active' }
+    return [{ insertId: 44 }]
+  } }
+  const pass = await issueAttendanceCredential(writer as never,19)
+  const connection = {
+    beginTransaction: async () => {}, commit: async () => {}, rollback: async () => {}, release: () => {},
+    execute: async (sql: string) => {
+      if (sql.includes('SELECT a.role')) return [[{ role: 'Librarian', account_status: 'Active' }]]
+      if (sql.includes('SELECT * FROM enrollment_semesters')) return [[{ semester_id: 1 }]]
+      return [[{ ...credential, school_id: 'TEST-001', student_name: 'Example Student', account_status: 'Active', user_status: 'Active' }]]
+    },
+  }
+  const service = createEnrollmentService({ getConnection: async () => connection } as never, () => true)
+  const result = await service.qrRoster(1,1,1,'')
+  const image = Buffer.from(result.rows[0].qr_image!.split(',')[1], 'base64')
+  const expected = await QRCode.toBuffer(pass.payload,{ type: 'png', width: 768, margin: 4, errorCorrectionLevel: 'M', color: { dark: '#003399', light: '#FFFFFF' } })
+  assert.deepEqual(image,expected)
+})
 
 test('QR roster retains unregistered students and performs no writes', async () => {
   const statements: string[] = []

@@ -1,0 +1,21 @@
+{
+  "date": "2026-11-18",
+  "branch": "feat/student-qr-roster",
+  "baseDeployment": "dpl_FXHfzuC8JxrhvPUeNUzdzw124ie8",
+  "deployment": "dpl_AkcpJEwcJw5Pzvn8s9GZFxwW6VK5",
+  "url": "https://sti-ormoc-smart-library.vercel.app",
+  "design": {
+    "width": 768,
+    "margin": 4,
+    "dark": "#003399",
+    "light": "#FFFFFF",
+    "errorCorrectionLevel": "M"
+  },
+  "tests": "Not run after implementation, per owner instruction. Vercel deployment build succeeded.",
+  "order": "Production promotion completed before Git push.",
+  "files": {
+    "apps/api/src/modules/attendance/attendance-qr-image.ts": "8dca73bc44a1a614c651f3f9c843a85909135c5834dd62a780a83c3e5aa766dd",
+    "apps/api/src/modules/attendance/attendance.controller.ts": "ca3b30a5cd9aafec21560cdde228cf01fdc5e67859cfa966c23b6f2777fcaf91",
+    "apps/api/src/modules/enrollment/enrollment.service.ts": "c701b7e5c4ce30b296981ba11c072bf56d68862c078b27ddaf1862eb8980e781"
+  }
+}

@@ -6,6 +6,7 @@ import { requireLibraryActor } from '../../core/library-permissions.ts'
 import { enrollmentEnabled, lockEnrollment, currentRosterSql } from './enrollment-policy.ts'
 import { parseEnrollmentFile } from './enrollment-parser.ts'
 import QRCode from 'qrcode'
+import { libraryQrImageOptions } from '../attendance/attendance-qr-image.ts'
 import { existingAttendancePayload, issueAttendanceCredential } from '../attendance/attendance-credential.service.ts'
 
 const fail = (message: string) => new HttpError(422, 'SEMESTER_INVALID', message)
@@ -140,7 +141,7 @@ export function createEnrollmentService(database: Pool = db, enabled = enrollmen
           const qr_status = !row.account_status ? 'Registration needed' : !active ? 'Account inactive' : pass ? 'Ready' : 'Open My permanent library QR to prepare a pass'
           return { school_id: String(row.school_id), student_name: String(row.student_name),
             program: row.program as string | null, year_level: row.year_level as string | null, qr_status,
-            qr_image: pass ? await QRCode.toDataURL(pass,{ width: 256, margin: 4, errorCorrectionLevel: 'M', color: { dark: '#003399', light: '#FFFFFF' } }) : null }
+            qr_image: pass ? await QRCode.toDataURL(pass,libraryQrImageOptions) : null }
         }))
         return { rows: cards, more: rows.length > 24 }
       })
