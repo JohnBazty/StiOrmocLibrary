@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { isOpenAt, nextClose, nextCloseAfter, pickupDeadline, type OpeningSchedule } from './pickup-deadline.ts'
+import { loadOpeningHours } from './pickup-deadline.ts'
 
 // 2026-11-16 is a Monday. Manila is UTC+8.
 const at = (iso: string) => new Date(`${iso}+08:00`)
@@ -52,4 +53,29 @@ test('deadline is never earlier than ready plus 24 hours', () => {
     const ready = new Date(at('2026-11-16T00:00').getTime() + Math.floor(Math.random() * 14 * 86_400_000))
     assert.ok(pickupDeadline(ready, s, new Set(['2026-11-25'])).getTime() >= ready.getTime() + 86_400_000)
   }
+})
+
+// ---- Pickup window in days (SPEC R1)
+test('window 3: ready Mon 10:00 gives Thu 10:00 (AC 1)', () => {
+  assert.equal(pickupDeadline(at('2026-11-16T10:00'), week(), none, 3).getTime(), at('2026-11-19T10:00').getTime())
+})
+test('window 2: an end after closing on a day before a closed date moves to the next closing (AC 3)', () => {
+  assert.equal(pickupDeadline(at('2026-11-16T18:00'), week(), new Set(['2026-11-19']), 2).getTime(), at('2026-11-20T17:00').getTime())
+})
+test('window 3: an end exactly at closing is kept', () => {
+  assert.equal(pickupDeadline(at('2026-11-16T17:00'), week(), none, 3).getTime(), at('2026-11-19T17:00').getTime())
+})
+test('deadline is never earlier than ready plus N days', () => {
+  const s = week({ 6: { opensAt: '08:00:00', closesAt: '12:00:00' } })
+  for (let n = 1; n <= 7; n++) for (let i = 0; i < 200; i++) {
+    const ready = new Date(at('2026-11-16T00:00').getTime() + Math.floor(Math.random() * 14 * 86_400_000))
+    assert.ok(pickupDeadline(ready, s, new Set(['2026-11-25']), n).getTime() >= ready.getTime() + n * 86_400_000)
+  }
+})
+test('loadOpeningHours loads closed days far enough for the window', async () => {
+  const ends: unknown[] = []
+  const q = { async execute(sql: string, params: unknown[] = []) { if (sql.includes('library_closed_days')) ends.push(params[1]); return [[]] } } as never
+  await loadOpeningHours(q, at('2026-11-16T10:00'))
+  await loadOpeningHours(q, at('2026-11-16T10:00'), 7)
+  assert.deepEqual(ends, ['2026-12-19', '2026-12-25'])
 })

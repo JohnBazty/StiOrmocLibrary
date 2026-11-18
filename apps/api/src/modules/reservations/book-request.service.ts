@@ -10,6 +10,7 @@ import { positiveId, validateMove } from './reservation.validation.ts'
 import { recordRequestEvent, requestEventStatus, requestLabels, requestInstructions } from './book-request-events.ts'
 import { loadOpeningHours, pickupDeadline, nextCloseAfter } from './pickup-deadline.ts'
 import { notifyLibrarians } from '../notifications/library-alerts.ts'
+import { dayCount, readReservationSettings } from './reservation-settings.service.ts'
 
 const active = "('pending','approved','ready_for_pickup')"
 const fail = (code: string, message: string) => new HttpError(422,code,message)
@@ -257,7 +258,7 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
       const input=object(body)
       if(input.status==='cancelled') return this.cancel(accountId,id,true)
       if(!['approved','ready_for_pickup'].includes(String(input.status))) throw fail('RESERVATION_STATUS_INVALID','Choose Mark ready or Cancel request.')
-      if(input.pickupDeadline) throw fail('PICKUP_DEADLINE_FIXED','Pickup deadlines are fixed at 24 hours from Mark ready.')
+      if(input.pickupDeadline) throw fail('PICKUP_DEADLINE_FIXED',`Pickup deadlines are fixed at ${dayCount((await readReservationSettings(database)).pickupWindowDays)} from Mark ready.`)
       return transaction(async q=> {
         await linkedUser(q,positiveId(accountId,'accountId'),true)
         let r=await requestRow(q,positiveId(id,'reservationId'))
@@ -280,10 +281,12 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
           AND pc.availability_status='Reserved' AND pc.condition_status NOT IN ('Lost','Damaged','For Repair') FOR UPDATE OF pc,t`,[r.assigned_physical_copy_id])
         if(!copies.length) throw fail('DESK_COPY_BLOCKED','The assigned copy is unavailable. Review its physical condition before marking ready.')
         if(input.status==='approved') return result(r) // Compatible legacy Prepare action, never another approval gate.
-        const now=clock(),hoursOpen=await loadOpeningHours(q,now),deadline=pickupDeadline(now,hoursOpen.schedule,hoursOpen.closedDates)
+        // One settings read: the stored deadline and the notice wording use the same window.
+        const now=clock(),settings=await readReservationSettings(q),hoursOpen=await loadOpeningHours(q,now,settings.pickupWindowDays)
+        const deadline=pickupDeadline(now,hoursOpen.schedule,hoursOpen.closedDates,settings.pickupWindowDays)
         await q.execute(`UPDATE reservations SET reservation_status='ready_for_pickup',ready_at=?,
           pickup_deadline=(?::timestamptz AT TIME ZONE 'Asia/Manila'),updated_at=NOW() WHERE reservation_id=?`,[now,deadline,r.reservation_id])
-        await recordRequestEvent(q,Number(r.reservation_id),'ready_for_pickup',now)
+        await recordRequestEvent(q,Number(r.reservation_id),'ready_for_pickup',now,settings.pickupWindowDays)
         return result(await requestRow(q,Number(r.reservation_id)))
       })
     },
