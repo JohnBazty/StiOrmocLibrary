@@ -18,6 +18,24 @@ const WAITING_MESSAGE = 'Leave blank to turn off, or enter a whole number of day
 
 export const dayCount = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`
 
+const DAY_MS = 86_400_000
+
+/** A waiting request expires at max(reserved_at, saved_at) + L x 24 h; null while the limit is off. */
+export function waitingExpiresAt(reservedAt: Date, settings: ReservationSettings): Date | null {
+  if (settings.waitingExpiryDays == null) return null
+  const savedAt = settings.waitingExpirySavedAt
+  const start = savedAt && savedAt.getTime() > reservedAt.getTime() ? savedAt : reservedAt
+  return new Date(start.getTime() + settings.waitingExpiryDays * DAY_MS)
+}
+
+/** Requests reserved at or before the cutoff have expired by now; null when none can have (limit off, or less than L days since the save). */
+export function waitingExpiryCutoff(now: Date, settings: ReservationSettings): Date | null {
+  if (settings.waitingExpiryDays == null) return null
+  const span = settings.waitingExpiryDays * DAY_MS
+  if (settings.waitingExpirySavedAt && now.getTime() < settings.waitingExpirySavedAt.getTime() + span) return null
+  return new Date(now.getTime() - span)
+}
+
 // to_regclass never raises, so a missing table (043 not applied) cannot abort the caller's transaction.
 async function tablePresent(q: Query) {
   const [rows] = await q.execute<RowDataPacket[]>("SELECT to_regclass('public.reservation_settings') IS NOT NULL AS present")

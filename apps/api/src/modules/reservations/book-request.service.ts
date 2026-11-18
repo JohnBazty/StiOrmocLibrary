@@ -10,7 +10,7 @@ import { positiveId, validateMove } from './reservation.validation.ts'
 import { recordRequestEvent, requestEventStatus, requestLabels, requestInstructions } from './book-request-events.ts'
 import { loadOpeningHours, pickupDeadline, nextCloseAfter } from './pickup-deadline.ts'
 import { notifyLibrarians } from '../notifications/library-alerts.ts'
-import { dayCount, readReservationSettings } from './reservation-settings.service.ts'
+import { dayCount, readReservationSettings, waitingExpiryCutoff } from './reservation-settings.service.ts'
 
 const active = "('pending','approved','ready_for_pickup')"
 const fail = (code: string, message: string) => new HttpError(422,code,message)
@@ -145,6 +145,24 @@ export async function releaseLostCopyHolds(q: PoolConnection,physicalCopyId:numb
   const titles=new Set(rows.filter(r=>r.request_kind!=='CartHandover'&&r.book_title_id).map(r=>Number(r.book_title_id)))
   for(const titleId of titles) await allocateWaitingRequests(q,titleId,now)
   return rows.length
+}
+
+/** Waiting-list limit (SPEC R4). The caller holds the shared circulation lock, so Mark ready and allocation cannot race this. */
+async function expireWaiting(q: PoolConnection,now:Date,limit:number) {
+  const cutoff=waitingExpiryCutoff(now,await readReservationSettings(q))
+  if(!cutoff) return 0
+  const [rows]=await q.execute<RowDataPacket[]>(`SELECT * FROM reservations WHERE request_kind='Reservation' AND reservation_status IN ('pending','approved')
+    AND assigned_physical_copy_id IS NULL AND reserved_at<=(?::timestamptz AT TIME ZONE 'Asia/Manila')
+    ORDER BY reserved_at,reservation_id LIMIT ? FOR UPDATE`,[cutoff,limit])
+  let expired=0
+  for(const candidate of rows) {
+    // An earlier release in this run may have given it a copy or moved its queue position.
+    const [fresh]=await q.execute<RowDataPacket[]>('SELECT * FROM reservations WHERE reservation_id=? FOR UPDATE',[candidate.reservation_id])
+    const r=fresh[0]
+    if(!r || r.request_kind!=='Reservation' || !['pending','approved'].includes(String(r.reservation_status)) || r.assigned_physical_copy_id) continue
+    if(await releaseBookRequest(q,r,'expired',null,now)) expired++
+  }
+  return expired
 }
 
 export function createBookRequestService(database:Pool=db,clock=()=>new Date()) {
@@ -345,15 +363,16 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
       })
     },
     async expire(now:Date,batchSize=100) {
+      const limit=Math.min(500,Math.max(1,batchSize))
       return transaction(async q=> {
         const [rows]=await q.execute<RowDataPacket[]>(`SELECT r.* FROM reservations r WHERE ((reservation_status='ready_for_pickup' OR (request_kind='CartHandover' AND reservation_status='approved'))
             AND pickup_deadline<=(?::timestamptz AT TIME ZONE 'Asia/Manila'))
           -- Carts made before cart deadlines existed have none; release them after 24 hours so their copy is not held forever.
           OR (request_kind='CartHandover' AND reservation_status='approved' AND pickup_deadline IS NULL
             AND reserved_at<=(?::timestamptz AT TIME ZONE 'Asia/Manila')-INTERVAL '24 hours')
-          ORDER BY pickup_deadline NULLS LAST,reservation_id LIMIT ? FOR UPDATE`,[now,now,Math.min(500,Math.max(1,batchSize))])
+          ORDER BY pickup_deadline NULLS LAST,reservation_id LIMIT ? FOR UPDATE`,[now,now,limit])
         for(const r of rows) await releaseBookRequest(q,r,'expired',null,now)
-        return {expiredCount:rows.length,releasedAccessions:rows.filter(r=>r.accession_id).map(r=>Number(r.accession_id))}
+        return {expiredCount:rows.length+await expireWaiting(q,now,limit),releasedAccessions:rows.filter(r=>r.accession_id).map(r=>Number(r.accession_id))}
       })
     },
     async advanceWaiting(now:Date) {

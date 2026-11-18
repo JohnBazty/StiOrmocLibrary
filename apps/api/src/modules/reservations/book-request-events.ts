@@ -22,7 +22,8 @@ export function requestInstructions(status: RequestEventStatus, deadline: Date |
     case 'ready_for_pickup': return `Check in for Borrow books, show your QR and collect your copy${options.pickupWindowDays ? ` within ${dayCount(options.pickupWindowDays)}` : ''}.${deadline ? ` Pick up by ${new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' }).format(deadline)} (Philippine time).` : ''}`
     case 'claimed': return 'Your copy has been checked out. See borrowing history for the return deadline.'
     case 'cancelled': return 'Your request is cancelled. Any held copy has been released to the waiting list.'
-    case 'expired': return 'The pickup deadline passed. Your hold has been released; request again if you still need the book.'
+    case 'expired': return options.waitingList ? 'Your reservation passed the waiting-list limit and was removed from the queue. Reserve the book again if you still need it.'
+      : 'The pickup deadline passed. Your hold has been released; request again if you still need the book.'
   }
 }
 
@@ -45,9 +46,11 @@ export async function recordRequestEvent(q: PoolConnection, id: number, status: 
   const label = cart && status === 'received' ? 'Cart sent to library desk' : requestLabels[status]
   const cartText = status === 'received' ? 'Bring the selected book to the library desk. Your loan starts only when staff confirm handover.'
     : status === 'expired' ? 'Your cart handover expired at closing. Add the books again if you still want them.' : null
-  const instructions = cart && cartText ? cartText : requestInstructions(status, r.deadline ? new Date(r.deadline) : null, { pickupWindowDays })
+  // A pickup expiry always has a copy and a deadline; without both it is a waiting-list expiry and no copy was released.
+  const waitingList = status === 'expired' && !cart && !r.assigned_physical_copy_id && !r.deadline
+  const instructions = cart && cartText ? cartText : requestInstructions(status, r.deadline ? new Date(r.deadline) : null, { pickupWindowDays, waitingList })
   const body = `${r.title}: ${instructions}`
-  if (!cart && (status === 'ready_for_pickup' || status === 'expired')) {
+  if (!cart && !waitingList && (status === 'ready_for_pickup' || status === 'expired')) {
     await notifyLibrarians(q, {key:`reservation:${id}:${status}${copyKey}`, title: status === 'expired' ? 'Reservation pickup expired' : 'Reservation ready for pickup',
       body:`${r.title}: request ${id} is ${status === 'expired' ? 'expired. Review the released copy and waiting list.' : 'ready for collection.'}`,
       sourceId:id,personUserId:Number(r.user_id),path:`/librarian/reservations?status=${status}`,type:'Reservation Arrival'})
