@@ -106,7 +106,7 @@ export function AdminFinePoliciesPage() {
             <h2 className="font-display text-lg font-bold">Current overdue fine</h2>
             <p className="mt-1 text-sm">{active ? describeRule(active) : busy ? 'Loading…' : 'No fine rule is saved. The system uses PHP 2.00 per hour, PHP 10.00 per library day, at most PHP 500.00.'}</p>
             {data?.scheduled.map((item) => <p key={item.versionId} className="mt-2 text-sm font-semibold">Scheduled from {campusDateTime(item.effectiveFrom)}: {describeRule(item)}</p>)}
-            <p className="mt-2 text-xs text-[#003399]/70">A fine follows the rule in force on its loan's due date. Fines already paid, waived or settled never change. Lost books are charged at the book's price.</p>
+            <p className="mt-2 text-xs text-[#003399]/70">On the due date, hours count only until closing and never cost more than one day's rate. A fine follows the rule in force on its loan's due date. Fines already paid, waived or settled never change. Lost books are charged at the book's price.</p>
           </div>
         </div>
       </SectionCard>

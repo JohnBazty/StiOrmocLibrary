@@ -80,7 +80,7 @@ Ethan chose this order on 2026-11-18. Keep the borrowing block (any overdue book
 
 | Step | Depends on | State |
 | --- | --- | --- |
-| 1. Fair fine rates: on the due date count hours only until closing (17:00) and cap them at one day's rate | Fines maintenance (calculator) | Plan `docs/fair-fine-rates.md`, waits for approval |
+| 1. Fair fine rates: on the due date count hours only until closing (17:00) and cap them at one day's rate | Fines maintenance (calculator) | Plan `docs/fair-fine-rates.md`, built 2026-11-18 |
 | 2. Email sender: templates, queue, Gmail SMTP, dev redirect | Section 3 item 4 | Not started; today notices are in-app only |
 | 3. Due reminders: the afternoon before and the morning of the due date | Step 2, job runner (PR #17, live) | Not started |
 | 4. Overdue ladder: day 1 notice to the student, day 7 notice also to the Librarian, day 14 long-overdue case, day 30 or at the cap the Librarian is asked to declare the book lost (lost = book price) | Steps 2 and 3, long-overdue case port (section 2), section 3 item 5 "overdue notices by level" | Not started |

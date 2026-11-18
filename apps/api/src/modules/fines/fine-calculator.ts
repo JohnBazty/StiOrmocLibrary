@@ -1,10 +1,12 @@
 import type { Pool, PoolConnection, RowDataPacket } from '../../config/db.js'
 
 export type FinePolicy = { hourlyRate: number; dailyRate: number; maximumPenalty: number }
-export type FineCalendar = { openDays: Set<number>; closedDates: Set<string> }
+/** closesAt maps ISO weekday (1 = Monday) to `library_operating_schedule.closes_at` (HH:MM[:SS]). */
+export type FineCalendar = { openDays: Set<number>; closedDates: Set<string>; closesAt?: Map<number, string> }
 
 const DEFAULT_POLICY: FinePolicy = { hourlyRate: 2, dailyRate: 10, maximumPenalty: 500 }
 const DEFAULT_OPEN_DAYS = new Set([1,2,3,4,5,6])
+const DEFAULT_CLOSES_AT = '17:00:00'
 
 export function manilaDate(value: Date) {
   const parts = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(value)
@@ -21,18 +23,26 @@ function sqlDate(value: unknown) {
 }
 function utcDate(value:string){const [year,month,day]=value.split('-').map(Number);return new Date(Date.UTC(year,month-1,day,12))}
 function nextDate(value:string){const date=utcDate(value);date.setUTCDate(date.getUTCDate()+1);return date.toISOString().slice(0,10)}
-function operatingDay(value:string,calendar:FineCalendar){const date=utcDate(value);const day=((date.getUTCDay()+6)%7)+1;return calendar.openDays.has(day)&&!calendar.closedDates.has(value)}
+function weekday(value:string){return ((utcDate(value).getUTCDay()+6)%7)+1}
+function operatingDay(value:string,calendar:FineCalendar){return calendar.openDays.has(weekday(value))&&!calendar.closedDates.has(value)}
+function closingOn(date:string,calendar:FineCalendar){
+  const time=/^\d{2}:\d{2}(:\d{2})?/.exec(calendar.closesAt?.get(weekday(date))??'')?.[0]??DEFAULT_CLOSES_AT
+  const closing=new Date(`${date}T${time.length===5?`${time}:00`:time}+08:00`)
+  return Number.isNaN(closing.getTime())?new Date(`${date}T${DEFAULT_CLOSES_AT}+08:00`):closing
+}
 
+/** Due date: started hours until closing, at most one day's rate. Later: library days, never below the due-date amount. */
 export function calculateOperatingFine(dueAt:Date,evaluatedAt:Date,policy:FinePolicy=DEFAULT_POLICY,calendar:FineCalendar={openDays:DEFAULT_OPEN_DAYS,closedDates:new Set()}){
-  if(evaluatedAt<=dueAt)return{amount:0,rawAmount:0,units:0,rate:policy.hourlyRate,basis:'Hourly' as const,capApplied:false}
+  const result=(rawAmount:number,units:number,basis:'Hourly'|'Daily')=>({amount:Math.min(rawAmount,policy.maximumPenalty),rawAmount,units,rate:basis==='Hourly'?policy.hourlyRate:policy.dailyRate,basis,capApplied:rawAmount>policy.maximumPenalty})
+  if(evaluatedAt<=dueAt)return result(0,0,'Hourly')
   const dueDate=manilaDate(dueAt);const evaluatedDate=manilaDate(evaluatedAt)
-  if(dueDate===evaluatedDate){
-    const units=Math.ceil((evaluatedAt.getTime()-dueAt.getTime())/3_600_000);const rawAmount=units*policy.hourlyRate
-    return{amount:Math.min(rawAmount,policy.maximumPenalty),rawAmount,units,rate:policy.hourlyRate,basis:'Hourly' as const,capApplied:rawAmount>policy.maximumPenalty}
-  }
-  let units=0;for(let date=nextDate(dueDate);date<=evaluatedDate;date=nextDate(date)){if(operatingDay(date,calendar))units+=1}
-  const rawAmount=units*policy.dailyRate
-  return{amount:Math.min(rawAmount,policy.maximumPenalty),rawAmount,units,rate:policy.dailyRate,basis:'Daily' as const,capApplied:rawAmount>policy.maximumPenalty}
+  const hoursEnd=Math.min(evaluatedAt.getTime(),closingOn(dueDate,calendar).getTime())
+  const hours=Math.max(0,Math.ceil((hoursEnd-dueAt.getTime())/3_600_000))
+  // A due date that reaches the daily rate is reported as one day, so units × rate always equals the amount.
+  const dueDay=hours*policy.hourlyRate>=policy.dailyRate?result(policy.dailyRate,1,'Daily'):result(hours*policy.hourlyRate,hours,'Hourly')
+  if(dueDate===evaluatedDate)return dueDay
+  let days=0;for(let date=nextDate(dueDate);date<=evaluatedDate;date=nextDate(date)){if(operatingDay(date,calendar))days+=1}
+  return days>0&&days*policy.dailyRate>=dueDay.rawAmount?result(days*policy.dailyRate,days,'Daily'):dueDay
 }
 
 export type FinePolicyVersion = { effectiveFrom: Date; policy: FinePolicy }
@@ -50,8 +60,9 @@ export async function loadFineContext(executor:Pool|PoolConnection,from:Date,to:
   )
   const versions:FinePolicyVersion[]=policies.map((row)=>({effectiveFrom:row.effective_from instanceof Date?row.effective_from:new Date(String(row.effective_from)),policy:{hourlyRate:Number(row.hourly_rate),dailyRate:Number(row.daily_rate),maximumPenalty:Number(row.maximum_penalty)}}))
   const policyFor=(dueAt:Date)=>selectFinePolicy(versions,dueAt)
-  const [schedule]=await executor.execute<RowDataPacket[]>('SELECT day_of_week,is_open FROM library_operating_schedule')
+  const [schedule]=await executor.execute<RowDataPacket[]>('SELECT day_of_week,is_open,closes_at FROM library_operating_schedule')
   const openDays=schedule.length?new Set(schedule.filter((row)=>Boolean(row.is_open)).map((row)=>Number(row.day_of_week))):DEFAULT_OPEN_DAYS
+  const closesAt=new Map(schedule.filter((row)=>row.closes_at!=null).map((row)=>[Number(row.day_of_week),String(row.closes_at)]))
   const [closures]=await executor.execute<RowDataPacket[]>('SELECT closed_date FROM library_closed_days WHERE closed_date BETWEEN DATE(?) AND DATE(?)',[from,to])
-  return{policyFor,calendar:{openDays,closedDates:new Set(closures.map((row)=>sqlDate(row.closed_date)))}}
+  return{policyFor,calendar:{openDays,closesAt,closedDates:new Set(closures.map((row)=>sqlDate(row.closed_date)))}}
 }

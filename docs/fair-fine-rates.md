@@ -2,7 +2,7 @@
 
 - Date created: 2026-11-18
 - Date last updated: 2026-11-18
-- Status: planned
+- Status: built
 
 ## Why
 The overdue fine calculator (`calculateOperatingFine` in `apps/api/src/modules/fines/fine-calculator.ts`) has three results that are hard to explain to a student:
@@ -46,16 +46,17 @@ return capped(Math.max(libraryDays * policy.dailyRate, dueDayAmount), libraryDay
 `fine-calculator.test.ts`: the six worked examples above, a day with no `closes_at` (falls back to 17:00), a custom closing time, a return exactly at closing, and the cap still applying. The overdue job and return tests keep passing.
 
 ## Implementation tracking
-- [ ] Ethan approves this plan
+- [x] Ethan approves this plan (2026-11-18)
 - [ ] Branch `fix/fair-fine-rates` from `feat/fines-maintenance` (it changes the same calculator), or from `main` once fines maintenance merges
-- [ ] Failing calculator tests, then the calculator change and `closes_at` in `loadFineContext`
-- [ ] `npm run typecheck`, `npm test`, `npm run build`
-- [ ] `security-reviewer`; fix CRITICAL to MEDIUM
-- [ ] Update the "Current overdue fine" text on the Fine rules page if needed
+- [x] Failing calculator tests, then the calculator change and `closes_at` in `loadFineContext`
+- [x] `npm run typecheck`, `npm test`, `npm run build` (488 API, 318 web tests pass)
+- [x] `security-reviewer`; fix CRITICAL to MEDIUM (no CRITICAL/HIGH; fixed: a due date that reaches the daily rate is stored as 1 Daily unit so units × rate = amount; bad `closes_at` falls back to 17:00. Accepted: a loan due after closing has a PHP 0 fine that day, which blocks nothing since clearance and borrowing filter `fine_amount > 0`)
+- [x] Update the "Current overdue fine" text on the Fine rules page if needed
 - [ ] Commit; ask Ethan before push or draft PR
 
 ## Database boundary
-No migration. `library_operating_schedule.closes_at` already exists. No live writes.
+`040_library_hours_8am_5pm.sql` sets open days to 08:00–17:00 (a data fix; the calculator needs no migration). `library_operating_schedule.closes_at` already exists. No live writes.
 
 ## Change log
+- 2026-11-18: Approved and built (calculator, `closes_at` in `loadFineContext`, Fine rules page note). Ethan confirmed library hours are 08:00 to 17:00; migration `040_library_hours_8am_5pm.sql` replaces the 19:00 closing from `022` (written, not applied).
 - 2026-11-18: Plan drafted from the fine calculator review in the fines maintenance session.
