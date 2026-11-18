@@ -38,3 +38,7 @@ Inspect fine calculations, due-date policy selection, route authorization, and m
 - Latest applied migration is 040; 039 remains reserved; next unused is 041. Corrected stale tracker headings and retained historical records.
 
 - 2026-11-18: All integration checks passed. Seven conflicts were resolved by combining behavior and tests; the obsolete archived-policy page was removed as requested by the restored editor. Temporary files remain local.
+
+## Application rollback — November 18, 2026
+
+The owner requested undoing merge d3e5fe3. Its application changes are reverted by the [rollback record](./2026-11-18-undo-fines-merge.md). Applied database migrations and this historical implementation record are preserved.

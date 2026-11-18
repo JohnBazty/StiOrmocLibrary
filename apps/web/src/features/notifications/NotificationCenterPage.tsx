@@ -7,8 +7,6 @@ import { notificationApi } from './notification-api'
 import { formatNotificationDate, notificationIcon, notificationRoute, notificationsUpdated } from './notification-display'
 import type { NotificationItem } from './types'
 
-// "17:00:00" -> "5:00 PM"
-const clock = (t: string | null) => { const [h, m] = String(t).split(":").map(Number); return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}` }
 const days = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
 export function NotificationCenterPage({operations=false}:{operations?:boolean}={}) {
@@ -51,7 +49,7 @@ export function NotificationCenterPage({operations=false}:{operations?:boolean}=
     {operations ? <p className="mb-5 text-sm leading-6 opacity-70">The bell counts unread alerts and reminders. Routine events appear in Recent library activity.</p> : null}
     {error ? <div role="alert" className="mb-5 flex gap-2 rounded-xl bg-[#FFF200] p-4 font-bold text-[#0b5ea2]"><AlertTriangle size={18} />{error}</div> : null}
     {!operations ? <div className="mb-5 grid gap-4 xl:grid-cols-[1fr_1.5fr]">
-      <SectionCard className="p-5"><h2 className="font-display text-lg font-bold text-[#0b5ea2]">Library schedule</h2><p className="mt-1 text-xs text-[#0b5ea2]/60">Asia/Manila campus time</p><div className="mt-4 grid grid-cols-2 gap-2 text-sm">{schedule?.weekly.map((entry) => <div key={entry.dayOfWeek} className="rounded-xl bg-[#0b5ea2]/5 p-3"><p className="font-bold text-[#0b5ea2]">{days[entry.dayOfWeek]}</p><p className="mt-1 text-xs text-[#0b5ea2]/65">{entry.isOpen ? `${clock(entry.opensAt)} - ${clock(entry.closesAt)}` : 'Closed'}</p></div>)}</div></SectionCard>
+      <SectionCard className="p-5"><h2 className="font-display text-lg font-bold text-[#0b5ea2]">Library schedule</h2><p className="mt-1 text-xs text-[#0b5ea2]/60">Asia/Manila campus time</p><div className="mt-4 grid grid-cols-2 gap-2 text-sm">{schedule?.weekly.map((entry) => <div key={entry.dayOfWeek} className="rounded-xl bg-[#0b5ea2]/5 p-3"><p className="font-bold text-[#0b5ea2]">{days[entry.dayOfWeek]}</p><p className="mt-1 text-xs text-[#0b5ea2]/65">{entry.isOpen ? `${String(entry.opensAt).slice(0,5)} - ${String(entry.closesAt).slice(0,5)}` : 'Closed'}</p></div>)}</div></SectionCard>
       <SectionCard className="p-5"><h2 className="font-display text-lg font-bold text-[#0b5ea2]">Upcoming closures</h2><div className="mt-4 space-y-2">{schedule?.upcomingClosures.length ? schedule.upcomingClosures.map((closure) => <div key={closure.date} className="rounded-xl border border-[#0b5ea2]/15 p-3"><p className="font-bold text-[#0b5ea2]">{formatNotificationDate(closure.date)}</p><p className="mt-1 text-sm text-[#0b5ea2]/65">{closure.reason}</p></div>) : <p className="rounded-xl bg-[#0b5ea2]/5 p-4 text-sm text-[#0b5ea2]/65">No upcoming closures are recorded.</p>}</div></SectionCard>
     </div> : null}
     <SectionCard className="overflow-hidden">

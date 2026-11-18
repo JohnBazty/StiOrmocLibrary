@@ -32,9 +32,7 @@ export async function escalateOverdueTransactions(database: Pool = db, now: Date
     const context=await loadFineContext(connection,new Date(earliest),now)
     let newlyOverdue = 0
     for (const loan of rows) {
-      const dueAt = new Date(localTimestamp(loan.due_at))
-      const policy = context.policyFor(dueAt)
-      const charge = calculateOperatingFine(dueAt, now, policy, context.calendar)
+      const charge = calculateOperatingFine(new Date(localTimestamp(loan.due_at)), now, context.policy, context.calendar)
       const [changed] = await connection.execute<import('../../config/db.js').ResultSetHeader>(
         "UPDATE borrow_transactions SET transaction_status = 'Overdue', updated_at = NOW() WHERE transaction_id = ? AND transaction_status = 'Borrowed'",
         [loan.transaction_id],
@@ -55,7 +53,7 @@ export async function escalateOverdueTransactions(database: Pool = db, now: Date
          ON CONFLICT (transaction_id) DO UPDATE SET fine_amount = ${excluded('fine_amount')}, calculation_basis = ${excluded('calculation_basis')},
            overdue_units = ${excluded('overdue_units')}, rate_applied = ${excluded('rate_applied')}, maximum_cap_applied=${excluded('maximum_cap_applied')},
            payment_status=${caseIf("fines.payment_status IN ('Paid','Waived','Voided')", 'fines.payment_status', "'Accruing'")},notes = ${excluded('notes')},updated_at=NOW()`,
-        [loan.transaction_id, loan.user_id, charge.amount, charge.basis, charge.units, charge.rate, charge.capApplied?policy.maximumPenalty:null],
+        [loan.transaction_id, loan.user_id, charge.amount, charge.basis, charge.units, charge.rate, charge.capApplied?context.policy.maximumPenalty:null],
       )
       await connection.execute(
         `INSERT INTO clearance_statuses

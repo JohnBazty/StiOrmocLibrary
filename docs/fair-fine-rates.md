@@ -60,3 +60,7 @@ return capped(Math.max(libraryDays * policy.dailyRate, dueDayAmount), libraryDay
 ## Change log
 - 2026-11-18: Approved and built (calculator, `closes_at` in `loadFineContext`, Fine rules page note). Ethan confirmed library hours are 08:00 to 17:00; migration `040_library_hours_8am_5pm.sql` replaces the 19:00 closing from `022` (applied live 2026-11-18).
 - 2026-11-18: Plan drafted from the fine calculator review in the fines maintenance session.
+
+## Application rollback — November 18, 2026
+
+The owner requested undoing merge d3e5fe3. Its application changes are reverted; see [rollback record](plans/2026-11-18-undo-fines-merge.md). Applied database migrations and this historical record are preserved.

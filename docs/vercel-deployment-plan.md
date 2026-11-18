@@ -6,6 +6,14 @@
 | Date last updated | 2026-11-18 |
 | Status | `inprogress` |
 
+## Fines merge rollback — November 18, 2026
+
+The owner requested undoing merge d3e5fe3 and its deployment. A history-preserving
+revert restores the application to pre-merge main 1f30126. Applied migrations 038
+and 040 and current library-hour data remain intact. The reverted application is
+verified and deployed using the same Production project and environment. See
+[rollback tracking](plans/2026-11-18-undo-fines-merge.md).
+
 ## Main branch release — November 18, 2026
 
 Deployed main source commit `d3e5fe3663f11c4112088383ea37b5465d79667d` to

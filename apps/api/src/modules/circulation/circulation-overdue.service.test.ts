@@ -58,26 +58,3 @@ test('D5: the overdue scan continues after the cursor and returns the next one w
   assert.equal(seen[2].values.length, 1)
   assert.equal(first.evaluatedCount, 2)
 })
-
-test('each overdue loan keeps the fine rule in force on its due date', async () => {
-  const fines: unknown[][] = []
-  const connection = {
-    async beginTransaction() {}, async commit() {}, async rollback() {}, release() {},
-    async execute(sql: string, values: unknown[] = []) {
-      if (sql.includes('FROM borrow_transactions bt') && sql.includes('FOR UPDATE')) return [[
-        { transaction_id: 1, user_id: 4, due_at: new Date(2026, 7, 24, 8, 59), due_at_key: 'a', title: 'Before the change' },
-        { transaction_id: 2, user_id: 4, due_at: new Date(2026, 7, 25, 8, 59), due_at_key: 'b', title: 'After the change' },
-      ]]
-      if (sql.includes('FROM fine_policy_versions')) return [[
-        { hourly_rate: 5, daily_rate: 20, maximum_penalty: 500, effective_from: new Date(2026, 7, 24, 12, 0) },
-        { hourly_rate: 2, daily_rate: 10, maximum_penalty: 500, effective_from: new Date(2026, 0, 1) },
-      ]]
-      if (sql.includes('FROM library_operating_schedule')) return [[1, 2, 3, 4, 5, 6].map((day_of_week) => ({ day_of_week, is_open: 1 }))]
-      if (sql.includes('FROM library_closed_days')) return [[]]
-      if (sql.includes('INSERT INTO fines')) fines.push(values)
-      return [{ affectedRows: 0 }]
-    },
-  }
-  await escalateOverdueTransactions({ getConnection: async () => connection } as unknown as Pool, new Date(2026, 7, 26, 10, 0))
-  assert.deepEqual(fines.map((values) => [values[0], values[2], values[5]]), [[1, 20, 10], [2, 20, 20]], 'loan 1: 2 days at the old PHP 10; loan 2: 1 day at the new PHP 20')
-})

@@ -1,7 +1,7 @@
 # StiOrmocLibrary roadmap
 
 - **Date created:** 2026-11-11
-- **Date last updated:** 2026-11-18
+- **Date last updated:** 2026-11-11
 - **Status:** planned (each item still gets its own plan doc and approval before building)
 
 ## Why
@@ -31,7 +31,6 @@ Live database (2026-11-11): `032` and `036` applied, `033` pending, `034` (job r
 | Dynamic attendance QR | PR #10 (draft), `feat/dynamic-attendance-qr` | Spec only, approval gate 1 |
 | Attendance QR self-heal (rehash) fix | PR #23, `fix/attendance-qr-self-heal` (ported `75f4ed9` plus review fixes) | Waits for John. After merge, bring it into `feat/self-service-kiosk`; then drop `fix/attendance-qr-rehash` (its other kiosk commits are already in the kiosk branch) |
 | Printer unavailable at zero supply | PR #12 (draft), `feat/printer-supply-availability` | Spec only, approval gate 1 |
-| Fines maintenance (Librarian "Fine rules" page) | `feat/fines-maintenance` (local, 2 commits), plan `docs/fines-maintenance.md` | Built; `038` applied 2026-11-18. Ethan is testing locally, then a draft PR for John |
 | Self-service kiosk | `feat/self-service-kiosk` (local only) | WIP; needs HTTPS deploy, a real-tablet test and the rehash fix. Ethan: keep local |
 
 ### October branches to drop (checked 2026-11-11)
@@ -74,25 +73,11 @@ Their work is already on `main` or replaced. Drop after John agrees.
 9. **Printing and attendance extras** (`docs/reference-features-roadmap.md` items 3 to 6, 8): print file auto-delete, failed/reprint state, duplex price rule, auto check-out at closing (17:00), multi-floor map only if the library has more floors.
 10. **Later:** course reserves, patron lists, ratings and reviews, patron problem reports, purchase suggestions, acquisitions, serials, MARC21 import, room-use-only items, prebuilt reports, English/Filipino switch for the whole app (kiosk already has en/fil/ceb), self-checkout on phone, an enforced 80% coverage minimum.
 
-## 4. Fine enforcement (planned 2026-11-18)
-
-Ethan chose this order on 2026-11-18. Keep the borrowing block (any overdue book or unpaid balance blocks borrowing) and the "Not Cleared" clearance block. Do not block library entry, reading or printing. No suspension. Each step gets its own plan doc and approval.
-
-| Step | Depends on | State |
-| --- | --- | --- |
-| 1. Fair fine rates: on the due date count hours only until closing (17:00) and cap them at one day's rate | Fines maintenance (calculator) | Plan `docs/fair-fine-rates.md`, built 2026-11-18 |
-| 2. Email sender: templates, queue, Gmail SMTP, dev redirect | Section 3 item 4 | Not started; today notices are in-app only |
-| 3. Due reminders: the afternoon before and the morning of the due date | Step 2, job runner (PR #17, live) | Not started |
-| 4. Overdue ladder: day 1 notice to the student, day 7 notice also to the Librarian, day 14 long-overdue case, day 30 or at the cap the Librarian is asked to declare the book lost (lost = book price) | Steps 2 and 3, long-overdue case port (section 2), section 3 item 5 "overdue notices by level" | Not started |
-| 5. Renewals honour the block-if-overdue and block-if-unpaid switches | John's `fix/circulation-audit-remediation` | Found in the 2026-11-14 audit; John's branch |
-
 ## Decided rules (2026-11-11)
 
 Closing 17:00. Fine cap PHP 500. Lost charge = book price, no extra fee. Suspension 0 days. Hold pickup 1 open day. History retention 1 year, pending STI's DPO. Email via Gmail SMTP. Admin creates the kiosk account. Microsoft Entra sign-in dropped.
 
 ## Change log
-
-- 2026-11-18: Added fines maintenance to section 2 and the fine enforcement order (section 4).
 
 - 2026-11-11: Sorted the October branches (port, drop); removed Library Staff role, dark mode and password reset as missing, since they are on `main`.
 - 2026-11-11: Created from the gap report, the safety sprint plan, the reference-features roadmap and the open PRs and branches.

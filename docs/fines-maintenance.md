@@ -75,3 +75,7 @@ One additive migration, `038`. It is not applied to the live database without Et
 - 2026-11-18: On Ethan's go-ahead, applied `038` to the live database. The read-only check first found one row (the 2 / 10 / 500 seed), which passed every check. Verified afterwards: `change_reason` and the three checks exist, RLS is on, and anon and authenticated have no table or sequence access.
 - 2026-11-18: Reviews: no CRITICAL. Fixed the HIGH notification overflow (body sliced to 500), the far-future start date (365-day limit), `loadFineContext` now returns only `policyFor`, review with no saved rule, constraint lookup scoped to the table, and sequence grants revoked. LOW fixes: dialog Tab trap, focus on first invalid field, rollback keeps the original error. Accepted gaps: no 401 test for this route (covered by the global `/api/v1` guard tests), and scheduled versions cannot be cancelled.
 - 2026-11-18: Ethan approved with the due-date rule and the PHP 500 cap ceiling. A new version must start after the latest saved one (409 otherwise); a change made for today starts at the moment it is saved. Scheduled versions cannot be cancelled from the page yet.
+
+## Application rollback — November 18, 2026
+
+The owner requested undoing merge d3e5fe3. Its application changes are reverted; see [rollback record](plans/2026-11-18-undo-fines-merge.md). Applied database migrations and this historical record are preserved.

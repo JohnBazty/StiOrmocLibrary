@@ -38,3 +38,7 @@
 ## Change log
 
 - 2026-11-18: Session record created; `040` applied live.
+
+## Application rollback — November 18, 2026
+
+The owner requested undoing merge d3e5fe3. Its application changes are reverted; see [rollback record](plans/2026-11-18-undo-fines-merge.md). Applied database migrations and this historical record are preserved.

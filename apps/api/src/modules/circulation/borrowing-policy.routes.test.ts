@@ -4,42 +4,22 @@ import express from 'express'
 import request from 'supertest'
 import { requireLibraryPermission } from '../auth/jwt-auth.middleware.ts'
 import { createBorrowingPolicyRouter } from './borrowing-policy.routes.ts'
-import jwt from 'jsonwebtoken'
-import { createApp } from '../../app.js'
-import { db } from '../../config/db.js'
-import { env } from '../../config/env.js'
+import { archivedBorrowingPolicyRouter } from './borrowing-policy-archive.routes.ts'
 
-async function callAppAs(role: string, method: 'get' | 'post') {
-  const execute = db.execute
-  const queries: string[] = []
-  db.execute = (async (sql: string) => {
-    queries.push(sql)
-    if (sql.includes('FROM accounts a')) return [[{ account_status: 'Active', auth_version: 1, school_id: 'TEST-USER', role, user_status: 'Active' }], []]
-    if (sql.includes('library_login_sessions') || sql.includes('semester')) return [sql.includes('library_login_sessions') ? [{ 1: 1 }] : [], []]
-    throw Object.assign(new Error('policy read reached the database'), { code: 'ENOTFOUND' })
-  }) as typeof db.execute
-  try {
-    const token = jwt.sign({ accountId: 1, userId: 1, schoolId: 'TEST-USER', role, authVersion: 1, sessionId: 'test-session' }, env.jwt.secret, {
-      algorithm: 'HS256', issuer: env.jwt.issuer, audience: env.jwt.audience, subject: '1', expiresIn: '5m',
-    })
-    const response = await request(createApp())[method]('/api/v1/admin/borrowing-policies').set('Authorization', `Bearer ${token}`).send({})
-    return { response, policyQueries: queries.filter((sql) => !sql.includes('FROM accounts a') && !sql.includes('library_login_sessions') && !sql.includes('semester')) }
-  } finally { db.execute = execute }
-}
-
-test('the app serves borrowing policy management to a signed-in Librarian', async () => {
-  const { response, policyQueries } = await callAppAs('Librarian', 'get')
-  assert.notEqual(response.status, 410)
-  assert.notEqual(response.body.code, 'BORROWING_POLICY_MANAGEMENT_ARCHIVED')
-  assert.ok(policyQueries.length > 0, 'the policy service queried the database')
-})
-
-test('the app refuses borrowing policy management to every other role', async () => {
-  for (const role of ['Admin', 'Staff', 'Student', 'Faculty']) {
-    for (const method of ['get', 'post'] as const) {
-      const { response, policyQueries } = await callAppAs(role, method)
-      assert.equal(response.status, 403, `${role} ${method}`)
-      assert.equal(policyQueries.length, 0, `${role} ${method} reached the policy service`)
+test('archived policy management blocks all operations and retains Librarian authorization', async () => {
+  for (const role of ['Admin', 'Librarian', 'Staff', 'Student', 'Faculty']) {
+    const app=express()
+    app.use(express.json())
+    app.use((_req,res,next)=>{res.locals.authenticatedUser={accountId:1,role};next()})
+    app.use('/policies',requireLibraryPermission('library.manage'),archivedBorrowingPolicyRouter)
+    for (const [method,path] of [['get','/policies'],['get','/policies/1'],['post','/policies'],['put','/policies/1'],['delete','/policies/1']] as const) {
+      const response=await request(app)[method](path).send({studentMaxActiveBooks:99})
+      assert.equal(response.status,role==='Librarian'?410:403)
+      if(role==='Librarian') {
+        assert.equal(response.body.code,'BORROWING_POLICY_MANAGEMENT_ARCHIVED')
+        assert.equal(response.headers['cache-control'],'no-store')
+        assert.match(response.body.message,/Saved borrowing rules still apply/)
+      }
     }
   }
 })

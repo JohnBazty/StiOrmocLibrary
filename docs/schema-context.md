@@ -1,5 +1,9 @@
 # Database Schema Context
 
+## November 18 application rollback
+
+The fines-and-borrowing-policies application merge d3e5fe3 is reverted at the owner's request. The borrowing-policy editor is archived again and the previous fine calculator is restored. Already-applied migrations 038 and 040 and their additive schema/data remain intact. Latest applied 040 / next unused 041 remains valid. No database rollback was executed. See [rollback record](plans/2026-11-18-undo-fines-merge.md).
+
 ## Fines and borrowing policies integration — November 18, 2026
 
 Read-only checks confirm applied migrations `038_fine_policy_maintenance.sql` and
@@ -9,7 +13,7 @@ have no table access. Open days run 08:00–17:00; Sunday remains closed. Latest
 applied migration is **040**, **039** remains reserved, next unused is **041**.
 No database writes or migration replays occurred during this integration.
 
-Borrowing policies and Fine rules are available only to the Librarian. New fine
+Historical integration behavior (reverted on 2026-11-18): Borrowing policies and Fine rules were available only to the Librarian. New fine
 rules retain history and apply according to each loan's due instant. Due-date
 hourly charging stops at closing and is bounded by the daily rate; later closed
 days retain the accrued due-date amount. See [integration evidence](plans/2026-11-18-fines-branch-integration.md).
