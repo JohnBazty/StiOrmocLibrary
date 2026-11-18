@@ -93,3 +93,22 @@ test('expire releases an expired cart handover with one cart-worded notice', asy
   const claim = calls.find((c) => c.sql.includes('UPDATE borrow_transactions'))!
   assert.match(String(claim.params[1]), /cart/i)
 })
+
+test('an unusable held copy moves the ready hold to a spare copy at the same queue position', async () => {
+  const hold = { reservation_id: 501, user_id: 4, material_id: 17, book_title_id: 9, reservation_status: 'ready_for_pickup', request_kind: 'Reservation', queue_position: 2, assigned_physical_copy_id: 31, accession_id: 17 }
+  const { database, calls } = fakePool((sql) => {
+    if (sql.includes('SELECT * FROM reservations WHERE assigned_physical_copy_id')) return [hold]
+    if (sql.includes('SELECT * FROM reservations WHERE book_title_id=?')) return [{ ...hold, reservation_status: 'pending', assigned_physical_copy_id: null }]
+    if (sql.includes('SELECT pc.*,t.title FROM physical_copies')) return [{ physical_copy_id: 32, material_id: 18, title: 'Clean Code', barcode: 'B-32' }]
+    return undefined
+  })
+  const q = await database.getConnection()
+  const { releaseLostCopyHolds } = await import('./book-request.service.ts')
+  assert.equal(await releaseLostCopyHolds(q, 31, 1, at('2026-11-16T10:00'), 'unusable'), 1)
+  const release = calls.find((c) => c.sql.includes("reservation_status='pending'"))!
+  assert.doesNotMatch(release.sql, /queue_position/)
+  const assign = calls.find((c) => c.sql.includes("reservation_status='approved'"))!
+  assert.equal(assign.params[1], 32)
+  assert.ok(!calls.some((c) => /SET queue_position/.test(c.sql)), 'queue positions are untouched')
+  assert.ok(calls.some((c) => c.sql.includes('INTO notifications') && String(c.params.at(-2)).includes('copy-unusable')))
+})

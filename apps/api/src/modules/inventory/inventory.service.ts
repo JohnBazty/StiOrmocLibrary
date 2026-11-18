@@ -6,7 +6,7 @@ import {
   lockInventoryCopy, recordInventoryAudit,
   synchronizeLegacyAvailability, type InventoryActor,
 } from './inventory.repository.ts'
-import { releaseLostCopyHolds } from '../reservations/book-request.service.ts'
+import { allocateWaitingRequests, releaseLostCopyHolds } from '../reservations/book-request.service.ts'
 import type { InventoryCondition, InventoryListFilters, ManualAvailability } from './inventory.validation.ts'
 
 export const inventorySummary = (database: Pool = db) => getInventorySummary(database)
@@ -56,8 +56,9 @@ export async function overrideInventoryCondition(
   try {
     await connection.beginTransaction()
     const isLost = conditionState === 'Lost'
-    // Same lock order as book requests (circulation lock, then copies) so releasing holds cannot deadlock.
-    if (isLost) await connection.execute('SELECT settings_id FROM library_profile_settings WHERE settings_id=1 FOR UPDATE')
+    const unusable = conditionState === 'Damaged' || conditionState === 'For Repair'
+    // Same lock order as book requests (circulation lock, then copies) so releasing or allocating holds cannot deadlock.
+    await connection.execute('SELECT settings_id FROM library_profile_settings WHERE settings_id=1 FOR UPDATE')
     const copy = ensureActive(await lockInventoryCopy(connection, barcode))
     if (isLost) {
       const loan = await findActiveLoan(connection, copy.circulation_material_id)
@@ -71,7 +72,11 @@ export async function overrideInventoryCondition(
           released_reservations: releasedReservations }
       }
     }
-    const nextAvailability = isLost ? 'Unavailable' : copy.availability_status
+    const wasUnusable = copy.condition_status === 'Damaged' || copy.condition_status === 'For Repair'
+    const restored = !isLost && !unusable && wasUnusable && copy.availability_status === 'Unavailable'
+    // A damaged copy still on loan stays Borrowed; its return handles the rest.
+    const nextAvailability = isLost || (unusable && copy.availability_status !== 'Borrowed') ? 'Unavailable'
+      : restored ? 'Available' : copy.availability_status
     await connection.execute(`
       UPDATE physical_copies
          SET condition_status = ?, availability_status = ?, last_scanned_at = NOW(),
@@ -79,10 +84,9 @@ export async function overrideInventoryCondition(
        WHERE physical_copy_id = ?`, [conditionState, nextAvailability, copy.physical_copy_id])
 
     let releasedReservations = 0
-    if (isLost) {
-      await synchronizeLegacyAvailability(connection, copy.material_id, 'Unavailable')
-      releasedReservations = await releaseLostCopyHolds(connection, copy.physical_copy_id, actor.userId)
-    }
+    if (nextAvailability !== copy.availability_status) await synchronizeLegacyAvailability(connection, copy.material_id, nextAvailability as 'Available' | 'Unavailable')
+    if (isLost || unusable) releasedReservations = await releaseLostCopyHolds(connection, copy.physical_copy_id, actor.userId, new Date(), isLost ? 'lost' : 'unusable')
+    else if (restored) await allocateWaitingRequests(connection, Number(copy.title_id))
     await recordInventoryAudit(
       connection,
       copy,
@@ -99,8 +103,8 @@ export async function overrideInventoryCondition(
       barcode: copy.barcode,
       condition_status: conditionState,
       availability_status: nextAvailability,
-      availability_preserved: !isLost,
-      reservations_blocked: isLost,
+      availability_preserved: nextAvailability === copy.availability_status,
+      reservations_blocked: isLost || unusable,
       released_reservations: releasedReservations,
       last_verified_at: new Date(),
     }

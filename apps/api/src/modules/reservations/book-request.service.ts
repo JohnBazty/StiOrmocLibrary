@@ -112,26 +112,28 @@ export async function releaseBookRequest(q: PoolConnection,r:RowDataPacket,statu
 }
 
 /** The caller holds the shared circulation lock. A lost copy frees its holds without costing borrowers their place. */
-export async function releaseLostCopyHolds(q: PoolConnection,physicalCopyId:number,actor:number|null,now=new Date()) {
+export async function releaseLostCopyHolds(q: PoolConnection,physicalCopyId:number,actor:number|null,now=new Date(),cause:'lost'|'unusable'='lost') {
+  const lost=cause==='lost',tag=lost?'copy-lost':'copy-unusable'
   const [rows] = await q.execute<RowDataPacket[]>(`SELECT * FROM reservations WHERE assigned_physical_copy_id = ?
     AND reservation_status IN ${active} ORDER BY reservation_id FOR UPDATE`,[physicalCopyId])
   for(const r of rows) {
     if(r.request_kind==='CartHandover') { await releaseBookRequest(q,r,'cancelled',actor,now); continue }
     await q.execute(`UPDATE reservations SET reservation_status='pending',accession_id=NULL,assigned_physical_copy_id=NULL,
       preparation_started_at=NULL,ready_at=NULL,pickup_deadline=NULL,updated_at=NOW() WHERE reservation_id=?`,[r.reservation_id])
-    await cancelPendingCounterClaim(q,Number(r.reservation_id),actor,'Assigned copy reported lost.')
+    await cancelPendingCounterClaim(q,Number(r.reservation_id),actor,lost?'Assigned copy reported lost.':'Assigned copy damaged or under repair.')
     // Direct notice: request events are unique per status, so 'waiting' was already recorded at creation.
     await q.execute(`INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,
       action_path,priority,dedupe_key,scheduled_for,delivered_at)
-      SELECT r.user_id,'Held copy reported missing',COALESCE(t.title,'Your requested book')||': the copy set aside for you was reported missing. You keep your place on the waiting list, and staff will prepare another copy when one is free.',
+      SELECT r.user_id,?,COALESCE(t.title,'Your requested book')||': '||?||' You keep your place on the waiting list, and staff will prepare another copy when one is free.',
         'Reservation Arrival','Reservation',r.reservation_id,
         CASE WHEN u.user_role='Faculty' THEN '/faculty/reservations' ELSE '/student/reservations' END,'Important',?,NOW(),NOW()
       FROM reservations r JOIN users u ON u.user_id=r.user_id LEFT JOIN titles t ON t.title_id=r.book_title_id
       WHERE r.reservation_id=? ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
-      [`book-request:${r.reservation_id}:copy-lost:${physicalCopyId}`,r.reservation_id])
+      [lost?'Held copy reported missing':'Held copy needs repair',lost?'the copy set aside for you was reported missing.':'the copy set aside for you is damaged or being repaired.',
+        `book-request:${r.reservation_id}:${tag}:${physicalCopyId}`,r.reservation_id])
     // Supersedes the earlier "Prepare requested copy" notice that pointed at the lost copy.
-    await notifyLibrarians(q,{key:`reservation:${r.reservation_id}:copy-lost:${physicalCopyId}`,title:'Held copy reported lost',
-      body:`request ${r.reservation_id} is back on the waiting list. Do not prepare the lost copy; the next free copy will be assigned.`,
+    await notifyLibrarians(q,{key:`reservation:${r.reservation_id}:${tag}:${physicalCopyId}`,title:lost?'Held copy reported lost':'Held copy is damaged or under repair',
+      body:`request ${r.reservation_id} is back on the waiting list. Do not prepare ${lost?'the lost':'this'} copy; the next free copy will be assigned.`,
       sourceId:Number(r.reservation_id),personUserId:Number(r.user_id),path:'/librarian/reservations?status=active',type:'Reservation Arrival'})
   }
   const titles=new Set(rows.filter(r=>r.request_kind!=='CartHandover'&&r.book_title_id).map(r=>Number(r.book_title_id)))

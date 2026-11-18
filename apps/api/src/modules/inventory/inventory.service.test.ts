@@ -51,8 +51,8 @@ test('scanner verification updates the copy and appends an audit event atomicall
   assert.equal(state.committed, 1)
 })
 
-test('good, fair, for-repair, and damaged preserve current availability', async () => {
-  for (const condition of ['Good', 'Fair', 'For Repair', 'Damaged'] as const) {
+test('good and fair preserve current availability', async () => {
+  for (const condition of ['Good', 'Fair'] as const) {
     const { database, state } = fakeDatabase({ availability: 'Available' })
     const result = await overrideInventoryCondition('BC-42', condition, { userId: 1, label: 'Librarian' }, database)
     assert.equal(result.availability_status, 'Available')
@@ -61,6 +61,46 @@ test('good, fair, for-repair, and damaged preserve current availability', async 
     assert.equal(state.reservationReleases, 0)
     assert.equal(state.audits[0]?.[2], 'Condition Changed')
   }
+})
+
+test('damaged and for-repair make the copy unavailable and release its hold, keeping the borrower waiting', async () => {
+  for (const condition of ['Damaged', 'For Repair'] as const) {
+    const { database, state } = fakeDatabase({ availability: 'Reserved', activeReservation: true })
+    const result = await overrideInventoryCondition('BC-42', condition, { userId: 1, label: 'Librarian' }, database)
+    assert.equal(result.availability_status, 'Unavailable')
+    assert.equal(result.released_reservations, 1)
+    assert.deepEqual(state.materialUpdates[0], ['Unavailable', 42])
+    assert.deepEqual(state.lockOrder.slice(0, 2), ['circulation', 'copy'])
+    const release = state.reservationSql.find(({ sql }) => sql.includes('UPDATE reservations'))
+    assert.match(release?.sql ?? '', /reservation_status\s*=\s*'pending'/)
+    assert.doesNotMatch(release?.sql ?? '', /queue_position/)
+    assert.ok(state.lockOrder.includes('allocate'), 'waiting list is offered another copy')
+    assert.deepEqual(state.notifications[0].slice(-2), ['book-request:11:copy-unusable:7', 11])
+    assert.ok(state.notifications.some((p) => p.includes('library:reservation:11:copy-unusable:7')))
+    assert.equal(state.audits[0]?.[2], 'Condition Changed')
+  }
+})
+
+test('damaged copy that is on loan keeps its borrowed state', async () => {
+  const { database } = fakeDatabase({ availability: 'Borrowed', activeLoan: true })
+  const result = await overrideInventoryCondition('BC-42', 'Damaged', { userId: 1, label: 'Librarian' }, database)
+  assert.equal(result.availability_status, 'Borrowed')
+})
+
+test('repairing a damaged copy makes it available and offers it to the waiting list', async () => {
+  const { database, state } = fakeDatabase({ condition: 'Damaged', availability: 'Unavailable' })
+  const result = await overrideInventoryCondition('BC-42', 'Good', { userId: 1, label: 'Librarian' }, database)
+  assert.equal(result.availability_status, 'Available')
+  assert.deepEqual(state.materialUpdates[0], ['Available', 42])
+  assert.ok(state.lockOrder.includes('allocate'))
+  assert.equal(state.lockOrder[0], 'circulation')
+})
+
+test('good on a manually unavailable copy that was not damaged stays unavailable', async () => {
+  const { database, state } = fakeDatabase({ condition: 'Good', availability: 'Unavailable' })
+  const result = await overrideInventoryCondition('BC-42', 'Good', { userId: 1, label: 'Librarian' }, database)
+  assert.equal(result.availability_status, 'Unavailable')
+  assert.equal(state.materialUpdates.length, 0)
 })
 
 test('for-repair preserves a manually unavailable state', async () => {
@@ -93,7 +133,7 @@ test('lost copy releases the hold assigned to that physical copy and keeps the b
   assert.match(release?.sql ?? '', /assigned_physical_copy_id\s*=\s*NULL/)
   assert.deepEqual(release?.parameters, [11])
   assert.ok(state.lockOrder.includes('allocate'), 'waiting list is offered another copy')
-  assert.deepEqual(state.notifications[0], ['book-request:11:copy-lost:7', 11])
+  assert.deepEqual(state.notifications[0].slice(-2), ['book-request:11:copy-lost:7', 11])
   const librarianAlert = state.notifications.find((parameters) => parameters.includes('library:reservation:11:copy-lost:7'))
   assert.ok(librarianAlert, 'librarians are told the held copy is gone')
   assert.equal(librarianAlert?.at(-1), 5)
