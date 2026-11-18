@@ -1,21 +1,21 @@
 ---
 gsd_state_version: "1.0"
-current_phase: "1 (Reservation Maintenance), 3 plans: 01-01 complete (c66a117), 01-02 complete (8002490); 01-03 (wave 2) next."
+current_phase: "1 (Reservation Maintenance), 3 plans: 01-01 complete (c66a117), 01-02 complete (8002490), 01-03 complete (a7fbc0e); phase verification next."
 status: in_progress
-stopped_at: Completed 01-02-PLAN.md
-last_updated: "2026-11-18T19:28:34.193Z"
-state_head: 8002490faee2dce95b3014c3ad6f71fda04238f9
+stopped_at: Completed 01-03-PLAN.md
+last_updated: "2026-11-18T19:33:51.404Z"
+state_head: a7fbc0e7ef6d7a00430c287db829a78331a5fc1c
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 3
-  completed_plans: 2
-  percent: 67
+  completed_plans: 3
+  percent: 100
 ---
 
 # State
 
-**Current phase:** 1 (Reservation Maintenance), 3 plans: 01-01 complete (c66a117), 01-02 complete (8002490); 01-03 (wave 2) next.
+**Current phase:** 1 (Reservation Maintenance), 3 plans: 01-01 complete (c66a117), 01-02 complete (8002490), 01-03 complete (a7fbc0e); phase verification next.
 **Branch:** feat/reservation-maintenance, stacked on fix/reservation-hold-gaps (PR #44, not merged)
 
 ## Decisions
@@ -30,6 +30,8 @@ progress:
 - [Phase 01]: A waiting-list expiry is an expired non-cart request with no assigned copy and no pickup deadline; it gets its own notice and no librarian alert
 - [Phase 01]: Ready-notice text names the pickup window only on Mark ready; other callers keep the exact Pick up by date without a duration phrase
 - [Phase 01]: expire() expiredCount counts pickup and waiting expiries; releasedAccessions lists pickup holds only
+- [Phase 01]: Reservations tab sends typed text as is (blank limit sends '') and shows the server field message per card; no client-side range check
+- [Phase 01]: Book queue page names the pickup timer without a duration instead of fetching the Librarian-only window
 
 ## Performance Metrics
 
@@ -37,9 +39,10 @@ progress:
 |------|----------|-------|-------|
 | Phase 01 P01 | 25min | 2 tasks | 7 files |
 | Phase 01 P02 | 35min | 3 tasks | 12 files |
+| Phase 01 P03 | 4 min | 3 tasks | 6 files |
 
 ## Session
 
-**Last session:** 2026-11-18T19:28:34.163Z
-**Stopped at:** Completed 01-02-PLAN.md
+**Last session:** 2026-11-18T19:33:51.375Z
+**Stopped at:** Completed 01-03-PLAN.md
 **Resume file:** None
