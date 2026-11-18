@@ -18,9 +18,9 @@ Phases run through GSD at Ethan's request. Other work is tracked in `docs/roadma
   1. A librarian changes the pickup window and the next Mark ready uses it.
   2. With waiting-list expiry set, waiting reservations past the limit expire and the student is told.
   3. With waiting-list expiry blank, no waiting reservation ever expires.
-**Plans**: 3 plans
+**Plans**: 1/3 plans executed
 
 Plans:
-- [ ] 01-01-PLAN.md — Migration 043 (written, not applied) and the Librarian-only reservation settings API (wave 1)
+- [x] 01-01-PLAN.md — Migration 043 (written, not applied) and the Librarian-only reservation settings API (wave 1)
 - [ ] 01-02-PLAN.md — Mark ready uses the pickup window; waiting-list expiry job and notice; student "Expires on" (wave 2)
 - [ ] 01-03-PLAN.md — Reservations tab on Maintenance; Book queue wording (wave 2)
