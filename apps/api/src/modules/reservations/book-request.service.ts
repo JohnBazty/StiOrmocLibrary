@@ -59,6 +59,10 @@ async function availableCopies(q: PoolConnection, titleId: number) {
   return rows
 }
 
+/** Staff-only note on why a waiting request was passed over; only the latest skip is kept. */
+const skipRequest = (q: PoolConnection, r: RowDataPacket, reason: string, now: Date) =>
+  q.execute('UPDATE reservations SET last_skip_reason=?,last_skipped_at=?,updated_at=NOW() WHERE reservation_id=?',[reason.slice(0,200),now,r.reservation_id])
+
 /** Allocate by title identity and ordered waiting position; never automatically ready. */
 export async function allocateWaitingRequests(q: PoolConnection,titleId:number,now=new Date()) {
   const [copies] = await q.execute<RowDataPacket[]>(`SELECT pc.*,t.title FROM physical_copies pc JOIN titles t ON t.title_id=pc.title_id
@@ -76,12 +80,13 @@ export async function allocateWaitingRequests(q: PoolConnection,titleId:number,n
   for(const r of waiting) {
     if(!copies.length) break
     const eligible=await borrowerEligibility(q,Number(r.user_id),now,'Online')
-    if(eligible.blockers.length || (eligible.limit!==null && await commitments(q,Number(r.user_id))>eligible.limit)) continue
+    if(eligible.blockers.length) { await skipRequest(q,r,eligible.blockers[0],now); continue }
+    if(eligible.limit!==null && await commitments(q,Number(r.user_id))>eligible.limit) { await skipRequest(q,r,'Over borrowing limit',now); continue }
     const [rules]=await q.execute<RowDataPacket[]>('SELECT is_borrowable FROM borrowing_policy_material_rules WHERE borrowing_policy_version_id=? AND material_type=\'Book\'',[eligible.policy.borrowing_policy_version_id])
-    if(!rules[0]?.is_borrowable) continue
+    if(!rules[0]?.is_borrowable) { await skipRequest(q,r,'Book not borrowable under policy',now); continue }
     const copy=copies.shift()!
     await q.execute(`UPDATE reservations SET reservation_status='approved',accession_id=?,assigned_physical_copy_id=?,
-      preparation_started_at=?,pickup_deadline=NULL,updated_at=NOW() WHERE reservation_id=?`,[copy.material_id,copy.physical_copy_id,now,r.reservation_id])
+      preparation_started_at=?,pickup_deadline=NULL,last_skip_reason=NULL,last_skipped_at=NULL,updated_at=NOW() WHERE reservation_id=?`,[copy.material_id,copy.physical_copy_id,now,r.reservation_id])
     await q.execute("UPDATE physical_copies SET availability_status='Reserved',row_version=row_version+1,updated_at=NOW() WHERE physical_copy_id=?",[copy.physical_copy_id])
     await q.execute("UPDATE materials SET availability_status='Reserved',updated_at=NOW() WHERE material_id=?",[copy.material_id])
     await recordRequestEvent(q,Number(r.reservation_id),'preparing',now)
@@ -96,7 +101,7 @@ export async function allocateWaitingRequests(q: PoolConnection,titleId:number,n
 export async function releaseBookRequest(q: PoolConnection,r:RowDataPacket,status:'cancelled'|'expired',actor:number|null,now:Date) {
   if(!['pending','approved','ready_for_pickup'].includes(String(r.reservation_status))) return false
   // Keep the assignment and fixed deadline as history; terminal states no longer own the copy.
-  await q.execute('UPDATE reservations SET reservation_status=?,updated_at=NOW() WHERE reservation_id=?',[status,r.reservation_id])
+  await q.execute('UPDATE reservations SET reservation_status=?,last_skip_reason=NULL,last_skipped_at=NULL,updated_at=NOW() WHERE reservation_id=?',[status,r.reservation_id])
   await cancelPendingCounterClaim(q,Number(r.reservation_id),actor,status==='expired'?(r.request_kind==='CartHandover'?'Cart handover expired at closing.':'Pickup deadline expired.'):'Book request cancelled.')
   if(r.assigned_physical_copy_id) {
     await q.execute(`UPDATE physical_copies SET availability_status=CASE WHEN lifecycle_status='Active' AND condition_status NOT IN ('Lost','Damaged','For Repair') THEN 'Available' ELSE 'Unavailable' END,

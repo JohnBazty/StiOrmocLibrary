@@ -112,3 +112,33 @@ test('an unusable held copy moves the ready hold to a spare copy at the same que
   assert.ok(!calls.some((c) => /SET queue_position/.test(c.sql)), 'queue positions are untouched')
   assert.ok(calls.some((c) => c.sql.includes('INTO notifications') && String(c.params.at(-2)).includes('copy-unusable')))
 })
+
+test('a blocked first borrower is skipped with a recorded reason and the copy goes to the next one', async () => {
+  const waiting = [
+    { reservation_id: 501, user_id: 8, material_id: 17, book_title_id: 9, reservation_status: 'pending', request_kind: 'Reservation', queue_position: 1 },
+    { reservation_id: 502, user_id: 9, material_id: 17, book_title_id: 9, reservation_status: 'pending', request_kind: 'Reservation', queue_position: 2 },
+  ]
+  const { database, calls } = fakePool((sql, params) => {
+    if (sql.includes('SELECT pc.*,t.title FROM physical_copies')) return [{ physical_copy_id: 31, material_id: 17, title: 'Clean Code', barcode: 'B-31' }]
+    if (sql.includes('SELECT * FROM reservations WHERE book_title_id=?')) return waiting
+    if (sql.includes('FROM fines f LEFT JOIN')) return [{ balance: params[0] === 8 ? 100 : 0 }]
+    return undefined
+  })
+  const { allocateWaitingRequests } = await import('./book-request.service.ts')
+  const assigned = await allocateWaitingRequests(await database.getConnection(), 9, at('2026-11-16T10:00'))
+  assert.deepEqual(assigned, [502])
+  const skip = calls.find((c) => c.sql.includes('SET last_skip_reason=?'))!
+  assert.match(String(skip.params[0]), /outstanding library balance/)
+  assert.equal(skip.params[2], 501)
+  const assign = calls.find((c) => c.sql.includes("reservation_status='approved'"))!
+  assert.match(assign.sql, /last_skip_reason=NULL,last_skipped_at=NULL/)
+  assert.equal(assign.params.at(-1), 502)
+  assert.ok(!calls.some((c) => /SET queue_position/.test(c.sql)), 'the skipped request keeps its position')
+})
+
+test('ending a request clears its skip reason', async () => {
+  const { database, calls } = fakePool(() => undefined)
+  const { releaseBookRequest } = await import('./book-request.service.ts')
+  await releaseBookRequest(await database.getConnection(), { reservation_id: 501, reservation_status: 'pending', request_kind: 'Reservation', book_title_id: 9, queue_position: 1 } as never, 'cancelled', 1, new Date())
+  assert.match(calls.find((c) => c.sql.startsWith('UPDATE reservations SET reservation_status=?'))!.sql, /last_skip_reason=NULL/)
+})
