@@ -9,11 +9,12 @@ export type ReservationSettingsView = {
   pickupWindowDays: number; pickupWindowChangedBy: string | null; pickupWindowChangedAt: string | null
   waitingExpiryDays: number | null; waitingExpiryChangedBy: string | null; waitingExpiryChangedAt: string | null
 }
-export type ReservationSettingsUpdate = { pickupWindowDays?: number }
+export type ReservationSettingsUpdate = { pickupWindowDays?: number; waitingExpiryDays?: number | null }
 
 export const DEFAULT_RESERVATION_SETTINGS: ReservationSettings = Object.freeze({ pickupWindowDays: 1, waitingExpiryDays: null, waitingExpirySavedAt: null })
 const DEFAULT_VIEW: ReservationSettingsView = Object.freeze({ pickupWindowDays: 1, pickupWindowChangedBy: null, pickupWindowChangedAt: null, waitingExpiryDays: null, waitingExpiryChangedBy: null, waitingExpiryChangedAt: null })
 const PICKUP_MESSAGE = 'Enter a whole number of days from 1 to 7.'
+const WAITING_MESSAGE = 'Leave blank to turn off, or enter a whole number of days from 7 to 90.'
 
 export const dayCount = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`
 
@@ -41,11 +42,26 @@ function wholeDays(value: unknown, min: number, max: number) {
   return Number.isInteger(n) && n >= min && n <= max ? n : null
 }
 
+/** A key present in the body means that setting is saved; every key is validated before any write. */
 export function parseReservationSettingsUpdate(body: unknown): ReservationSettingsUpdate {
-  const input = (body ?? {}) as Record<string, unknown>
-  const pickupWindowDays = wholeDays(input.pickupWindowDays, 1, 7)
-  if (pickupWindowDays == null) throw invalid('pickupWindowDays', PICKUP_MESSAGE)
-  return { pickupWindowDays }
+  const input = body && typeof body === 'object' && !Array.isArray(body) ? body as Record<string, unknown> : {}
+  const hasPickup = Object.hasOwn(input, 'pickupWindowDays')
+  const hasWaiting = Object.hasOwn(input, 'waitingExpiryDays')
+  if (!hasPickup && !hasWaiting) throw new HttpError(422, 'RESERVATION_SETTINGS_INVALID', 'Choose a setting to save.')
+  const update: ReservationSettingsUpdate = {}
+  if (hasPickup) {
+    const days = wholeDays(input.pickupWindowDays, 1, 7)
+    if (days == null) throw invalid('pickupWindowDays', PICKUP_MESSAGE)
+    update.pickupWindowDays = days
+  }
+  if (hasWaiting) {
+    const value = input.waitingExpiryDays
+    const off = value === null || (typeof value === 'string' && value.trim() === '')
+    const days = off ? null : wholeDays(value, 7, 90)
+    if (!off && days == null) throw invalid('waitingExpiryDays', WAITING_MESSAGE)
+    update.waitingExpiryDays = days
+  }
+  return update
 }
 
 const iso = (value: unknown) => value == null ? null : new Date(value as string).toISOString()
@@ -77,12 +93,20 @@ export function createReservationSettingsService(database: Pool = db, clock = ()
     try {
       await q.beginTransaction()
       await requireLibraryActor(q, actorAccountId, 'library.manage')
+      if (!await tablePresent(q)) throw new HttpError(503, 'RESERVATION_SETTINGS_UNAVAILABLE', 'Reservation settings need the latest database update. Ask the system administrator to apply it.')
       const now = clock()
       if (update.pickupWindowDays !== undefined) {
         await q.execute(`INSERT INTO reservation_settings (settings_id, pickup_window_days, pickup_window_changed_by, pickup_window_changed_at) VALUES (1, ?, ?, ?)
           ON CONFLICT (settings_id) DO UPDATE SET pickup_window_days = EXCLUDED.pickup_window_days,
           pickup_window_changed_by = EXCLUDED.pickup_window_changed_by, pickup_window_changed_at = EXCLUDED.pickup_window_changed_at`,
         [update.pickupWindowDays, actorAccountId, now])
+      }
+      // Saved time moves on every save, same value too: the waiting-list count restarts (SPEC interview round 2).
+      if (update.waitingExpiryDays !== undefined) {
+        await q.execute(`INSERT INTO reservation_settings (settings_id, waiting_expiry_days, waiting_expiry_changed_by, waiting_expiry_saved_at) VALUES (1, ?, ?, ?)
+          ON CONFLICT (settings_id) DO UPDATE SET waiting_expiry_days = EXCLUDED.waiting_expiry_days,
+          waiting_expiry_changed_by = EXCLUDED.waiting_expiry_changed_by, waiting_expiry_saved_at = EXCLUDED.waiting_expiry_saved_at`,
+        [update.waitingExpiryDays, actorAccountId, now])
       }
       await q.commit()
     } catch (error) { await q.rollback(); throw error } finally { q.release() }
