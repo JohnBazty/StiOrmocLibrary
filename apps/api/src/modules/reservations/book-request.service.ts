@@ -8,6 +8,7 @@ import { createBorrowingPolicyService } from '../circulation/borrowing-policy.se
 import { cancelPendingCounterClaim } from './reservation-claim.repository.ts'
 import { positiveId } from './reservation.validation.ts'
 import { recordRequestEvent, requestEventStatus, requestLabels, requestInstructions } from './book-request-events.ts'
+import { loadOpeningHours, pickupDeadline, nextCloseAfter } from './pickup-deadline.ts'
 import { notifyLibrarians } from '../notifications/library-alerts.ts'
 
 const active = "('pending','approved','ready_for_pickup')"
@@ -269,7 +270,7 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
           AND pc.availability_status='Reserved' AND pc.condition_status NOT IN ('Lost','Damaged','For Repair') FOR UPDATE OF pc,t`,[r.assigned_physical_copy_id])
         if(!copies.length) throw fail('DESK_COPY_BLOCKED','The assigned copy is unavailable. Review its physical condition before marking ready.')
         if(input.status==='approved') return result(r) // Compatible legacy Prepare action, never another approval gate.
-        const now=clock(),deadline=new Date(now.getTime()+24*60*60*1000)
+        const now=clock(),hoursOpen=await loadOpeningHours(q,now),deadline=pickupDeadline(now,hoursOpen.schedule,hoursOpen.closedDates)
         await q.execute(`UPDATE reservations SET reservation_status='ready_for_pickup',ready_at=?,
           pickup_deadline=(?::timestamptz AT TIME ZONE 'Asia/Manila'),updated_at=NOW() WHERE reservation_id=?`,[now,deadline,r.reservation_id])
         await recordRequestEvent(q,Number(r.reservation_id),'ready_for_pickup',now)

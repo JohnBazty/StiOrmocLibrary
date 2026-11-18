@@ -2,7 +2,7 @@
 
 - **Date created:** 2026-11-18
 - **Date last updated:** 2026-11-18
-- **Status:** planned
+- **Status:** inprogress
 - **Branch:** `fix/reservation-hold-gaps`, cut from `fix/lost-copy-reservation-release` (gap 1). It reuses `releaseLostCopyHolds`, which is not on `main` yet. Rebase onto `main` once gap 1 merges.
 - **Migration:** `042_reservation_skip_and_audit.sql` (next free number; `041` is on the gap 1 branch and not applied).
 - **Spec method:** GSD spec-phase interview, 3 rounds plus the edge and prohibition probes. Final ambiguity 0.13 (gate 0.20 or lower).
@@ -165,7 +165,7 @@ Migration tracker in `.cursor/agent-protocol.md` and `docs/schema-context.md`. T
 
 ## Implementation tracking
 
-- [ ] 1. `pickup-deadline.ts` plus tests, wired into Mark ready
+- [x] 1. `pickup-deadline.ts` plus tests, wired into Mark ready
 - [ ] 2. Cart deadline on submit, cart expiry plus notice
 - [ ] 3. Damaged or For Repair release and reallocation
 - [ ] 4. Migration 042 (skip columns plus `reservation_audit_events`), skip reason write and clear, `kind` parameter on the staff query
