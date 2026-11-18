@@ -4,7 +4,7 @@ export const RESERVATION_STATUSES = ['pending', 'approved', 'ready_for_pickup', 
 export type ReservationStatus = typeof RESERVATION_STATUSES[number]
 export type QueueFilters = {
   status: ReservationStatus | 'active' | null; dateFrom: string | null; dateTo: string | null
-  user: string | null; role: 'Student' | 'Faculty' | null; page: number; limit: number
+  user: string | null; kind: 'Reservation' | 'CartHandover'; role: 'Student' | 'Faculty' | null; page: number; limit: number
 }
 
 export function positiveId(value: unknown, field: string) {
@@ -34,9 +34,19 @@ export function validateStatusAdjustment(body: unknown) {
   return { status, pickupDeadline }
 }
 
+export function validateMove(body: unknown) {
+  const input = body && typeof body === 'object' ? body as Record<string, unknown> : {}
+  const reason = stringValue(input.reason)
+  if (input.direction !== 'up' && input.direction !== 'down') throw new HttpError(422, 'QUEUE_MOVE_INVALID', 'Direction must be up or down.')
+  if (reason.length < 5 || reason.length > 500) throw new HttpError(422, 'QUEUE_MOVE_REASON_INVALID', 'Give a reason of 5 to 500 characters.')
+  return { direction: input.direction as 'up' | 'down', reason }
+}
+
 export function parseQueueFilters(query: Record<string, unknown>): QueueFilters {
   const statusText = stringValue(query.status)
   if (statusText && statusText !== 'active' && !RESERVATION_STATUSES.includes(statusText as ReservationStatus)) throw new HttpError(422, 'RESERVATION_FILTER_INVALID', 'Unsupported reservation status filter.')
+  const kind = stringValue(query.kind) || 'Reservation'
+  if (kind !== 'Reservation' && kind !== 'CartHandover') throw new HttpError(422, 'RESERVATION_FILTER_INVALID', 'Kind must be Reservation or CartHandover.')
   const roleText = stringValue(query.role)
   if (roleText && !['Student', 'Faculty'].includes(roleText)) throw new HttpError(422, 'RESERVATION_FILTER_INVALID', 'Role must be Student or Faculty.')
   const datePattern = /^\d{4}-\d{2}-\d{2}$/
@@ -48,7 +58,7 @@ export function parseQueueFilters(query: Record<string, unknown>): QueueFilters 
   return {
     status: statusText as QueueFilters['status'] || null, dateFrom, dateTo,
     user: stringValue(query.user ?? query.q).slice(0, 150) || null,
-    role: roleText as 'Student' | 'Faculty' || null,
+    role: roleText as 'Student' | 'Faculty' || null, kind,
     page, limit: Math.min(requestedLimit, 100),
   }
 }

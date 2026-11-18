@@ -1,4 +1,4 @@
-import type { ReservationFilters, ReservationQueueItem, ReservationStatus, RequestHistoryItem } from './types'
+import type { ReservationFilters, ReservationQueueItem, ReservationStatus, RequestHistoryItem, SwapCandidate } from './types'
 import { getAccessToken } from '../auth/auth-storage'
 
 export class ReservationApiError extends Error {
@@ -36,6 +36,9 @@ function query(filters: ReservationFilters) {
 export const reservationApi = {
   queue: (filters: ReservationFilters, page=1) => request<{ items: ReservationQueueItem[]; pagination: { total: number;pages:number } }>(`/api/v1/admin/reservations?${query(filters)}&page=${page}&limit=25`),
   adjustStatus: (reservationId: number, status: ReservationStatus) => request(`/api/v1/admin/reservations/${reservationId}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  swapCandidates: (reservationId: number) => request<SwapCandidate[]>(`/api/v1/admin/reservations/${reservationId}/swap-candidates`),
+  swapCopy: (reservationId: number, physicalCopyId: number) => request(`/api/v1/admin/reservations/${reservationId}/swap-copy`, { method: 'POST', body: JSON.stringify({ physicalCopyId }) }),
+  moveInQueue: (reservationId: number, direction: 'up' | 'down', reason: string) => request(`/api/v1/admin/reservations/${reservationId}/move`, { method: 'POST', body: JSON.stringify({ direction, reason }) }),
   mine: () => request<RequestHistoryItem[]>('/api/v1/reservations'),
   cancelMine: (reservationId: number) => request(`/api/v1/reservations/${reservationId}/cancel`, { method: 'PUT' }),
 }

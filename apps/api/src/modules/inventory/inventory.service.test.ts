@@ -51,8 +51,8 @@ test('scanner verification updates the copy and appends an audit event atomicall
   assert.equal(state.committed, 1)
 })
 
-test('good, fair, for-repair, and damaged preserve current availability', async () => {
-  for (const condition of ['Good', 'Fair', 'For Repair', 'Damaged'] as const) {
+test('good and fair preserve current availability', async () => {
+  for (const condition of ['Good', 'Fair'] as const) {
     const { database, state } = fakeDatabase({ availability: 'Available' })
     const result = await overrideInventoryCondition('BC-42', condition, { userId: 1, label: 'Librarian' }, database)
     assert.equal(result.availability_status, 'Available')
@@ -61,6 +61,46 @@ test('good, fair, for-repair, and damaged preserve current availability', async 
     assert.equal(state.reservationReleases, 0)
     assert.equal(state.audits[0]?.[2], 'Condition Changed')
   }
+})
+
+test('damaged and for-repair make the copy unavailable and release its hold, keeping the borrower waiting', async () => {
+  for (const condition of ['Damaged', 'For Repair'] as const) {
+    const { database, state } = fakeDatabase({ availability: 'Reserved', activeReservation: true })
+    const result = await overrideInventoryCondition('BC-42', condition, { userId: 1, label: 'Librarian' }, database)
+    assert.equal(result.availability_status, 'Unavailable')
+    assert.equal(result.released_reservations, 1)
+    assert.deepEqual(state.materialUpdates[0], ['Unavailable', 42])
+    assert.deepEqual(state.lockOrder.slice(0, 2), ['circulation', 'copy'])
+    const release = state.reservationSql.find(({ sql }) => sql.includes('UPDATE reservations'))
+    assert.match(release?.sql ?? '', /reservation_status\s*=\s*'pending'/)
+    assert.doesNotMatch(release?.sql ?? '', /queue_position/)
+    assert.ok(state.lockOrder.includes('allocate'), 'waiting list is offered another copy')
+    assert.deepEqual(state.notifications[0].slice(-2), ['book-request:11:copy-unusable:7', 11])
+    assert.ok(state.notifications.some((p) => p.includes('library:reservation:11:copy-unusable:7')))
+    assert.equal(state.audits[0]?.[2], 'Condition Changed')
+  }
+})
+
+test('damaged copy that is on loan keeps its borrowed state', async () => {
+  const { database } = fakeDatabase({ availability: 'Borrowed', activeLoan: true })
+  const result = await overrideInventoryCondition('BC-42', 'Damaged', { userId: 1, label: 'Librarian' }, database)
+  assert.equal(result.availability_status, 'Borrowed')
+})
+
+test('repairing a damaged copy makes it available and offers it to the waiting list', async () => {
+  const { database, state } = fakeDatabase({ condition: 'Damaged', availability: 'Unavailable' })
+  const result = await overrideInventoryCondition('BC-42', 'Good', { userId: 1, label: 'Librarian' }, database)
+  assert.equal(result.availability_status, 'Available')
+  assert.deepEqual(state.materialUpdates[0], ['Available', 42])
+  assert.ok(state.lockOrder.includes('allocate'))
+  assert.equal(state.lockOrder[0], 'circulation')
+})
+
+test('good on a manually unavailable copy that was not damaged stays unavailable', async () => {
+  const { database, state } = fakeDatabase({ condition: 'Good', availability: 'Unavailable' })
+  const result = await overrideInventoryCondition('BC-42', 'Good', { userId: 1, label: 'Librarian' }, database)
+  assert.equal(result.availability_status, 'Unavailable')
+  assert.equal(state.materialUpdates.length, 0)
 })
 
 test('for-repair preserves a manually unavailable state', async () => {
@@ -93,7 +133,7 @@ test('lost copy releases the hold assigned to that physical copy and keeps the b
   assert.match(release?.sql ?? '', /assigned_physical_copy_id\s*=\s*NULL/)
   assert.deepEqual(release?.parameters, [11])
   assert.ok(state.lockOrder.includes('allocate'), 'waiting list is offered another copy')
-  assert.deepEqual(state.notifications[0], ['book-request:11:copy-lost:7', 11])
+  assert.deepEqual(state.notifications[0].slice(-2), ['book-request:11:copy-lost:7', 11])
   const librarianAlert = state.notifications.find((parameters) => parameters.includes('library:reservation:11:copy-lost:7'))
   assert.ok(librarianAlert, 'librarians are told the held copy is gone')
   assert.equal(librarianAlert?.at(-1), 5)
@@ -157,4 +197,38 @@ test('active circulation blocks a manual availability toggle', async () => {
   const reservation = fakeDatabase({ activeReservation: true })
   await assert.rejects(setInventoryAvailability('BC-42', 'Unavailable', { userId: 1, label: 'Librarian' }, reservation.database),
     (error: unknown) => error instanceof HttpError && error.code === 'PHYSICAL_COPY_HAS_ACTIVE_RESERVATION')
+})
+
+// R1 whole flow, through the real release and allocation code.
+async function damagedHoldFlow(spare: boolean) {
+  const { fakePool } = await import('../reservations/book-request.test-helpers.ts')
+  const copy = { physical_copy_id: 31, title_id: 9, material_id: 17, barcode: 'BC-31', accession_number: 'A-31', title: 'Clean Code', condition_status: 'Good', availability_status: 'Reserved', lifecycle_status: 'Active', circulation_material_id: 17 }
+  const hold = { reservation_id: 501, user_id: 4, material_id: 17, book_title_id: 9, request_kind: 'Reservation', reservation_status: 'ready_for_pickup', queue_position: 3, assigned_physical_copy_id: 31, accession_id: 17 }
+  const pool = fakePool((sql) => {
+    if (sql.includes('WHERE pc.barcode = ?')) return [copy]
+    if (sql.includes('FROM borrow_transactions') && sql.includes('ORDER BY transaction_id DESC')) return []
+    if (sql.includes('SELECT * FROM reservations WHERE assigned_physical_copy_id')) return [hold]
+    if (sql.includes('SELECT pc.*,t.title FROM physical_copies')) return spare ? [{ physical_copy_id: 32, material_id: 18, title: 'Clean Code', barcode: 'BC-32' }] : []
+    if (sql.includes('SELECT * FROM reservations WHERE book_title_id=?')) return [{ ...hold, reservation_status: 'pending', assigned_physical_copy_id: null, accession_id: null }]
+    if (sql.includes('SELECT r.user_id,r.request_kind')) return [{ user_id: 4, request_kind: 'Reservation', assigned_physical_copy_id: spare ? 32 : null, deadline: null, email: null, user_role: 'Student', title: 'Clean Code' }]
+    return undefined
+  })
+  await overrideInventoryCondition('BC-31', 'Damaged', { userId: 1, label: 'Librarian' }, pool.database)
+  return pool.calls
+}
+test('damaged held copy with a spare copy re-assigns the request at the same position and sends both notices', async () => {
+  const calls = await damagedHoldFlow(true)
+  const assign = calls.find((c) => c.sql.includes("reservation_status='approved'"))!
+  assert.equal(assign.params[1], 32)
+  assert.ok(!calls.some((c) => /SET queue_position/.test(c.sql) || (c.sql.startsWith('UPDATE reservations') && c.sql.includes('queue_position=') && !c.sql.includes('last_skip'))))
+  const keys = calls.filter((c) => c.sql.includes('INTO notifications')).flatMap((c) => c.params.map(String))
+  assert.ok(keys.includes('book-request:501:copy-unusable:31'), 'held copy notice')
+  assert.ok(keys.includes('book-request:501:preparing:copy:32'), 'set aside on a new copy notice')
+})
+test('damaged held copy with no spare copy returns the request to pending at the same position', async () => {
+  const calls = await damagedHoldFlow(false)
+  const release = calls.find((c) => c.sql.includes("reservation_status='pending'"))!
+  assert.doesNotMatch(release.sql, /queue_position/)
+  assert.match(release.sql, /pickup_deadline=NULL/)
+  assert.ok(!calls.some((c) => c.sql.includes("reservation_status='approved'")))
 })

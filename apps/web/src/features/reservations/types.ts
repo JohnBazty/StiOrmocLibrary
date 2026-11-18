@@ -4,8 +4,10 @@ export type ReservationQueueItem = {
   reservationId: number; userId: number; userName: string; institutionalId: string; email: string
   userRole: 'Student' | 'Faculty'; materialId: number; materialTitle: string; materialType: string
   categoryName: string | null; accessionId: number | null; accessionNumber: string | null; barcode: string | null
-  queuePosition: number; status: ReservationStatus; reservedAt: string; pickupDeadline: string | null
+  queuePosition: number | null; status: ReservationStatus; reservedAt: string; pickupDeadline: string | null
+  requestKind?: 'Reservation' | 'CartHandover'; lastSkipReason?: string | null; lastSkippedAt?: string | null
   assignedCopyId?:number|null;shelfLocation?:string|null;statusLabel?:string;emailStatus?:string|null
 }
-export type ReservationFilters = { status: string; dateFrom: string; dateTo: string; user: string; role: string }
+export type ReservationFilters = { status: string; dateFrom: string; dateTo: string; user: string; role: string; kind: 'Reservation' | 'CartHandover' }
+export type SwapCandidate = { physicalCopyId: number; barcode: string | null; accessionNumber: string | null; shelfLocation: string | null }
 

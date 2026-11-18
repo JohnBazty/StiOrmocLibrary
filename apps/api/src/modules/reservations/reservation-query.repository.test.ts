@@ -22,3 +22,23 @@ test('active queue includes waiting preparation and ready pickup and excludes co
   assert.match(query.countSql,/r.reservation_status IN \('pending','approved','ready_for_pickup'\)/)
   assert.ok(!query.dataParameters.includes('active'))
 })
+
+test('queue kind filter defaults to Reservation, accepts CartHandover and rejects anything else', () => {
+  const reservation = buildReservationQueueQuery(parseQueueFilters({ status: 'active' }))
+  assert.match(reservation.dataSql, /r\.request_kind = \?/)
+  assert.equal(reservation.dataParameters[0], 'Reservation')
+  const cart = buildReservationQueueQuery(parseQueueFilters({ status: 'active', kind: 'CartHandover' }))
+  assert.equal(cart.dataParameters[0], 'CartHandover')
+  assert.equal(cart.countParameters[0], 'CartHandover')
+  assert.throws(() => parseQueueFilters({ kind: "Reservation' OR 1=1" }), (e: any) => e.code === 'RESERVATION_FILTER_INVALID')
+})
+
+test('staff queue returns skip fields while the student listing never selects them', async () => {
+  assert.match(buildReservationQueueQuery(parseQueueFilters({})).dataSql, /r\.last_skip_reason/)
+  const { createReservationService } = await import('./reservation.service.ts')
+  const database = { async execute(sql: string) {
+    if (sql.includes('SELECT user_id FROM accounts')) return [[{ user_id: 4 }]]
+    return [[{ reservation_id: 1, title: 'Clean Code', queue_position: 1, reservation_status: 'pending', last_skip_reason: 'Settle the outstanding library balance', last_skipped_at: new Date() }]]
+  } }
+  assert.doesNotMatch(JSON.stringify(await createReservationService(database as never).listForAccount(1)), /balance|skip/i)
+})

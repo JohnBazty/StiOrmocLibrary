@@ -6,8 +6,9 @@ import { borrowerEligibility, requireEligible } from '../circulation/desk-circul
 import { roleReservationLimit } from '../circulation/borrowing-policy.types.ts'
 import { createBorrowingPolicyService } from '../circulation/borrowing-policy.service.ts'
 import { cancelPendingCounterClaim } from './reservation-claim.repository.ts'
-import { positiveId } from './reservation.validation.ts'
+import { positiveId, validateMove } from './reservation.validation.ts'
 import { recordRequestEvent, requestEventStatus, requestLabels, requestInstructions } from './book-request-events.ts'
+import { loadOpeningHours, pickupDeadline, nextCloseAfter } from './pickup-deadline.ts'
 import { notifyLibrarians } from '../notifications/library-alerts.ts'
 
 const active = "('pending','approved','ready_for_pickup')"
@@ -47,16 +48,20 @@ async function linkedUser(q: PoolConnection, accountId:number, staff=false) {
 }
 
 /** The caller holds the shared circulation lock. Honor prior reservations first. */
-async function availableCopies(q: PoolConnection, titleId: number) {
+async function availableCopies(q: PoolConnection, titleId: number, lockRows = true) {
   const [rows] = await q.execute<RowDataPacket[]>(`SELECT pc.* FROM physical_copies pc JOIN titles t ON t.title_id=pc.title_id
     WHERE pc.title_id=? AND pc.lifecycle_status='Active' AND t.lifecycle_status='Active' AND t.record_type='Book'
       AND pc.material_id IS NOT NULL AND pc.availability_status='Available' AND pc.condition_status NOT IN ('Lost','Damaged','For Repair')
       AND NOT EXISTS(SELECT 1 FROM borrow_transactions bt WHERE (bt.physical_copy_id=pc.physical_copy_id OR bt.material_id=pc.material_id) AND bt.transaction_status IN ('Pending','Borrowed','Overdue'))
       AND NOT EXISTS(SELECT 1 FROM in_library_uses iu WHERE iu.physical_copy_id=pc.physical_copy_id AND iu.ended_at IS NULL)
       AND NOT EXISTS(SELECT 1 FROM reservations r WHERE r.assigned_physical_copy_id=pc.physical_copy_id AND r.reservation_status IN ${active})
-    ORDER BY pc.physical_copy_id FOR UPDATE OF pc,t`, [titleId])
+    ORDER BY pc.physical_copy_id ${lockRows ? 'FOR UPDATE OF pc,t' : ''}`, [titleId])
   return rows
 }
+
+/** Staff-only note on why a waiting request was passed over. Written only when the reason changes, so repeated passes cause no writes. */
+const skipRequest = (q: PoolConnection, r: RowDataPacket, reason: string, now: Date) =>
+  q.execute('UPDATE reservations SET last_skip_reason=?,last_skipped_at=? WHERE reservation_id=? AND (last_skip_reason IS DISTINCT FROM ? OR last_skipped_at IS NULL)',[reason.slice(0,200),now,r.reservation_id,reason.slice(0,200)])
 
 /** Allocate by title identity and ordered waiting position; never automatically ready. */
 export async function allocateWaitingRequests(q: PoolConnection,titleId:number,now=new Date()) {
@@ -75,12 +80,13 @@ export async function allocateWaitingRequests(q: PoolConnection,titleId:number,n
   for(const r of waiting) {
     if(!copies.length) break
     const eligible=await borrowerEligibility(q,Number(r.user_id),now,'Online')
-    if(eligible.blockers.length || (eligible.limit!==null && await commitments(q,Number(r.user_id))>eligible.limit)) continue
+    if(eligible.blockers.length) { await skipRequest(q,r,eligible.blockers[0],now); continue }
+    if(eligible.limit!==null && await commitments(q,Number(r.user_id))>eligible.limit) { await skipRequest(q,r,'Over borrowing limit',now); continue }
     const [rules]=await q.execute<RowDataPacket[]>('SELECT is_borrowable FROM borrowing_policy_material_rules WHERE borrowing_policy_version_id=? AND material_type=\'Book\'',[eligible.policy.borrowing_policy_version_id])
-    if(!rules[0]?.is_borrowable) continue
+    if(!rules[0]?.is_borrowable) { await skipRequest(q,r,'Book not borrowable under policy',now); continue }
     const copy=copies.shift()!
     await q.execute(`UPDATE reservations SET reservation_status='approved',accession_id=?,assigned_physical_copy_id=?,
-      preparation_started_at=?,pickup_deadline=NULL,updated_at=NOW() WHERE reservation_id=?`,[copy.material_id,copy.physical_copy_id,now,r.reservation_id])
+      preparation_started_at=?,pickup_deadline=NULL,last_skip_reason=NULL,last_skipped_at=NULL,updated_at=NOW() WHERE reservation_id=?`,[copy.material_id,copy.physical_copy_id,now,r.reservation_id])
     await q.execute("UPDATE physical_copies SET availability_status='Reserved',row_version=row_version+1,updated_at=NOW() WHERE physical_copy_id=?",[copy.physical_copy_id])
     await q.execute("UPDATE materials SET availability_status='Reserved',updated_at=NOW() WHERE material_id=?",[copy.material_id])
     await recordRequestEvent(q,Number(r.reservation_id),'preparing',now)
@@ -95,8 +101,8 @@ export async function allocateWaitingRequests(q: PoolConnection,titleId:number,n
 export async function releaseBookRequest(q: PoolConnection,r:RowDataPacket,status:'cancelled'|'expired',actor:number|null,now:Date) {
   if(!['pending','approved','ready_for_pickup'].includes(String(r.reservation_status))) return false
   // Keep the assignment and fixed deadline as history; terminal states no longer own the copy.
-  await q.execute('UPDATE reservations SET reservation_status=?,updated_at=NOW() WHERE reservation_id=?',[status,r.reservation_id])
-  await cancelPendingCounterClaim(q,Number(r.reservation_id),actor,status==='expired'?'Pickup deadline expired.':'Book request cancelled.')
+  await q.execute('UPDATE reservations SET reservation_status=?,last_skip_reason=NULL,last_skipped_at=NULL,updated_at=NOW() WHERE reservation_id=?',[status,r.reservation_id])
+  await cancelPendingCounterClaim(q,Number(r.reservation_id),actor,status==='expired'?(r.request_kind==='CartHandover'?'Cart handover expired at closing.':'Pickup deadline expired.'):'Book request cancelled.')
   if(r.assigned_physical_copy_id) {
     await q.execute(`UPDATE physical_copies SET availability_status=CASE WHEN lifecycle_status='Active' AND condition_status NOT IN ('Lost','Damaged','For Repair') THEN 'Available' ELSE 'Unavailable' END,
       row_version=row_version+1,updated_at=NOW() WHERE physical_copy_id=? AND availability_status='Reserved'`,[r.assigned_physical_copy_id])
@@ -111,26 +117,28 @@ export async function releaseBookRequest(q: PoolConnection,r:RowDataPacket,statu
 }
 
 /** The caller holds the shared circulation lock. A lost copy frees its holds without costing borrowers their place. */
-export async function releaseLostCopyHolds(q: PoolConnection,physicalCopyId:number,actor:number|null,now=new Date()) {
+export async function releaseLostCopyHolds(q: PoolConnection,physicalCopyId:number,actor:number|null,now=new Date(),cause:'lost'|'unusable'='lost') {
+  const lost=cause==='lost',tag=lost?'copy-lost':'copy-unusable'
   const [rows] = await q.execute<RowDataPacket[]>(`SELECT * FROM reservations WHERE assigned_physical_copy_id = ?
     AND reservation_status IN ${active} ORDER BY reservation_id FOR UPDATE`,[physicalCopyId])
   for(const r of rows) {
     if(r.request_kind==='CartHandover') { await releaseBookRequest(q,r,'cancelled',actor,now); continue }
     await q.execute(`UPDATE reservations SET reservation_status='pending',accession_id=NULL,assigned_physical_copy_id=NULL,
       preparation_started_at=NULL,ready_at=NULL,pickup_deadline=NULL,updated_at=NOW() WHERE reservation_id=?`,[r.reservation_id])
-    await cancelPendingCounterClaim(q,Number(r.reservation_id),actor,'Assigned copy reported lost.')
+    await cancelPendingCounterClaim(q,Number(r.reservation_id),actor,lost?'Assigned copy reported lost.':'Assigned copy damaged or under repair.')
     // Direct notice: request events are unique per status, so 'waiting' was already recorded at creation.
     await q.execute(`INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,
       action_path,priority,dedupe_key,scheduled_for,delivered_at)
-      SELECT r.user_id,'Held copy reported missing',COALESCE(t.title,'Your requested book')||': the copy set aside for you was reported missing. You keep your place on the waiting list, and staff will prepare another copy when one is free.',
+      SELECT r.user_id,?,COALESCE(t.title,'Your requested book')||': '||?||' You keep your place on the waiting list, and staff will prepare another copy when one is free.',
         'Reservation Arrival','Reservation',r.reservation_id,
         CASE WHEN u.user_role='Faculty' THEN '/faculty/reservations' ELSE '/student/reservations' END,'Important',?,NOW(),NOW()
       FROM reservations r JOIN users u ON u.user_id=r.user_id LEFT JOIN titles t ON t.title_id=r.book_title_id
       WHERE r.reservation_id=? ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
-      [`book-request:${r.reservation_id}:copy-lost:${physicalCopyId}`,r.reservation_id])
+      [lost?'Held copy reported missing':'Held copy needs repair',lost?'the copy set aside for you was reported missing.':'the copy set aside for you is damaged or being repaired.',
+        `book-request:${r.reservation_id}:${tag}:${physicalCopyId}`,r.reservation_id])
     // Supersedes the earlier "Prepare requested copy" notice that pointed at the lost copy.
-    await notifyLibrarians(q,{key:`reservation:${r.reservation_id}:copy-lost:${physicalCopyId}`,title:'Held copy reported lost',
-      body:`request ${r.reservation_id} is back on the waiting list. Do not prepare the lost copy; the next free copy will be assigned.`,
+    await notifyLibrarians(q,{key:`reservation:${r.reservation_id}:${tag}:${physicalCopyId}`,title:lost?'Held copy reported lost':'Held copy is damaged or under repair',
+      body:`request ${r.reservation_id} is back on the waiting list. Do not prepare ${lost?'the lost':'this'} copy; the next free copy will be assigned.`,
       sourceId:Number(r.reservation_id),personUserId:Number(r.user_id),path:'/librarian/reservations?status=active',type:'Reservation Arrival'})
   }
   const titles=new Set(rows.filter(r=>r.request_kind!=='CartHandover'&&r.book_title_id).map(r=>Number(r.book_title_id)))
@@ -175,11 +183,14 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
     const copies=await availableCopies(q,titleId)
     if(kind==='Reservation' && copies.length) throw fail('BOOK_AVAILABLE_USE_CART','This book has an available copy. Add it to your cart instead of reserving it.')
     if(kind==='CartHandover' && !copies.length) throw fail('BOOK_NO_LONGER_AVAILABLE',`${titles[0].title} has no available copy now. Your cart has been kept. Remove it from the cart and use Reserve book in the catalog to join its waiting list.`)
+    // A cart handover is held until the next closing time, then expires.
+    let cartDeadline:Date|null=null
+    if(kind==='CartHandover') {const hoursOpen=await loadOpeningHours(q,now);cartDeadline=nextCloseAfter(now,hoursOpen.schedule,hoursOpen.closedDates)}
     const [queue]=await q.execute<RowDataPacket[]>(`SELECT COALESCE(MAX(queue_position),0)+1 AS position FROM reservations WHERE book_title_id=? AND request_kind='Reservation' AND reservation_status IN ${active}`,[titleId])
     const [insert]=await q.execute<ResultSetHeader>(`INSERT INTO reservations(user_id,material_id,book_title_id,borrowing_policy_version_id,
-      queue_position,reservation_status,reserved_at,client_request_id,request_kind,accession_id,assigned_physical_copy_id,preparation_started_at)
-      VALUES (?,?,?,?,?,?,(?::timestamptz AT TIME ZONE 'Asia/Manila'),?,?,?,?,?)`,
-      [userId,titles[0].material_id,titleId,policy.versionId,kind==='Reservation'?queue[0].position:1,kind==='Reservation'?'pending':'approved',now,key,kind,kind==='CartHandover'?copies[0].material_id:null,kind==='CartHandover'?copies[0].physical_copy_id:null,kind==='CartHandover'?now:null])
+      queue_position,reservation_status,reserved_at,client_request_id,request_kind,accession_id,assigned_physical_copy_id,preparation_started_at,pickup_deadline)
+      VALUES (?,?,?,?,?,?,(?::timestamptz AT TIME ZONE 'Asia/Manila'),?,?,?,?,?,(?::timestamptz AT TIME ZONE 'Asia/Manila'))`,
+      [userId,titles[0].material_id,titleId,policy.versionId,kind==='Reservation'?queue[0].position:1,kind==='Reservation'?'pending':'approved',now,key,kind,kind==='CartHandover'?copies[0].material_id:null,kind==='CartHandover'?copies[0].physical_copy_id:null,kind==='CartHandover'?now:null,cartDeadline])
     const id=Number(insert.insertId)
     await recordRequestEvent(q,id,'received',now)
     if(kind==='CartHandover') {
@@ -269,17 +280,75 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
           AND pc.availability_status='Reserved' AND pc.condition_status NOT IN ('Lost','Damaged','For Repair') FOR UPDATE OF pc,t`,[r.assigned_physical_copy_id])
         if(!copies.length) throw fail('DESK_COPY_BLOCKED','The assigned copy is unavailable. Review its physical condition before marking ready.')
         if(input.status==='approved') return result(r) // Compatible legacy Prepare action, never another approval gate.
-        const now=clock(),deadline=new Date(now.getTime()+24*60*60*1000)
+        const now=clock(),hoursOpen=await loadOpeningHours(q,now),deadline=pickupDeadline(now,hoursOpen.schedule,hoursOpen.closedDates)
         await q.execute(`UPDATE reservations SET reservation_status='ready_for_pickup',ready_at=?,
           pickup_deadline=(?::timestamptz AT TIME ZONE 'Asia/Manila'),updated_at=NOW() WHERE reservation_id=?`,[now,deadline,r.reservation_id])
         await recordRequestEvent(q,Number(r.reservation_id),'ready_for_pickup',now)
         return result(await requestRow(q,Number(r.reservation_id)))
       })
     },
+    async swapCandidates(accountId:unknown,id:unknown) {
+      return transaction(async q=> {
+        await linkedUser(q,positiveId(accountId,'accountId'),true)
+        const r=await requestRow(q,positiveId(id,'reservationId'))
+        if(r.request_kind!=='Reservation' || !['approved','ready_for_pickup'].includes(r.reservation_status) || !r.assigned_physical_copy_id) throw fail('SWAP_NOT_ALLOWED','Only a request with a prepared copy can have its copy swapped.')
+        const copies=await availableCopies(q,Number(r.book_title_id),false)
+        return copies.map(c=>({physicalCopyId:Number(c.physical_copy_id),barcode:c.barcode??null,accessionNumber:c.accession_number??null,shelfLocation:c.shelf_location??null}))
+      })
+    },
+    async swapCopy(accountId:unknown,id:unknown,body:unknown) {
+      const copyId=positiveId(object(body).physicalCopyId,'physicalCopyId')
+      return transaction(async q=> {
+        const actor=await linkedUser(q,positiveId(accountId,'accountId'),true)
+        const r=await requestRow(q,positiveId(id,'reservationId'))
+        if(r.request_kind!=='Reservation' || !['approved','ready_for_pickup'].includes(r.reservation_status) || !r.assigned_physical_copy_id) throw fail('SWAP_NOT_ALLOWED','Only a request with a prepared copy can have its copy swapped.')
+        if(copyId===Number(r.assigned_physical_copy_id)) throw fail('SWAP_COPY_SAME','The request already holds this copy.')
+        // Lock both copies in id order so two opposite swaps cannot deadlock.
+        const [locked]=await q.execute<RowDataPacket[]>('SELECT physical_copy_id,title_id,material_id FROM physical_copies WHERE physical_copy_id IN (?,?) ORDER BY physical_copy_id FOR UPDATE',[r.assigned_physical_copy_id,copyId])
+        const target=locked.find(c=>Number(c.physical_copy_id)===copyId)
+        if(!target) throw new HttpError(404,'PHYSICAL_COPY_NOT_FOUND','The copy does not exist.')
+        if(Number(target.title_id)!==Number(r.book_title_id)) throw fail('SWAP_COPY_WRONG_TITLE','The copy belongs to a different title.')
+        const [others]=await q.execute<RowDataPacket[]>(`SELECT reservation_id FROM reservations WHERE assigned_physical_copy_id=? AND reservation_status IN ${active} AND reservation_id<>?`,[copyId,r.reservation_id])
+        if(others.length) throw new HttpError(409,'SWAP_COPY_HELD','Another request already holds this copy.')
+        if(!(await availableCopies(q,Number(r.book_title_id))).some(c=>Number(c.physical_copy_id)===copyId)) throw fail('SWAP_COPY_UNAVAILABLE','The copy is not available and in usable condition.')
+        await q.execute('UPDATE reservations SET accession_id=?,assigned_physical_copy_id=?,updated_at=NOW() WHERE reservation_id=?',[target.material_id,copyId,r.reservation_id])
+        await q.execute("UPDATE borrow_transactions SET physical_copy_id=?,material_id=?,updated_at=NOW() WHERE reservation_id=? AND transaction_status='Pending'",[copyId,target.material_id,r.reservation_id])
+        await q.execute(`UPDATE physical_copies SET availability_status=CASE WHEN lifecycle_status='Active' AND condition_status NOT IN ('Lost','Damaged','For Repair') THEN 'Available' ELSE 'Unavailable' END,
+          row_version=row_version+1,updated_at=NOW() WHERE physical_copy_id=? AND availability_status='Reserved'`,[r.assigned_physical_copy_id])
+        await q.execute("UPDATE physical_copies SET availability_status='Reserved',row_version=row_version+1,updated_at=NOW() WHERE physical_copy_id=?",[copyId])
+        await q.execute(`UPDATE materials m SET availability_status=pc.availability_status,updated_at=NOW()
+          FROM physical_copies pc WHERE pc.physical_copy_id IN (?,?) AND m.material_id=pc.material_id`,[r.assigned_physical_copy_id,copyId])
+        await q.execute("INSERT INTO reservation_audit_events(reservation_id,action,from_copy_id,to_copy_id,actor_user_id) VALUES (?,'swap_copy',?,?,?)",[r.reservation_id,r.assigned_physical_copy_id,copyId,actor])
+        return result(await requestRow(q,Number(r.reservation_id)))
+      })
+    },
+    async moveInQueue(accountId:unknown,id:unknown,body:unknown) {
+      const {direction,reason}=validateMove(body)
+      return transaction(async q=> {
+        const actor=await linkedUser(q,positiveId(accountId,'accountId'),true)
+        const r=await requestRow(q,positiveId(id,'reservationId'))
+        const [queue]=await q.execute<RowDataPacket[]>(`SELECT reservation_id,queue_position,reservation_status,assigned_physical_copy_id FROM reservations
+          WHERE book_title_id=? AND request_kind='Reservation' AND reservation_status IN ${active} ORDER BY queue_position,reserved_at,reservation_id FOR UPDATE`,[r.book_title_id])
+        const from=queue.findIndex(x=>Number(x.reservation_id)===Number(r.reservation_id))
+        if(from<0 || queue[from].reservation_status!=='pending' || queue[from].assigned_physical_copy_id) throw fail('QUEUE_MOVE_NOT_PENDING','Only a waiting request can be moved.')
+        const to=direction==='up'?from-1:from+1
+        if(to<0 || to>=queue.length) throw fail('QUEUE_MOVE_NOOP','The request is already at that end of the queue.')
+        if(queue[to].assigned_physical_copy_id) throw fail('QUEUE_MOVE_ABOVE_ASSIGNED','A request cannot swap places with one that already has a copy.')
+        const order=[...queue];[order[from],order[to]]=[order[to],order[from]]
+        for(const [index,row] of order.entries()) if(Number(row.queue_position)!==index+1)
+          await q.execute('UPDATE reservations SET queue_position=?,updated_at=NOW() WHERE reservation_id=?',[index+1,row.reservation_id])
+        await q.execute("INSERT INTO reservation_audit_events(reservation_id,action,from_position,to_position,reason,actor_user_id) VALUES (?,'move',?,?,?,?)",[r.reservation_id,from+1,to+1,reason,actor])
+        return {reservationId:Number(r.reservation_id),fromPosition:from+1,toPosition:to+1}
+      })
+    },
     async expire(now:Date,batchSize=100) {
       return transaction(async q=> {
-        const [rows]=await q.execute<RowDataPacket[]>(`SELECT r.* FROM reservations r WHERE reservation_status='ready_for_pickup'
-          AND pickup_deadline<=(?::timestamptz AT TIME ZONE 'Asia/Manila') ORDER BY pickup_deadline,reservation_id LIMIT ? FOR UPDATE`,[now,Math.min(500,Math.max(1,batchSize))])
+        const [rows]=await q.execute<RowDataPacket[]>(`SELECT r.* FROM reservations r WHERE ((reservation_status='ready_for_pickup' OR (request_kind='CartHandover' AND reservation_status='approved'))
+            AND pickup_deadline<=(?::timestamptz AT TIME ZONE 'Asia/Manila'))
+          -- Carts made before cart deadlines existed have none; release them after 24 hours so their copy is not held forever.
+          OR (request_kind='CartHandover' AND reservation_status='approved' AND pickup_deadline IS NULL
+            AND reserved_at<=(?::timestamptz AT TIME ZONE 'Asia/Manila')-INTERVAL '24 hours')
+          ORDER BY pickup_deadline NULLS LAST,reservation_id LIMIT ? FOR UPDATE`,[now,now,Math.min(500,Math.max(1,batchSize))])
         for(const r of rows) await releaseBookRequest(q,r,'expired',null,now)
         return {expiredCount:rows.length,releasedAccessions:rows.filter(r=>r.accession_id).map(r=>Number(r.accession_id))}
       })
