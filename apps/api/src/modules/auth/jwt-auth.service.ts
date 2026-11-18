@@ -13,7 +13,7 @@ export type JwtRole = 'Admin' | 'Librarian' | 'Student' | 'Faculty' | 'Staff'
 const JWT_ROLES = new Set<JwtRole>(['Admin', 'Librarian', 'Student', 'Faculty', 'Staff'])
 const USER_PORTAL_ROLES = new Set<JwtRole>(['Student', 'Faculty'])
 const STAFF_PORTAL_ROLES = new Set<JwtRole>(['Admin', 'Librarian', 'Staff'])
-const INVALID_CREDENTIALS_MESSAGE = 'Your ID or password is wrong.'
+const INVALID_CREDENTIALS_MESSAGE = 'Incorrect Username and/or password'
 
 export function dashboardForJwtRole(role: JwtRole) {
   return ({ Admin: '/admin/dashboard', Librarian: '/librarian/dashboard', Faculty: '/faculty/dashboard', Student: '/student/dashboard', Staff: '/staff/dashboard' })[role]
