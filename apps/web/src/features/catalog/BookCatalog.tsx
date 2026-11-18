@@ -1,6 +1,6 @@
 import { RefreshCw, ShoppingBag, ListChecks } from 'lucide-react'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from '../../hooks/useLiveQuery'
 import { useBookReservations } from './useBookReservations'
 
@@ -19,6 +19,8 @@ import { fetchBookCatalog } from './book-catalog-api'
 import { useBookCart } from './book-cart-store'
 
 import { validateBookCartAddition } from './book-cart'
+import { fetchCartState } from './book-cart-api'
+import { TitleAlreadyActiveDialog } from './TitleAlreadyActiveDialog'
 
 import type { BookCartItem } from './book-cart-store'
 
@@ -47,6 +49,18 @@ export function BookCatalog() {
 
   const [notice, setNotice] = useState('')
 
+  const [activeTitleIds, setActiveTitleIds] = useState<number[] | null>(null)
+
+  const [heldTitle, setHeldTitle] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchCartState()
+      .then(state => { if (!cancelled) setActiveTitleIds(state.activeTitleIds) })
+      .catch(() => { if (!cancelled) setActiveTitleIds(null) })
+    return () => { cancelled = true }
+  }, [refreshKey])
+
   const titleId = Number(params.get('titleId'))
 
   const selectedTitleId = Number.isSafeInteger(titleId) && titleId > 0 ? titleId : null
@@ -73,7 +87,14 @@ export function BookCatalog() {
 
   }
 
+  function holdIfAlreadyActive(titleId: number, title: string) {
+    if (!activeTitleIds?.includes(titleId)) return false
+    setError(''); setNotice(''); setHeldTitle(title)
+    return true
+  }
+
   function selectBook(book: BookCartItem) {
+    if (holdIfAlreadyActive(book.titleId, book.title)) return
 
     const validation = validateBookCartAddition({role: viewer.role, activeBookCount: viewerReady ? viewer.activeBookCount : 0, selectedBookCount: cart.length, alreadySelected: cartBooks.has(book.titleId), bookLimit: viewer.bookLimit})
 
@@ -89,7 +110,7 @@ export function BookCatalog() {
 
   function bookAction(book: CatalogRecord) {
     const id = Number(book.id), selected = cartBooks.has(id), unavailable = Number(book.available) === 0
-    return <div className="space-y-2"><button onClick={() => unavailable ? void reservations.reserve({titleId:id,title:book.title}) : addBook(book)} disabled={Number(book.copyCount) === 0 || reservations.pending.has(id) || reservations.reserved.has(id) || (!unavailable && selected)} className="min-h-11 rounded-full bg-[#0b5ea2] px-3 py-2 text-white disabled:opacity-50">
+    return <div className="space-y-2"><button onClick={() => holdIfAlreadyActive(id, book.title) ? undefined : unavailable ? void reservations.reserve({titleId:id,title:book.title}) : addBook(book)} disabled={Number(book.copyCount) === 0 || reservations.pending.has(id) || reservations.reserved.has(id) || (!unavailable && selected)} className="min-h-11 rounded-full bg-[#0b5ea2] px-3 py-2 text-white disabled:opacity-50">
       {Number(book.copyCount) === 0 ? 'Digital only' : reservations.reserved.has(id) ? 'Reserved' : reservations.pending.has(id) ? 'Reserving…' : unavailable ? 'Reserve book' : selected ? 'In cart' : 'Borrow book'}
     </button>{reservations.errors.has(id) && <p role="alert" className="text-xs text-red-700">{reservations.errors.get(id)}</p>}{reservations.reserved.has(id) && <p role="status" className="text-xs text-green-700">On the waiting list. We will notify you when a copy is ready.</p>}</div>
   }
@@ -109,7 +130,8 @@ export function BookCatalog() {
 
     <PublicCatalogPage embedded refreshKey={refreshKey} onViewBook={openBook} renderBookAction={bookAction}/>
 
-    {selectedTitleId !== null && <BookOverview titleId={selectedTitleId} role={viewer.role} activeBookCount={viewerReady ? viewer.activeBookCount : 0} bookLimit={viewer.bookLimit} selectedBookCount={cart.length} alreadySelected={cartBooks.has(selectedTitleId)} alreadyReserved={reservations.reserved.has(selectedTitleId)} onAddToCart={selectBook} onReserve={book => void reservations.reserve(book)} requestDisabled={reservations.pending.has(selectedTitleId)} onClose={closeBook} requestError={reservations.errors.get(selectedTitleId) ?? error} requestNotice={reservations.reserved.has(selectedTitleId) ? 'Reserved. We will notify you when a copy is ready.' : notice}/>}
+    {selectedTitleId !== null && <BookOverview titleId={selectedTitleId} role={viewer.role} activeBookCount={viewerReady ? viewer.activeBookCount : 0} bookLimit={viewer.bookLimit} selectedBookCount={cart.length} alreadySelected={cartBooks.has(selectedTitleId)} alreadyReserved={reservations.reserved.has(selectedTitleId)} onAddToCart={selectBook} onReserve={book => { if (!holdIfAlreadyActive(book.titleId, book.title)) void reservations.reserve(book) }} requestDisabled={reservations.pending.has(selectedTitleId)} onClose={closeBook} requestError={reservations.errors.get(selectedTitleId) ?? error} requestNotice={reservations.reserved.has(selectedTitleId) ? 'Reserved. We will notify you when a copy is ready.' : notice}/>}
+    {heldTitle ? <TitleAlreadyActiveDialog titles={[heldTitle]} onClose={() => setHeldTitle(null)} /> : null}
 
   </>
 

@@ -4,10 +4,11 @@ import { BookOpen, CheckCircle2, Eye, MapPin, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { PageHeader, SectionCard } from '../../components/ui'
 import { BookCartApiError, fetchCartState, submitBorrowRequest, type BorrowRequestReceipt } from './book-cart-api'
-import { useBookCart } from './book-cart-store'
+import { readBookCart, useBookCart } from './book-cart-store'
 import { BookDetailDrawer } from './BookDetailDrawer'
 import { BookCoverThumbnail } from './BookCoverThumbnail'
 import { fetchBookOverview } from './book-catalog-api'
+import { TitleAlreadyActiveDialog } from './TitleAlreadyActiveDialog'
 
 export function BookCart() {
   const requestKey=useRef('')
@@ -15,6 +16,7 @@ export function BookCart() {
   const saving=useRef(false)
   const { items, updateItem, removeItem, removeItems, clear } = useBookCart()
   const [syncNotice,setSyncNotice]=useState('')
+  const [heldTitles,setHeldTitles]=useState<string[]>([])
   const [outstanding,setOutstanding]=useState<number|null>(null)
   const [syncError,setSyncError]=useState('')
   const cartFlight=useRef<Promise<void>|null>(null)
@@ -35,8 +37,10 @@ export function BookCart() {
         if(!mounted.current||saving.current)return
         setOutstanding(state.outstandingBalance ?? 0)
         setSyncError('')
+        const removed=readBookCart().filter(item=>state.activeTitleIds.includes(item.titleId))
         if(removeItems(state.activeTitleIds)>0){
-          setSyncNotice('Removed books already requested or checked out. You can find them in My books or Borrowing history.')
+          setHeldTitles(removed.map(item=>item.title))
+          setSyncNotice('')
           setDetailTitleId(null)
         }
       }catch(reason){
@@ -99,6 +103,7 @@ export function BookCart() {
   return <>
     <PageHeader eyebrow="My library" title="Book cart" description="Review available books before sending them to the library desk. Your loan starts at staff handover." />
     <p className="mb-5 text-sm opacity-70">Send your cart to the desk, then bring the selected books to staff. Staff review and confirm the handover.</p>
+    {heldTitles.length>0&&<TitleAlreadyActiveDialog titles={heldTitles} onClose={()=>setHeldTitles([])}/>}
     {syncNotice&&<p role="status" className="mb-4 rounded-xl border border-[#0b5ea2]/15 p-3 text-sm">{syncNotice}</p>}
     {syncError ? <div role="alert" className="mb-4 rounded-xl border p-4 text-sm">{syncError} <button type="button" className="min-h-11 underline" onClick={()=>void refreshCart()}>Refresh balance</button></div> : null}
     {outstanding!==null&&outstanding>0&&hasItems ? <div role="alert" className="mb-4 rounded-xl border p-4 text-sm font-semibold">Settle the outstanding library balance of ₱{outstanding.toFixed(2)} before borrowing. <a className="underline" href="../fines">View fines</a></div> : null}

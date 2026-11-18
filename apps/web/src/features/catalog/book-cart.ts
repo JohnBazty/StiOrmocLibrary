@@ -22,6 +22,10 @@ export function validateBookCartAddition(input: {
   return { allowed: true, message: null }
 }
 
+export function titleAlreadyActiveMessage(title: string) {
+  return `You already have ${title}. Another copy of the same book cannot be borrowed while it is on an active loan or request.`
+}
+
 export function catalogActionLabel(availableCopiesCount: number) {
   return availableCopiesCount > 0 ? 'Borrow' : 'Reserve'
 }

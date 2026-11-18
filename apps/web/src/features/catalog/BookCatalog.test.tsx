@@ -1,14 +1,16 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { BookCatalog } from './BookCatalog'
 import { LegacyCatalogRedirect } from './LegacyCatalogRedirect'
 import { clearBookCartForTests, readBookCart } from './book-cart-store'
 import { fetchBookCatalog, fetchBookOverview, reserveBookTitle } from './book-catalog-api'
+import { fetchCartState } from './book-cart-api'
 import { enhancedCatalog } from './enhanced-catalog-api'
 
 vi.mock('../auth/auth-storage', () => ({ getCurrentClaims: () => ({ userId: 99, role: 'Student', schoolId: 'TEST-99' }), getCurrentIdentity: () => ({ userId: 99, role: 'Student', schoolId: 'TEST-99' }) }))
 vi.mock('./book-catalog-api', () => ({ fetchBookCatalog: vi.fn(), fetchBookOverview: vi.fn(), reserveBookTitle: vi.fn() }))
+vi.mock('./book-cart-api', () => ({ fetchCartState: vi.fn() }))
 vi.mock('./enhanced-catalog-api', () => ({ enhancedCatalog: { options: vi.fn(), search: vi.fn(), detail: vi.fn() } }))
 vi.mock('./CatalogDetailsPanel', () => ({ catalogInput: 'field', CatalogDetailsPanel: () => <p>Digital files and catalog metadata</p> }))
 
@@ -18,6 +20,7 @@ function Location() { const location = useLocation(); return <output data-testid
 function setup(url = '/student/library') { render(<MemoryRouter initialEntries={[url]}><BookCatalog /><Location /></MemoryRouter>) }
 
 beforeEach(() => {
+  vi.mocked(fetchCartState).mockResolvedValue({ activeTitleIds: [], outstandingBalance: 0 })
   vi.mocked(fetchBookCatalog).mockResolvedValue({ items: [], viewer: { role: 'Student', activeBookCount: 0, bookLimit: 2 }, pagination: { page: 1, limit: 24, total: 1, totalPages: 1 } })
   vi.mocked(fetchBookOverview).mockResolvedValue(overview as never)
   vi.mocked(reserveBookTitle).mockResolvedValue({ reservationId: 1, queuePosition: 3, status: 'approved', statusLabel:'Preparing',instructions:'Wait for Ready for pickup.' })
@@ -39,6 +42,32 @@ it('shows covers and filters and adds locally without submitting a request', asy
   expect(screen.getByRole('link', { name: 'Book cart (1)' }).getAttribute('href')).toBe('/student/cart')
   const research = screen.getByRole('heading', { name: 'Research example' }).closest('article')!
   expect(within(research).queryByRole('button', { name: 'Borrow book' })).toBeNull()
+})
+
+async function loadActiveTitles(titleIds: number[]) {
+  let publish!: (value: { activeTitleIds: number[]; outstandingBalance: number }) => void
+  vi.mocked(fetchCartState).mockReturnValue(new Promise(resolve => { publish = resolve }))
+  setup()
+  await screen.findByText('Active books + requests: 0 / 2')
+  await act(async () => { publish({ activeTitleIds: titleIds, outstandingBalance: 0 }) })
+}
+
+it('stops another copy of a book that is already on an active loan or request', async () => {
+  await loadActiveTitles([42])
+  fireEvent.click(screen.getByRole('button', { name: 'Borrow book' }))
+  expect(await screen.findByRole('heading', { name: 'You already have this book' })).toBeTruthy()
+  expect(screen.getByText(/You already have Example book/)).toBeTruthy()
+  expect(readBookCart()).toHaveLength(0)
+  expect(reserveBookTitle).not.toHaveBeenCalled()
+})
+
+it('stops a reservation for a book that is already on an active loan or request', async () => {
+  vi.mocked(enhancedCatalog.search).mockResolvedValue({ items: [{ ...record, available: 0 }], pagination: { page: 1, limit: 24, total: 1 } } as never)
+  await loadActiveTitles([42])
+  fireEvent.click(screen.getByRole('button', { name: 'Reserve book' }))
+  expect(await screen.findByRole('heading', { name: 'You already have this book' })).toBeTruthy()
+  expect(reserveBookTitle).not.toHaveBeenCalled()
+  expect(readBookCart()).toHaveLength(0)
 })
 
 it('allows preparing a cart at the active borrowing limit and explains the submission requirement', async () => {

@@ -54,7 +54,8 @@ describe('BookCart', () => {
     api.fetchCartState.mockResolvedValue({activeTitleIds:[4]})
     render(<><AddFixture/><BookCart/></>)
     fireEvent.click(screen.getByRole('button',{name:'Add fixture'}))
-    await screen.findByText(/already requested or checked out/)
+    await screen.findByRole('heading',{name:'You already have this book'})
+    expect(screen.getByText(/You already have Clean Code/)).toBeTruthy()
     expect(screen.queryByRole('heading',{name:'Clean Code'})).toBeNull()
     expect(screen.getByText('Your cart is empty')).toBeTruthy()
     expect(api.submitBorrowRequest).not.toHaveBeenCalled()
@@ -71,7 +72,7 @@ describe('BookCart', () => {
     expect(screen.getByRole('heading',{name:'Clean Code'})).toBeTruthy()
     api.fetchCartState.mockResolvedValue({activeTitleIds:[4]})
     fireEvent.focus(window)
-    await screen.findByText(/already requested or checked out/)
+    await screen.findByRole('heading',{name:'You already have this book'})
     expect(screen.getByText('Your cart is empty')).toBeTruthy()
   })
 
