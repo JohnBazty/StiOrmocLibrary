@@ -3,6 +3,7 @@ import { db } from '../../config/db.js'
 import { excluded, forUpdate, timestampDiffSeconds } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { createFinesService } from '../fines/fines.service.ts'
+import { insertUserNotice, rolePath } from '../notifications/user-notices.ts'
 import { positiveId, validateLostDecision, validateOverride, validateRevocation } from './clearance.validation.ts'
 
 export type ClearanceActor = { accountId?: number; role?: string }
@@ -23,6 +24,17 @@ function requireStaff(actor: ClearanceActor) {
 }
 function requireLibrarian(actor: ClearanceActor) {
   if (actor.role !== 'Librarian') throw new HttpError(403, 'CLEARANCE_LIBRARIAN_ONLY', 'Only Librarian accounts can manage lost-book charges.')
+}
+
+/** The body is built only from the status: never the typed override reason or any name. */
+async function notifyClearanceChange(connection: PoolConnection, userId: number, overrideId: number, event: 'granted' | 'revoked', status: string) {
+  const [rows] = await connection.execute<RowDataPacket[]>('SELECT user_role FROM users WHERE user_id=? LIMIT 1', [userId])
+  await insertUserNotice(connection, {
+    userId, title: 'Clearance updated',
+    body: `Your clearance status is now ${status}.${event === 'revoked' ? ' Contact the library for details.' : ''}`,
+    triggerType: 'Clearance', sourceType: 'Clearance Override', sourceId: overrideId,
+    actionPath: rolePath(rows[0]?.user_role, 'clearance'), priority: 'Important', dedupeKey: `clearance-override:${overrideId}:${event}`,
+  })
 }
 
 export function createClearanceService(database: Pool = db) {
@@ -78,13 +90,13 @@ export function createClearanceService(database: Pool = db) {
     })
   }
 
-  async function compute(userId: number, updateCache = true) {
-    const [[userRows], [loanRows], [fineRows], [lostRows], [overrideRows], [historyRows]] = await Promise.all([
-      database.execute<RowDataPacket[]>(
+  async function compute(userId: number, updateCache = true, executor: Pool | PoolConnection = database) {
+    const reads = [
+      () => executor.execute<RowDataPacket[]>(
         `SELECT u.user_id, u.school_id, u.full_name, u.course_or_strand, u.section, u.account_status
            FROM users u WHERE u.user_id = ? AND u.user_role IN ('Student','Faculty') LIMIT 1`, [userId],
       ),
-      database.execute<RowDataPacket[]>(
+      () => executor.execute<RowDataPacket[]>(
         `SELECT bt.transaction_id, bt.transaction_status, bt.borrowed_at, bt.due_at,
                 COALESCE(t.title,m.title) AS title, COALESCE(pc.accession_number,m.barcode) AS accession_number,
                 CASE WHEN bt.due_at IS NULL OR bt.due_at >= NOW() THEN 0
@@ -99,7 +111,7 @@ export function createClearanceService(database: Pool = db) {
           WHERE bt.user_id=? AND bt.transaction_status IN ('Borrowed','Overdue') AND bt.lost_confirmed_at IS NULL
           ORDER BY bt.due_at, bt.transaction_id`, [userId],
       ),
-      database.execute<RowDataPacket[]>(
+      () => executor.execute<RowDataPacket[]>(
         `SELECT calculated.* FROM (
            SELECT f.fine_id,f.transaction_id,f.calculation_basis,f.overdue_units,f.rate_applied,f.applied_date,f.notes,
                   COALESCE(t.title,m.title,fi.category,'Library fine') AS title,
@@ -115,7 +127,7 @@ export function createClearanceService(database: Pool = db) {
             WHERE f.user_id=? AND f.payment_status IN ('Accruing','Unpaid','Partially Paid')
          ) calculated WHERE calculated.fine_amount>0 ORDER BY calculated.applied_date DESC`, [userId],
       ),
-      database.execute<RowDataPacket[]>(
+      () => executor.execute<RowDataPacket[]>(
         `SELECT l.lost_book_report_id, l.transaction_id, l.report_status, l.purchase_price_snapshot,
                 l.replacement_charge, l.charge_resolution, l.resolution_reason, l.payment_status, l.reported_at, l.verified_at,
                 t.title_id, q.quotation_id AS current_quotation_id, q.quoted_amount AS current_quotation_amount,
@@ -127,14 +139,14 @@ export function createClearanceService(database: Pool = db) {
            LEFT JOIN book_quotations q ON q.quotation_id=(SELECT MAX(q2.quotation_id) FROM book_quotations q2 WHERE q2.title_id=t.title_id)
           WHERE l.user_id=? ORDER BY l.reported_at DESC`, [userId],
       ),
-      database.execute<RowDataPacket[]>(
+      () => executor.execute<RowDataPacket[]>(
         `SELECT o.clearance_override_id, o.override_status, o.reason, o.applied_at, o.expires_at,
                 u.full_name AS applied_by
            FROM clearance_overrides o INNER JOIN users u ON u.user_id=o.applied_by_user_id
           WHERE o.user_id=? AND o.revoked_at IS NULL AND (o.expires_at IS NULL OR o.expires_at>NOW())
           ORDER BY o.applied_at DESC, o.clearance_override_id DESC LIMIT 1`, [userId],
       ),
-      database.execute<RowDataPacket[]>(
+      () => executor.execute<RowDataPacket[]>(
         `SELECT o.clearance_override_id, o.override_status, o.reason, o.applied_at, o.expires_at,
                 o.revoked_at, o.revocation_reason, applied.full_name AS applied_by,
                 revoked.full_name AS revoked_by
@@ -142,11 +154,15 @@ export function createClearanceService(database: Pool = db) {
            LEFT JOIN users revoked ON revoked.user_id=o.revoked_by_user_id
           WHERE o.user_id=? ORDER BY o.applied_at DESC, o.clearance_override_id DESC`, [userId],
       ),
-    ])
+    ]
+    // The pool reads in parallel; one transaction connection must not run concurrent queries (pg 8.23 deprecates it).
+    const results = executor === database ? await Promise.all(reads.map((read) => read())) : []
+    if (executor !== database) for (const read of reads) results.push(await read())
+    const [[userRows], [loanRows], [fineRows], [lostRows], [overrideRows], [historyRows]] = results
     const user = userRows[0]
     if (!user) throw new HttpError(404, 'CLEARANCE_STUDENT_NOT_FOUND', 'The student profile was not found.')
     {
-      const [uses]=await database.execute<RowDataPacket[]>(`SELECT -iu.use_id AS transaction_id,t.title,COALESCE(pc.accession_number,ri.accession_number) AS accession_number,CASE WHEN iu.status='Review' THEN 'In-library: hand-back missing' ELSE 'In-library use' END AS transaction_status,iu.started_at AS borrowed_at,iu.hand_back_by AS due_at,0 AS overdue_hours,0 AS current_fine FROM in_library_uses iu LEFT JOIN physical_copies pc ON pc.physical_copy_id=iu.physical_copy_id LEFT JOIN research_inventory ri ON ri.research_inventory_id=iu.research_inventory_id JOIN titles t ON t.title_id=COALESCE(pc.title_id,ri.title_id) WHERE iu.user_id=? AND iu.ended_at IS NULL ORDER BY iu.started_at`,[userId])
+      const [uses]=await executor.execute<RowDataPacket[]>(`SELECT -iu.use_id AS transaction_id,t.title,COALESCE(pc.accession_number,ri.accession_number) AS accession_number,CASE WHEN iu.status='Review' THEN 'In-library: hand-back missing' ELSE 'In-library use' END AS transaction_status,iu.started_at AS borrowed_at,iu.hand_back_by AS due_at,0 AS overdue_hours,0 AS current_fine FROM in_library_uses iu LEFT JOIN physical_copies pc ON pc.physical_copy_id=iu.physical_copy_id LEFT JOIN research_inventory ri ON ri.research_inventory_id=iu.research_inventory_id JOIN titles t ON t.title_id=COALESCE(pc.title_id,ri.title_id) WHERE iu.user_id=? AND iu.ended_at IS NULL ORDER BY iu.started_at`,[userId])
       loanRows.push(...uses)
     }
     const unpaidFines = fineRows.reduce((sum, row) => sum + Number(row.fine_amount ?? 0), 0)
@@ -163,7 +179,7 @@ export function createClearanceService(database: Pool = db) {
       unpaidReplacement > 0 ? `PHP ${unpaidReplacement.toFixed(2)} unpaid lost-book replacement charges` : '',
     ].filter(Boolean)
     const reason = activeOverride ? `Authorized override: ${activeOverride.reason}` : reasons.join('; ') || 'No library obligations'
-    if (updateCache) await database.execute(
+    if (updateCache) await executor.execute(
       `INSERT INTO clearance_statuses(user_id,standing_status,reason_block_details,reviewed_by_user_id,last_checked_at,updated_at)
        VALUES (?,?,?,NULL,NOW(),NOW())
        ON CONFLICT (user_id) DO UPDATE SET standing_status=${excluded('standing_status')},reason_block_details=${excluded('reason_block_details')},
@@ -244,11 +260,20 @@ export function createClearanceService(database: Pool = db) {
       const userId = positiveId(userIdValue, 'Student ID')
       const input = validateOverride(body)
       const staffUserId = await linkedUserId(database, actorAccountId(actor))
-      const [result] = await database.execute<ResultSetHeader>(
-        `INSERT INTO clearance_overrides(user_id,override_status,reason,applied_by_user_id,applied_at,expires_at)
-         VALUES (?,?,?,?,NOW(),?)`, [userId, input.status, input.reason, staffUserId, input.expiresAt],
-      )
-      return { overrideId: Number(result.insertId), clearance: await compute(userId) }
+      const connection = await database.getConnection()
+      try {
+        await connection.beginTransaction()
+        const [result] = await connection.execute<ResultSetHeader>(
+          `INSERT INTO clearance_overrides(user_id,override_status,reason,applied_by_user_id,applied_at,expires_at)
+           VALUES (?,?,?,?,NOW(),?)`, [userId, input.status, input.reason, staffUserId, input.expiresAt],
+        )
+        const overrideId = Number(result.insertId)
+        // A user who is not a Student or Faculty makes compute throw 404, which rolls the override back.
+        const clearance = await compute(userId, true, connection)
+        await notifyClearanceChange(connection, userId, overrideId, 'granted', clearance.status)
+        await connection.commit()
+        return { overrideId, clearance }
+      } catch (error) { await connection.rollback(); throw error } finally { connection.release() }
     },
 
     async revokeOverride(actor: ClearanceActor, userIdValue: unknown, overrideIdValue: unknown, body: unknown) {
