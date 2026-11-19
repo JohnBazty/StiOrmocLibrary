@@ -3,7 +3,7 @@ import { db } from '../../config/db.js'
 import { excluded, forUpdate } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { receiptVerificationCode } from './fine-receipt-verification.ts'
-import { fineId, parseFineFilters, receiptId, validateAdjustment, validateCashPayment, validateInfraction, validateReversal, type FineFilters } from './fines.validation.ts'
+import { DAMAGED_BOOK_CATEGORY, fineId, parseFineFilters, receiptId, validateAdjustment, validateCashPayment, validateInfraction, validateReversal, type FineFilters } from './fines.validation.ts'
 
 export type FineActor = { accountId?: number; role?: string }
 
@@ -305,12 +305,19 @@ export function createFinesService(database: Pool = db) {
       requireStaff(actor); const input = validateInfraction(body); const connection = await database.getConnection()
       try {
         await connection.beginTransaction(); const staffUserId = await linkedUserId(connection, actorAccountId(actor))
-        const [users] = await connection.execute<RowDataPacket[]>("SELECT user_id,full_name FROM users WHERE school_id=? AND user_role IN ('Student','Faculty') AND account_status='Active' LIMIT 1 FOR UPDATE", [input.schoolId])
+        const [users] = await connection.execute<RowDataPacket[]>("SELECT user_id,full_name,user_role FROM users WHERE school_id=? AND user_role IN ('Student','Faculty') AND account_status='Active' LIMIT 1 FOR UPDATE", [input.schoolId])
         if (!users[0]) throw new HttpError(404, 'FINE_USER_NOT_FOUND', 'The active student or faculty account was not found.')
         const targetUserId=Number(users[0].user_id)
+        if (users[0].user_role === 'Faculty' && input.category !== DAMAGED_BOOK_CATEGORY) throw new HttpError(422, 'FINE_FACULTY_DAMAGE_ONLY', 'Faculty can be charged only for lost or damaged books.')
+        if (input.accessionNumber) {
+          const [copies] = await connection.execute<RowDataPacket[]>('SELECT pc.physical_copy_id,COALESCE(pc.cost_php,t.purchase_price) AS price FROM physical_copies pc INNER JOIN titles t ON t.title_id=pc.title_id WHERE pc.accession_number=? LIMIT 1', [input.accessionNumber])
+          if (!copies[0]) throw new HttpError(404, 'FINE_COPY_NOT_FOUND', 'No copy has that accession number.')
+          const price = copies[0].price === null || copies[0].price === undefined ? null : Number(copies[0].price)
+          if (price !== null && input.amount > price) throw new HttpError(422, 'FINE_DAMAGE_OVER_PRICE', `A damage charge cannot exceed the copy's price of PHP ${price.toFixed(2)}.`)
+        }
         const [insert] = await connection.execute<ResultSetHeader>(
           `INSERT INTO fines(transaction_id,user_id,fine_type,fine_amount,payment_status,calculation_basis,overdue_units,rate_applied,applied_date,finalized_at,notes,updated_at)
-           VALUES (NULL,?,'Infraction',?,'Unpaid','Manual',1,?,NOW(),NOW(),?,NOW())`, [targetUserId,input.amount,input.amount,`${input.category}: ${input.details}`],
+           VALUES (NULL,?,'Infraction',?,'Unpaid','Manual',1,?,NOW(),NOW(),?,NOW())`, [targetUserId,input.amount,input.amount,`${input.category}${input.accessionNumber ? ` (${input.accessionNumber})` : ''}: ${input.details}`],
         )
         await connection.execute(
           'INSERT INTO fine_infractions(fine_id,category,incident_at,incident_location,details,issued_by_user_id) VALUES (?,?,?,?,?,?)',
