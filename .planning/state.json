@@ -6,7 +6,7 @@
     {
       "number": "1",
       "name": "Reservation Maintenance",
-      "status": "in_progress"
+      "status": "pending"
     },
     {
       "number": "2",
@@ -17,7 +17,7 @@
   "next": {
     "command": "/gsd-progress --next",
     "label": "Advance to the next step",
-    "reason": "Phase 1 of 2 · 0% · executing"
+    "reason": "Phase 2 of 2 · 0% · executing"
   },
-  "updated_at": "2026-11-19T01:48:48.686Z"
+  "updated_at": "2026-11-19T02:02:07.882Z"
 }

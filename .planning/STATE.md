@@ -1,14 +1,14 @@
 ---
 gsd_state_version: "1.0"
-current_phase: "1 (Reservation Maintenance), 3 plans: 01-01 complete (c66a117), 01-02 complete (8002490), 01-03 complete (a7fbc0e); phase verification next."
+current_phase: 02
 status: in_progress
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-11-19T01:48:48.600Z"
-state_head: 18ecfc64fbda01517b7fc87614ebe36a144580b1
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-11-19T02:06:28.135Z"
+state_head: 5f35ef595fb579215ec87acdf0679a2d7f3c7918
 progress:
   total_phases: 2
   completed_phases: 0
-  total_plans: 7
+  total_plans: 4
   completed_plans: 3
   percent: 0
 current_phase_name: User notification gaps
@@ -16,7 +16,7 @@ current_phase_name: User notification gaps
 
 # State
 
-**Current phase:** 1 (Reservation Maintenance), 3 plans: 01-01 complete (c66a117), 01-02 complete (8002490), 01-03 complete (a7fbc0e); phase verification next.
+**Current phase:** 02
 **Branch:** feat/reservation-maintenance, stacked on fix/reservation-hold-gaps (PR #44, not merged)
 
 ## Decisions
@@ -33,6 +33,7 @@ current_phase_name: User notification gaps
 - [Phase 01]: expire() expiredCount counts pickup and waiting expiries; releasedAccessions lists pickup holds only
 - [Phase 01]: Reservations tab sends typed text as is (blank limit sends '') and shows the server field message per card; no client-side range check
 - [Phase 01]: Book queue page names the pickup timer without a duration instead of fetching the Librarian-only window
+- [Phase 02]: 02-01: return notice states the saved fines row (omitted when Paid, Waived, Voided or 0.00) and a condition only when passed by the desk route
 
 ## Accumulated Context
 
@@ -47,9 +48,10 @@ current_phase_name: User notification gaps
 | Phase 01 P01 | 25min | 2 tasks | 7 files |
 | Phase 01 P02 | 35min | 3 tasks | 12 files |
 | Phase 01 P03 | 4 min | 3 tasks | 6 files |
+| Phase 02 P01 | 35 min | 2 tasks | 6 files |
 
 ## Session
 
-**Last session:** 2026-11-18T19:33:51.375Z
-**Stopped at:** Completed 01-03-PLAN.md
+**Last session:** 2026-11-19T02:06:28.108Z
+**Stopped at:** Completed 02-01-PLAN.md
 **Resume file:** None
