@@ -3,6 +3,7 @@ import test from 'node:test'
 import type { Pool } from '../../config/db.js'
 import { manilaTime } from '../notifications/user-notices.ts'
 import { createCirculationService } from './circulation.service.ts'
+import { createDeskCirculationService } from './desk-circulation.service.ts'
 
 const CLOCK = new Date('2026-11-19T07:10:00Z') // 15:10 in Manila
 const TITLE = 'Introduction to Algorithms'
@@ -69,4 +70,99 @@ test('a faculty borrower gets a faculty link', async () => {
   const { state, database } = returnFake({ role: 'Faculty' })
   await createCirculationService(database, () => CLOCK).returnBook(1, 8)
   assert.equal(state.notices[0][6], '/faculty/borrowing')
+})
+
+test('a return at the due time has no fine text and runs no fine SQL', async () => {
+  const { state, database } = returnFake({ dueAt: '2026-11-19 15:10:00' })
+  await createCirculationService(database, () => CLOCK).returnBook(1, 8)
+  assert.equal(bodyOf(state), RETURNED); assert.equal(state.fineReads, 0); assert.equal(state.fineWrites, 0)
+})
+
+test('a late return shows the stored fine, not the recalculated charge', async () => {
+  const { state, database } = returnFake({ dueAt: '2026-11-18 15:00:00', storedFine: { fine_amount: '20.00', payment_status: 'Unpaid' } })
+  await createCirculationService(database, () => CLOCK).returnBook(1, 8)
+  assert.equal(bodyOf(state), `${RETURNED} Late fine: ₱20.00.`)
+})
+
+test('an overdue-status return shows the stored fine without extra rounding', async () => {
+  const { state, database } = returnFake({ status: 'Overdue', dueAt: '2026-11-18 15:00:00', storedFine: { fine_amount: '12.50', payment_status: 'Unpaid' } })
+  await createCirculationService(database, () => CLOCK).returnBook(1, 8)
+  assert.equal(bodyOf(state), `${RETURNED} Late fine: ₱12.50.`)
+})
+
+test('a late return whose stored fine is 0.00 has no fine text', async () => {
+  const { state, database } = returnFake({ dueAt: '2026-11-18 15:00:00', storedFine: { fine_amount: '0.00', payment_status: 'Unpaid' } })
+  await createCirculationService(database, () => CLOCK).returnBook(1, 8)
+  assert.equal(bodyOf(state), RETURNED)
+})
+
+for (const payment_status of ['Paid', 'Waived', 'Voided']) {
+  test(`a stored fine already ${payment_status} is not announced as owed`, async () => {
+    const { state, database } = returnFake({ dueAt: '2026-11-18 15:00:00', storedFine: { fine_amount: '20.00', payment_status } })
+    await createCirculationService(database, () => CLOCK).returnBook(1, 8)
+    assert.equal(bodyOf(state), RETURNED)
+  })
+}
+
+test('a Damaged condition is recorded after the fine sentence', async () => {
+  const early = returnFake()
+  await createCirculationService(early.database, () => CLOCK).returnBook(1, 8, { condition: 'Damaged' })
+  assert.equal(bodyOf(early.state), `${RETURNED} Condition recorded: Damaged.`)
+  const late = returnFake({ dueAt: '2026-11-18 15:00:00', storedFine: { fine_amount: '20.00', payment_status: 'Unpaid' } })
+  await createCirculationService(late.database, () => CLOCK).returnBook(1, 8, { condition: 'Damaged' })
+  assert.equal(bodyOf(late.state), `${RETURNED} Late fine: ₱20.00. Condition recorded: Damaged.`)
+})
+
+test('Good, or no recorded condition on a Worn copy, adds no condition text', async () => {
+  const good = returnFake()
+  await createCirculationService(good.database, () => CLOCK).returnBook(1, 8, { condition: 'Good' })
+  assert.equal(bodyOf(good.state), RETURNED)
+  const worn = returnFake({ copyCondition: 'Worn' })
+  await createCirculationService(worn.database, () => CLOCK).returnBook(1, 8)
+  assert.equal(bodyOf(worn.state), RETURNED)
+})
+
+test('a failed notice insert rolls the return back without committing', async () => {
+  const { state, database } = returnFake({ failNotice: true })
+  await assert.rejects(createCirculationService(database, () => CLOCK).returnBook(1, 8), /notice insert failed/)
+  assert.equal(state.commits, 0); assert.equal(state.rollbacks, 1)
+})
+
+const deskBody = (over: Record<string, unknown> = {}) => ({ barcode: 'book-20', kind: 'TakeHome', expectedId: 8, requestId: 'req-0123456789abcdef', ...over })
+const librarian = { accountId: 1, role: 'Librarian' }
+
+test('a desk take-home return writes one notice carrying the recorded condition', async () => {
+  const { state, database } = returnFake({ copyCondition: 'Damaged' })
+  const result = await createDeskCirculationService(database, () => CLOCK).returnCopy(librarian, deskBody({ condition: 'Damaged', assessmentNote: 'Torn cover' }))
+  assert.equal(result.status, 'Returned')
+  assert.equal(state.notices.length, 1)
+  assert.equal(state.notices[0][8], 'loan:8:returned'); assert.equal(bodyOf(state), `${RETURNED} Condition recorded: Damaged.`)
+  assert.equal(state.commits, 1)
+})
+
+test('a replayed desk request adds no second notice', async () => {
+  const { state, database } = returnFake()
+  const desk = createDeskCirculationService(database, () => CLOCK)
+  await desk.returnCopy(librarian, deskBody())
+  const again = await desk.returnCopy(librarian, deskBody())
+  assert.equal(again.replayed, true); assert.equal(state.notices.length, 1)
+})
+
+test('a desk return recorded as Lost is rejected before any notice', async () => {
+  const { state, database } = returnFake()
+  await assert.rejects(createDeskCirculationService(database, () => CLOCK).returnCopy(librarian, deskBody({ condition: 'Lost', assessmentNote: 'Missing' })), { code: 'DESK_LOST_INCIDENT' })
+  assert.equal(state.notices.length, 0)
+})
+
+test('a failed notice insert leaves the desk return without a scan receipt', async () => {
+  const { state, database } = returnFake({ failNotice: true })
+  await assert.rejects(createDeskCirculationService(database, () => CLOCK).returnCopy(librarian, deskBody()), /notice insert failed/)
+  assert.equal(state.rollbacks, 1); assert.equal(state.commits, 0); assert.equal(state.receipts.length, 0)
+})
+
+test('no notice parameter names the borrower or the desk librarian', async () => {
+  const { state, database } = returnFake({ copyCondition: 'Damaged' })
+  await createDeskCirculationService(database, () => CLOCK).returnCopy(librarian, deskBody({ condition: 'Damaged', assessmentNote: 'Torn cover' }))
+  const text = JSON.stringify(state.notices)
+  assert.ok(!text.includes('Zed Q. Borrower')); assert.ok(!text.includes('Libby Desk-Librarian')); assert.ok(!text.includes('Torn cover'))
 })
