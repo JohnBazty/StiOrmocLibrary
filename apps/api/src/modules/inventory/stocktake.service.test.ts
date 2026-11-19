@@ -6,6 +6,8 @@ import {toPgPlaceholders} from '../../config/sql.js'
 import type {Pool} from '../../config/db.js'
 process.env.DATABASE_URL ||= 'postgresql://test:test@localhost/test'
 const {createStocktakeService}=await import('./stocktake.service.ts')
+const {HttpError}=await import('../../core/http-error.ts')
+type Applier=(item:{kind:string;id:number;barcode:string},target:'for_repair'|'damaged',actor:{userId:number|null;label:string})=>Promise<void>
 
 async function fixture(){
  const pg=new PGlite()
@@ -25,7 +27,9 @@ async function fixture(){
  const execute=async(sql:string,values:readonly unknown[]=[])=>{const write=/^\s*(INSERT|UPDATE|DELETE)/i.test(sql);const query=/^\s*INSERT/i.test(sql)&&!/RETURNING/i.test(sql)?sql+' RETURNING *':sql;const result=await pg.query(toPgPlaceholders(query),[...values]);return [write?{insertId:Number(Object.values(result.rows[0]??{})[0]??0),affectedRows:result.affectedRows,rows:result.rows}:result.rows,result]}
  const q={execute,query:execute,beginTransaction:()=>pg.exec('BEGIN'),commit:()=>pg.exec('COMMIT'),rollback:()=>pg.exec('ROLLBACK'),release(){},ping:async()=>{}}
  const pool={execute,query:execute,getConnection:async()=>q,end:()=>pg.close(),driver:'postgres'} as unknown as Pool
- return {pg,service:createStocktakeService(pool)}
+ let apply:Applier|undefined
+  const service=createStocktakeService(pool,{applyCondition:async(item,target,who)=>{if(!apply)throw new Error('unexpected condition update');await apply(item,target,who)}})
+  return {pg,service,setApply:(fn:Applier)=>{apply=fn}}
 }
 const actor={userId:null,label:'Synthetic librarian'}
 test('real SQL: mixed count, leading zeros, idempotent retry, duplicates, return, review freeze and cancellation',async()=>{
@@ -52,4 +56,39 @@ test('real SQL: mixed count, leading zeros, idempotent retry, duplicates, return
  await assert.rejects(service.scan(second.session.stocktake_session_id,body,actor),/finished/)
  const state=await pg.query<{condition_status:string}>('SELECT condition_status FROM physical_copies');assert(state.rows.every(r=>r.condition_status==='Good'))
  }finally{await pg.close()}
+})
+
+test('camera flow: lookup identifies the copy, repairable/damaged scans update inventory once, other scans only observe',async()=>{
+  const {pg,service,setApply}=await fixture()
+  try{
+  const calls:Array<{kind:string;barcode:string;target:string}>=[]
+  let failWith:Error|null=null
+  setApply(async(item,target)=>{calls.push({kind:item.kind,barcode:item.barcode,target});if(failWith)throw failWith
+   if(item.kind==='book')await pg.query('UPDATE physical_copies SET condition_status=$1,row_version=row_version+1 WHERE physical_copy_id=$2',[target==='for_repair'?'For Repair':'Damaged',item.id])
+   else await pg.query('UPDATE research_inventory SET condition_state=$1,row_version=row_version+1 WHERE research_inventory_id=$2',[target,item.id])})
+  const id=(await service.start({name:'Camera count',kind:'both',location:''},actor)).session.stocktake_session_id
+  const found=await service.lookup(id,{code:'000123',codeType:'barcode'})
+  assert.equal(found.found,true);if(found.found){assert.equal(found.item.title,'Synthetic book');assert.equal(found.inScope,true);assert.equal(found.alreadyCounted,false)}
+  assert.deepEqual(await service.lookup(id,{code:'999999',codeType:'barcode'}),{found:false,code:'999999'})
+  await assert.rejects(service.lookup(id,{code:'',codeType:'barcode'}),/Enter a barcode/)
+  const good=await service.scan(id,{condition:'good',code:'000123',location:'Shelf A',requestKey:'cam-good'},actor)
+  assert.equal(good.scanResult.inventory.status,'none');assert.equal(calls.length,0)
+  const repair=await service.scan(id,{condition:'for_repair',code:'000123',location:'Shelf A',requestKey:'cam-repair'},actor)
+  assert.equal(repair.scanResult.inventory.status,'applied');assert.equal(repair.scanResult.inventory.to,'For Repair');assert.equal(calls.length,1)
+  assert.equal(repair.report.summary.changed,0,'the count must not flag its own condition change')
+  const counted=await service.lookup(id,{code:'000123',codeType:'barcode'});assert.equal(counted.found&&counted.alreadyCounted,true)
+  const replay=await service.scan(id,{condition:'for_repair',code:'000123',location:'Shelf A',requestKey:'cam-repair'},actor)
+  assert.equal(replay.scanResult.inventory.status,'applied');assert.equal(calls.length,1,'a retried scan must not update inventory again')
+  assert.equal((await service.scan(id,{condition:'for_repair',code:'000123',location:'Shelf A',requestKey:'cam-repair-2'},actor)).scanResult.inventory.status,'unchanged');assert.equal(calls.length,1)
+  assert.equal((await service.scan(id,{condition:'damaged',code:'000125',location:'Shelf B',requestKey:'cam-damaged'},actor)).scanResult.inventory.status,'unchanged')
+  await pg.exec("UPDATE physical_copies SET condition_status='Lost' WHERE physical_copy_id=2")
+  assert.equal((await service.scan(id,{condition:'damaged',code:'000124',location:'Shelf A',requestKey:'cam-lost'},actor)).scanResult.inventory.status,'skipped')
+  await pg.exec("UPDATE physical_copies SET condition_status='Good',lifecycle_status='Archived' WHERE physical_copy_id=2")
+  assert.equal((await service.scan(id,{condition:'damaged',code:'000124',location:'Shelf A',requestKey:'cam-archived'},actor)).scanResult.inventory.status,'skipped')
+  await pg.exec("UPDATE physical_copies SET lifecycle_status='Active' WHERE physical_copy_id=2");failWith=new HttpError(422,'LOAN','This item is on loan.')
+  const failed=await service.scan(id,{condition:'damaged',code:'000124',location:'Shelf A',requestKey:'cam-failed'},actor)
+  assert.equal(failed.scanResult.inventory.status,'failed');assert.match(failed.scanResult.inventory.message??'',/on loan/)
+  failWith=new Error('database down')
+  await assert.rejects(service.scan(id,{condition:'damaged',code:'000124',location:'Shelf A',requestKey:'cam-failed-hard'},actor),/database down/)
+  }finally{await pg.close()}
 })

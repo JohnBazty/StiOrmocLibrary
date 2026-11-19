@@ -4,6 +4,19 @@ import {HttpError} from '../../core/http-error.ts'
 import {stocktakeItems} from './stocktake-items.ts'
 import {buildStocktakeReport,type StockItem,type CountExpected,type CountScan,type StocktakeReport} from './stocktake-report.ts'
 import type {InventoryRequestActor} from './inventory-actor.ts'
+import {overrideInventoryCondition} from './inventory.service.ts'
+import {auditThesisCondition} from './thesis-inventory.service.ts'
+
+/** Only these observed conditions change the inventory record. Good and worn copies are recorded as observations. */
+export type RepairCondition='for_repair'|'damaged'
+export type ConditionApplier=(item:Pick<StockItem,'kind'|'id'|'barcode'>,target:RepairCondition,actor:InventoryRequestActor)=>Promise<void>
+export type InventoryOutcome={status:'none'|'applied'|'unchanged'|'skipped'|'failed';from?:string;to?:string;message?:string;afterCondition?:string;afterVersion?:number}
+const REPAIR_CONDITIONS:string[]=['for_repair','damaged']
+const conditionKey=(value:string)=>value.toLowerCase().replaceAll(' ','_')
+const defaultApplier=(database:Pool):ConditionApplier=>async(item,target,actor)=>{
+  if(item.kind==='book')await overrideInventoryCondition(item.barcode,target==='for_repair'?'For Repair':'Damaged',actor,database)
+  else await auditThesisCondition(item.barcode,target,actor,database)
+}
 
 const fail=(message:string)=>new HttpError(422,'STOCKTAKE_INVALID',message)
 function text(value:unknown,label:string,max:number,optional=false){if(typeof value!=='string'||(!optional&&!value.trim())||value.trim().length>max||/[\u0000-\u001f\u007f]/.test(value))throw fail(`Enter ${label}, up to ${max} characters.`);return value.trim()}
@@ -18,11 +31,24 @@ async function report(q:PoolConnection,s:Session):Promise<StocktakeReport>{
  const [expected]=await q.execute<RowDataPacket[]>('SELECT * FROM stocktake_expected_items WHERE stocktake_session_id=? ORDER BY stocktake_expected_item_id',[s.stocktake_session_id])
  const items:CountExpected[]=expected.map(e=>({id:Number(e.stocktake_expected_item_id),item:{kind:e.asset_kind,id:Number(e.source_item_id),barcode:e.barcode,accession:e.accession_number,title:e.title,shelf:e.home_shelf_label,column:e.home_shelf_column,row:e.home_shelf_row,condition:e.condition_snapshot,availability:e.availability_snapshot,lifecycle:e.lifecycle_snapshot,version:e.row_version_snapshot,loan:e.loan_state_snapshot,reservation:e.reservation_state_snapshot,categoryId:e.category_id,category:e.category_name}}))
  const [scans]=await q.execute<RowDataPacket[]>('SELECT * FROM stocktake_scans WHERE stocktake_session_id=? ORDER BY stocktake_scan_id',[s.stocktake_session_id])
- const mapped:CountScan[]=scans.map(scan=>{let saved;try{saved=JSON.parse(scan.lookup_snapshot)}catch{saved={}};return {id:Number(scan.stocktake_scan_id),code:scan.entered_barcode,codeType:saved.codeType??'barcode',kind:scan.resolved_asset_kind,itemId:scan.resolved_source_item_id==null?null:Number(scan.resolved_source_item_id),shelf:scan.observed_shelf_label,item:saved.item??null,condition:saved.condition??null}})
+ const mapped:CountScan[]=scans.map(scan=>{let saved;try{saved=JSON.parse(scan.lookup_snapshot)}catch{saved={}};return {id:Number(scan.stocktake_scan_id),code:scan.entered_barcode,codeType:saved.codeType??'barcode',kind:scan.resolved_asset_kind,itemId:scan.resolved_source_item_id==null?null:Number(scan.resolved_source_item_id),shelf:scan.observed_shelf_label,item:saved.item??null,condition:saved.condition??null,applied:saved.inventory?.status==='applied'?{condition:String(saved.inventory.afterCondition),version:Number(saved.inventory.afterVersion)}:null}})
  const live=await stocktakeItems(q,{keys:items.map(e=>e.item)})
  return buildStocktakeReport(items,mapped,live)
 }
-export function createStocktakeService(database:Pool=db){
+export function createStocktakeService(database:Pool=db,deps:{applyCondition?:ConditionApplier}={}){
+  const applyCondition=deps.applyCondition??defaultApplier(database)
+  const publicOutcome=({status,from,to,message}:InventoryOutcome):InventoryOutcome=>({status,...(from?{from}:{}),...(to?{to}:{}),...(message?{message}:{})})
+  /** Marks a damaged or repairable copy in inventory so it appears under the matching KPI filter. Never restores or loses a copy. */
+  async function applyInventory(item:StockItem|null,condition:string,actor:InventoryRequestActor):Promise<InventoryOutcome>{
+   if(!item||!REPAIR_CONDITIONS.includes(condition))return {status:'none'}
+   const [live]=await stocktakeItems(database,{keys:[{kind:item.kind,id:item.id}]})
+   if(!live||live.lifecycle!=='Active')return {status:'skipped',message:'This item is archived, so its status was not changed.'}
+   if(conditionKey(live.condition)==='lost')return {status:'skipped',message:'This item is recorded as lost. It was counted, but its status was not changed. Review it in Inventory.'}
+   if(conditionKey(live.condition)===condition)return {status:'unchanged',from:live.condition,to:live.condition}
+   try{await applyCondition(live,condition as RepairCondition,actor)}catch(error){if(error instanceof HttpError)return {status:'failed',message:error.message};throw error}
+   const [after]=await stocktakeItems(database,{keys:[{kind:item.kind,id:item.id}]})
+   return {status:'applied',from:live.condition,to:after?.condition??live.condition,afterCondition:after?.condition,afterVersion:after?.version} as InventoryOutcome
+  }
  async function transaction<T>(work:(q:PoolConnection)=>Promise<T>){const q=await database.getConnection();try{await q.beginTransaction();await q.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');const result=await work(q);await q.commit();return result}catch(error){await q.rollback();if((error as {code?:string}).code==='40001')throw new HttpError(409,'STOCKTAKE_CHANGED','Another update completed. Refresh the count and try again.');throw error}finally{q.release()}}
  const detail=async(q:PoolConnection,s:Session)=>{const r=await report(q,s);return {session:s,report:r,reviewToken:reportToken(r),reviewNote:snapshot(s).reviewNote??null,legacy:snapshot(s).format!=='stocktake-v1'&&!snapshot(s).finalReport}}
  return {
@@ -40,17 +66,35 @@ export function createStocktakeService(database:Pool=db){
     return detail(q,await session(q,id))
    })
   },
+  async lookup(id:number,query:{code?:unknown;codeType?:unknown}){
+   const code=text(query.code,'a barcode or accession',100),codeType=query.codeType==='accession'?'accession':'barcode'
+   return transaction(async q=>{active(await session(q,id))
+    const matches=await stocktakeItems(q,{code,codeType});if(matches.length>1)throw fail('This code matches more than one item. Check its unique accession label.')
+    const item=matches[0];if(!item)return {found:false as const,code}
+    const [expected]=await q.execute<RowDataPacket[]>('SELECT 1 AS hit FROM stocktake_expected_items WHERE stocktake_session_id=? AND asset_kind=? AND source_item_id=? LIMIT 1',[id,item.kind,item.id])
+    const [seen]=await q.execute<RowDataPacket[]>('SELECT COUNT(*) AS total FROM stocktake_scans WHERE stocktake_session_id=? AND resolved_asset_kind=? AND resolved_source_item_id=?',[id,item.kind,item.id])
+    const {kind,title,accession,barcode,shelf,condition,availability,lifecycle,loan}=item
+    return {found:true as const,code,item:{kind,title,accession,barcode,shelf,condition,availability,lifecycle,loan},inScope:expected.length>0,alreadyCounted:Number(seen[0]?.total??0)>0}
+   })
+  },
   async scan(id:number,body:Record<string,unknown>,actor:InventoryRequestActor){
    const code=text(body.code,'a barcode or accession',100),shelf=text(body.location,'the location being checked',100),requestKey=text(body.requestKey,'a scan reference',100),codeType=body.codeType==='accession'?'accession':'barcode'
    if(!['good','fair','for_repair','damaged'].includes(String(body.condition)))throw fail('Choose the physical condition of this item.');const condition=String(body.condition)
-   return transaction(async q=>{const s=await session(q,id,true);active(s)
+   const saved=await transaction(async q=>{const s=await session(q,id,true);active(s)
     const [prior]=await q.execute<RowDataPacket[]>('SELECT entered_barcode,observed_shelf_label,lookup_snapshot FROM stocktake_scans WHERE stocktake_session_id=? AND request_key=?',[id,requestKey])
-    if(prior.length){const saved=JSON.parse(prior[0].lookup_snapshot);if(prior[0].entered_barcode!==code||prior[0].observed_shelf_label!==shelf||saved.codeType!==codeType||saved.condition!==condition)throw fail('This scan reference belongs to another scan. Refresh and try again.');return detail(q,s)}
+    if(prior.length){const old=JSON.parse(prior[0].lookup_snapshot);if(prior[0].entered_barcode!==code||prior[0].observed_shelf_label!==shelf||old.codeType!==codeType||old.condition!==condition)throw fail('This scan reference belongs to another scan. Refresh and try again.');return {detail:await detail(q,s),item:(old.item??null) as StockItem|null,stored:(old.inventory??null) as InventoryOutcome|null,snapshot:old as Record<string,unknown>}}
     const matches=await stocktakeItems(q,{code,codeType});if(matches.length>1)throw fail('This code matches more than one item. Check its unique accession label.')
-    const item=matches[0]??null
-    await q.execute(`INSERT INTO stocktake_scans(stocktake_session_id,request_key,entered_barcode,resolved_asset_kind,resolved_source_item_id,observed_shelf_label,scan_source,lookup_snapshot,scanned_by_user_id,scanned_by_label) VALUES (?,?,?,?,?,?,'scanner',?,?,?)`,[id,requestKey,code,item?.kind??null,item?.id??null,shelf,JSON.stringify({codeType,item,condition}),actor.userId,actor.label])
-    return detail(q,s)
+    const item=matches[0]??null,snapshot={codeType,item,condition}
+    await q.execute(`INSERT INTO stocktake_scans(stocktake_session_id,request_key,entered_barcode,resolved_asset_kind,resolved_source_item_id,observed_shelf_label,scan_source,lookup_snapshot,scanned_by_user_id,scanned_by_label) VALUES (?,?,?,?,?,?,'scanner',?,?,?)`,[id,requestKey,code,item?.kind??null,item?.id??null,shelf,JSON.stringify(snapshot),actor.userId,actor.label])
+    return {detail:await detail(q,s),item,stored:null,snapshot:snapshot as Record<string,unknown>}
    })
+   // A retried scan whose inventory change already succeeded must not change inventory again.
+   if(saved.stored)return {...saved.detail,scanResult:{inventory:publicOutcome(saved.stored)}}
+   const inventory=await applyInventory(saved.item,condition,actor)
+   if(inventory.status!=='applied')return {...saved.detail,scanResult:{inventory:publicOutcome(inventory)}}
+   await database.execute('UPDATE stocktake_scans SET lookup_snapshot=? WHERE stocktake_session_id=? AND request_key=?',[JSON.stringify({...saved.snapshot,inventory}),id,requestKey])
+   const refreshed=await transaction(async q=>detail(q,await session(q,id)))
+   return {...refreshed,scanResult:{inventory:publicOutcome(inventory)}}
   },
   async finish(id:number,body:Record<string,unknown>,actor:InventoryRequestActor){return transaction(async q=>{
    const s=await session(q,id,true);if(s.status==='reviewed'&&snapshot(s).finalReport)return detail(q,s);active(s)

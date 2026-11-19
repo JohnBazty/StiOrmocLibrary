@@ -309,6 +309,14 @@ function AvailabilityConfirmationDialog({
   </div>
 }
 
+const BOOK_CONDITION_QUERY_VALUES = new Set(['Good', 'Fair', 'For Repair', 'Damaged', 'Lost'])
+const THESIS_CONDITION_QUERY_VALUES = new Set(['good', 'fair', 'for_repair', 'damaged', 'lost'])
+
+function initialConditionParam(valid: Set<string>) {
+  const value = new URLSearchParams(window.location.search).get('condition') ?? ''
+  return valid.has(value) ? value : ''
+}
+
 export function InventoryDashboard() {
   const [resource, setResource] = useState<'books' | 'research'>(() => new URLSearchParams(window.location.search).get('resource') === 'research' ? 'research' : 'books')
   const [summary, setSummary] = useState(EMPTY_SUMMARY)
@@ -317,9 +325,9 @@ export function InventoryDashboard() {
   const [thesisRows, setThesisRows] = useState<ThesisInventoryRow[]>([])
   const [pagination, setPagination] = useState(EMPTY_PAGINATION)
   const [thesisPagination, setThesisPagination] = useState(EMPTY_PAGINATION)
-  const [filters, setFilters] = useState(() => ({...DEFAULT_FILTERS,query:new URLSearchParams(window.location.search).get('q')??'',conditionState:new URLSearchParams(window.location.search).get('condition') === 'For Repair' ? 'For Repair' : ''}))
-  const [thesisDraftFilters, setThesisDraftFilters] = useState(() => ({...DEFAULT_THESIS_FILTERS,query:new URLSearchParams(window.location.search).get('q')??''}))
-  const [thesisFilters, setThesisFilters] = useState(() => ({...DEFAULT_THESIS_FILTERS,query:new URLSearchParams(window.location.search).get('q')??''}))
+  const [filters, setFilters] = useState(() => ({...DEFAULT_FILTERS,query:new URLSearchParams(window.location.search).get('q')??'',conditionState:initialConditionParam(BOOK_CONDITION_QUERY_VALUES)}))
+  const [thesisDraftFilters, setThesisDraftFilters] = useState(() => ({...DEFAULT_THESIS_FILTERS,query:new URLSearchParams(window.location.search).get('q')??'',conditionState:initialConditionParam(THESIS_CONDITION_QUERY_VALUES)}))
+  const [thesisFilters, setThesisFilters] = useState(() => ({...DEFAULT_THESIS_FILTERS,query:new URLSearchParams(window.location.search).get('q')??'',conditionState:initialConditionParam(THESIS_CONDITION_QUERY_VALUES)}))
   const [loading, setLoading] = useState(true)
   const [thesisLoading, setThesisLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

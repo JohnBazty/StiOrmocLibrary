@@ -107,6 +107,21 @@ describe('InventoryDashboard', () => {
     const reportLost = within(screen.getByRole('dialog', { name: 'Update physical condition' }))
     expect((reportLost.getByRole('radio', { name: 'lost' }) as HTMLInputElement).checked).toBe(true)
   })
+  it('opens filtered to Damaged books or For Repair research when linked from Stocktake', async () => {
+    window.history.replaceState({}, '', '/librarian/inventory?condition=Damaged')
+    render(<InventoryDashboard />)
+    await screen.findByText('No physical copies found')
+    expect((screen.getByRole('combobox', { name: 'Filter by condition' }) as HTMLSelectElement).value).toBe('Damaged')
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('condition_state=Damaged'))).toBe(true)
+    cleanup()
+
+    window.history.replaceState({}, '', '/librarian/inventory?resource=research&condition=for_repair')
+    render(<InventoryDashboard />)
+    await screen.findByText('No bound research papers found')
+    expect((screen.getByRole('combobox', { name: 'Filter research by condition' }) as HTMLSelectElement).value).toBe('for_repair')
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/inventory/thesis?') && String(url).includes('condition_state=for_repair'))).toBe(true)
+    window.history.replaceState({}, '', '/librarian/inventory')
+  })
 })
 
 afterEach(cleanup)

@@ -21,3 +21,10 @@ test('CSV/PDF contain all physical rows, safe text cells and consistent report c
  assert.equal(pdf.status,200);const document=await PDFDocument.load(pdf.body);assert(document.getPageCount()>1)
  if(process.env.STOCKTAKE_QA_PDF)await writeFile(process.env.STOCKTAKE_QA_PDF,pdf.body)
 })
+
+test('lookup route passes the scanned code and type to the service without saving',async()=>{
+ const seen:unknown[]=[];const service={lookup:async(id:number,query:unknown)=>{seen.push([id,query]);return {found:false,code:'0001'}}} as unknown as Parameters<typeof createStocktakeRouter>[0]
+ const app=express();app.use('/stocktake',createStocktakeRouter(service))
+ const response=await request(app).get('/stocktake/7/lookup?code=0001&codeType=barcode');assert.equal(response.status,200);assert.deepEqual(response.body.data,{found:false,code:'0001'});assert.deepEqual(seen,[[7,{code:'0001',codeType:'barcode'}]])
+})
+

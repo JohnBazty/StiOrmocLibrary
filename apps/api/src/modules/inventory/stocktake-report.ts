@@ -1,5 +1,5 @@
 export type StockItem={kind:'book'|'research';id:number;barcode:string;accession:string;title:string;shelf:string;column:number;row:number;condition:string;availability:string;lifecycle:string;version:number;loan:string;reservation:string;categoryId:number|null;category:string|null}
-export type CountScan={id:number;code:string;codeType:'barcode'|'accession';kind:StockItem['kind']|null;itemId:number|null;shelf:string;item:StockItem|null;condition?:string|null}
+export type CountScan={id:number;code:string;codeType:'barcode'|'accession';kind:StockItem['kind']|null;itemId:number|null;shelf:string;item:StockItem|null;condition?:string|null;applied?:{condition:string;version:number}|null}
 export type CountExpected={id:number;item:StockItem}
 export type Finding={key:string;code:string;label:string;expectedId:number|null;scanId:number|null;evidence:unknown}
 const key=(item:Pick<StockItem,'kind'|'id'>)=>`${item.kind}:${item.id}`
@@ -15,7 +15,7 @@ export function buildStocktakeReport(expected:CountExpected[],scans:CountScan[],
   const original=entry.item,item=live.get(key(original))??{...original,lifecycle:'No longer recorded'},observed=seen.get(key(original))??[]
   const onLoan=item.loan!=='none',lost=item.condition.toLowerCase()==='lost',archived=item.lifecycle!=='Active'
   const outcome=archived?'Archived':onLoan?'On loan / in use':lost?'Known lost':observed.length?'Found':'Not yet checked'
-  const changed=item.version!==original.version||item.shelf!==original.shelf||item.loan!==original.loan||item.lifecycle!==original.lifecycle||item.condition!==original.condition||item.title!==original.title
+  const applied=observed.map(scan=>scan.applied).filter(Boolean).at(-1),base=applied?{...original,condition:applied.condition,version:applied.version}:original;const changed=item.version!==base.version||item.shelf!==base.shelf||item.loan!==base.loan||item.lifecycle!==base.lifecycle||item.condition!==base.condition||item.title!==base.title // a condition change made by this count is not a surprise change
   function finding(code:string,label:string,evidence:unknown,scanId:number|null=null){findings.push({key:`${code}:${key(original)}`,code,label,expectedId:entry.id,scanId,evidence})}
   if(outcome==='Not yet checked')finding('not_checked','Physical check needed; loss is not established',{original,current:item})
   if(changed)finding('changed','Record or circulation changed during the count',{original,current:item})

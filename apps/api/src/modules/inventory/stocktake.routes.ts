@@ -15,6 +15,7 @@ const stocktakeRouter=Router()
 stocktakeRouter.get('/',async(_req,res,next)=>{try{res.json({success:true,data:await service.list()})}catch(e){next(e)}})
 stocktakeRouter.get('/locations',async(_req,res,next)=>{try{res.json({success:true,data:await service.locations()})}catch(e){next(e)}})
 stocktakeRouter.post('/',async(req,res,next)=>{try{res.status(201).json({success:true,data:await service.start(req.body??{},inventoryActor(req,res))})}catch(e){next(e)}})
+stocktakeRouter.get('/:id/lookup',async(req,res,next)=>{try{res.json({success:true,data:await service.lookup(stocktakeId(req.params.id),{code:req.query.code,codeType:req.query.codeType})})}catch(e){next(e)}})
 stocktakeRouter.get('/:id',async(req,res,next)=>{try{res.json({success:true,data:await service.get(stocktakeId(req.params.id))})}catch(e){next(e)}})
 for(const action of ['scan','finish','cancel'] as const)stocktakeRouter.post(`/:id/${action}`,async(req,res,next)=>{try{res.json({success:true,data:await service[action](stocktakeId(req.params.id),req.body??{},inventoryActor(req,res))})}catch(e){next(e)}})
 stocktakeRouter.get('/:id/export.:format',async(req,res,next)=>{try{
