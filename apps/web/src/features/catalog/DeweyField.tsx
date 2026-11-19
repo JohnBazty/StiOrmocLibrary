@@ -98,7 +98,7 @@ export function DeweyField({
     onChange({
       code: next.ddcCode,
       source: value?.source === 'open_library' && candidateCode === value.code ? 'open_library' : 'manual',
-      reviewed: value?.reviewed ?? false,
+      reviewed: true,
     })
     onGenerateCallNumber?.(next)
   }
