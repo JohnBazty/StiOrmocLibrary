@@ -7,6 +7,7 @@ import { accountHold, allocateWaitingRequests, availableCopies, linkedUser, lock
 import { recordRequestEvent } from './book-request-events.ts'
 import { loadScheduleCalendar, pickupWindow, scheduleDates } from './borrowing-schedule-calendar.ts'
 import { positiveId } from './reservation.validation.ts'
+import { notifyStaffRolesSafe } from '../notifications/transaction-notifications.ts'
 
 const active="('pending','approved','ready_for_pickup')"
 const fail=(code:string,message:string)=>new HttpError(422,code,message)
@@ -31,6 +32,18 @@ async function notice(q:PoolConnection,r:RowDataPacket,event:string,message:stri
       CASE WHEN u.user_role='Faculty' THEN '/faculty/reservations' ELSE '/student/reservations' END,'Important',?,NOW(),NOW()
     FROM borrowing_schedules s JOIN users u ON u.user_id=s.user_id WHERE s.schedule_id=?
     ON CONFLICT(user_id,dedupe_key) DO NOTHING`,[`${r.title}: ${message}`,`borrowing-schedule:${r.schedule_id}:${event}`,r.schedule_id])
+  await notifyStaffRolesSafe(q, {
+    key: `borrowing-schedule:${r.schedule_id}:${event}`,
+    title: 'Scheduled borrowing update',
+    body: `${r.title}: ${message}`,
+    type: 'Reservation Arrival',
+    sourceType: 'Reservation',
+    sourceId: Number(r.schedule_id),
+    personUserId: Number(r.user_id),
+    librarianPath: '/librarian/reservations',
+    staffPath: '/staff/reservations',
+    priority: 'Important',
+  })
 }
 async function setReason(q:PoolConnection,r:RowDataPacket,reason:string,actionNeeded=false) {
   await q.execute('UPDATE borrowing_schedules SET last_reason=?,updated_at=NOW() WHERE schedule_id=?',[reason,r.schedule_id])
@@ -88,6 +101,7 @@ export function createBorrowingScheduleService(database:Pool=db,clock=()=>new Da
         if(!titles.length)throw fail('SCHEDULE_TITLE_UNAVAILABLE','This title has no active book copy for scheduled borrowing.')
         const [insert]=await q.execute<ResultSetHeader>(`INSERT INTO borrowing_schedules(user_id,title_id,pickup_date,client_request_id) VALUES(?,?,?::date,?)`,[userId,titleId,date,key])
         const [rows]=await q.execute<RowDataPacket[]>(`${select} WHERE s.schedule_id=?`,[insert.insertId])
+        if(rows[0]) await notice(q, rows[0], 'created', `Scheduled for pickup on ${new Date(`${date}T12:00:00+08:00`).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium' })}.`)
         return view(rows[0])
       })
     },
@@ -101,6 +115,7 @@ export function createBorrowingScheduleService(database:Pool=db,clock=()=>new Da
         if(r.status==='cancelled')return view(r)
         if(r.status!=='scheduled')throw fail('SCHEDULE_NOT_PENDING','This schedule has already progressed. Manage its book request instead.')
         await q.execute("UPDATE borrowing_schedules SET status='cancelled',last_reason='Cancelled by you.',updated_at=NOW() WHERE schedule_id=?",[r.schedule_id])
+        await notice(q, r, 'cancelled', 'Scheduled borrowing was cancelled by the requester.')
         return view({...r,status:'cancelled',last_reason:'Cancelled by you.'})
       })
     },

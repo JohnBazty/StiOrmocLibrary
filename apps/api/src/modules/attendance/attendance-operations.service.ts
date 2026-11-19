@@ -7,6 +7,7 @@ import { validateAttendanceCredential } from './attendance-credential.service.ts
 import { attendancePurposes } from './attendance.validation.ts'
 import { manilaDate, localTimestamp } from './attendance-intervals.ts'
 import { decodeClosureReason, manilaNowParts } from '../notifications/library-schedule.validation.ts'
+import { notifyStaffRolesSafe } from '../notifications/transaction-notifications.ts'
 import { evaluateLibraryState, parseAttendancePolicy, parseOperationalEvent, type AttendancePolicy, type OperationalEvent } from './attendance-operations.policy.ts'
 
 type Query=Pick<PoolConnection,'execute'>
@@ -80,6 +81,18 @@ export function createAttendanceOperations(pool:Pool=db,clock=()=>new Date()) {
      const[r]=await c.execute<any>(`INSERT INTO attendance_logs(user_id,attendance_date,time_in,checked_in_at,reason_for_visit,qr_reference,qr_credential_id,scan_method,checked_in_by_user_id,entry_request_id,seat_visit) VALUES (?,?::date,(?::timestamptz AT TIME ZONE 'Asia/Manila')::time,(?::timestamptz AT TIME ZONE 'Asia/Manila'),?,?,?,'Permanent QR',(SELECT user_id FROM accounts WHERE account_id=?),?,?)`,[visitor.userId,manilaDate(now),now,now,purpose,visitor.publicId,visitor.credentialId,actor,request,seat]);logId=Number(r.insertId)
     }
     await c.execute(`INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,delivered_at) VALUES (?,?,?,'Attendance','Attendance',?,?,'Normal',?,NOW()) ON CONFLICT (user_id,dedupe_key) DO NOTHING`,[visitor.userId,action==='Entry'?'Library check-in':'Library check-out',action==='Entry'?'Your library entry was recorded.':'Your library exit was recorded.',logId,visitor.role==='Faculty'?'/faculty/attendance':visitor.role==='Student'?'/student/attendance':'/staff/attendance',`attendance:${action.toLowerCase()}:${logId}`])
+    await notifyStaffRolesSafe(c, {
+      key: `attendance:${action.toLowerCase()}:${logId}`,
+      title: action === 'Entry' ? 'Visitor checked in' : 'Visitor checked out',
+      body: action === 'Entry' ? `Library entry recorded (${visitor.purpose ?? String(b.purpose ?? 'Visit')}).` : 'Library exit recorded.',
+      type: 'Attendance',
+      sourceType: 'Attendance',
+      sourceId: logId,
+      personUserId: visitor.userId,
+      librarianPath: '/librarian/attendance',
+      staffPath: '/staff/attendance',
+      priority: 'Normal',
+    })
     await c.execute("UPDATE attendance_qr_credentials SET last_used_at=(?::timestamptz AT TIME ZONE 'Asia/Manila'),updated_at=NOW() WHERE credential_id=?",[now,visitor.credentialId])
     await c.execute('INSERT INTO attendance_scan_receipts(request_id,user_id,actor_account_id,credential_id,payload_digest,log_id,action) VALUES (?,?,?,?,?,?,?)',[request,visitor.userId,actor,visitor.credentialId,digest,logId,action])
     return receipt(c,{log_id:logId,action} as RowDataPacket,visitor,false)

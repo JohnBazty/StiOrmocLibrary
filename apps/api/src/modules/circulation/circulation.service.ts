@@ -22,6 +22,7 @@ import { borrowerEligibility, borrowingPolicy, requireEligible, requireLoanSlot,
 import { prepareReturnedCopy } from './returned-copy-preparation.ts'
 import { createCirculationCaseService, resolveLongOverdueCaseAtReturn } from './circulation-case.service.ts'
 import { insertUserNotice, manilaTime, rolePath } from '../notifications/user-notices.ts'
+import { notifyStaffRolesSafe } from '../notifications/transaction-notifications.ts'
 import { localTimestamp } from '../attendance/attendance-intervals.ts'
 import { positiveCirculationId, validateBorrowCart, validateCancellation, validateCheckout, validateHistoryQuery, validatePreflight, type BorrowCartInput } from './circulation.validation.ts'
 
@@ -751,6 +752,18 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
           )
         }
         await connection.commit()
+        await notifyStaffRolesSafe(database, {
+          key: `loan:${transactionId}:borrowed`,
+          title: 'Book checked out',
+          body: `${copy.title} (${copy.accession_number}) checked out. Due ${manilaTime(dueAt)}.`,
+          type: 'Due Date',
+          sourceType: 'Borrow Transaction',
+          sourceId: transactionId,
+          personUserId: Number(borrower.user_id),
+          librarianPath: '/librarian/circulation',
+          staffPath: '/staff/circulation',
+          priority: 'Normal',
+        })
         return { transactionId, requestGroupId: pendingClaim?.request_group_id ?? null, borrower: { userId: Number(borrower.user_id), name: borrower.full_name, schoolId: borrower.school_id, role: borrower.role_name }, copy: { physicalCopyId: Number(copy.physical_copy_id), title: copy.title, accessionNumber: copy.accession_number, barcode: copy.barcode }, status: 'Borrowed', borrowedAt, dueAt, dueCutoff: dueAt.toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' }), policyVersionId: policy.versionId }
       } catch (error) { await connection.rollback(); throw error } finally { connection.release() }
     },
@@ -809,7 +822,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
           if (saved[0] && !['Paid', 'Waived', 'Voided'].includes(String(saved[0].payment_status))) lateFine = Number(saved[0].fine_amount)
         }
         await insertUserNotice(connection, { userId: Number(loan.user_id), title: 'Book returned', body: returnedNoticeBody(String(loan.title), returnedAt, lateFine, options.condition), triggerType: 'Return', sourceType: 'Borrow Transaction', sourceId: transactionId, actionPath: rolePath(loan.user_role, 'borrowing'), priority: 'Normal', dedupeKey: `loan:${transactionId}:returned` })
-        {const release=await prepareReturnedCopy(connection,loan as any,clock());await connection.execute("INSERT INTO admin_notifications(event_type,actor_user_id,borrow_transaction_id,book_title_id,message_title,message_body) VALUES ('return_completed',?,?,?,'Return completed',?)",[loan.user_id,transactionId,loan.title_id,`${loan.title} was returned${release.nextReservationId?' and assigned for preparation':''}.`]);await connection.commit();return {transactionId,status:'Returned',returnedAt,...release}}
+        {const release=await prepareReturnedCopy(connection,loan as any,clock());await connection.execute("INSERT INTO admin_notifications(event_type,actor_user_id,borrow_transaction_id,book_title_id,message_title,message_body) VALUES ('return_completed',?,?,?,'Return completed',?)",[loan.user_id,transactionId,loan.title_id,`${loan.title} was returned${release.nextReservationId?' and assigned for preparation':''}.`]);await connection.commit();await notifyStaffRolesSafe(database,{key:`loan:${transactionId}:returned`,title:'Book returned',body:`${loan.title} (${loan.accession_number}) was returned${lateFine>0?` with PHP ${lateFine.toFixed(2)} late fine`:''}.`,type:'Return',sourceType:'Borrow Transaction',sourceId:transactionId,personUserId:Number(loan.user_id),librarianPath:'/librarian/circulation',staffPath:'/staff/circulation',priority:lateFine>0?'Important':'Normal'});return {transactionId,status:'Returned',returnedAt,...release}}
       } catch (error) { await connection.rollback(); throw error } finally { connection.release() }
     },
 

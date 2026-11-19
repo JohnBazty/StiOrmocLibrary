@@ -1,5 +1,6 @@
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { requireVerificationSender } from '../auth/school-email.sender.ts'
+import { notifyStaffRolesSafe } from '../notifications/transaction-notifications.ts'
 import { dayCount } from './reservation-settings.service.ts'
 
 export type RequestEventStatus = 'received' | 'waiting' | 'preparing' | 'ready_for_pickup' | 'claimed' | 'cancelled' | 'expired'
@@ -55,6 +56,18 @@ export async function recordRequestEvent(q: PoolConnection, id: number, status: 
     action_path,priority,dedupe_key,scheduled_for,delivered_at) VALUES (?,?,?,'Reservation Arrival','Reservation',?,?,?, ?,NOW(),NOW())
     ON CONFLICT(user_id,dedupe_key) DO NOTHING`, [r.user_id,label,body,id,path,
       status === 'ready_for_pickup' ? 'Urgent' : 'Important',`book-request:${id}:${status}${copyKey}`])
+  await notifyStaffRolesSafe(q, {
+    key: `book-request:${id}:${status}${copyKey}`,
+    title: `${cart ? 'Cart handover' : 'Reservation'} — ${label}`,
+    body: `${r.title} (${label}).`,
+    type: 'Reservation Arrival',
+    sourceType: 'Reservation',
+    sourceId: id,
+    personUserId: Number(r.user_id),
+    librarianPath: '/librarian/reservations',
+    staffPath: '/staff/reservations',
+    priority: status === 'ready_for_pickup' ? 'Urgent' : 'Important',
+  })
   if (r.email) {
     let deliveryStatus = 'Pending'
     try { requireVerificationSender(String(r.email)) } catch { deliveryStatus = 'Disabled' }

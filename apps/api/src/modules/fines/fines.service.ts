@@ -2,6 +2,7 @@ import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../..
 import { db } from '../../config/db.js'
 import { excluded, forUpdate } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
+import { notifyStaffRolesSafe } from '../notifications/transaction-notifications.ts'
 import { receiptVerificationCode } from './fine-receipt-verification.ts'
 import { guardCounterPayment } from '../payments/payments.guard.ts'
 import { createPaymentsRepository } from '../payments/payments.repository.ts'
@@ -339,6 +340,7 @@ export function createFinesService(database: Pool = db, options: { previewCredit
           [targetUserId,`${input.category} fine: PHP ${input.amount.toFixed(2)}.`,insert.insertId,`fine:${insert.insertId}:issued`],
         )
         await refreshClearance(connection,targetUserId); await connection.commit()
+        await notifyStaffRolesSafe(database,{key:`fine:${insert.insertId}:issued`,title:'Library fine issued',body:`${input.category} fine: PHP ${input.amount.toFixed(2)}.`,type:'Fine',sourceType:'Fine',sourceId:Number(insert.insertId),personUserId:targetUserId,librarianPath:'/librarian/fines',staffPath:'/staff/notifications',priority:'Important'})
         return { fineId: Number(insert.insertId), status: 'Unpaid' }
       } catch (error) { await connection.rollback(); throw error } finally { connection.release() }
     },
@@ -409,6 +411,7 @@ export function createFinesService(database: Pool = db, options: { previewCredit
           [ownerUserId,`Receipt ${receiptNumber}: PHP ${total.toFixed(2)} received at the library counter.`,insert.insertId,`fine-receipt:${insert.insertId}:issued`],
         )
         await refreshClearance(connection,ownerUserId); await connection.commit()
+        await notifyStaffRolesSafe(database,{key:`fine-receipt:${insert.insertId}:issued`,title:'Fine cash payment received',body:`Receipt ${receiptNumber}: PHP ${total.toFixed(2)} received at the library counter.`,type:'Fine',sourceType:'Fine Receipt',sourceId:Number(insert.insertId),personUserId:ownerUserId,librarianPath:'/librarian/fines',staffPath:'/staff/payments',priority:'Normal'})
         return receiptDetail(Number(insert.insertId))
       } catch (error) { await connection.rollback(); throw error } finally { connection.release() }
       }
@@ -441,7 +444,9 @@ export function createFinesService(database: Pool = db, options: { previewCredit
           ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
           [fine.user_id,`${input.type}: PHP ${amount.toFixed(2)}. Reason: ${input.reason}`,targetFineId,`fine:${targetFineId}:adjustment:${Date.now()}`],
         )
-        await refreshClearance(connection,Number(fine.user_id)); await connection.commit(); return { fineId:targetFineId,...result }
+        await refreshClearance(connection,Number(fine.user_id)); await connection.commit()
+        await notifyStaffRolesSafe(database,{key:`fine:${targetFineId}:adjustment:${Date.now()}`,title:'Fine adjusted',body:`${input.type}: PHP ${amount.toFixed(2)}. Reason: ${input.reason}`,type:'Fine',sourceType:'Fine',sourceId:targetFineId,personUserId:Number(fine.user_id),librarianPath:'/librarian/fines',staffPath:'/staff/notifications',priority:'Important'})
+        return { fineId:targetFineId,...result }
       } catch(error){await connection.rollback();throw error}finally{connection.release()}
       }
       return database===db&&localPaymentPreview?localPaymentPreview.moneyOut.withPrintingLock(run):run()
@@ -474,7 +479,9 @@ export function createFinesService(database: Pool = db, options: { previewCredit
           ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
           [receipt.user_id,`A cash receipt was reversed. Reason: ${input.reason}`,targetReceiptId,`fine-receipt:${targetReceiptId}:reversed`],
         )
-        await refreshClearance(connection,Number(receipt.user_id)); await connection.commit(); return receiptDetail(targetReceiptId)
+        await refreshClearance(connection,Number(receipt.user_id)); await connection.commit()
+        await notifyStaffRolesSafe(database,{key:`fine-receipt:${targetReceiptId}:reversed`,title:'Cash receipt reversed',body:`Cash receipt #${targetReceiptId} was reversed. Reason: ${input.reason}`,type:'Fine',sourceType:'Fine Receipt',sourceId:targetReceiptId,personUserId:Number(receipt.user_id),librarianPath:'/librarian/fines',staffPath:'/staff/payments',priority:'Urgent'})
+        return receiptDetail(targetReceiptId)
       }catch(error){await connection.rollback();throw error}finally{connection.release()}
       }
       return database===db&&localPaymentPreview?localPaymentPreview.moneyOut.withPrintingLock(run):run()

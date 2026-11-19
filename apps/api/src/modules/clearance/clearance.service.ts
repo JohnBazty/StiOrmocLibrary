@@ -6,6 +6,7 @@ import { createFinesService } from '../fines/fines.service.ts'
 import { localPaymentPreview } from '../payments/payments.preview.ts'
 import { previewCredit, type PreviewCredit } from '../payments/preview-balances.ts'
 import { insertUserNotice, rolePath } from '../notifications/user-notices.ts'
+import { notifyStaffRolesSafe } from '../notifications/transaction-notifications.ts'
 import { positiveId, validateLostDecision, validateOverride, validateRevocation } from './clearance.validation.ts'
 
 export type ClearanceActor = { accountId?: number; role?: string }
@@ -38,6 +39,19 @@ async function notifyClearanceChange(connection: PoolConnection, userId: number,
     body: `Your clearance status is now ${status}.${event === 'revoked' ? ' Contact the library for details.' : ''}`,
     triggerType: 'Clearance', sourceType: 'Clearance Override', sourceId: overrideId,
     actionPath: rolePath(rows[0]?.user_role, 'clearance'), priority: 'Important', dedupeKey: `clearance-override:${overrideId}:${event}`,
+  })
+  await notifyStaffRolesSafe(connection, {
+    key: `clearance-override:${overrideId}:${event}`,
+    title: 'Clearance override updated',
+    body: `Clearance status changed to ${status} (override ${event}).`,
+    type: 'Clearance',
+    sourceType: 'Clearance Override',
+    sourceId: overrideId,
+    personUserId: userId,
+    librarianPath: '/librarian/clearance',
+    staffPath: '/staff/notifications',
+    adminPath: '/admin/clearance',
+    priority: 'Important',
   })
 }
 

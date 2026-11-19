@@ -18,6 +18,7 @@ import { prepareReturnedCopy } from './returned-copy-preparation.ts'
 import { localTimestamp } from '../attendance/attendance-intervals.ts'
 import { requestEventStatus, requestLabels } from '../reservations/book-request-events.ts'
 import { insertUserNotice, manilaTime, rolePath, type UserNotice } from '../notifications/user-notices.ts'
+import { notifyStaffRolesSafe } from '../notifications/transaction-notifications.ts'
 
 export type DeskActor={accountId:number;role:string}
 export type UseMode='TakeHome'|'InLibrary'
@@ -112,6 +113,7 @@ export async function startInLibraryUse(q:Pick<PoolConnection,'execute'>,start:{
  const {copy:c,handBackBy}=start;if(!handBackBy)throw problem('DESK_CUTOFF_UNAVAILABLE','No hand-back time is configured for today.')
  const [r]=await q.execute(`INSERT INTO in_library_uses(user_id,physical_copy_id,material_id,research_inventory_id,attendance_log_id,started_at,hand_back_by,condition_out,started_by_account_id) VALUES (?,?,?,?,?,?,?,?,?)`,[start.userId,c.physical_copy_id,c.material_id,c.research_inventory_id??null,start.attendanceLogId,start.now,handBackBy,c.condition_status,start.actorAccountId]) as unknown as [{insertId:number},unknown]
  await insertUserNotice(q,inLibraryNotice('started',{useId:Number(r.insertId),userId:start.userId,role:start.role,title:String(c.title),handBackBy}))
+ await notifyStaffRolesSafe(q,{key:`in-library-use:${Number(r.insertId)}:started`,title:'In-library use started',body:`${c.title} checked out for in-library use. Hand back by ${manilaTime(handBackBy)}.`,type:'In-Library Use',sourceType:'In-Library Use',sourceId:Number(r.insertId),personUserId:start.userId,librarianPath:'/librarian/circulation',staffPath:'/staff/circulation',priority:'Normal'})
  if(c.research_inventory_id)await q.execute("UPDATE research_inventory SET availability_status='borrowed',row_version=row_version+1,updated_at=NOW() WHERE research_inventory_id=?",[c.research_inventory_id]);else {await q.execute("UPDATE physical_copies SET availability_status='Borrowed',row_version=row_version+1,updated_at=NOW() WHERE physical_copy_id=?",[c.physical_copy_id]);await q.execute("UPDATE materials SET availability_status='Borrowed',updated_at=NOW() WHERE material_id=?",[c.material_id])}
  return {useId:r.insertId,title:c.title,barcode:c.barcode,handBackBy,status:'Open' as const}
 }

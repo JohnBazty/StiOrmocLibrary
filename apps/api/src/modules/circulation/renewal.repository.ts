@@ -335,6 +335,12 @@ export function createRenewalRepository(database: Pool = db, options: { previewC
       newDueAt: Date,
       executor: PoolConnection,
     ): Promise<void> {
+      const formattedDue = newDueAt.toLocaleString('en-PH', {
+        timeZone: 'Asia/Manila',
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        hour12: true,
+      })
       await executor.execute(
         `INSERT INTO notifications
            (user_id, message_title, message_body, trigger_type, source_type, source_id,
@@ -344,11 +350,24 @@ export function createRenewalRepository(database: Pool = db, options: { previewC
          ON CONFLICT DO NOTHING`,
         [
           loan.userId,
-          `${loan.title} was renewed. Its new due date is ${newDueAt.toLocaleString('en-PH')}.`,
+          `${loan.title} was renewed. Its new due date is ${formattedDue} (Manila time).`,
           loan.transactionId,
           `loan:${loan.transactionId}:renewal:${renewalNumber}:approved:${renewalRequestId}`,
         ],
       )
+      const { notifyStaffRolesSafe } = await import('../notifications/transaction-notifications.ts')
+      await notifyStaffRolesSafe(database, {
+        key: `loan:${loan.transactionId}:renewal:${renewalNumber}:approved:${renewalRequestId}`,
+        title: 'Book loan renewed',
+        body: `${loan.title} renewed (#${renewalNumber}). New due date: ${formattedDue}.`,
+        type: 'Due Date',
+        sourceType: 'Borrow Transaction',
+        sourceId: loan.transactionId,
+        personUserId: loan.userId,
+        librarianPath: '/librarian/circulation',
+        staffPath: '/staff/circulation',
+        priority: 'Normal',
+      })
     },
   }
 }

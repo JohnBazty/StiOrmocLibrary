@@ -2,6 +2,7 @@ import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../..
 import { db } from '../../config/db.js'
 import { currentDate } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
+import { decodeClosureReason } from './library-schedule.validation.ts'
 import type { AnnouncementInput } from './notification.validation.ts'
 
 export type NotificationActor = { accountId?: number; role?: string }
@@ -135,7 +136,12 @@ export function createNotificationRepository(database: Pool = db) {
       return {
         timezone: 'Asia/Manila',
         weekly: weekly.map((row) => ({ dayOfWeek: Number(row.day_of_week), isOpen: Boolean(row.is_open), opensAt: row.opens_at, closesAt: row.closes_at })),
-        upcomingClosures: closures.map((row) => ({ date: row.closed_date, reason: String(row.reason) })),
+        upcomingClosures: closures.map((row) => {
+          const decoded = decodeClosureReason(String(row.reason))
+          return decoded.startsAt && decoded.endsAt
+            ? { date: row.closed_date, reason: decoded.reason, startsAt: decoded.startsAt, endsAt: decoded.endsAt }
+            : { date: row.closed_date, reason: decoded.reason }
+        }),
       }
     },
 
