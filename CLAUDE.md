@@ -16,6 +16,7 @@ STI College Ormoc's live library system (npm workspaces: `apps/api` Express + Ty
 - **Tests first:** write the failing test, see it fail, then the smallest code that passes. API: `node --test` (`*.test.ts` next to the code, supertest for routes). Web: Vitest + Testing Library.
 - **Reviews before each PR:** one combined `security-reviewer` (security, correctness, React); add `database-reviewer` when the change adds a migration (`database/supabase/`) or concurrent SQL. Fix CRITICAL, HIGH and MEDIUM findings first; fix LOW findings in the main session.
 - **Lean sessions:** one feature per session, at most 3 review agents, no separate `code-reviewer`. Start from the wiki (`wiki/hot.md`, `wiki/entities/StiOrmocLibrary.md`); do not re-read what it already summarises.
+- **Plan and build:** for any feature, behavior fix or port of an approved STI ILMS REA spec, use the `plan-and-build` skill (requirement, plan doc, approval, build, verify, review, finish).
 - **Start session:** when Ethan says `start session`, use the `start-session` skill. It runs the `.cursor/agent-protocol.md` protocol (greet as Agent Alpha, brief, wait) wiki-first.
 - **Live systems:** the hook asks before `db:supabase`, `db:backfill:*`, `auth:create-user`, `tools/ai/smoke-*`, `migrate-*`, `audit-*` and `vercel` commands. Approve only a step Ethan asked for.
 
