@@ -1,62 +1,42 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AddMultipleCopiesModal } from './AddMultipleCopiesModal'
+import { TitleLookup } from './TitleLookup'
 
-const api = vi.hoisted(() => ({ createBulkBook: vi.fn(), lookupIsbn: vi.fn(), searchTitles: vi.fn() }))
-vi.mock('./catalog-api', () => ({ catalogApi: api, ApiError: class extends Error {} }))
-vi.mock('./BookLabelSheet', () => ({ BookLabelSheet: () => null }))
-
-const categories = [{ categoryId: 1, categoryName: 'Programming', shelfLocation: 'Cabinet 4-B' }]
+const api = vi.hoisted(() => ({ searchTitles: vi.fn() }))
+vi.mock('./catalog-api', () => ({ catalogApi: api }))
 const candidate = { title: 'Clean Code: A Handbook', author: 'Robert C. Martin', publisher: 'Prentice Hall', publicationYear: 2008, isbn: '9780132350884', inCatalog: false }
 
-describe('title lookup in the add-book form', () => {
-  it('searches by the typed title and author and fills the form from the picked result without an ISBN re-lookup', async () => {
+// Kept as standalone coverage for the archived module; Add Books no longer mounts it.
+describe('archived title lookup component', () => {
+  it('keeps archived candidate selection independent of the Add Books form', async () => {
     api.searchTitles.mockResolvedValue({ source: 'open_library', localMatches: [{ titleId: 4, title: 'Clean Code', author: 'Robert C. Martin', isbn: null }], candidates: [candidate] })
-    render(<AddMultipleCopiesModal categories={categories} onCreated={() => undefined} onClose={() => undefined} />)
-    const search = screen.getByRole('button', { name: /Search by title or author/i })
-    expect((search as HTMLButtonElement).disabled).toBe(true)
-    fireEvent.change(screen.getByLabelText(/Title \*/i), { target: { value: 'Clean Code' } })
-    fireEvent.change(screen.getByLabelText(/Author \*/i), { target: { value: 'Martin' } })
-    fireEvent.click(search)
-    await waitFor(() => expect(api.searchTitles).toHaveBeenCalledWith('Clean Code', 'Martin'))
-    expect(await screen.findByText(/Already in the catalog: Clean Code/)).toBeTruthy()
-    expect(screen.getByText(/Results from Open Library/)).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Use Clean Code: A Handbook' }))
-    expect((screen.getByLabelText(/Title \*/i) as HTMLInputElement).value).toBe('Clean Code: A Handbook')
-    expect((screen.getByLabelText(/Author \*/i) as HTMLInputElement).value).toBe('Robert C. Martin')
-    expect((screen.getByLabelText(/ISBN \*/i) as HTMLInputElement).value).toBe('9780132350884')
-    expect((screen.getByLabelText(/Publication year/i) as HTMLInputElement).value).toBe('2008')
-    await new Promise((resolve) => setTimeout(resolve, 700))
-    expect(api.lookupIsbn).not.toHaveBeenCalled()
+    const pick = vi.fn(), { rerender } = render(<TitleLookup title="" author="" onPick={pick} />)
+    expect((screen.getByRole('button', { name: 'Search by title or author' }) as HTMLButtonElement).disabled).toBe(true)
+    rerender(<TitleLookup title="Clean Code" author="Martin" onPick={pick} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Search by title or author' }))
+    await waitFor(() => expect(api.searchTitles).toHaveBeenCalledWith('Clean Code','Martin'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Use Clean Code: A Handbook' }))
+    expect(pick).toHaveBeenCalledWith(candidate)
   })
-
-  it('drops results once the title is edited', async () => {
+  it('discards results after changing the title', async () => {
     api.searchTitles.mockResolvedValue({ source: 'open_library', localMatches: [], candidates: [candidate] })
-    render(<AddMultipleCopiesModal categories={categories} onCreated={() => undefined} onClose={() => undefined} />)
-    fireEvent.change(screen.getByLabelText(/Title \*/i), { target: { value: 'Clean Code' } })
-    fireEvent.click(screen.getByRole('button', { name: /Search by title or author/i }))
-    expect(await screen.findByRole('button', { name: 'Use Clean Code: A Handbook' })).toBeTruthy()
-    fireEvent.change(screen.getByLabelText(/Title \*/i), { target: { value: 'Refactoring' } })
+    const pick = vi.fn(), { rerender } = render(<TitleLookup title="Clean Code" author="" onPick={pick} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Search by title or author' }))
+    await screen.findByRole('button', { name: 'Use Clean Code: A Handbook' })
+    rerender(<TitleLookup title="Refactoring" author="" onPick={pick} />)
     expect(screen.queryByRole('button', { name: 'Use Clean Code: A Handbook' })).toBeNull()
   })
-
-  it('shows a search failure as an alert', async () => {
+  it('surfaces a provider failure', async () => {
     api.searchTitles.mockRejectedValue(new Error('Book search is temporarily unavailable.'))
-    render(<AddMultipleCopiesModal categories={categories} onCreated={() => undefined} onClose={() => undefined} />)
-    fireEvent.change(screen.getByLabelText(/Title \*/i), { target: { value: 'Clean Code' } })
-    fireEvent.click(screen.getByRole('button', { name: /Search by title or author/i }))
-    expect((await screen.findByText('Book search is temporarily unavailable.')).getAttribute('role')).toBe('alert')
+    render(<TitleLookup title="Clean Code" author="" onPick={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Search by title or author' }))
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent','Book search is temporarily unavailable.')
   })
-
-  it('searches by author alone', async () => {
-    api.searchTitles.mockResolvedValue({ source: 'google_books', localMatches: [], candidates: [candidate] })
-    render(<AddMultipleCopiesModal categories={categories} onCreated={() => undefined} onClose={() => undefined} />)
-    fireEvent.change(screen.getByLabelText(/Author \*/i), { target: { value: 'Robert Martin' } })
-    fireEvent.click(screen.getByRole('button', { name: /Search by title or author/i }))
-    await waitFor(() => expect(api.searchTitles).toHaveBeenCalledWith('', 'Robert Martin'))
-    fireEvent.click(await screen.findByRole('button', { name: 'Use Clean Code: A Handbook' }))
-    expect((screen.getByLabelText(/Title \*/i) as HTMLInputElement).value).toBe('Clean Code: A Handbook')
+  it('preserves the archived author-only lookup', async () => {
+    api.searchTitles.mockResolvedValue({ source: 'google_books', localMatches: [], candidates: [] })
+    render(<TitleLookup title="" author="Robert Martin" onPick={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Search by title or author' }))
+    await waitFor(() => expect(api.searchTitles).toHaveBeenCalledWith('','Robert Martin'))
   })
 })
-
 afterEach(() => { cleanup(); vi.clearAllMocks() })

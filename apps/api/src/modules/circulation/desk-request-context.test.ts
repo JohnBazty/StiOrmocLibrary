@@ -46,3 +46,11 @@ test('available cart handovers identify the exact borrower and copy without a re
   await assert.rejects(loadDeskRequest(fixture({...row,reservation_status:'cancelled'}).q,{reservationId:9},now),{code:'DESK_REQUEST_NOT_READY'})
   await assert.rejects(loadDeskRequest(fixture({...row,copy_id:null}).q,{reservationId:9},now),{code:'DESK_REQUEST_COPY_MISMATCH'})
 })
+test('Start checkout uses changed scheduled closing hours before the worker updates the stored deadline',async()=>{
+ const row={...ready,scheduled_pickup_date:'2026-11-24',pickup_deadline:'2026-11-24T17:00:00',transaction_status:'Pending'}
+ const q={execute:async(sql:string)=>[sql.includes('library_operating_schedule')?[1,2,3,4,5,6].map(day_of_week=>({day_of_week,is_open:true,opens_at:'07:00:00',closes_at:'19:00:00'})):sql.includes('library_closed_days')?[]:[row]]} as unknown as PoolConnection
+ for(const input of [{reservationId:9},{transactionId:21}]){
+  assert.equal((await loadDeskRequest(q,input,new Date('2026-11-24T09:30:00Z'))).copyId,42)
+  await assert.rejects(loadDeskRequest(q,input,new Date('2026-11-24T11:00:00Z')),{code:'SCHEDULE_PICKUP_CLOSED'})
+ }
+})

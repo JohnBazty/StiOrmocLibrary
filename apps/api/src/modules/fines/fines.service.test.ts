@@ -42,3 +42,53 @@ test('admin fine records expose receipt verification data and support verificati
   const missing=await service.list({search:'NOT-A-RECEIPT',status:'all',type:'all',period:'all',date:null,month:null,week:null,termId:null,from:null,to:null,page:1,limit:25})
   assert.equal(missing.pagination.total,0)
 })
+
+test('outstanding filter includes partially paid balances and excludes fully paid records before pagination',async()=>{
+  const base=database()
+  const mixed={async execute(sql:string){const result=await base.execute(sql);if(sql.includes('FROM fines f INNER JOIN users'))return [[{...(result[0] as RowDataPacket[])[0],paid_amount:0},{...(result[0] as RowDataPacket[])[0],fine_id:3,school_id:'QA-PAYMENT-USER',full_name:'Disposable Student',fine_amount:100,paid_amount:40,payment_status:'Partially Paid'}],[]];return result}} as unknown as Pool
+  const service=createFinesService(mixed)
+  const result=await service.list(service.filters({status:'outstanding'}))
+  assert.equal(result.pagination.total,1);assert.equal(result.items[0].balance,60)
+})
+
+function unpaidDatabase() {
+  const base = database()
+  return { async execute(sql: string) {
+    const result = await base.execute(sql)
+    if (sql.includes('FROM fines f INNER JOIN users')) return [[{ ...(result[0] as RowDataPacket[])[0], paid_amount: 0, payment_status: 'Unpaid' }], []]
+    return result
+  } } as unknown as Pool
+}
+const staff = { accountId: 1, role: 'Librarian' }
+
+test('staff fines and PDF data apply verified principal before filters without changing school allocations', async () => {
+  const service = createFinesService(unpaidDatabase(), { staffPreviewCredits: async () => [
+    { userId: 7, kind: 'Fine', targetId: 2, principalCentavos: 2800, paymentId: 'verified-payment' },
+  ] })
+  const filters = service.filters({})
+  const paid = await service.listForStaff(staff, filters)
+  assert.equal(paid.items[0].status, 'Paid')
+  assert.equal(paid.items[0].paymentAllowed, false)
+  assert.equal(paid.summary.collected, 28)
+  assert.equal(paid.summary.outstanding, 0)
+  assert.equal((await service.listForStaff(staff, service.filters({ status: 'outstanding' }))).pagination.total, 0)
+  assert.equal((await service.report(filters, staff)).items[0].balance, 0)
+  assert.equal((await service.list(filters)).items[0].balance, 28, 'Official school ledger remains unchanged')
+  await assert.rejects(service.listForStaff({ role: 'Student', accountId: 7 }, filters))
+})
+
+test('staff fine partial payments and confirmed refund projections retain only matching borrower credits', async () => {
+  let principalCentavos = 1000
+  const service = createFinesService(unpaidDatabase(), { staffPreviewCredits: async () => [
+    { userId: 7, kind: 'Fine', targetId: 2, principalCentavos, paymentId: 'verified-partial' },
+    { userId: 8, kind: 'Fine', targetId: 2, principalCentavos: 2800, paymentId: 'another-borrower' },
+  ] })
+  const partial = await service.listForStaff(staff, service.filters({}))
+  assert.equal(partial.items[0].balance, 18)
+  assert.equal(partial.items[0].paid, 10)
+  assert.equal(partial.items[0].status, 'Partially Paid')
+  principalCentavos = 0 // Confirmed restore refund removes its applied principal.
+  const restored = await service.listForStaff(staff, service.filters({}))
+  assert.equal(restored.items[0].status, 'Unpaid')
+  assert.equal(restored.items[0].balance, 28)
+})

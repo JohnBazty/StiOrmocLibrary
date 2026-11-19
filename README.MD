@@ -1,5 +1,9 @@
 # STI College Ormoc Integrated Library Management System
 
+## Hosted-system integration — 2026-11-20
+
+Application source matches hosted deployment `dpl_8SSF1zDLKLbi4y6tHoKBB4nkSVe5` for Student, Faculty, Staff, Librarian and Admin. Existing main migration bytes are preserved. Latest applied migration **073**, next unused **074**; no migration is run by merging. See `docs/plans/2026-11-20-hosted-system-main-merge.md` for checks and source boundaries. Older deployment/tracker notes below are historical.
+
 The STI College Ormoc Integrated Library Management System is a web-based library platform for STI College Ormoc. It combines a React administration and user portal with a modular-monolith Node.js API. The active local and deployed database is Supabase Postgres. MySQL was retired on 2026-11-10 (see [docs/mysql-removal-plan.md](docs/mysql-removal-plan.md)).
 
 This guide explains how to prepare a Windows development computer, run and test the system, and prepare a production build.

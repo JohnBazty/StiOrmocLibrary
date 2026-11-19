@@ -11,6 +11,9 @@ export type PhysicalCopyInput = {
   barcode: string
   accessionNumber: string
   shelfLocation: string
+  locationId?: number
+  shelfColumn?: number
+  shelfRow?: number
   conditionStatus: string
   legacyMaterialId: number | null
 }
@@ -29,6 +32,7 @@ export type BookEntryInput = {
 export type BookMetadataInput = Omit<BookEntryInput, 'copy'>
 
 export type ThesisMetadataInput = {
+  researchGroupId?: number | null
   title: string
   authors: string[]
   adviser: string
@@ -145,6 +149,18 @@ function validateYear(value: unknown, field: string, errors: ValidationErrors, r
   return year
 }
 
+export function placementFields(body: Record<string, unknown>, errors: ValidationErrors) {
+  const fields: { locationId?: number; shelfColumn?: number; shelfRow?: number } = {}
+  for (const field of ['locationId', 'shelfColumn', 'shelfRow'] as const) {
+    const value = body[field] ?? body[field.replace(/[A-Z]/g, letter => '_' + letter.toLowerCase())]
+    if (value === undefined) continue
+    const parsed = Number(value)
+    if (!Number.isSafeInteger(parsed) || parsed < 1) errors[field] = 'Choose a positive whole number.'
+    fields[field] = parsed
+  }
+  return fields
+}
+
 function validateCopyInput(value: unknown, required: boolean): { data: PhysicalCopyInput | null; errors: ValidationErrors } {
   const body = value && typeof value === 'object' ? value as Record<string, unknown> : {}
   const errors: ValidationErrors = {}
@@ -169,7 +185,7 @@ function validateCopyInput(value: unknown, required: boolean): { data: PhysicalC
     errors.conditionStatus = 'Condition must be Good, Fair, For Repair, Damaged, or Lost.'
   }
 
-  const data = { barcode, accessionNumber, shelfLocation, conditionStatus, legacyMaterialId }
+  const data = { barcode, accessionNumber, shelfLocation, conditionStatus, legacyMaterialId, ...placementFields(body, errors) }
   return { data, errors }
 }
 
@@ -246,6 +262,8 @@ export function validateThesisMetadata(body: unknown): ValidationResult<ThesisMe
   const categoryId = null
   const researchCode = compactText(input.researchCode).toUpperCase()
   const departmentOrProgram = compactText(input.departmentOrProgram ?? input.department)
+  const researchGroupId = positiveInteger(input.researchGroupId)
+  if (input.researchGroupId !== undefined && !researchGroupId) errors.researchGroupId = 'Choose an active research group.'
   const keywords = optionalText(input.keywords ?? input.keywordsText, 5_000)
 
   if (!title) errors.title = 'Title is required.'
@@ -266,7 +284,7 @@ export function validateThesisMetadata(body: unknown): ValidationResult<ThesisMe
   if (!researchCode) errors.researchCode = 'Research code is required for indexing.'
   else if (researchCode.length > 100) errors.researchCode = 'Research code must not exceed 100 characters.'
 
-  if (!departmentOrProgram) errors.departmentOrProgram = 'Department or program is required.'
+  if (!departmentOrProgram && !researchGroupId) errors.departmentOrProgram = 'Department or program is required.'
   else if (departmentOrProgram.length > 150) errors.departmentOrProgram = 'Department or program must not exceed 150 characters.'
 
 
@@ -282,6 +300,7 @@ export function validateThesisMetadata(body: unknown): ValidationResult<ThesisMe
       categoryId,
       researchCode,
       departmentOrProgram,
+      ...(researchGroupId ? { researchGroupId } : {}),
       keywords,
       copy: null,
     },
@@ -302,9 +321,10 @@ export function validateThesisEntry(body: unknown): ValidationResult<ThesisEntry
   if (!shelfLocation) errors.shelfLocation = 'Shelf location is required.'
   else if (shelfLocation.length > 100) errors.shelfLocation = 'Shelf location must not exceed 100 characters.'
 
+  const placement = placementFields(copyBody, errors)
   return {
     isValid: Object.keys(errors).length === 0,
     errors,
-    data: { ...result.data, categoryId: null, copy: { barcode: '', accessionNumber: '', shelfLocation, conditionStatus: 'Good', legacyMaterialId: null } },
+    data: { ...result.data, categoryId: null, copy: { barcode: '', accessionNumber: '', shelfLocation, conditionStatus: 'Good', legacyMaterialId: null, ...placement } },
   }
 }

@@ -1,12 +1,18 @@
 import type { Pool, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
-import { generateLibrarianAlerts } from './library-alerts.worker.ts'
+import { publishQueuedOverdueReminders } from './queued-overdue-reminders.ts'
 import {
   currentDate,
   dateAddDays,
   dateAddHours,
   formatDate,
 } from '../../config/sql-dialect.js'
+
+/** Unrenewed loans keep the pre-renewal key so already-sent reminders are not sent again. */
+function loanReminderKey(suffix: string) {
+  return `CASE WHEN COALESCE(bt.renewal_count,0)=0 THEN CONCAT('loan:',bt.transaction_id,':${suffix}')
+             ELSE CONCAT('loan:',bt.transaction_id,':renewal:',bt.renewal_count,':${suffix}') END`
+}
 
 async function publishScheduledAnnouncements(database: Pool, now: Date) {
   const connection = await database.getConnection()
@@ -54,7 +60,8 @@ export async function generateNotifications(database: Pool = db, now: Date = new
     [`INSERT INTO notifications
         (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
       SELECT bt.user_id, 'Book due soon', CONCAT(COALESCE(t.title,m.title),' is due on ',${dueSoonFormat},'.'),
-             'Due Date','Borrow Transaction',bt.transaction_id,'/student/borrowing','Important',CONCAT('loan:',bt.transaction_id,':due-12h'),NOW(),NOW()
+             'Due Date','Borrow Transaction',bt.transaction_id,'/student/borrowing','Important',
+             ${loanReminderKey('due-12h')},NOW(),NOW()
         FROM borrow_transactions bt INNER JOIN materials m ON m.material_id=bt.material_id
         LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id LEFT JOIN titles t ON t.title_id=pc.title_id
        WHERE bt.transaction_status='Borrowed' AND bt.lost_confirmed_at IS NULL AND bt.due_at>? AND bt.due_at<=${dateAddHours('?', 12)}
@@ -62,7 +69,8 @@ export async function generateNotifications(database: Pool = db, now: Date = new
     [`INSERT INTO notifications
         (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
       SELECT bt.user_id, 'Book due within one hour', CONCAT(COALESCE(t.title,m.title),' is due at ',${dueHourFormat},'. Return it before the cutoff to avoid a fine.'),
-             'Due Date','Borrow Transaction',bt.transaction_id,'/student/borrowing','Urgent',CONCAT('loan:',bt.transaction_id,':due-1h'),NOW(),NOW()
+             'Due Date','Borrow Transaction',bt.transaction_id,'/student/borrowing','Urgent',
+             ${loanReminderKey('due-1h')},NOW(),NOW()
         FROM borrow_transactions bt INNER JOIN materials m ON m.material_id=bt.material_id
         LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id LEFT JOIN titles t ON t.title_id=pc.title_id
        WHERE bt.transaction_status='Borrowed' AND bt.lost_confirmed_at IS NULL AND bt.due_at>? AND bt.due_at<=${dateAddHours('?', 1)}
@@ -70,7 +78,8 @@ export async function generateNotifications(database: Pool = db, now: Date = new
     [`INSERT INTO notifications
         (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
       SELECT bt.user_id,'Book is overdue',CONCAT(COALESCE(t.title,m.title),' is overdue. Your fine and clearance status have been updated.'),
-             'Overdue Penalty','Borrow Transaction',bt.transaction_id,'/student/clearance','Urgent',CONCAT('loan:',bt.transaction_id,':overdue'),NOW(),NOW()
+             'Overdue Penalty','Borrow Transaction',bt.transaction_id,'/student/clearance','Urgent',
+             ${loanReminderKey('overdue')},NOW(),NOW()
         FROM borrow_transactions bt INNER JOIN materials m ON m.material_id=bt.material_id
         LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id LEFT JOIN titles t ON t.title_id=pc.title_id
        WHERE bt.transaction_status IN ('Borrowed','Overdue') AND bt.lost_confirmed_at IS NULL AND bt.due_at<=?
@@ -117,8 +126,8 @@ export async function generateNotifications(database: Pool = db, now: Date = new
     inserted += (result as ResultSetHeader).affectedRows
   }
   const publishedAnnouncements = await publishScheduledAnnouncements(database, now)
-  const libraryAlerts = await generateLibrarianAlerts(database, now)
-  return { inserted, publishedAnnouncements, libraryAlerts }
+  const publishedReminders = await publishQueuedOverdueReminders(database)
+  return { inserted, publishedAnnouncements, publishedReminders }
 }
 
 export function startNotificationWorker(database: Pool = db, intervalMs = 60_000) {

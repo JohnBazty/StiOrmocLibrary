@@ -1,9 +1,10 @@
+import { readCollectionSnapshot } from '../catalog/collection-review.service.ts'
+import { localPaymentPreview } from '../payments/payments.preview.ts'
 import type { Pool, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { requireLibraryActor } from '../../core/library-permissions.ts'
 import { libraryState } from '../attendance/attendance-operations.service.ts'
 import { createClearanceService } from '../clearance/clearance.service.ts'
-import { readCollectionSnapshot } from '../catalog/collection-review.service.ts'
 import { activeEnrollmentSemester, rosterRegistrationRequired } from '../enrollment/enrollment-policy.ts'
 
 export function createWorkspaceTasksService(database: Pool = db) {
@@ -47,9 +48,9 @@ export function createWorkspaceTasksService(database: Pool = db) {
         const [admin] = await q.execute<RowDataPacket[]>(`SELECT
           (SELECT COUNT(*) FROM accounts WHERE account_status='Active') users,
           (SELECT COUNT(*) FROM lost_book_reports WHERE report_status='Pending') losses,
-          (SELECT COUNT(*) FROM ink_repository WHERE available_bottles<=low_stock_threshold_bottles)+
-          (SELECT COUNT(*) FROM bond_paper_stocks WHERE unopened_reams<=low_stock_threshold_reams) low_supplies`)
-        const clearance = await createClearanceService(q as unknown as Pool).activeStudentSummary()
+          (SELECT COUNT(*) FROM ink_repository WHERE deleted_at IS NULL AND available_bottles<=low_stock_threshold_bottles)+
+          (SELECT COUNT(*) FROM bond_paper_stocks WHERE deleted_at IS NULL AND unopened_reams<=low_stock_threshold_reams) low_supplies`)
+        const clearance = await createClearanceService(q as unknown as Pool, { staffPreviewCredits: localPaymentPreview ? localPaymentPreview.staffCredits.bind(localPaymentPreview, actor) : undefined }).activeStudentSummary(actor)
         const collection = await readCollectionSnapshot(q)
         cards.push(
           { label: 'Active accounts', value: Number(admin[0].users), path: '/librarian/users' },

@@ -13,19 +13,20 @@ function catalogPool(options: { recordType?: 'Book' | 'Research/Thesis'; rowVers
     async rollback() { state.rollbacks += 1 },
     release() {},
     async execute(sql: string, values: unknown[] = []) {
+      if (sql.includes('pg_advisory_xact_lock')) return [[]]
       state.statements.push({ sql, values })
       if (sql.includes('FROM titles t') && sql.includes('LIMIT 1 FOR UPDATE')) return [[{
         title_id: 14, title: 'Harry Potter', record_type: recordType, lifecycle_status: 'Active',
         category_id: 2, category_name: 'Action', category_shelf_location: 'Shelf A', row_version: options.rowVersion ?? 3,
       }]]
-      if (sql.includes('FROM categories c') && sql.includes('floor_plan_shelves')) return [[{
+      if (sql.includes('FROM categories c') && sql.includes('catalog_locations')) return [[{
         category_id: 8, category_name: 'Fantasy', shelf_location: 'Shelf F', shelf_id: 11,
       }]]
-      if (sql.includes('FROM physical_copies') && sql.includes('FOR UPDATE')) return [[
+      if (sql.includes('FROM physical_copies') && sql.includes('SELECT shelf_location')) return [[
         { physical_copy_id: 30, material_id: 40, shelf_location: 'Shelf A' },
         { physical_copy_id: 31, material_id: 41, shelf_location: 'Shelf A' },
       ]]
-      if (sql.includes('FROM research_inventory') && sql.includes('FOR UPDATE')) return [[
+      if (sql.includes('FROM research_inventory') && sql.includes('SELECT shelf_location')) return [[
         { research_inventory_id: 51, shelf_location: 'Shelf A' },
       ]]
       if (sql.startsWith('UPDATE') || sql.includes('UPDATE ')) return [{ affectedRows: 1 }]
@@ -36,7 +37,7 @@ function catalogPool(options: { recordType?: 'Book' | 'Research/Thesis'; rowVers
   return { state, database: { getConnection: async () => connection } as unknown as Pool }
 }
 
-test('changes a book title category and synchronizes every active physical copy in one audited transaction', async () => {
+test('changes a book title category and preserves every copy placement in one transaction', async () => {
   const { state, database } = catalogPool()
   const result = await createCatalogManagementService(database).changeTitleCategory(14, { targetCategoryId: 8, expectedRowVersion: 3 }, 5)
   assert.equal(result.categoryName, 'Fantasy')
@@ -46,18 +47,18 @@ test('changes a book title category and synchronizes every active physical copy 
   assert.equal(result.rowVersion, 4)
   assert.equal(state.commits, 1)
   assert.equal(state.rollbacks, 0)
-  assert.ok(state.statements.some(({ sql, values }) => sql.includes('UPDATE physical_copies') && values[0] === 'Shelf F'))
-  assert.ok(state.statements.some(({ sql, values }) => sql.includes('UPDATE materials') && values[0] === 8 && values[1] === 'Shelf F'))
+  assert.equal(state.statements.some(({ sql }) => sql.includes('UPDATE physical_copies')), false)
+  assert.ok(state.statements.some(({ sql, values }) => sql.includes('UPDATE materials') && values[0] === 8 && !sql.includes('shelf_location =')))
   assert.ok(state.statements.some(({ sql }) => sql.includes('INSERT INTO floor_plan_events')))
 })
 
-test('changes a research title category and synchronizes its active research inventory', async () => {
+test('research classification uses academic groups without changing shelf locations or book categories', async () => {
   const { state, database } = catalogPool({ recordType: 'Research/Thesis' })
-  const result = await createCatalogManagementService(database).changeTitleCategory(14, { targetCategoryId: 8, expectedRowVersion: 3 }, 5)
-  assert.equal(result.researchCopies, 1)
-  assert.equal(result.bookCopies, 0)
-  assert.ok(state.statements.some(({ sql, values }) => sql.includes('UPDATE research_inventory') && values[0] === 'Shelf F'))
-  assert.equal(state.statements.some(({ sql }) => sql.includes('UPDATE physical_copies')), false)
+  await assert.rejects(createCatalogManagementService(database).changeTitleCategory(14, { targetCategoryId: 8, expectedRowVersion: 3 }, 5),
+    (error: unknown) => error instanceof HttpError && error.code === 'RESEARCH_ACADEMIC_GROUP_REQUIRED')
+  assert.equal(state.commits, 0)
+  assert.equal(state.rollbacks, 1)
+  assert.equal(state.statements.some(({ sql }) => /^\s*(UPDATE|INSERT)/.test(sql)), false)
 })
 
 test('rolls back a stale category change without updating inventory', async () => {

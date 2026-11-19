@@ -1,3 +1,4 @@
+import JSZip from 'jszip'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { PDFDocument } from 'pdf-lib'
@@ -42,4 +43,15 @@ test('counts converted DOCX pages and keeps the rendered PDF for staff', async (
   assert.equal(inspected.pageCount, 2)
   assert.equal(inspected.printableName, 'thesis.pdf')
   assert.deepEqual(inspected.printableFile.buffer, rendered)
+})
+
+
+test('rejects malformed DOCX archives before starting a renderer',async()=>{
+ const file=uploaded(Buffer.from('PK[Content_Types].xml corrupt'),'broken.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+ await assert.rejects(inspectPrintDocument(file),{code:'PRINT_DOCX_INVALID'})
+})
+test('rejects a small compressed DOCX with excessive expanded content before rendering',async()=>{
+ const zip=new JSZip();zip.file('[Content_Types].xml','<Types/>');zip.file('word/document.xml','x'.repeat(26*1024*1024))
+ const file=uploaded(await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'}),'oversized.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+ await assert.rejects(inspectPrintDocument(file),{code:'PRINT_DOCX_TOO_COMPLEX'})
 })

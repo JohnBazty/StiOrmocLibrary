@@ -7,7 +7,7 @@ import { ProfileAvatarPage } from './ProfileAvatarPage'
 const render = (ui: ReactElement) => baseRender(<MemoryRouter>{ui}</MemoryRouter>)
 const api = vi.hoisted(() => ({ myProfile: vi.fn(), saveMyProfile: vi.fn() }))
 vi.mock('./users-api', () => ({ usersApi: api }))
-vi.mock('../auth/auth-storage', () => ({ getAccessToken: () => 'test-token' }))
+vi.mock('../auth/auth-storage', () => ({ getCsrfToken: () => 'test-token' }))
 
 beforeEach(() => {
   api.myProfile.mockResolvedValue({ id: 9, role: 'Student', account_status: 'Active', school_id: 'STI-9', email: 'student@ormoc.sti.edu.ph', first_name: 'Test', last_name: 'Student', program_strand: 'BSIT', year_grade_level: '2nd Year' })
@@ -16,13 +16,13 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.clearAllMocks(); vi.unstubAllGlobals() })
 
-it('lets the owner edit academic details while school email and ID stay fixed', async () => {
-  render(<ProfileAvatarPage />)
-  expect((await screen.findByDisplayValue('student@ormoc.sti.edu.ph') as HTMLInputElement).readOnly).toBe(true)
-  expect((screen.getByDisplayValue('STI-9') as HTMLInputElement).readOnly).toBe(true)
-  fireEvent.change(screen.getByRole('textbox', { name: 'Year / grade level' }), { target: { value: '3rd Year' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Save my profile' }))
-  await waitFor(() => expect(api.saveMyProfile).toHaveBeenCalledWith({ first_name: 'Test', last_name: 'Student', program_strand: 'BSIT', year_grade_level: '3rd Year' }))
+it('shows personal and academic details as read-only with no save action', async () => {
+ render(<ProfileAvatarPage />)
+ await screen.findByDisplayValue('STI-9')
+ for(const label of ['First name','Last name','Program / strand','Year / grade level','School ID','School email'])expect((screen.getByRole('textbox',{name:label}) as HTMLInputElement).readOnly).toBe(true)
+ expect(screen.queryByRole('button',{name:'Save my profile'})).toBeNull()
+ expect(screen.getByText('Profile details are view-only. Contact library staff for corrections.')).toBeTruthy()
+ expect(api.saveMyProfile).not.toHaveBeenCalled()
 })
 
 it('opens school details independently with read-only identity fields', async () => {
@@ -77,6 +77,7 @@ it('shows the new picture immediately after it is saved', async () => {
   const image = new File(['image'], 'new-picture.png', { type: 'image/png' })
   fireEvent.change(screen.getByLabelText('New picture'), { target: { files: [image] } })
   fireEvent.click(screen.getByRole('button', { name: 'Save picture' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
   await screen.findByText('Your profile picture has been updated.')
   const upload = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')
   expect((upload?.[1]?.body as FormData).get('image')).toBe(image)

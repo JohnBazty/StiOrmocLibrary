@@ -4,14 +4,13 @@ import { LibraryOperationsPanel } from './LibraryOperationsPanel'
 import { PageHeader, SectionCard } from '../../components/ui'
 import { attendanceApi, type AttendanceRow } from './attendance-api'
 
-const manilaDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' })
+const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+const filters = { period: 'daily' as const, date: today, weekStart: today, year: Number(today.slice(0, 4)), month: Number(today.slice(5, 7)), academicTermId: '', q: '', role: '', purpose: '', presence: '', page: 1, limit: 50 }
 
 export function StaffAttendancePage() {
   const [rows, setRows] = useState<AttendanceRow[]>([])
   const [error, setError] = useState('')
   async function load() {
-    const today = manilaDate.format(new Date())
-    const filters = { period: 'daily' as const, date: today, weekStart: today, year: Number(today.slice(0, 4)), month: Number(today.slice(5, 7)), academicTermId: '', q: '', role: '', purpose: '', presence: '', page: 1, limit: 50 }
     try { setRows((await attendanceApi.logs(filters)).rows); setError('') }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to load attendance.') }
   }

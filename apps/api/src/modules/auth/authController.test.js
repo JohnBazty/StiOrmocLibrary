@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createLoginController, createLogoutController } from './authController.js'
+import { createLoginController, createLogoutController, currentUser } from './authController.js'
+import { ACCESS_COOKIE } from './jwt-auth.middleware.ts'
 
 function createResponse() {
   return {
@@ -109,17 +110,29 @@ test('uses a generic error for unknown users and bad passwords', async () => {
   }
 })
 
+test('the legacy /api/auth/me answers 401, not a crash, for a JWT-cookie caller without a session user', () => {
+  const response = { ...createResponse(), set() { return this } }
+  currentUser({ session: {} }, response)
+  assert.equal(response.statusCode, 401)
+})
+
 function logoutFixture(type, revoke = async () => true, destroyError = null) {
-  const calls = []
+  const calls = [], cleared = []
   const request = { session: { user: { id: 12 }, authVersion: 9, destroy(callback) { calls.push('destroy'); callback(destroyError) } } }
   const response = {
     locals: { authenticationType: type, authenticatedUser: { accountId: 5, authVersion: 4 } },
-    clearCookie() { calls.push('clearCookie') },
+    clearCookie(name) { if (!cleared.length) calls.push('clearCookie'); cleared.push(name) },
     redirect(status, url) { calls.push({ status, url }) },
   }
   const controller = createLogoutController({ sessions: { async revokeCurrentVersion(identity) { calls.push(identity); return revoke(identity) } } })
-  return { request, response, calls, controller }
+  return { request, response, calls, cleared, controller }
 }
+
+test('sign-out clears the httpOnly access cookie as well as the server session cookie', async () => {
+  const f = logoutFixture('jwt')
+  await f.controller(f.request, f.response, error => { throw error })
+  assert.ok(f.cleared.includes(ACCESS_COOKIE))
+})
 
 test('logout revokes the authenticated bearer account/version before destroying a coexisting cookie', async () => {
   const f = logoutFixture('jwt')

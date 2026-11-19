@@ -4,6 +4,8 @@ import type { Pool, PoolConnection, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
+import { isInstitutionalEmail } from './auth.validation.js'
+import { resetRecipientHash } from './password-reset-links.policy.ts'
 import { sendSchoolPasswordResetCode } from './school-email.sender.ts'
 
 type Account = RowDataPacket & { account_id: number; user_id: number; email: string; password_hash: string; auth_version: number }
@@ -24,12 +26,18 @@ const provisionedStaff = `a.role='Staff' AND EXISTS (
 const invalidCode = () => new HttpError(422, 'RECOVERY_CODE_INVALID', 'The code is incorrect, expired, or already used. Request a new code if needed.')
 const locked = () => new HttpError(429, 'RECOVERY_LOCKED', 'Three incorrect codes were entered. Wait 15 minutes before requesting or verifying another code. Normal login is still available.')
 const invalidReset = () => new HttpError(422, 'RECOVERY_TOKEN_INVALID', 'This password reset has expired or already been used. Start again.')
-const digest = (id: string, value: string) => createHmac('sha256', env.jwt.secret).update(`password-recovery:${id}:${value}`).digest('hex')
+export const recoveryDigest = (id: string, value: string) => createHmac('sha256', env.jwt.secret).update(`password-recovery:${id}:${value}`).digest('hex')
 const matches = (stored: string | null, id: string, value: string) => {
   if (!stored || !/^[a-f0-9]{64}$/.test(stored)) return false
-  return timingSafeEqual(Buffer.from(stored, 'hex'), Buffer.from(digest(id, value), 'hex'))
+  return timingSafeEqual(Buffer.from(stored, 'hex'), Buffer.from(recoveryDigest(id, value), 'hex'))
 }
 const future = (value: Date | null, now: number) => value != null && new Date(value).getTime() > now
+/** One new-password rule for the email reset and the signed-in change. */
+export function assertNewPassword(password: unknown, confirmation: unknown): asserts password is string {
+  if (typeof password !== 'string' || password.length < 8 || Buffer.byteLength(password) > 72 || password !== confirmation) {
+    throw new HttpError(422, 'AUTH_VALIDATION_FAILED', 'Use a password of at least 8 characters (at most 72 bytes), and enter the same confirmation.')
+  }
+}
 const object = (body: unknown) => body && typeof body === 'object' ? body as Record<string, unknown> : {}
 
 export function createPasswordRecoveryService(
@@ -51,13 +59,13 @@ export function createPasswordRecoveryService(
     finally { connection.release() }
   }
   async function eligible(connection: PoolConnection, clause: string, values: Array<string | number>, portal?: 'student' | 'staff') {
-    const role = portal === 'student' ? "a.role='Student'" : portal === 'staff' ? provisionedStaff : `(a.role='Student' OR (${provisionedStaff}))`
+    const role = portal === 'student' ? "a.role='Student'" : portal === 'staff' ? provisionedStaff : "a.role IN ('Student','Faculty','Staff','Librarian','Admin')"
     const [rows] = await connection.execute<Account[]>(`SELECT a.account_id,a.user_id,a.password_hash,a.auth_version,u.email
       FROM accounts a JOIN users u ON u.user_id=a.user_id
       WHERE ${clause} AND ${role} AND a.account_status='Active' AND u.account_status='Active'
       FOR UPDATE OF a,u`, values)
     const account = rows[0]
-    return account && /^[^\s@]+@ormoc\.sti\.edu\.ph$/i.test(account.email) ? account : null
+    return account && isInstitutionalEmail(account.email) ? account : null
   }
   async function loadChallenge(connection: PoolConnection, publicId: string) {
     const [lookup] = await connection.execute<RowDataPacket[]>('SELECT account_id FROM account_recovery_challenges WHERE public_id=?', [publicId])
@@ -92,7 +100,7 @@ export function createPasswordRecoveryService(
           public_id=EXCLUDED.public_id,account_version=EXCLUDED.account_version,code_hash=EXCLUDED.code_hash,
           code_expires_at=EXCLUDED.code_expires_at,code_sent_at=EXCLUDED.code_sent_at,code_attempts=EXCLUDED.code_attempts,
           locked_until=NULL,reset_token_hash=NULL,reset_expires_at=NULL,updated_at=NOW()`,
-        [account.account_id, publicId, account.auth_version, digest(publicId, code), new Date(timestamp + CODE_LIFETIME), new Date(timestamp), attempts])
+        [account.account_id, publicId, account.auth_version, recoveryDigest(publicId, code), new Date(timestamp + CODE_LIFETIME), new Date(timestamp), attempts])
         return { email: account.email, code }
       })
       if (delivery) {
@@ -123,7 +131,7 @@ export function createPasswordRecoveryService(
         }
         const token = randomBytes(32).toString('hex')
         await connection.execute(`UPDATE account_recovery_challenges SET code_hash=NULL,reset_token_hash=?,reset_expires_at=?,updated_at=NOW()
-          WHERE account_id=?`, [digest(publicId, token), new Date(now() + RESET_LIFETIME), account.account_id])
+          WHERE account_id=?`, [recoveryDigest(publicId, token), new Date(now() + RESET_LIFETIME), account.account_id])
         return { data: { resetToken: token, expiresIn: RESET_LIFETIME / 1000 } }
       })
       // Throw AFTER commit so failed-code counters/locks persist.
@@ -134,21 +142,26 @@ export function createPasswordRecoveryService(
       const input = object(body)
       const publicId = String(input.challenge_id ?? '')
       const token = String(input.reset_token ?? '')
-      const password = typeof input.password === 'string' ? input.password : ''
-      if (password.length < 8 || Buffer.byteLength(password) > 72 || password !== input.confirm_password) {
-        throw new HttpError(422, 'AUTH_VALIDATION_FAILED', 'Use a password of at least 8 characters (at most 72 bytes), and enter the same confirmation.')
-      }
+      const password = input.password
+      assertNewPassword(password, input.confirm_password)
       if (!PUBLIC_ID.test(publicId) || !/^[a-f0-9]{64}$/.test(token)) throw invalidReset()
       await transaction(async connection => {
         const record = await loadChallenge(connection, publicId)
         if (!record || !future(record.challenge.reset_expires_at, now()) || !matches(record.challenge.reset_token_hash, publicId, token)) throw invalidReset()
+        const [links]=await connection.execute<RowDataPacket[]>('SELECT recipient_hash FROM password_reset_link_deliveries WHERE public_id=?',[publicId])
+        if(links[0]&&links[0].recipient_hash!==resetRecipientHash(publicId,record.account.email))throw invalidReset()
         if (await passwordHasher.compare(password, record.account.password_hash)) {
           throw new HttpError(422, 'PASSWORD_UNCHANGED', 'Choose a password different from your current password.')
         }
         const hash = await passwordHasher.hash(password, 12)
-        await connection.execute('UPDATE accounts SET password_hash=?,auth_version=auth_version+1,updated_at=NOW() WHERE account_id=?', [hash, record.account.account_id])
+        await connection.execute('UPDATE accounts SET password_hash=?,must_change_password=FALSE,auth_version=auth_version+1,updated_at=NOW() WHERE account_id=?', [hash, record.account.account_id])
         await connection.execute('UPDATE users SET password_hash=?,auth_version=auth_version+1,updated_at=NOW() WHERE user_id=?', [hash, record.account.user_id])
         await connection.execute('UPDATE account_recovery_challenges SET code_hash=NULL,reset_token_hash=NULL,reset_expires_at=NULL,code_attempts=0,locked_until=NULL,updated_at=NOW() WHERE account_id=?', [record.account.account_id])
+        await connection.execute('UPDATE library_login_sessions SET revoked_at=NOW() WHERE account_id=? AND revoked_at IS NULL',[record.account.account_id])
+        await connection.execute('UPDATE login_otp_challenges SET consumed_at=NOW(),code_hash=NULL WHERE account_id=? AND consumed_at IS NULL',[record.account.account_id])
+        await connection.execute('DELETE FROM login_device_switches WHERE account_id=?',[record.account.account_id])
+        await connection.execute(`DELETE FROM auth_sessions WHERE session_data::json->'user'->>'id'=?`,[String(record.account.user_id)])
+        await connection.execute(`INSERT INTO account_management_events(account_id,actor_account_id,action_code,previous_status,new_status,reason)VALUES(?,?,'PasswordChanged','Active','Active','Password recovered through verified school email.')`,[record.account.account_id,record.account.account_id])
       })
       return { message: 'Password updated. Sign in with your new password.' }
     },

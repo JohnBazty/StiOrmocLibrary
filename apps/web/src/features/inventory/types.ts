@@ -17,6 +17,7 @@ export type InventoryCopy = {
   shelf_column: number
   shelf_row: number
   call_number: string | null
+  dewey_code?: string | null
   condition_status: string
   availability_status: string
   last_verified_at: string | null
@@ -65,6 +66,8 @@ export type ThesisInventoryRow = {
   condition_state: 'good' | 'fair' | 'for_repair' | 'damaged' | 'lost'
   availability_status: 'available' | 'unavailable' | 'borrowed' | 'reserved'
   shelf_location: string
+  shelf_column?: number
+  shelf_row?: number
   last_audited_at: string | null
   row_version: number
 }

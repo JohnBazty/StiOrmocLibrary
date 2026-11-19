@@ -18,14 +18,27 @@ describe('InventoryDashboard', () => {
     }))
   })
 
+  it('shows one resource inventory at a time and preserves the book filter', async () => {
+    render(<InventoryDashboard />)
+    await screen.findByText('No physical copies found')
+    expect(screen.queryByRole('heading',{name:'Research and thesis inventory'})).toBeNull()
+    fireEvent.change(screen.getByRole('combobox',{name:'Filter by condition'}),{target:{value:'Lost'}})
+    fireEvent.click(screen.getByRole('button',{name:'Research & thesis'}))
+    expect(screen.getByRole('heading',{name:'Research and thesis inventory'})).toBeTruthy()
+    expect(screen.queryByRole('heading',{name:'Physical copy register'})).toBeNull()
+    fireEvent.click(screen.getByRole('button',{name:'Books'}))
+    expect((screen.getByRole('combobox',{name:'Filter by condition'}) as HTMLSelectElement).value).toBe('Lost')
+  })
+
   it('renders zero metrics and the explicit empty state from a live empty response', async () => {
     render(<InventoryDashboard />)
     expect(await screen.findByText('No physical copies found')).toBeTruthy()
     expect(screen.getByText('0 physical copies')).toBeTruthy()
     expect(screen.getByText('Scanner listening')).toBeTruthy()
     expect(screen.queryByText('CSV')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Download PDF' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Download Thesis PDF' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Export book inventory PDF' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button',{name:'Research & thesis'}))
+    expect(screen.getByRole('button', { name: 'Export research inventory PDF' })).toBeTruthy()
   })
 
   it('opens row actions and enables removal only for Lost copies with no active allocation', async () => {
@@ -53,7 +66,9 @@ describe('InventoryDashboard', () => {
       expect(dropdown.open).toBe(false)
       fireEvent.click(trigger)
       expect(dropdown.open).toBe(true)
-      return { trigger, dropdown, actions: within(dropdown) }
+      const actions = within(screen.getByRole('group', { name: `Actions for ${accession}` }))
+      expect(trigger.closest('tr')?.contains(actions.getByRole('button', { name: 'Move copies' }))).toBe(false)
+      return { trigger, dropdown, actions }
     }
 
     const borrowed = await openActions('ACC-1')
@@ -68,6 +83,7 @@ describe('InventoryDashboard', () => {
     expect(availableDelete.disabled).toBe(true)
     expect(availableDelete.title).toContain('Mark this copy as Lost')
     expect(lostDelete.disabled).toBe(false)
+    fireEvent.click(screen.getByRole('button',{name:'Research & thesis'}))
     const damagedThesis = await openActions('TH-10')
     const damagedThesisDelete = damagedThesis.actions.getByRole('button', { name: 'Delete TH-10' }) as HTMLButtonElement
     const lostThesis = await openActions('TH-11')
@@ -78,14 +94,16 @@ describe('InventoryDashboard', () => {
 
     fireEvent.keyDown(lostThesis.trigger, { key: 'Escape' })
     expect(lostThesis.dropdown.open).toBe(false)
-    available.dropdown.open = true
-    fireEvent.click(available.actions.getByRole('button', { name: 'Make unavailable' }))
+    fireEvent.click(screen.getByRole('button',{name:'Books'}))
+    fireEvent.click(available.trigger)
+    fireEvent.click(screen.getByRole('button', { name: 'Make unavailable' }))
     expect(available.dropdown.open).toBe(false)
     expect(screen.getByRole('alertdialog', { name: 'Make copy unavailable?' })).toBeTruthy()
+    expect(screen.getByText('Students cannot borrow this copy. They can still reserve the title and wait. This copy is not set aside for anyone until you make it available again.')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
     fireEvent.click(available.trigger)
-    fireEvent.click(available.actions.getByRole('button', { name: 'Report lost' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Report lost' }))
     const reportLost = within(screen.getByRole('dialog', { name: 'Update physical condition' }))
     expect((reportLost.getByRole('radio', { name: 'lost' }) as HTMLInputElement).checked).toBe(true)
   })

@@ -2,7 +2,7 @@ import { Router, type NextFunction, type Request, type Response } from 'express'
 import type { RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 
-type Notice = { id: string; kind: 'profile' | 'status'; title: string; body: string; createdAt: string; actionPath: string }
+type Notice = { id: string; kind: 'profile' | 'status' | 'lost'; title: string; body: string; createdAt: string; actionPath: string }
 const timestamp = (value: unknown) => new Date(value as string | number | Date).toISOString()
 
 export async function listAdminNotifications(database: Pick<typeof db, 'execute'> = db, prefix: '/admin' | '/librarian' = '/admin') {
@@ -22,9 +22,15 @@ export async function listAdminNotifications(database: Pick<typeof db, 'execute'
       body: profile ? `${row.full_name} (${row.school_id}) changed ${fields.join(', ') || 'profile details'}.`
         : `${row.full_name} (${row.school_id}) was ${created ? 'set up as Staff' : deactivated ? 'deactivated' : 'reactivated'}.`,
       createdAt: timestamp(row.created_at),
-      actionPath: row.account_status === 'Active' ? `${prefix}/users` : `${prefix}/user-archive` }
+      actionPath: `${prefix}/users` }
   })
-  return { activity }
+  const [reports] = await database.execute<RowDataPacket[]>(`SELECT admin_notification_id,message_title,message_body,created_at
+    FROM admin_notifications WHERE event_type='lost_book_reported'
+    ORDER BY created_at DESC,admin_notification_id DESC LIMIT 30`, [])
+  activity.push(...reports.map(row => ({ id: `lost-${row.admin_notification_id}`, kind: 'lost' as const,
+    title: String(row.message_title), body: String(row.message_body), createdAt: timestamp(row.created_at), actionPath: `${prefix}/clearance` })))
+  activity.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  return { activity: activity.slice(0, 30) }
 }
 
 export const adminNotificationsRouter = Router()

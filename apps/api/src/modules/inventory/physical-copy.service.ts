@@ -1,3 +1,4 @@
+import { assertShelfCapacity, lockShelfCapacity } from '../catalog/shelf-capacity.service.ts'
 import { HttpError } from '../../core/http-error.ts'
 import type { PhysicalCopyMutationTransaction } from './physical-copy-mutation.middleware.ts'
 import type { Pool, RowDataPacket } from '../../config/db.js'
@@ -152,7 +153,7 @@ export async function updatePhysicalCopy(database: Pool = db, copyIdValue: unkno
       'Use /api/inventory/copies/condition or /api/inventory/copies/availability for audited state changes.',
     )
   }
-  if (shelfLocation === undefined) {
+  if (shelfLocation === undefined && body.locationId === undefined) {
     throw new HttpError(422, 'PHYSICAL_COPY_UPDATE_EMPTY', 'Provide a shelf location to update.')
   }
   if (shelfLocation !== undefined && (!shelfLocation || shelfLocation.length > 100)) throw new HttpError(422, 'SHELF_LOCATION_INVALID', 'Shelf location is required and must not exceed 100 characters.')
@@ -160,22 +161,25 @@ export async function updatePhysicalCopy(database: Pool = db, copyIdValue: unkno
   const connection = await database.getConnection()
   try {
     await connection.beginTransaction()
+    await lockShelfCapacity(connection)
     const [copyRows] = await connection.execute<RowDataPacket[]>(
-      `SELECT physical_copy_id, material_id, lifecycle_status, availability_status
-         FROM physical_copies WHERE physical_copy_id = ? LIMIT 1 FOR UPDATE`, [copyId],
+      `SELECT pc.physical_copy_id, pc.material_id, pc.title_id, pc.shelf_location, pc.shelf_column, pc.shelf_row, pc.lifecycle_status, pc.availability_status,t.lifecycle_status AS title_lifecycle_status
+         FROM physical_copies pc JOIN titles t ON t.title_id=pc.title_id WHERE pc.physical_copy_id = ? LIMIT 1 FOR UPDATE OF pc,t`, [copyId],
     )
     const copy = copyRows[0]
     if (!copy) throw new HttpError(404, 'PHYSICAL_COPY_NOT_FOUND', 'The requested physical copy does not exist.')
-    if (copy.lifecycle_status !== 'Active') throw new HttpError(422, 'PHYSICAL_COPY_ARCHIVED', 'Restore the physical copy before editing it.')
+    if (copy.lifecycle_status !== 'Active' || copy.title_lifecycle_status !== 'Active') throw new HttpError(422, 'PHYSICAL_COPY_ARCHIVED', 'Restore the physical copy before editing it.')
 
-    const assignments: string[] = []
-    const parameters: Array<string | number> = []
-    if (shelfLocation !== undefined) { assignments.push('shelf_location = ?'); parameters.push(shelfLocation) }
-    parameters.push(copyId)
+    const placement = await assertShelfCapacity(connection, {
+      locationId: body.locationId, shelfLocation,
+      shelfColumn: body.shelfColumn ?? (shelfLocation === copy.shelf_location ? copy.shelf_column : 1),
+      shelfRow: body.shelfRow ?? (shelfLocation === copy.shelf_location ? copy.shelf_row : 1),
+    }, 1, { bookCopyIds: [copyId] })
     await connection.execute(
-      `UPDATE physical_copies SET ${assignments.join(', ')}, row_version = row_version + 1, updated_at = NOW()
-        WHERE physical_copy_id = ?`, parameters,
+      `UPDATE physical_copies SET shelf_location = ?, shelf_column = ?, shelf_row = ?, row_version = row_version + 1, updated_at = NOW()
+        WHERE physical_copy_id = ?`, [placement.shelfLocation, placement.shelfColumn, placement.shelfRow, copyId],
     )
+    if (copy.material_id !== null) await connection.execute('UPDATE materials SET shelf_location = ?, updated_at = NOW() WHERE material_id = ?', [placement.shelfLocation, copy.material_id])
     await connection.commit()
     return { physicalCopyId: copyId, updated: true }
   } catch (error) {

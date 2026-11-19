@@ -3,8 +3,11 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Button } from '../../components/ui'
 import { deskCirculationApi, type ReturnPreview } from './desk-circulation-api'
+import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 
-export function CirculationReturnDialog({ barcode, onClose, onReturned }: {
+export function CirculationReturnDialog({ barcode, onClose, onReturned, expectedLoan, portalRoot }: {
+  portalRoot?:HTMLElement
+  expectedLoan?:{id:number;kind:'TakeHome'|'InLibrary'}
   barcode: string; onClose: () => void; onReturned: (message: string) => void
 }) {
   const [preview, setPreview] = useState<ReturnPreview | null>(null)
@@ -13,6 +16,7 @@ export function CirculationReturnDialog({ barcode, onClose, onReturned }: {
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
   const [assessment, setAssessment] = useState(false)
+  const { ask, dialog: confirmSave } = useConfirmSave()
   const [condition, setCondition] = useState('')
   const [note, setNote] = useState('')
   const dialog = useRef<HTMLDivElement>(null)
@@ -45,18 +49,19 @@ export function CirculationReturnDialog({ barcode, onClose, onReturned }: {
     let active = true
     setLoading(true); setError(''); setPreview(null)
     deskCirculationApi.returnPreview(barcode).then(result => {
+      if(expectedLoan&&(result.id!==expectedLoan.id||result.kind!==expectedLoan.kind))throw new Error('This copy no longer matches the selected loan. Refresh the active loans.');
       if (active) { setPreview(result); key.current = crypto.randomUUID() }
     }).catch(reason => { if (active) setError(reason instanceof Error ? reason.message : 'This loan could not be found.') })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [barcode, attempt])
+  }, [barcode, attempt, expectedLoan?.id, expectedLoan?.kind])
 
   async function confirm() {
     if (!preview || saving.current || loading) return
     saving.current = true; setBusy(true); setError('')
     try {
       const result = await deskCirculationApi.returnCopy(preview, key.current, assessment ? condition : '', assessment ? note : '')
-      onReturned(`${result.title} returned.${result.assessmentNeeded ? ' Condition assessment is required; this copy is unavailable.' : ''}`)
+      onReturned(`${result.title} returned.${result.damageCaseId ? ` Damage case #${result.damageCaseId} opened; the copy is held for review.` : result.assessmentNeeded ? ' Condition assessment is required; this copy is unavailable.' : ''}`)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Return could not be saved. Please retry.')
     } finally { saving.current = false; setBusy(false) }
@@ -86,8 +91,9 @@ export function CirculationReturnDialog({ barcode, onClose, onReturned }: {
       </div>
       <footer className="flex flex-col-reverse gap-2 border-t border-[#0b5ea2]/10 p-4 sm:flex-row sm:justify-end dark:border-white/15">
         <Button variant="secondary" disabled={busy} onClick={onClose}><ArrowLeft size={16} /> Back</Button>
-        <Button disabled={loading || busy || !preview || (assessment && (!condition || (condition === 'Damaged' && !note.trim())))} onClick={() => void confirm()}><CheckCircle2 size={17} />{busy ? 'Saving return…' : 'Confirm return'}</Button>
+        <Button disabled={loading || busy || !preview || (assessment && (!condition || (condition === 'Damaged' && !note.trim())))} onClick={() => ask(`Return ${preview?.title ?? 'this book'}.`, () => { void confirm() })}><CheckCircle2 size={17} />{busy ? 'Saving return…' : 'Confirm return'}</Button>
       </footer>
     </div>
+    {confirmSave}
   </div>, document.body)
 }

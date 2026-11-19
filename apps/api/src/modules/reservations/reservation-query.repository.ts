@@ -4,8 +4,8 @@ import type { QueueFilters } from './reservation.validation.ts'
 import { requestEventStatus, requestLabels } from './book-request-events.ts'
 
 export function buildReservationQueueQuery(filters: QueueFilters) {
-  const where = ["r.request_kind='Reservation'"]
-  const parameters: Array<string | number> = []
+  const where = ['r.request_kind = ?']
+  const parameters: Array<string | number> = [filters.kind]
   if (filters.status === 'active') where.push("r.reservation_status IN ('pending','approved','ready_for_pickup')")
   else if (filters.status) { where.push('r.reservation_status = ?'); parameters.push(filters.status) }
   if (filters.dateFrom) { where.push('r.reserved_at >= ?'); parameters.push(`${filters.dateFrom} 00:00:00`) }
@@ -29,12 +29,12 @@ export function buildReservationQueueQuery(filters: QueueFilters) {
   const safeLimit = Math.min(Math.max(Math.trunc(filters.limit), 1), 100)
   const safeOffset = Math.max((Math.trunc(filters.page) - 1) * safeLimit, 0)
   return {
-    dataSql: `SELECT r.reservation_id, r.user_id, u.full_name, u.institutional_id, u.email,
+    dataSql: `SELECT r.reservation_id, r.user_id, u.full_name, u.institutional_id, u.email, COALESCE((SELECT sp.program_strand FROM accounts account_program JOIN student_profiles sp ON sp.account_id=account_program.account_id WHERE account_program.user_id=u.user_id ORDER BY account_program.account_id LIMIT 1),u.course_or_strand) AS program,
        ro.role_name, r.material_id, r.book_title_id, COALESCE(t.title, m.title) AS title, m.material_type, c.category_name,
        r.accession_id, COALESCE(pc.accession_number, assigned.barcode) AS accession_number,
        COALESCE(pc.barcode,assigned.barcode) AS barcode, pc.shelf_location,
        r.assigned_physical_copy_id,r.queue_position, r.reservation_status, r.reserved_at,
-       r.pickup_deadline, r.created_at, r.updated_at
+       r.pickup_deadline, r.created_at, r.updated_at, r.request_kind, r.last_skip_reason, r.last_skipped_at,to_jsonb(r)->>'scheduled_pickup_date' AS scheduled_pickup_date
        ${`, (r.pickup_deadline AT TIME ZONE 'Asia/Manila') AS deadline_iso,
          (r.reserved_at AT TIME ZONE 'Asia/Manila') AS requested_iso,
          r.preparation_started_at,r.ready_at,
@@ -42,7 +42,7 @@ export function buildReservationQueueQuery(filters: QueueFilters) {
           WHERE e.reservation_id=r.reservation_id ORDER BY e.event_id DESC LIMIT 1) AS email_status`}
       ${from} ${whereSql}
       ORDER BY CASE r.reservation_status WHEN 'ready_for_pickup' THEN 1 WHEN 'approved' THEN 2 WHEN 'pending' THEN 3 WHEN 'claimed' THEN 4 WHEN 'expired' THEN 5 WHEN 'cancelled' THEN 6 ELSE 7 END,
-        r.reserved_at ASC, r.reservation_id ASC LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+        CASE WHEN r.request_kind='CartHandover' THEN r.pickup_deadline END ASC NULLS LAST, r.reserved_at ASC, r.reservation_id ASC LIMIT ${safeLimit} OFFSET ${safeOffset}`,
     countSql: `SELECT COUNT(*) AS total ${from} ${whereSql}`,
     dataParameters: parameters,
     countParameters: parameters,
@@ -57,13 +57,14 @@ export async function queryReservationQueue(database: Pool, filters: QueueFilter
   ])
   const items = rows.map((row) => ({
     reservationId: Number(row.reservation_id), userId: Number(row.user_id), userName: row.full_name,
-    institutionalId: row.institutional_id, email: row.email, userRole: row.role_name,
+    program:row.program??null, institutionalId: row.institutional_id, email: row.email, userRole: row.role_name,
     materialId: Number(row.material_id), bookTitleId: row.book_title_id ? Number(row.book_title_id) : null,
     materialTitle: row.title, materialType: row.material_type,
     categoryName: row.category_name, accessionId: row.accession_id ? Number(row.accession_id) : null,
-    accessionNumber: row.accession_number, barcode: row.barcode, queuePosition: Number(row.queue_position),
+    accessionNumber: row.accession_number, barcode: row.barcode, queuePosition: row.request_kind === 'CartHandover' ? null : Number(row.queue_position),
+    requestKind: row.request_kind ?? 'Reservation', lastSkipReason: row.last_skip_reason ?? null, lastSkippedAt: row.last_skipped_at ?? null,
     status: row.reservation_status, reservedAt: row.requested_iso,
-    pickupDeadline: row.deadline_iso,
+    pickupDeadline: row.deadline_iso,scheduledPickupDate:row.scheduled_pickup_date??null,
     assignedCopyId: row.assigned_physical_copy_id ? Number(row.assigned_physical_copy_id) : null,
     shelfLocation:row.shelf_location??null,emailStatus:row.email_status??null,
     statusLabel:requestLabels[requestEventStatus(String(row.reservation_status),Boolean(row.assigned_physical_copy_id))],

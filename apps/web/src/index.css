@@ -590,3 +590,18 @@ html.dark .portal-sidebar {
   .responsive-table td, .responsive-table td[data-label] { display: table-cell; width: auto; }
   .responsive-table td[data-label]::before { content: none; }
 }
+
+/* Large scanner previews keep the full camera image visible. */
+.camera-preview { width: 100%; overflow: hidden; border-radius: 1rem; background: #0f172a; }
+.camera-preview video { display: block; width: 100% !important; height: auto !important; object-fit: contain; }
+
+/* Native disclosure state keeps each sidebar chevron in sync. */
+.sidebar-nav-group[open] > summary > .sidebar-nav-chevron { transform: rotate(180deg); }
+
+/* Student and Faculty browse a distinct shop surface; operational workspaces retain their controls. */
+.portal-layout:is([data-portal="student"],[data-portal="faculty"]) { background:#F4F8FC; color:#102A43; }
+.portal-layout:is([data-portal="student"],[data-portal="faculty"]) .portal-sidebar { background:#102A43; }
+.portal-layout:is([data-portal="student"],[data-portal="faculty"]) .portal-content button.bg-\[\#0b5ea2\] { background:#0F766E; }
+.dark .portal-layout:is([data-portal="student"],[data-portal="faculty"]) { background:#111c29; color:#f2f6ff; }
+.portal-layout:is([data-portal="student"],[data-portal="faculty"]) :focus-visible { outline:3px solid #0F766E; outline-offset:3px; }
+.dark .portal-layout:is([data-portal="student"],[data-portal="faculty"]) :focus-visible { outline-color:#5eead4; }

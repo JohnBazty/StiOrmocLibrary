@@ -4,7 +4,7 @@ import type { RosterPreview } from './enrollment-api'
 
 const pageSize = 50
 
-export function RosterPreviewTable({ preview }: { preview: RosterPreview }) {
+export function RosterPreviewTable({ preview, role='Student' }: { preview: RosterPreview;role?:'Student'|'Faculty' }) {
   const [sheetIndex, setSheetIndex] = useState(0)
   const [issuesOnly, setIssuesOnly] = useState(false)
   const [page, setPage] = useState(0)
@@ -15,17 +15,17 @@ export function RosterPreviewTable({ preview }: { preview: RosterPreview }) {
   return <section aria-label="Roster preview" className="min-w-0 space-y-3 rounded-xl border border-current/20 p-3 sm:p-4">
     <h3 className="font-bold">Roster preview</h3>
     <p role="status" className="text-sm">
-      <strong>{number.format(preview.studentCount)} students in the file.</strong> The count uses unique Student IDs.
+      <strong>{number.format(preview.studentCount)} {role==='Faculty'?'Faculty members':'students'} in the file.</strong> The count uses unique {role} IDs.
     </p>
     {preview.errorCount > 0 && <p className="text-sm font-semibold text-red-700 dark:text-red-300">
       Fix {number.format(preview.errorCount)} rows with errors before importing.
     </p>}
     {preview.warningCount > 0 && <div role="status" className="space-y-1 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-950 dark:border-red-800 dark:bg-red-950/50 dark:text-red-100">
-      <p className="font-bold">{number.format(preview.warningCount)} {preview.warningCount === 1 ? 'student needs' : 'students need'} an Ormoc school email</p>
+      <p className="font-bold">{number.format(preview.warningCount)} {role==='Faculty'?(preview.warningCount===1?'Faculty member needs':'Faculty members need'):(preview.warningCount === 1 ? 'student needs' : 'students need')} an Ormoc school email</p>
       <p>They can register once their Ormoc email is added.</p>
       {preview.errorCount === 0 && <p>{preview.studentCount === 1
-        ? 'This student can still be imported.'
-        : `All ${number.format(preview.studentCount)} students can still be imported.`}</p>}
+        ? (role==='Faculty'?'This Faculty member can still be imported.':'This student can still be imported.')
+        : `All ${number.format(preview.studentCount)} ${role==='Faculty'?'Faculty members':'students'} can still be imported.`}</p>}
     </div>}
     <div className="flex flex-wrap items-center gap-3 text-sm">
       {preview.sheets.length > 1 && <label className="flex items-center gap-2">
@@ -54,7 +54,8 @@ export function RosterPreviewTable({ preview }: { preview: RosterPreview }) {
               <td className="min-w-36 p-2">
                 {row.errors.length > 0 && <p className="text-red-700 dark:text-red-300">{row.errors.join(' ')}</p>}
                 {row.warnings.length > 0 && <p className="text-amber-800 dark:text-amber-300">{row.warnings.join(' ')}</p>}
-                {!row.errors.length && !row.warnings.length && 'Ready'}
+                {row.status && <p>{row.status}</p>}
+                {!row.status && !row.errors.length && !row.warnings.length && 'Ready'}
               </td>
             </tr>)}
           </tbody>

@@ -1,33 +1,32 @@
+import { MemoryRouter } from 'react-router-dom'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { BookQuotationModal } from './BookQuotationModal'
 import { CatalogDetailsPanel } from './CatalogDetailsPanel'
-const api = vi.hoisted(() => ({ quotations: vi.fn(), uploadQuotation: vi.fn(), detail: vi.fn(), options: vi.fn(), digital: vi.fn() }))
+const api = vi.hoisted(() => ({ quotations: vi.fn(), uploadQuotation: vi.fn(), saveQuotation: vi.fn(), detail: vi.fn(), options: vi.fn(), digital: vi.fn() }))
 vi.mock('./catalog-api', () => ({ catalogApi: api }))
 vi.mock('./enhanced-catalog-api', () => ({ enhancedCatalog: api }))
 vi.mock('../../components/PdfFilePreview', () => ({ default: () => <div>PDF page preview</div> }))
 beforeEach(() => {
   Object.defineProperty(URL, 'createObjectURL', { configurable: true, writable: true, value: vi.fn(() => 'blob:test') })
   Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: vi.fn() })
-  api.quotations.mockResolvedValue([]); api.uploadQuotation.mockResolvedValue(undefined)
+  api.quotations.mockResolvedValue([]); api.uploadQuotation.mockResolvedValue(undefined); api.saveQuotation.mockResolvedValue(undefined)
   api.detail.mockResolvedValue({ title: 'Test book', kind: 'Book', programs: [], courses: [], synopsis: '', glossary: '', files: [] })
   api.options.mockResolvedValue({ programs: [], courses: [], types: [] })
 })
 afterEach(() => { cleanup(); vi.resetAllMocks() })
-it('lets staff review and remove a quotation without sending it', async () => {
+it('records the hosted amount-only quotation without requiring a supplier file', async () => {
   render(<BookQuotationModal titleId={1} title="Test book" onClose={() => undefined} />)
-  await screen.findByText('No quotation uploaded for this book.')
-  const input = screen.getByLabelText('Supplier quotation file') as HTMLInputElement
-  fireEvent.change(input, { target: { files: [new File(['%PDF'], 'quotation.pdf', { type: 'application/pdf' })] } })
-  expect(await screen.findByText('PDF page preview')).toBeTruthy()
+  await screen.findByText('No quotation recorded for this book.')
+  expect(screen.queryByLabelText('Supplier quotation file')).toBeNull()
+  fireEvent.change(screen.getByLabelText('Quoted replacement amount (PHP)'), {target:{value:'125.50'}})
+  fireEvent.click(screen.getByRole('button',{name:'Save quotation'}))
+  await waitFor(() => expect(api.saveQuotation).toHaveBeenCalledWith(1,125.50))
   expect(api.uploadQuotation).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', { name: 'Remove selected file' }))
-  expect(input.value).toBe('')
-  expect(screen.queryByText('quotation.pdf')).toBeNull()
 })
 it('previews a digital book while preserving permission confirmation and a failed file for retry', async () => {
   api.digital.mockRejectedValueOnce(new Error('Upload interrupted.'))
-  render(<CatalogDetailsPanel titleId={1} editable />)
+  render(<MemoryRouter><CatalogDetailsPanel titleId={1} editable /></MemoryRouter>)
   const input = await screen.findByLabelText('Digital book PDF')
   const file = new File(['%PDF'], 'digital-book.pdf', { type: 'application/pdf' })
   fireEvent.change(input, { target: { files: [file] } })

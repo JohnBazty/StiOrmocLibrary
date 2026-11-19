@@ -6,7 +6,7 @@ import { requireLibraryPermission } from '../auth/jwt-auth.middleware.ts'
 import { adminNotificationsRouter, listAdminNotifications } from './admin-notifications.routes.ts'
 
 test('Admin notifications show Staff creation and profile changes without exposing email or storage paths', async () => {
-  const database = { execute: async () => [[
+  const database = { execute: async (sql: string) => sql.includes('FROM admin_notifications') ? [[]] : [[
     { event_id: 6, action_code: 'ProfileEdited', changed_fields: 'first_name,year_grade_level', school_id: 'ST-6', full_name: 'E F', account_status: 'Active', created_at: '2026-09-28T10:00:00Z' },
     { event_id: 7, action_code: 'StaffAccountCreated', school_id: 'QA-STAFF', full_name: 'Library Worker', account_status: 'Active', created_at: '2026-09-28T10:00:00Z' },
   ]] } as never
@@ -24,4 +24,13 @@ test('Admin notification route rejects Staff access', async () => {
   const response = await request(app).get('/admin/notifications')
   assert.equal(response.status, 403)
   assert.equal(response.body.code, 'JWT_ROLE_FORBIDDEN')
+})
+
+test('lost reports appear in the staff inbox with a clearance review link', async () => {
+  const database = { execute: async (sql: string) => [sql.includes('FROM admin_notifications') ? [{
+    admin_notification_id: 4, message_title: 'Lost book reported', message_body: '1984 was reported lost by its borrower.', created_at: '2026-11-17T01:00:00Z',
+  }] : []] } as never
+  const result = await listAdminNotifications(database, '/librarian')
+  assert.equal(result.activity[0].kind, 'lost')
+  assert.equal(result.activity[0].actionPath, '/librarian/clearance')
 })

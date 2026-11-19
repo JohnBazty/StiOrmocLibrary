@@ -96,3 +96,18 @@ test('reports the expected ISBN check digit instead of a generic validation erro
   assert.equal(isbnValidationMessage('9780132350884'), null)
   assert.equal(isbnValidationMessage('0132350882'), null)
 })
+
+
+test('copy placement preserves explicit coordinates and rejects invalid whole-number fields', () => {
+  const body = { title: 'Clean Code', author: 'Robert C. Martin', barcode: 'BC-1', accessionNumber: 'ACC-1', shelfLocation: 'Shelf A', locationId: 4, shelfColumn: 2, shelfRow: 3 }
+  const valid = validateBookEntry(body)
+  assert.equal(valid.isValid, true)
+  assert.equal(valid.data.copy.locationId, 4)
+  assert.equal(valid.data.copy.shelfColumn, 2)
+  assert.equal(valid.data.copy.shelfRow, 3)
+  for (const field of ['locationId', 'shelfColumn', 'shelfRow']) {
+    const invalid = validateBookEntry({ ...body, [field]: 0.5 })
+    assert.equal(invalid.isValid, false)
+    assert.ok(invalid.errors[field])
+  }
+})

@@ -1,3 +1,4 @@
+import { RowActions } from '../../components/RowActions'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertCircle, ArrowRightLeft, BookOpen, CheckCircle2, FileText, Pencil, Plus, Tags, Trash2, X } from 'lucide-react'
@@ -6,6 +7,7 @@ import { categoryApi, CategoryApiError } from './category-api'
 import type { Category, CategoryPayload } from './types'
 import { CreateCategoryModal } from './CreateCategoryModal'
 import { SubjectFinder } from './SubjectFinder'
+import type { ManagedShelf } from '../shelves/types'
 
 const inputClass = 'h-11 w-full rounded-xl border border-[#0b5ea2]/20 bg-white px-3 text-sm text-[#0b5ea2] outline-none focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/10'
 const cannotDeleteTooltip = 'Cannot delete category while materials are assigned to it.'
@@ -18,7 +20,7 @@ type Editor = { mode: 'create' | 'edit'; category: Category | null; initialName?
 
 export function CategoryManagementPage() {
   const [categories, setCategories] = useState<Category[]>([])
-  const [shelves, setShelves] = useState<Array<{ id: number; label: string; columnCount: number; rowCount: number }>>([])
+  const [shelves, setShelves] = useState<ManagedShelf[]>([])
   const [loading, setLoading] = useState(true)
   const [editor, setEditor] = useState<Editor | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Category | null>(null)
@@ -27,7 +29,6 @@ export function CategoryManagementPage() {
   const [notice, setNotice] = useState<{ error: boolean; message: string } | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
-  const [newShelf, setNewShelf] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -53,7 +54,7 @@ export function CategoryManagementPage() {
       await load()
       setNotice({ error: false, message: editor.mode === 'create'
         ? 'Category created successfully.'
-        : `Category updated. ${saved.bookCopies ?? 0} book copies and ${saved.researchCopies ?? 0} theses are now assigned to ${saved.shelfLocation}, Column ${saved.shelfColumn}, Row ${saved.shelfRow}.` })
+        : `Category updated. New copies will default to ${saved.shelfLocation}, Column ${saved.shelfColumn}, Row ${saved.shelfRow}. Existing copies keep their assigned locations.` })
     } catch (error) {
       const apiError = error as CategoryApiError
       setFieldErrors(apiError.errors ?? {})
@@ -75,42 +76,28 @@ export function CategoryManagementPage() {
     if (!reassignTarget || !targetCategoryId) return
     setSaving(true)
     try {
-      const synchronized = await categoryApi.reassign(reassignTarget.categoryId, Number(targetCategoryId))
-      setReassignTarget(null); setTargetCategoryId(''); await load(); setNotice({ error: false, message: `Category reassigned. ${synchronized.bookCopies} book copies and ${synchronized.researchCopies} theses now use the target category shelf.` })
+      await categoryApi.reassign(reassignTarget.categoryId, Number(targetCategoryId))
+      setReassignTarget(null); setTargetCategoryId(''); await load(); setNotice({ error: false, message: 'Category reassigned. Existing copies keep their assigned locations.' })
     } catch (error) { setNotice({ error: true, message: error instanceof Error ? error.message : 'Category reassignment failed.' }) }
     finally { setSaving(false) }
   }
 
-  async function addShelf() {
-    const label = newShelf.trim()
-    if (!label) return
-    setSaving(true)
-    try {
-      await categoryApi.addShelf(label)
-      setNewShelf('')
-      await load()
-      setNotice({ error: false, message: `Shelf ${label} is ready for category assignments.` })
-    } catch (error) { setNotice({ error: true, message: error instanceof Error ? error.message : 'Shelf could not be added.' }) }
-    finally { setSaving(false) }
-  }
 
   return <>
-    <PageHeader eyebrow="Classification administration" title="Category management" description="Maintain catalog classifications, shelf locations, and active book/research assignments." action={<button onClick={() => { setFieldErrors({}); setEditor({ mode: 'create', category: null }) }} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#0b5ea2] px-4 text-sm font-bold text-white"><Plus size={16} /> Add category</button>} />
+    <PageHeader eyebrow="Classification administration" title="Category management" description="Maintain catalog classifications and active book/research assignments. Manage shelves under Maintenance → Locations." action={<button onClick={() => { setFieldErrors({}); setEditor({ mode: 'create', category: null }) }} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#0b5ea2] px-4 text-sm font-bold text-white"><Plus size={16} /> Add category</button>} />
 
     {notice ? <div role={notice.error ? 'alert' : 'status'} data-tone={notice.error ? 'error' : 'success'} className="mb-5 flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-semibold">{notice.error ? <AlertCircle aria-hidden size={20} className="shrink-0" /> : <CheckCircle2 aria-hidden size={20} className="shrink-0" />}<span className="min-w-0 flex-1 break-words">{notice.message}</span><button aria-label="Dismiss alert" onClick={() => setNotice(null)} className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg hover:bg-white/10"><X size={16} /></button></div> : null}
-
-    <SectionCard className="mb-5 p-5"><h2 className="font-bold text-[#0b5ea2]">Managed shelves</h2><p className="mt-1 text-sm text-[#0b5ea2]/70">Create a shelf label here, then assign categories and books to it.</p><form className="mt-4 flex flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); void addShelf() }}><input aria-label="New shelf label" value={newShelf} onChange={(event) => setNewShelf(event.target.value)} maxLength={100} placeholder="Shelf label" className={`${inputClass} max-w-xs`} /><button disabled={saving || !newShelf.trim()} className="rounded-xl bg-[#0b5ea2] px-4 text-sm font-bold text-white disabled:opacity-50">Add shelf</button></form><p className="mt-3 text-xs text-[#0b5ea2]/65">{shelves.length} shelves available</p></SectionCard>
 
     <div className="mb-5 grid gap-3 sm:grid-cols-3"><SectionCard className="p-5"><Tags className="text-[#0b5ea2]" /><p className="mt-3 text-xs font-bold uppercase text-[#0b5ea2]/60">Categories</p><p className="mt-1 text-3xl font-black text-[#0b5ea2]">{categories.length}</p></SectionCard><SectionCard className="p-5"><BookOpen className="text-[#0b5ea2]" /><p className="mt-3 text-xs font-bold uppercase text-[#0b5ea2]/60">Active physical books</p><p className="mt-1 text-3xl font-black text-[#0b5ea2]">{totals.books}</p></SectionCard><SectionCard className="p-5"><FileText className="text-[#0b5ea2]" /><p className="mt-3 text-xs font-bold uppercase text-[#0b5ea2]/60">Active theses</p><p className="mt-1 text-3xl font-black text-[#0b5ea2]">{totals.theses}</p></SectionCard></div>
 
     <SubjectFinder existing={categories.map((category) => category.categoryName)} onCreate={(name) => { setFieldErrors({}); setEditor({ mode: 'create', category: null, initialName: name }) }} />
 
-    <SectionCard className="overflow-hidden"><div className="border-b border-[#0b5ea2]/15 px-5 py-4"><h2 className="font-bold text-[#0b5ea2]">Classification directory</h2></div><ResponsiveTable><table className="w-full min-w-[1000px] text-left text-sm"><thead className="bg-[#0b5ea2] text-white"><tr>{['ID', 'Category name', 'Description', 'Shelf location', 'Book copies', 'Active theses', 'Date added', 'Actions'].map(label => <th key={label} className="px-5 py-3">{label}</th>)}</tr></thead><tbody>{loading ? <tr><td colSpan={8} className="px-5 py-10 text-center text-[#0b5ea2]">Loading categories…</td></tr> : categories.length ? categories.map((category) => { const assigned = category.totalBooksCount + category.totalThesisCount > 0; return <tr key={category.categoryId} className="border-b border-[#0b5ea2]/10 text-[#0b5ea2]"><td className="px-5 py-4 font-mono text-xs">{category.categoryId}</td><td className="px-5 py-4 font-bold">{category.categoryName}</td><td className="max-w-60 px-5 py-4">{category.description || 'No description'}</td><td className="px-5 py-4"><span className="rounded-full bg-[#FFF200] px-3 py-1 text-xs font-bold">{category.shelfLocation} · C{category.shelfColumn} · R{category.shelfRow}</span></td><td className="px-5 py-4 font-bold">{category.totalBooksCount}</td><td className="px-5 py-4 font-bold">{category.totalThesisCount}</td><td className="whitespace-nowrap px-5 py-4">{dateAdded(category.createdAt)}</td><td className="px-5 py-4"><div className="flex justify-end gap-1"><button title="Edit category" aria-label={`Edit ${category.categoryName}`} onClick={() => { setFieldErrors({}); setEditor({ mode: 'edit', category }) }} className="rounded-lg p-2 hover:bg-[#0b5ea2]/10"><Pencil size={16} /></button>{assigned ? <button title="Reassign all materials" aria-label={`Reassign ${category.categoryName}`} onClick={() => { setReassignTarget(category); setTargetCategoryId('') }} className="rounded-lg p-2 hover:bg-[#0b5ea2]/10"><ArrowRightLeft size={16} /></button> : null}<button title={assigned ? cannotDeleteTooltip : 'Delete category'} aria-label={assigned ? cannotDeleteTooltip : `Delete ${category.categoryName}`} disabled={assigned} onClick={() => setDeleteTarget(category)} className="rounded-lg p-2 enabled:hover:bg-[#FFF200] disabled:cursor-not-allowed disabled:bg-[#0b5ea2]/5 disabled:text-[#0b5ea2]/25"><Trash2 size={16} /></button></div></td></tr> }) : <tr><td colSpan={8} className="px-5 py-10 text-center text-[#0b5ea2]">No categories have been registered.</td></tr>}</tbody></table></ResponsiveTable></SectionCard>
+    <SectionCard className="overflow-hidden"><div className="border-b border-[#0b5ea2]/15 px-5 py-4"><h2 className="font-bold text-[#0b5ea2]">Classification directory</h2></div><ResponsiveTable><table className="w-full min-w-[1000px] text-left text-sm"><thead className="bg-[#0b5ea2] text-white"><tr>{['ID', 'Category name', 'Description', 'Default shelf location', 'Book copies', 'Active theses', 'Date added', 'Actions'].map(label => <th key={label} className="px-5 py-3">{label}</th>)}</tr></thead><tbody>{loading ? <tr><td colSpan={8} className="px-5 py-10 text-center text-[#0b5ea2]">Loading categories…</td></tr> : categories.length ? categories.map((category) => { const assigned = category.totalBooksCount + category.totalThesisCount > 0; return <tr key={category.categoryId} className="border-b border-[#0b5ea2]/10 text-[#0b5ea2]"><td className="px-5 py-4 font-mono text-xs">{category.categoryId}</td><td className="px-5 py-4 font-bold">{category.categoryName}</td><td className="max-w-60 px-5 py-4">{category.description || 'No description'}</td><td className="px-5 py-4"><span className="rounded-full bg-[#FFF200] px-3 py-1 text-xs font-bold">{category.shelfLocation} · C{category.shelfColumn} · R{category.shelfRow}</span></td><td className="px-5 py-4 font-bold">{category.totalBooksCount}</td><td className="px-5 py-4 font-bold">{category.totalThesisCount}</td><td className="whitespace-nowrap px-5 py-4">{dateAdded(category.createdAt)}</td><td className="px-5 py-4"><RowActions label={`Actions for ${category.categoryName}`}><button title="Edit category" aria-label={`Edit ${category.categoryName}`} onClick={() => { setFieldErrors({}); setEditor({ mode: 'edit', category }) }} className="rounded-lg p-2 hover:bg-[#0b5ea2]/10"><Pencil size={16} /> Edit category</button>{assigned ? <button title="Reassign all materials" aria-label={`Reassign ${category.categoryName}`} onClick={() => { setReassignTarget(category); setTargetCategoryId('') }} className="rounded-lg p-2 hover:bg-[#0b5ea2]/10"><ArrowRightLeft size={16} /> Reassign materials</button> : null}<button title={assigned ? cannotDeleteTooltip : 'Delete category'} aria-label={assigned ? cannotDeleteTooltip : `Delete ${category.categoryName}`} disabled={assigned} onClick={() => setDeleteTarget(category)} className="rounded-lg p-2 enabled:hover:bg-[#FFF200] disabled:cursor-not-allowed disabled:bg-[#0b5ea2]/5 disabled:text-[#0b5ea2]/25"><Trash2 size={16} /> Delete category</button></RowActions></td></tr> }) : <tr><td colSpan={8} className="px-5 py-10 text-center text-[#0b5ea2]">No categories have been registered.</td></tr>}</tbody></table></ResponsiveTable></SectionCard>
 
     {editor ? <CreateCategoryModal category={editor.category} initialName={editor.initialName} shelves={shelves} saving={saving} errors={fieldErrors} onSubmit={submitEditor} onClose={() => setEditor(null)} /> : null}
 
     {deleteTarget ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0b5ea2]/80 p-4"><div role="alertdialog" aria-modal="true" className="w-full max-w-md rounded-2xl bg-white p-6"><Trash2 className="text-[#0b5ea2]" /><h2 className="mt-4 text-xl font-black text-[#0b5ea2]">Delete {deleteTarget.categoryName}?</h2><p className="mt-2 text-sm text-[#0b5ea2]/65">This is allowed only because no active books or theses are assigned. The server will verify again inside a transaction.</p><div className="mt-6 flex justify-end gap-2"><button onClick={() => setDeleteTarget(null)} className="h-10 rounded-xl border border-[#0b5ea2] px-4 font-bold text-[#0b5ea2]">Cancel</button><button disabled={saving} onClick={() => void confirmDelete()} className="h-10 rounded-xl bg-[#FFF200] px-4 font-bold text-[#0b5ea2]">Delete category</button></div></div></div> : null}
 
-    {reassignTarget ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0b5ea2]/80 p-4"><div role="dialog" aria-modal="true" className="w-full max-w-md rounded-2xl bg-white p-6"><ArrowRightLeft className="text-[#0b5ea2]" /><h2 className="mt-4 text-xl font-black text-[#0b5ea2]">Reassign {reassignTarget.categoryName}</h2><p className="mt-2 text-sm text-[#0b5ea2]/65">All linked books and theses will move in one transaction, then this category will be removed.</p><label className="mt-5 block"><span className="mb-1.5 block text-xs font-bold uppercase text-[#0b5ea2]">Target category *</span><select value={targetCategoryId} onChange={(event) => setTargetCategoryId(event.target.value)} className={inputClass}><option value="">Select target</option>{categories.filter((category) => category.categoryId !== reassignTarget.categoryId).map((category) => <option key={category.categoryId} value={category.categoryId}>{category.categoryName}</option>)}</select></label><div className="mt-6 flex justify-end gap-2"><button onClick={() => setReassignTarget(null)} className="h-10 rounded-xl border border-[#0b5ea2] px-4 font-bold text-[#0b5ea2]">Cancel</button><button disabled={saving || !targetCategoryId} onClick={() => void confirmReassignment()} className="h-10 rounded-xl bg-[#0b5ea2] px-4 font-bold text-white disabled:opacity-50">Reassign materials</button></div></div></div> : null}
+    {reassignTarget ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0b5ea2]/80 p-4"><div role="dialog" aria-modal="true" className="w-full max-w-md rounded-2xl bg-white p-6"><ArrowRightLeft className="text-[#0b5ea2]" /><h2 className="mt-4 text-xl font-black text-[#0b5ea2]">Reassign {reassignTarget.categoryName}</h2><p className="mt-2 text-sm text-[#0b5ea2]/65">All linked books and theses will use the target category, then this category will be removed. Their shelf locations stay unchanged.</p><label className="mt-5 block"><span className="mb-1.5 block text-xs font-bold uppercase text-[#0b5ea2]">Target category *</span><select value={targetCategoryId} onChange={(event) => setTargetCategoryId(event.target.value)} className={inputClass}><option value="">Select target</option>{categories.filter((category) => category.categoryId !== reassignTarget.categoryId).map((category) => <option key={category.categoryId} value={category.categoryId}>{category.categoryName}</option>)}</select></label><div className="mt-6 flex justify-end gap-2"><button onClick={() => setReassignTarget(null)} className="h-10 rounded-xl border border-[#0b5ea2] px-4 font-bold text-[#0b5ea2]">Cancel</button><button disabled={saving || !targetCategoryId} onClick={() => void confirmReassignment()} className="h-10 rounded-xl bg-[#0b5ea2] px-4 font-bold text-white disabled:opacity-50">Reassign materials</button></div></div></div> : null}
   </>
 }

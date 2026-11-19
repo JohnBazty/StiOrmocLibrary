@@ -1,4 +1,4 @@
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 import type { InventoryCopy, InventoryFilters, InventoryPagination, InventorySummary, ThesisInventoryFilters, ThesisInventoryRow, ThesisInventorySummary } from './types'
 
 export class InventoryApiError extends Error {
@@ -14,14 +14,14 @@ let csrfToken: string | null = null
 
 function headersFor(method: string, accept = 'application/json') {
   const headers = new Headers({ Accept: accept })
-  const token = getAccessToken()
-  if (token) headers.set('Authorization', `Bearer ${token}`)
+  const token = getCsrfToken()
+  if (token) headers.set('X-CSRF-Token', token)
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) headers.set('Content-Type', 'application/json')
   return headers
 }
 
 async function ensureCsrf() {
-  if (getAccessToken() || csrfToken) return
+  if (getCsrfToken() || csrfToken) return
   const response = await fetch('/api/auth/csrf', { credentials: 'include', headers: { Accept: 'application/json' } })
   const payload = await response.json() as { csrfToken?: string; message?: string }
   if (!response.ok || !payload.csrfToken) throw new InventoryApiError(payload.message ?? 'Unable to start a secure request.', 'CSRF_UNAVAILABLE')
@@ -32,7 +32,7 @@ async function request<T>(url: string, options: RequestInit = {}) {
   const method = options.method?.toUpperCase() ?? 'GET'
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) await ensureCsrf()
   const headers = headersFor(method)
-  if (csrfToken && !getAccessToken()) headers.set('x-csrf-token', csrfToken)
+  if (csrfToken && !getCsrfToken()) headers.set('x-csrf-token', csrfToken)
   const response = await fetch(url, { ...options, headers, credentials: 'include' })
   const isJson = (response.headers.get('content-type') ?? '').includes('application/json')
   const payload = isJson ? await response.json() as {
@@ -96,7 +96,7 @@ async function download(format: 'csv' | 'pdf') {
 }
 
 function thesisEndpoint(v1Path: string, sessionPath: string) {
-  return getAccessToken() ? `/api/v1/admin/${v1Path}` : `/api/inventory/thesis${sessionPath}`
+  return getCsrfToken() ? `/api/v1/admin/${v1Path}` : `/api/inventory/thesis${sessionPath}`
 }
 
 async function downloadThesis(format: 'csv' | 'pdf') {

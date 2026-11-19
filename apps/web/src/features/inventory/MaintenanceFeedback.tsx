@@ -1,7 +1,0 @@
-import { useEffect,useRef,useId,type ReactNode } from 'react'
-import { Button,SectionCard } from '../../components/ui'
-export function MaintenanceFeedback({error,success,onRetry}:{error:string;success:string;onRetry?:()=>void}){return <>{error?<div role="alert" className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-800 dark:bg-red-950 dark:text-red-100">{error}{onRetry?<div className="mt-2"><Button variant="secondary" onClick={onRetry}>Reload records</Button></div>:null}</div>:null}{success&&!error?<p role="status" data-tone="success" className="mb-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">{success}</p>:null}</>}
-export function ReviewPanel({children,busy,onBack,onSave,disabled=false,important=false}:{children:ReactNode;busy:boolean;onBack:()=>void;onSave:()=>void;disabled?:boolean;important?:boolean}){
-  const heading=useRef<HTMLHeadingElement>(null),headingId=useId();useEffect(()=>heading.current?.focus(),[])
-  return <section role={important?'alertdialog':'region'} aria-labelledby={headingId}><SectionCard className="mb-5 space-y-4 border-blue-200 p-5 tabular-nums"><h3 id={headingId} ref={heading} tabIndex={-1} className="text-balance text-lg font-bold outline-none">Review before saving</h3>{children}<div className="flex flex-wrap gap-3"><Button variant="secondary" disabled={busy} onClick={onBack}>Back to editing</Button><Button disabled={busy||disabled} onClick={onSave}>{busy?'Saving…':'Confirm and save'}</Button></div></SectionCard></section>
-}

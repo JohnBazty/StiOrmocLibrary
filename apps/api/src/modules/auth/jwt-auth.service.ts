@@ -2,7 +2,7 @@ import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
 import type { Pool, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
-import { env } from '../../config/env.js'
+import { env, DUMMY_BCRYPT_HASH } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
 import { validateLoginInput } from './auth.validation.js'
 import { validateRoleLogin } from './account-auth.validation.ts'
@@ -13,8 +13,7 @@ export type JwtRole = 'Admin' | 'Librarian' | 'Student' | 'Faculty' | 'Staff'
 const JWT_ROLES = new Set<JwtRole>(['Admin', 'Librarian', 'Student', 'Faculty', 'Staff'])
 const USER_PORTAL_ROLES = new Set<JwtRole>(['Student', 'Faculty'])
 const STAFF_PORTAL_ROLES = new Set<JwtRole>(['Admin', 'Librarian', 'Staff'])
-const DUMMY_BCRYPT_HASH = '$2b$12$k1Pc4Uvw2o.7wwBZ1hQwHu5vTfEfRPRgRhhcaawYWpPJez0o7gaCq'
-const INVALID_CREDENTIALS_MESSAGE = 'Wrong credentials.'
+const INVALID_CREDENTIALS_MESSAGE = 'Incorrect Username and/or password'
 
 export function dashboardForJwtRole(role: JwtRole) {
   return ({ Admin: '/admin/dashboard', Librarian: '/librarian/dashboard', Faculty: '/faculty/dashboard', Student: '/student/dashboard', Staff: '/staff/dashboard' })[role]
@@ -46,9 +45,9 @@ export function createJwtAuthService(database: Pool = db, passwordHasher = bcryp
     )
     const user = rows[0]
     const matches = await passwordHasher.compare(validation.password, user?.password_hash ?? DUMMY_BCRYPT_HASH)
-    if (!user || !matches) throw new HttpError(401, 'INVALID_CREDENTIALS', 'Wrong credentials.')
+    if (!user || !matches) throw new HttpError(401, 'INVALID_CREDENTIALS', INVALID_CREDENTIALS_MESSAGE)
     if (!user.account_id || user.account_status !== 'Active' || user.linked_status !== 'Active') {
-      if (!(verifyOnly && user.user_role==='Student' && user.account_id && await restorationEvidence(database,Number(user.account_id),String(user.school_id),String(user.email??''))))
+      if (!(verifyOnly && (user.user_role==='Student'||user.user_role==='Faculty') && user.account_id && await restorationEvidence(database,Number(user.account_id),String(user.school_id),String(user.email??''))))
         throw new HttpError(403, 'ACCOUNT_DEACTIVATED', 'Your account is currently deactivated. Please coordinate with the campus librarian.')
     }
     if (!JWT_ROLES.has(user.user_role)) throw new HttpError(403, 'ROLE_NOT_AUTHORIZED', 'Your assigned role is not authorized.')
@@ -72,6 +71,7 @@ export function createJwtAuthService(database: Pool = db, passwordHasher = bcryp
 
       const validation = validateRoleLogin(body)
       if (!validation.isValid) throw new HttpError(422, 'AUTH_VALIDATION_FAILED', 'Please correct the highlighted fields.', { errors: validation.errors })
+      const emailLookup=validation.portal==='staff'&&validation.schoolId.includes('@')
       const [rows] = await database.execute<RowDataPacket[]>(
         `SELECT a.account_id, a.user_id, a.school_id, a.password_hash, a.role, a.account_status, a.auth_version,
                 u.account_status AS linked_status, u.email,
@@ -79,9 +79,9 @@ export function createJwtAuthService(database: Pool = db, passwordHasher = bcryp
            FROM accounts AS a
            LEFT JOIN users AS u ON u.user_id = a.user_id
            LEFT JOIN student_profiles AS sp ON sp.account_id = a.account_id
-          WHERE a.school_id = ?
+          WHERE ${emailLookup?'LOWER(u.email)':'a.school_id'} = ?
           LIMIT 1`,
-        [validation.schoolId],
+        [emailLookup?validation.schoolId.toLowerCase():validation.schoolId],
       )
       const account = rows[0]
       const matches = await passwordHasher.compare(validation.password, account?.password_hash ?? DUMMY_BCRYPT_HASH)
@@ -93,7 +93,7 @@ export function createJwtAuthService(database: Pool = db, passwordHasher = bcryp
       const portalRoles = validation.portal === 'user' ? USER_PORTAL_ROLES : STAFF_PORTAL_ROLES
       if (validation.portal && !portalRoles.has(role)) throw new HttpError(401, 'INVALID_CREDENTIALS', INVALID_CREDENTIALS_MESSAGE)
       if (account.account_status !== 'Active' || (account.linked_status && account.linked_status !== 'Active')) {
-        if (!(verifyOnly && role==='Student' && await restorationEvidence(database,accountId,String(account.school_id),String(account.email??''))))
+        if (!(verifyOnly && (role==='Student'||role==='Faculty') && await restorationEvidence(database,accountId,String(account.school_id),String(account.email??''))))
           throw new HttpError(403, 'ACCOUNT_DEACTIVATED', 'Your account is currently deactivated. Please coordinate with the campus librarian.')
       }
       if (verifyOnly) return { accountId, userId: account.user_id ? Number(account.user_id) : null, schoolId: String(account.school_id), role, authVersion: Number(account.auth_version), email: String(account.email ?? ''), fullName: [account.first_name, account.last_name].filter(Boolean).join(' ') || account.full_name || null }

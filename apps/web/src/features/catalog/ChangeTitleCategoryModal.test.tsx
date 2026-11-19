@@ -25,7 +25,7 @@ const item: CatalogItem = {
 }
 
 describe('ChangeTitleCategoryModal', () => {
-  it('shows the destination shelf and confirms the selected category', () => {
+  it('shows the destination shelf and confirms the selected category', async () => {
     const confirm = vi.fn()
     render(<ChangeTitleCategoryModal item={item} categories={[
       { categoryId: 2, categoryName: 'Action', shelfLocation: 'Shelf A' },
@@ -39,6 +39,7 @@ describe('ChangeTitleCategoryModal', () => {
     expect(screen.getByRole('heading', { name: 'Change book category' })).toBeTruthy()
     expect(screen.getByText(/This moves this book and 2 active book copies/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /Move book/i }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
     expect(confirm).toHaveBeenCalledWith(9)
   })
 })

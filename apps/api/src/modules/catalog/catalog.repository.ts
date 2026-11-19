@@ -1,7 +1,7 @@
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import type { BookEntryInput, PhysicalCopyInput, ThesisEntryInput, ThesisMetadataInput } from './catalog.validation.ts'
 
-type IdRow = RowDataPacket & { title_id: number }
+type IdRow = RowDataPacket & { title_id: number; lifecycle_status: string }
 type DuplicateCopyRow = RowDataPacket & {
   physical_copy_id: number
   barcode: string
@@ -26,7 +26,7 @@ export async function ensureCategoryExists(connection: PoolConnection, categoryI
 export async function findBookTitleByIsbnForUpdate(connection: PoolConnection, isbn: string | null) {
   if (!isbn) return null
   const [rows] = await connection.execute<IdRow[]>(
-    `SELECT title_id
+    `SELECT title_id, lifecycle_status
        FROM titles
       WHERE isbn = ? AND record_type = 'Book'
       LIMIT 1
@@ -163,15 +163,17 @@ export async function insertPhysicalCopy(
 ) {
   const [result] = await connection.execute<ResultSetHeader>(
     `INSERT INTO physical_copies
-       (title_id, material_id, barcode, accession_number, shelf_location,
+       (title_id, material_id, barcode, accession_number, shelf_location, shelf_column, shelf_row,
         condition_status, availability_status, lifecycle_status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'Available', 'Active', NOW())`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Available', 'Active', NOW())`,
     [
       titleId,
       copy.legacyMaterialId,
       copy.barcode,
       copy.accessionNumber,
       copy.shelfLocation,
+      copy.shelfColumn ?? 1,
+      copy.shelfRow ?? 1,
       copy.conditionStatus,
     ],
   )
@@ -210,8 +212,8 @@ export async function insertResearchInventory(
   const [result] = await connection.execute<ResultSetHeader>(
     `INSERT INTO research_inventory
        (title_id, title, authors, adviser, publication_year, accession_number, barcode, qr_code_data,
-        condition_state, availability_status, shelf_location, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'available', ?, NOW())`,
+        condition_state, availability_status, shelf_location, shelf_column, shelf_row, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'available', ?, ?, ?, NOW())`,
     [
       titleId,
       input.title,
@@ -223,6 +225,8 @@ export async function insertResearchInventory(
       qrCodeData,
       condition,
       input.copy.shelfLocation,
+      input.copy.shelfColumn ?? 1,
+      input.copy.shelfRow ?? 1,
     ],
   )
   return result.insertId

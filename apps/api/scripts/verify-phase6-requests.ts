@@ -117,5 +117,5 @@ try{
  assert.equal((await native.query('SELECT reservation_status FROM reservations WHERE reservation_id=$1',[expiryNext.reservationId])).rows[0].reservation_status,'approved')
  const permanentAgain=await issueAttendanceCredential(pool,7);assert.equal(permanentAgain.payload,passes[7])
  assert.equal((await admin.query('SELECT COUNT(*)::int AS n FROM public.borrow_transactions')).rows[0].n,baseline)
- console.log('PASS: migration preserves legacy requests; available cart vs unavailable reservation guards; one-copy race; queue separation; ownership; exact-copy handover; attendance and role checks; no loan before handover; atomic cart rollback; retry/double-click idempotence; cancellation/return/expiry advancement; fixed 24-hour reservation timer; permanent QR reuse. Public loans unchanged. No email sent.')
+ console.log('PASS: migration preserves legacy requests; available cart vs unavailable reservation guards; one-copy race; queue separation; ownership; exact-copy handover; attendance and role checks; no loan before handover; atomic cart rollback; retry/double-click idempotence; cancellation/return/expiry advancement; configured pickup window; permanent QR reuse. Public loans unchanged. No email sent.')
 }finally{await native.end();await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);await admin.end()}

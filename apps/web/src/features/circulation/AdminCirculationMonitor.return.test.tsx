@@ -4,6 +4,7 @@ import { AdminCirculationMonitor } from './AdminCirculationMonitor'
 
 const circulation = vi.hoisted(() => ({ monitor: vi.fn() }))
 const desk = vi.hoisted(() => ({ uses: vi.fn(), returnPreview: vi.fn(), returnCopy: vi.fn(), checkout: vi.fn() }))
+vi.mock('./DamageCasesPanel', () => ({ DamageCasesPanel: () => null }))
 vi.mock('./circulation-api', () => ({ circulationApi: circulation }))
 vi.mock('./desk-circulation-api', () => ({ deskCirculationApi: desk }))
 
@@ -38,6 +39,7 @@ describe('Quick return from the loan list', () => {
     expect(desk.returnPreview).toHaveBeenCalledWith('BOOK-4')
     expect(desk.returnCopy).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Confirm return' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
     await waitFor(() => expect(desk.returnCopy).toHaveBeenCalledTimes(1))
     expect(desk.returnCopy.mock.calls[0][0]).toEqual(preview)
     expect(await screen.findByText('Database Systems returned.')).toBeTruthy()

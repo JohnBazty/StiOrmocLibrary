@@ -1,5 +1,9 @@
 # Database Schema Context
 
+## Hosted-system integration — 2026-11-20
+
+Application source matches hosted deployment `dpl_8SSF1zDLKLbi4y6tHoKBB4nkSVe5` for Student, Faculty, Staff, Librarian and Admin. Existing main migration bytes are preserved. Latest applied migration **073**, next unused **074**; no migration is run by merging. See `docs/plans/2026-11-20-hosted-system-main-merge.md` for checks and source boundaries. Older deployment/tracker notes below are historical.
+
 ## November 18 application rollback
 
 The fines-and-borrowing-policies application merge d3e5fe3 is reverted at the owner's request. The borrowing-policy editor is archived again and the previous fine calculator is restored. Already-applied migrations 038 and 040 and their additive schema/data remain intact. Latest applied 040 / next unused 041 remains valid. No database rollback was executed. See [rollback record](plans/2026-11-18-undo-fines-merge.md).

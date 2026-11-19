@@ -9,7 +9,7 @@ export function useBookReservations(onCommitted: () => void) {
   const [reserved, setReserved] = useState(new Set<number>())
   const [errors, setErrors] = useState(new Map<number, string>())
   async function reserve(book: { titleId: number; title: string }) {
-    if (locks.current.has(book.titleId) || reserved.has(book.titleId)) return
+    if (locks.current.has(book.titleId) || reserved.has(book.titleId)) return false
     locks.current.add(book.titleId)
     setPending(new Set(locks.current))
     setErrors(old => { const next = new Map(old); next.delete(book.titleId); return next })
@@ -19,8 +19,10 @@ export function useBookReservations(onCommitted: () => void) {
       await reserveBookTitle(book.titleId, requestId)
       setReserved(old => new Set(old).add(book.titleId))
       onCommitted()
+      return true
     } catch (cause) {
       setErrors(old => new Map(old).set(book.titleId, cause instanceof Error ? cause.message : 'This book could not be reserved. Try again.'))
+      return false
     } finally {
       locks.current.delete(book.titleId)
       setPending(new Set(locks.current))

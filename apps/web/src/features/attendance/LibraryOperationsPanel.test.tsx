@@ -12,6 +12,6 @@ it('Staff sees operating state, seat/service counts and cutoff without managemen
 it('Librarian submits explicit event capacity, Manila dates and service decisions',async()=>{
  render(<LibraryOperationsPanel manage/>);await screen.findByLabelText('Event title')
  for(const [label,value] of [['Event title','Seminar'],['Affected space','Reading area'],['Remaining library seats','12'],['Starts at (Manila)','2026-10-12T09:00'],['Ends at (Manila)','2026-10-12T10:00']])fireEvent.change(screen.getByLabelText(label),{target:{value}})
- fireEvent.click(screen.getByRole('button',{name:'Schedule event'}));await waitFor(()=>expect(api.saveEvent).toHaveBeenCalled())
+ fireEvent.click(screen.getByRole('button',{name:'Schedule event'}));fireEvent.click(await screen.findByRole('button',{name:'Yes, save'}));await waitFor(()=>expect(api.saveEvent).toHaveBeenCalled())
  expect(api.saveEvent.mock.calls[0][1]).toMatchObject({capacity:12,startsAt:'2026-10-12T09:00:00+08:00',allowWalkIns:false,allowBorrowing:true,allowPrinting:true})
 })

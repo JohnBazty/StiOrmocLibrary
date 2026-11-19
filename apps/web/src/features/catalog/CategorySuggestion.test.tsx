@@ -1,6 +1,9 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render as renderView, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AddMultipleCopiesModal } from './AddMultipleCopiesModal'
+
+const render = (ui: Parameters<typeof renderView>[0]) => renderView(<MemoryRouter>{ui}</MemoryRouter>)
 
 const api = vi.hoisted(() => ({ createBulkBook: vi.fn(), lookupIsbn: vi.fn(), searchTitles: vi.fn(), fetchCover: vi.fn(async () => null) }))
 const categoryApi = vi.hoisted(() => ({ listShelves: vi.fn(), create: vi.fn() }))
@@ -52,6 +55,7 @@ describe('category help from the lookup subjects', () => {
     expect(name.value).toBe('Software engineering')
     fireEvent.change(screen.getByLabelText(/Shelf location \*/i), { target: { value: 'Shelf S' } })
     fireEvent.submit(name.closest('form')!)
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
     await waitFor(() => expect(categoryApi.create).toHaveBeenCalledWith(expect.objectContaining({ categoryName: 'Software engineering', shelfLocation: 'Shelf S' })))
     expect(await screen.findByText(/Category Software engineering created and selected/)).toBeTruthy()
     expect((screen.getByLabelText(/^Category \*/i) as HTMLSelectElement).value).toBe('9')

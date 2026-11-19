@@ -6,6 +6,7 @@ import { createIntegrityProtectedCsvStream } from './csv-integrity.ts'
 import { createBrandedTablePdf, type PdfTableColumn } from './branded-table-pdf.ts'
 
 export type InventoryExportRow = {
+  deweyCode?: string
   recordType: string
   title: string
   authors: string
@@ -27,12 +28,12 @@ function commonWhere(filters: CatalogSearchFilters, alias = 't') {
   if (filters.categoryId !== null) { where.push(`${alias}.category_id = ?`); parameters.push(filters.categoryId) }
   if (filters.publicationYear !== null) { where.push(`${alias}.publication_year = ?`); parameters.push(filters.publicationYear) }
   if (filters.author) {
-    where.push(`EXISTS (SELECT 1 FROM authors af WHERE af.title_id = ${alias}.title_id AND af.author_name ILIKE ? ESCAPE '!')`)
-    parameters.push(`%${filters.author.toLocaleLowerCase('en-US').replace(/[!%_]/g,'!$&')}%`)
+    where.push(`EXISTS (SELECT 1 FROM authors af WHERE af.title_id = ${alias}.title_id AND af.normalized_name ILIKE ?)`)
+    parameters.push(`%${filters.author.toLocaleLowerCase('en-US')}%`)
   }
   if (filters.query) {
-    where.push(`(${alias}.title ILIKE ? ESCAPE '!' OR ${alias}.isbn ILIKE ? ESCAPE '!' OR EXISTS (SELECT 1 FROM authors aq WHERE aq.title_id = ${alias}.title_id AND aq.author_name ILIKE ? ESCAPE '!'))`)
-    const like = `%${filters.query.toLocaleLowerCase('en-US').replace(/[!%_]/g,'!$&')}%`
+    where.push(`(${alias}.title ILIKE ? OR ${alias}.isbn ILIKE ? OR EXISTS (SELECT 1 FROM authors aq WHERE aq.title_id = ${alias}.title_id AND aq.author_name ILIKE ?))`)
+    const like = `%${filters.query}%`
     parameters.push(like, like, like)
   }
   return { where, parameters }
@@ -40,6 +41,7 @@ function commonWhere(filters: CatalogSearchFilters, alias = 't') {
 
 function mapRow(row: RowDataPacket): InventoryExportRow {
   return {
+    deweyCode: String(row.dewey_code ?? ''),
     recordType: String(row.record_type ?? ''), title: String(row.title ?? ''), authors: String(row.authors ?? ''),
     isbn: String(row.isbn ?? ''), category: String(row.category_name ?? ''), publicationYear: String(row.publication_year ?? ''),
     accessionNumber: String(row.accession_number ?? ''), barcode: String(row.barcode ?? ''), shelfLocation: String(row.shelf_location ?? ''),
@@ -55,27 +57,27 @@ export async function* iterateInventoryRows(
   batchSize = 250,
 ): AsyncGenerator<InventoryExportRow> {
   const safeBatchSize = Math.min(Math.max(Math.trunc(batchSize), 1), 1000)
-  const copyAvailability="CASE WHEN pc.condition_status IN ('Lost','Damaged','ForRepair') THEN 'Unavailable' WHEN pc.availability_status='Available' THEN COALESCE(m.availability_status,pc.availability_status) ELSE pc.availability_status END"
-  if (filters.scope !== 'research' && filters.availability !== 'Available for Viewing') {
+  if (filters.scope !== 'research') {
     let cursor = 0
     for (;;) {
       const common = commonWhere(filters)
-      const where = [...common.where, "t.record_type = 'Book'", "pc.lifecycle_status = 'Active'", 'pc.physical_copy_id > ?']
+      const where = [...common.where, "t.record_type = 'Book'", 'pc.physical_copy_id > ?']
+      if (filters.deweyStatus) where.push("pc.lifecycle_status='Active'",`pc.dewey_classification_id IS ${filters.deweyStatus==='assigned'?'NOT ':''}NULL`)
       const parameters = [...common.parameters, cursor]
       if (filters.availability && filters.availability !== 'Available for Viewing') {
-        where.push(`${copyAvailability} = ?`)
+        where.push('pc.availability_status = ?')
         parameters.push(filters.availability)
       }
       const [rows] = await database.execute<RowDataPacket[]>(
         `SELECT pc.physical_copy_id, t.record_type, t.title, t.isbn, t.publication_year,
                 c.category_name, pc.accession_number, pc.barcode, pc.shelf_location,
-                pc.condition_status, ${copyAvailability} AS availability,
+                (SELECT code FROM dewey_classifications d WHERE d.classification_id=pc.dewey_classification_id) AS dewey_code,
+                pc.condition_status, pc.availability_status AS availability,
                 (SELECT ${authorsAgg('a')}
                    FROM authors a WHERE a.title_id = t.title_id) AS authors,
                 NULL AS research_code, NULL AS adviser_name
            FROM physical_copies pc
            JOIN titles t ON t.title_id = pc.title_id
-           LEFT JOIN materials m ON m.material_id=pc.material_id
            LEFT JOIN categories c ON c.category_id = t.category_id
           WHERE ${where.join(' AND ')}
           ORDER BY pc.physical_copy_id ASC LIMIT ${safeBatchSize}`,
@@ -87,11 +89,11 @@ export async function* iterateInventoryRows(
     }
   }
 
-  if (filters.scope !== 'books' && (!filters.availability || ['Available', 'Available for Viewing', 'Archived', 'Missing'].includes(filters.availability))) {
+  if (!filters.deweyStatus && filters.scope !== 'books' && (!filters.availability || ['Available', 'Available for Viewing', 'Archived', 'Missing'].includes(filters.availability))) {
     let cursor = 0
     for (;;) {
       const common = commonWhere(filters)
-      const where = [...common.where, "t.record_type = 'Research/Thesis'", "rr.viewing_status <> 'Archived'", 't.title_id > ?']
+      const where = [...common.where, "t.record_type = 'Research/Thesis'", 't.title_id > ?']
       const parameters = [...common.parameters, cursor]
       if (filters.availability === 'Available' || filters.availability === 'Available for Viewing') where.push("rr.viewing_status = 'Available for Viewing'")
       else if (filters.availability) { where.push('rr.viewing_status = ?'); parameters.push(filters.availability) }
@@ -117,7 +119,7 @@ export async function* iterateInventoryRows(
 }
 
 function safeSpreadsheetValue(value: string) {
-  return /^\s*[=+\-@]/.test(value) ? `'${value}` : value
+  return /^[=+\-@]/.test(value) ? `'${value}` : value
 }
 
 function csvCell(value: string) {
@@ -129,23 +131,18 @@ const CSV_COLUMNS: Array<[keyof InventoryExportRow, string]> = [
   ['category', 'Category'], ['publicationYear', 'Publication Year'], ['accessionNumber', 'Accession Number'],
   ['barcode', 'Barcode'], ['shelfLocation', 'Shelf Location'], ['condition', 'Condition'],
   ['availability', 'Availability'], ['researchCode', 'Research Code'], ['adviser', 'Adviser'],
+  ['deweyCode', 'Dewey Number'],
 ]
 
-function inventoryCriteria(filters?:CatalogSearchFilters) {
-  return `Current snapshot | Scope: ${filters?.scope??'all'} | Search: ${filters?.query||'All'} | Category: ${filters?.categoryId??'All'} | Author: ${filters?.author||'All'} | Publication year: ${filters?.publicationYear??'All'} | Availability: ${filters?.availability||'All'} | Generated ${new Date().toLocaleString('en-PH',{timeZone:'Asia/Manila'})} Asia/Manila`
-}
-
-export function createCsvStream(rows: AsyncIterable<InventoryExportRow>, filters?:CatalogSearchFilters) {
-  const criteria=inventoryCriteria(filters)
+export function createCsvStream(rows: AsyncIterable<InventoryExportRow>) {
   async function* content() {
-    if(filters)yield '\uFEFF'+csvCell('REPORT CRITERIA')+','+csvCell(criteria)+'\r\n'
-    yield (filters?'':'\uFEFF') + CSV_COLUMNS.map(([, label]) => csvCell(label)).join(',') + '\r\n'
-    for await (const row of rows) yield CSV_COLUMNS.map(([key]) => csvCell(row[key])).join(',') + '\r\n'
+    yield '\uFEFF' + CSV_COLUMNS.map(([, label]) => csvCell(label)).join(',') + '\r\n'
+    for await (const row of rows) yield CSV_COLUMNS.map(([key]) => csvCell(row[key]??'')).join(',') + '\r\n'
   }
   return createIntegrityProtectedCsvStream(content(), 'catalog_inventory', CSV_COLUMNS.length)
 }
 
-export function createInventoryPdf(rows: AsyncIterable<InventoryExportRow>,filters?:CatalogSearchFilters) {
+export function createInventoryPdf(rows: AsyncIterable<InventoryExportRow>) {
   const columns: Array<PdfTableColumn<InventoryExportRow>> = [
     { key: 'recordType', label: 'TYPE', width: 55 },
     { key: 'title', label: 'TITLE', width: 160 },
@@ -160,10 +157,11 @@ export function createInventoryPdf(rows: AsyncIterable<InventoryExportRow>,filte
     { key: 'availability', label: 'AVAILABILITY', width: 80 },
     { key: 'researchCode', label: 'RESEARCH CODE', width: 75 },
     { key: 'adviser', label: 'ADVISER', width: 96 },
+    { key: 'deweyCode', label: 'DEWEY', width: 65 },
   ]
   return createBrandedTablePdf(rows, {
-    title: 'CURRENT BOOK AND RESEARCH HOLDINGS',
-    subtitle: inventoryCriteria(filters),
+    title: 'COMPLETE INVENTORY REPORT',
+    subtitle: 'All active book and research inventory data',
     emptyMessage: 'No inventory records matched the selected filters.',
     columns,
   })

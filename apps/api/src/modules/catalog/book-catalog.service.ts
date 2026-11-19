@@ -23,9 +23,7 @@ export function createBookCatalogService(database: Pool = db) {
     async list(query: Record<string, unknown>, viewer: CatalogViewer) {
       const policyService = createBorrowingPolicyService(database)
       const [catalog, activeBookCount, policy] = await Promise.all([
-        query.viewer_only === '1'
-          ? Promise.resolve({ items: [], pagination: {page:1,limit:24,total:0,totalPages:0} })
-          : queryBookCatalog(database, parseBookCatalogFilters(query)),
+        queryBookCatalog(database, parseBookCatalogFilters(query)),
         viewer.role === 'Student' || viewer.role === 'Faculty'
           ? queryViewerActiveBookCount(database, viewer.accountId)
           : Promise.resolve(0),

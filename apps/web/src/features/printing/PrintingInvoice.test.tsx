@@ -9,7 +9,7 @@ afterEach(() => {cleanup();vi.resetAllMocks()})
 it('shows an unpaid bill and a stable invoice number before payment', () => {
   render(<PrintingInvoice request={sample}/>)
   fireEvent.click(screen.getByText(/Invoice · PRINT-INV-00000003/))
-  expect(screen.getByText('This is your bill before payment. Pay at the library counter.')).toBeTruthy()
+  expect(screen.getByText('This is your bill before payment. Choose an available payment option.')).toBeTruthy()
   expect(screen.getAllByText('₱18.00')).toHaveLength(2)
 })
 it('shows zero due after payment and keeps payment confirmation separate', () => {

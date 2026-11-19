@@ -7,6 +7,7 @@ import { AuthenticationError, DeviceSwitchRequired, confirmDeviceSwitch, login, 
 import { dashboardForRole, getCurrentClaims, type AuthRole } from './auth-storage'
 import { DeviceSwitchPrompt } from './DeviceSwitchPrompt'
 
+const ORMOC_EMAIL=/^[^\s@]+@ormoc\.sti\.edu\.ph$/i
 const SCHOOL_ID = /^[A-Z0-9][A-Z0-9._-]{2,49}$/
 const STAFF_ROLES: AuthRole[] = ['Admin', 'Librarian', 'Staff']
 
@@ -22,7 +23,7 @@ export function AdminLoginPage() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState(() => (location.state as { passwordChanged?: string } | null)?.passwordChanged ?? '')
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [switchToken, setSwitchToken] = useState('')
 
@@ -58,8 +59,8 @@ export function AdminLoginPage() {
     event.preventDefault()
     const normalizedSchoolId = schoolId.trim().toUpperCase()
     const nextErrors: Record<string, string> = {}
-    if (!normalizedSchoolId) nextErrors.school_id = 'School ID is required.'
-    else if (!SCHOOL_ID.test(normalizedSchoolId)) nextErrors.school_id = 'Enter a valid School ID.'
+    if (!normalizedSchoolId) nextErrors.school_id = 'Personnel ID or Ormoc email is required.'
+    else if (!SCHOOL_ID.test(normalizedSchoolId)&&!ORMOC_EMAIL.test(normalizedSchoolId)) nextErrors.school_id = 'Enter a valid Personnel ID or Ormoc email.'
     if (!password) nextErrors.password = 'Password is required.'
     if (Object.keys(nextErrors).length) { setErrors(nextErrors); setMessage(''); return }
 
@@ -87,12 +88,11 @@ export function AdminLoginPage() {
             <p className="text-xs font-black uppercase tracking-[.2em] text-[#0b5ea2]/50">Authorized personnel only</p><h1 className="mt-2 font-display text-3xl font-black tracking-tight text-[#0b5ea2]">Library Personnel Login</h1>
             {message ? <AuthMessage>{message}</AuthMessage> : null}
             {switchToken ? <DeviceSwitchPrompt busy={busy} onConfirm={() => { void switchDevice() }} onCancel={() => { setSwitchToken(''); setMessage('') }} /> : <form onSubmit={submit} className="mt-7 space-y-5" noValidate>
-              <label className="block"><span className="text-sm font-bold text-[#0b5ea2]">School ID</span><span className="relative mt-2 block"><IdCard className="absolute left-4 top-1/2 -translate-y-1/2 text-[#0b5ea2]/45" size={18} /><input aria-invalid={Boolean(errors.school_id)} autoFocus autoComplete="username" value={schoolId} onChange={(event) => setSchoolId(event.target.value)} placeholder="Enter School ID" className="h-13 w-full rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] pl-12 pr-4 text-sm uppercase text-[#0b5ea2] outline-none placeholder:normal-case placeholder:text-[#0b5ea2]/40 focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/10" /></span>{errors.school_id ? <span className="field-error mt-2 block text-xs font-bold">{errors.school_id}</span> : null}</label>
-              <label className="block"><span className="text-sm font-bold text-[#0b5ea2]">Password</span><span className="relative mt-2 block"><LockKeyhole className="absolute left-4 top-1/2 -translate-y-1/2 text-[#0b5ea2]/45" size={18} /><input type={showPassword ? 'text' : 'password'} aria-invalid={Boolean(errors.password)} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter your password" className="h-13 w-full rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] pl-12 pr-12 text-sm text-[#0b5ea2] outline-none placeholder:text-[#0b5ea2]/40 focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/10" /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword((current) => !current)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-[#0b5ea2]/60 hover:bg-[#0b5ea2]/5">{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></span>{errors.password ? <span className="field-error mt-2 block text-xs font-bold">{errors.password}</span> : null}</label>
-              <label className="flex cursor-pointer items-center gap-3 text-sm font-semibold text-[#0b5ea2]/65"><input type="checkbox" checked={showPassword} onChange={(event) => setShowPassword(event.target.checked)} className="h-4 w-4 accent-[#0b5ea2]" />Show password</label>
+              <label className="block"><span className="text-sm font-bold text-[#0b5ea2]">Personnel ID or Ormoc email</span><span className="relative mt-2 block"><IdCard className="absolute left-4 top-1/2 -translate-y-1/2 text-[#0b5ea2]/45" size={18} /><input aria-invalid={Boolean(errors.school_id)} autoFocus autoComplete="username" value={schoolId} onChange={(event) => setSchoolId(event.target.value)} placeholder="Personnel ID or Ormoc Microsoft email" className="h-13 w-full rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] pl-12 pr-4 text-sm text-[#0b5ea2] outline-none placeholder:normal-case placeholder:text-[#0b5ea2]/40 focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/10" /></span>{errors.school_id ? <span className="field-error mt-2 block text-xs font-bold">{errors.school_id}</span> : null}</label>
+              <label className="block"><span className="text-sm font-bold text-[#0b5ea2]">Password</span><span className="relative mt-2 block"><LockKeyhole className="absolute left-4 top-1/2 -translate-y-1/2 text-[#0b5ea2]/45" size={18} /><input type={showPassword ? 'text' : 'password'} aria-invalid={Boolean(errors.password)} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter your password" className="h-13 w-full rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] pl-12 pr-12 text-sm text-[#0b5ea2] outline-none placeholder:text-[#0b5ea2]/40 focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/10" /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} onClick={() => setShowPassword((current) => !current)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-[#0b5ea2]/60 hover:bg-[#0b5ea2]/5">{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></span>{errors.password ? <span className="field-error mt-2 block text-xs font-bold">{errors.password}</span> : null}</label>
               <button disabled={busy} className="flex h-13 w-full items-center justify-center rounded-xl bg-[#0b5ea2] text-sm font-black uppercase tracking-[.12em] text-[#FFFFFF] shadow-lg shadow-[#0b5ea2]/20 transition hover:ring-4 hover:ring-[#FFF200] disabled:cursor-wait disabled:opacity-60">{busy ? 'Verifying account…' : 'Log In'}</button>
             </form>}
-            <Link to="/forgot-password?portal=staff" className="mt-5 inline-block text-sm font-bold text-[#0b5ea2] underline">Set or reset Staff password</Link>
+            <Link to="/forgot-password?portal=staff" className="mt-5 inline-block text-sm font-bold text-[#0b5ea2] underline">Forgot password</Link>
           </div>
         </section>
       </div>

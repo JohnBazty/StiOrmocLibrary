@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Button, SectionCard } from '../../components/ui'
 import { usersApi } from './users-api'
 import { confirmLeave, UnsavedGuard } from '../../components/UnsavedChanges'
+import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 
 const initial = { first_name: '', last_name: '', school_id: '', school_email: '' }
 const fields = [
@@ -15,9 +16,14 @@ export function StaffAccountForm({ onClose, onCreated }: { onClose: () => void; 
   const [form, setForm] = useState(initial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const { ask, dialog: confirmSave } = useConfirmSave()
 
-  async function submit(event: FormEvent) {
+  function submit(event: FormEvent) {
     event.preventDefault()
+    if (busy) return
+    ask(`Create a Staff account for ${form.first_name} ${form.last_name}.`, () => { void createAccount() })
+  }
+  async function createAccount() {
     setBusy(true)
     setError('')
     try {
@@ -46,5 +52,6 @@ export function StaffAccountForm({ onClose, onCreated }: { onClose: () => void; 
         <Button variant="secondary" onClick={() => confirmLeave(onClose)} disabled={busy}>Cancel</Button>
       </div>
     </form></UnsavedGuard>
+    {confirmSave}
   </SectionCard>
 }

@@ -2,15 +2,12 @@ import { Router } from 'express'
 import { requireLibraryPermission } from '../auth/jwt-auth.middleware.ts'
 import { liveReportsService, parseReportFilters, exportLiveReport } from './live-reports.service.ts'
 import { workspaceTasksService } from '../dashboard/workspace-tasks.service.ts'
-import { reportDefinitions } from './report-contract.ts'
-import { HttpError } from '../../core/http-error.ts'
 
 export function createLiveReportsRouter(service = liveReportsService) {
   const router = Router()
   router.use(requireLibraryPermission('library.manage'))
-  router.get('/options',(_request,response)=>{response.set('Cache-Control','private, no-store').json({success:true,data:reportDefinitions})})
   router.get('/',async(r,s,n)=>{try{const data=await service.read(s.locals.authenticatedUser.accountId,parseReportFilters(r.query));s.set('Cache-Control','private, no-store').json({success:true,data:{...data,rows:data.rows.slice((data.filters.page-1)*20,data.filters.page*20)}})}catch(e){n(e)}})
-  router.get('/export',async(r,s,n)=>{try{const format=r.query.format??'csv';if(typeof format!=='string'||!['csv','pdf'].includes(format))throw new HttpError(422,'REPORT_FILTER_INVALID','Choose CSV or PDF.');const data=await service.read(s.locals.authenticatedUser.accountId,parseReportFilters(r.query));const stream=exportLiveReport(data,format);s.set({'Content-Type':format==='pdf'?'application/pdf':'text/csv; charset=utf-8','Content-Disposition':`attachment; filename="sti-${data.kind}.${format}"`,'Cache-Control':'private, no-store'});stream.on('error',e=>s.destroy(e)).pipe(s)}catch(e){n(e)}})
+  router.get('/export',async(r,s,n)=>{try{const format=String(r.query.format??'csv'),data=await service.read(s.locals.authenticatedUser.accountId,parseReportFilters(r.query));const stream=exportLiveReport(data,format);s.set({'Content-Type':format==='pdf'?'application/pdf':'text/csv; charset=utf-8','Content-Disposition':`attachment; filename="sti-${data.kind}.${format}"`,'Cache-Control':'private, no-store'});stream.on('error',e=>s.destroy(e)).pipe(s)}catch(e){n(e)}})
   return router
 }
 export const liveReportsRouter = createLiveReportsRouter()

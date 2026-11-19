@@ -1,6 +1,7 @@
 import type { PoolConnection, RowDataPacket } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { localTimestamp } from '../attendance/attendance-intervals.ts'
+import { requireScheduledPickup } from '../reservations/borrowing-schedule-calendar.ts'
 
 /** Staff may identify a borrower from a stored queue entry without receiving their QR secret. */
 export async function loadDeskRequest(q: Pick<PoolConnection, 'execute'>, input: Record<string, unknown>, now: Date, confirming = false) {
@@ -10,11 +11,11 @@ export async function loadDeskRequest(q: Pick<PoolConnection, 'execute'>, input:
     throw new HttpError(422, 'DESK_REQUEST_INVALID', 'Choose a valid pickup request.')
   }
   const [rows] = await q.execute<RowDataPacket[]>(reservationId !== null
-    ? `SELECT r.user_id,r.reservation_id,r.request_kind,r.reservation_status,r.pickup_deadline,r.assigned_physical_copy_id AS copy_id,pc.barcode
+    ? `SELECT r.user_id,r.reservation_id,r.request_kind,r.reservation_status,r.pickup_deadline,r.assigned_physical_copy_id AS copy_id,pc.barcode,to_jsonb(r)->>'scheduled_pickup_date' AS scheduled_pickup_date
          FROM reservations r LEFT JOIN physical_copies pc ON pc.physical_copy_id=r.assigned_physical_copy_id
          WHERE r.reservation_id=? FOR UPDATE OF r`
     : `SELECT bt.user_id,bt.reservation_id,bt.transaction_status,r.request_kind,r.reservation_status,r.pickup_deadline,
-              bt.physical_copy_id AS copy_id,pc.barcode,r.assigned_physical_copy_id
+              bt.physical_copy_id AS copy_id,pc.barcode,r.assigned_physical_copy_id,to_jsonb(r)->>'scheduled_pickup_date' AS scheduled_pickup_date
          FROM borrow_transactions bt LEFT JOIN reservations r ON r.reservation_id=bt.reservation_id
          LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id
          WHERE bt.transaction_id=? FOR UPDATE OF bt`, [reservationId ?? transactionId])
@@ -23,7 +24,8 @@ export async function loadDeskRequest(q: Pick<PoolConnection, 'execute'>, input:
     throw new HttpError(409, 'DESK_REQUEST_STALE', 'This pickup changed. Refresh the list before starting checkout.')
   }
   const cartHandover = row.request_kind === 'CartHandover' && row.reservation_status === 'approved'
-  if (row.reservation_id && !cartHandover && (row.reservation_status !== 'ready_for_pickup' || !row.pickup_deadline || localTimestamp(row.pickup_deadline) <= now.getTime())) {
+  const scheduledDeadline=await requireScheduledPickup(q,row,now)
+  if (row.reservation_id && !cartHandover && (row.reservation_status !== 'ready_for_pickup' || !row.pickup_deadline || (scheduledDeadline?.getTime()??localTimestamp(row.pickup_deadline)) <= now.getTime())) {
     throw new HttpError(409, 'DESK_REQUEST_NOT_READY', 'This request is not ready for pickup or its pickup time has passed.')
   }
   if (!row.copy_id || !row.barcode || (transactionId !== null && row.reservation_id && Number(row.copy_id) !== Number(row.assigned_physical_copy_id))) {

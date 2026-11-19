@@ -1,35 +1,79 @@
 import { SelectedFilePreview } from '../../components/SelectedFilePreview'
-import { Camera, CheckCircle2, QrCode, Upload, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { Camera, CheckCircle2, Clock3, QrCode, Upload, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Html5Qrcode as Html5QrcodeInstance } from 'html5-qrcode'
 import { Button } from '../../components/ui'
-import { attendanceApi, type ScanConfirmation, type ScanResult } from './attendance-api'
+import { attendanceApi, type AttendanceConfirmationRequest } from './attendance-api'
+import { notifyAttendanceUpdated } from './attendance-updates'
+import { qrScanBox } from '../../components/scanner-viewport'
 
-const purposes=['Library Visit','Study','Research','Book Borrowing','Printing','Photocopy']
 const readerId='smartlib-attendance-qr-reader'
+const message=(reason:unknown)=>reason instanceof Error?reason.message:'Attendance could not be checked. Try again.'
 
 export function AttendanceScannerModal({open,onClose,onRecorded}:{open:boolean;onClose:()=>void;onRecorded?:()=>void}){
-  const scanner=useRef<Html5QrcodeInstance|null>(null),handling=useRef(false),saving=useRef(false),requestId=useRef('')
-  const[imageFile,setImageFile]=useState<File|null>(null)
-  const[purpose,setPurpose]=useState('')
-  const[scanning,setScanning]=useState(false),[payload,setPayload]=useState(''),[resolved,setResolved]=useState<ScanResult|null>(null),[confirmation,setConfirmation]=useState<ScanConfirmation|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false)
-  const stop=async()=>{const instance=scanner.current;if(!instance)return;try{if(instance.isScanning)await instance.stop();await instance.clear()}catch{/* The camera may already have been released. */}finally{scanner.current=null;setScanning(false)}}
-  const reset=async()=>{await stop();setImageFile(null);handling.current=false;requestId.current='';setPurpose('');setPayload('');setResolved(null);setConfirmation(null);setError('');setBusy(false)}
-  useEffect(()=>{if(!open)void reset();return()=>{void stop()}},[open])
-  const resolve=async(value:string)=>{if(handling.current)return;handling.current=true;setError('');setBusy(true);try{await stop();const result=await attendanceApi.resolveScan(value);requestId.current=crypto.randomUUID().replaceAll('-','');setPayload(value);setResolved(result);setPurpose(result.visitor.purpose??'')}catch(e){setError(e instanceof Error?e.message:'Unable to verify this QR code.');handling.current=false}finally{setBusy(false)}}
-  const start=async()=>{await reset();setError('');try{const{Html5Qrcode,Html5QrcodeSupportedFormats}=await import('html5-qrcode');const cameras=await Html5Qrcode.getCameras();if(!cameras.length)throw new Error('No camera was found on this device.');const instance=new Html5Qrcode(readerId,{formatsToSupport:[Html5QrcodeSupportedFormats.QR_CODE],verbose:false});scanner.current=instance;setScanning(true);const preferred=cameras.find(c=>/back|rear|environment/i.test(c.label))??cameras[0];await instance.start(preferred.id,{fps:10,qrbox:{width:240,height:240}},decoded=>void resolve(decoded),()=>undefined)}catch(e){await stop();setError(e instanceof Error?e.message:'Camera access could not be started. Use HTTPS and allow camera permission.')}}
-  const upload=async(file:File|null)=>{if(!file||busy)return;await reset();setImageFile(file);setBusy(true);setError('');try{const{Html5Qrcode,Html5QrcodeSupportedFormats}=await import('html5-qrcode');const instance=new Html5Qrcode(readerId,{formatsToSupport:[Html5QrcodeSupportedFormats.QR_CODE],verbose:false});scanner.current=instance;const decoded=await instance.scanFile(file,true);await resolve(decoded)}catch(e){setError(e instanceof Error?e.message:'No valid QR code was found in that image.');handling.current=false}finally{setBusy(false);await stop()}}
-  const confirm=async()=>{if(!payload||!resolved||saving.current)return;saving.current=true;setBusy(true);setError('');try{const data=await attendanceApi.scan(payload,purpose,requestId.current,resolved.openVisit?'Exit':'Entry');setConfirmation(data);setResolved(null);setImageFile(null);onRecorded?.()}catch(e){setError(e instanceof Error?e.message:'Attendance could not be recorded.')}finally{saving.current=false;setBusy(false)}}
+  const scanner=useRef<Html5QrcodeInstance|null>(null),handling=useRef(false),saving=useRef(false)
+  const cameraOpening=useRef(false)
+  const openRef=useRef(open),generation=useRef(0)
+  openRef.current=open
+  const requestKey=useRef({payload:'',id:''}),recorded=useRef(''),mounted=useRef(false),callback=useRef(onRecorded)
+  callback.current=onRecorded
+  const [imageFile,setImageFile]=useState<File|null>(null),[scanning,setScanning]=useState(false)
+  const [typed,setTyped]=useState(''),[scan,setScan]=useState<AttendanceConfirmationRequest|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('')
+  const stop=useCallback(async()=>{const instance=scanner.current;if(!instance)return;try{if(instance.isScanning)await instance.stop();await instance.clear()}catch{/* The camera may already have been released. */}finally{scanner.current=null;if(mounted.current)setScanning(false)}},[])
+  const reset=useCallback(async()=>{generation.current++;await stop();handling.current=false;requestKey.current={payload:'',id:''};setImageFile(null);setTyped('');setScan(null);setError('');setBusy(false)},[stop])
+  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;void stop()}},[stop])
+  useEffect(()=>{if(!open)void reset();return()=>{void stop()}},[open,reset,stop])
+  function apply(next:AttendanceConfirmationRequest){
+    setScan(next)
+    if(next.state==='Confirmed'&&recorded.current!==next.confirmationId){recorded.current=next.confirmationId;callback.current?.();notifyAttendanceUpdated()}
+  }
+  const resolve=async(value:string)=>{
+    const payload=value.trim()
+    if(!payload||handling.current||saving.current)return
+    const version=generation.current
+    handling.current=true;setBusy(true);setError('')
+    if(requestKey.current.payload!==payload)requestKey.current={payload,id:crypto.randomUUID()}
+    try{await stop();const next=await attendanceApi.sendConfirmation(payload,requestKey.current.id);if(mounted.current&&openRef.current&&version===generation.current)apply(next)}
+    catch(reason){if(mounted.current)setError(message(reason));handling.current=false}
+    finally{if(mounted.current)setBusy(false)}
+  }
+  useEffect(()=>{
+    if(!open||scan?.state!=='Pending')return
+    let active=true,running=false
+    const refresh=async()=>{
+      if(!active||running||saving.current||document.hidden)return
+      running=true
+      try{const next=await attendanceApi.scanConfirmation(scan.confirmationId);if(active){apply(next);setError('')}}
+      catch(reason){if(active)setError(message(reason))}
+      finally{running=false}
+    }
+    const timer=setInterval(()=>void refresh(),2000)
+    const returned=()=>void refresh()
+    window.addEventListener('focus',returned);document.addEventListener('visibilitychange',returned)
+    return()=>{active=false;clearInterval(timer);window.removeEventListener('focus',returned);document.removeEventListener('visibilitychange',returned)}
+  },[open,scan?.confirmationId,scan?.state])
+  const start=async()=>{if(cameraOpening.current)return;cameraOpening.current=true;await reset();try{const{Html5Qrcode,Html5QrcodeSupportedFormats}=await import('html5-qrcode');const cameras=await Html5Qrcode.getCameras();if(!openRef.current||!mounted.current)return;if(!cameras.length)throw new Error('No camera was found. Use a USB scanner or a saved QR image.');const instance=new Html5Qrcode(readerId,{formatsToSupport:[Html5QrcodeSupportedFormats.QR_CODE],verbose:false});scanner.current=instance;setScanning(true);const preferred=cameras.find(camera=>/back|rear|environment/i.test(camera.label))??cameras[0];await instance.start(preferred.id,{fps:10,aspectRatio:4/3,qrbox:qrScanBox},decoded=>void resolve(decoded),()=>undefined);if(!openRef.current)await stop();else document.getElementById(readerId)?.scrollIntoView?.({block:'nearest'})}catch(reason){await stop();if(mounted.current)setError(message(reason))}finally{cameraOpening.current=false}}
+  const readImage=async()=>{if(!imageFile||busy)return;setBusy(true);setError('');try{const{Html5Qrcode,Html5QrcodeSupportedFormats}=await import('html5-qrcode');const instance=new Html5Qrcode(readerId,{formatsToSupport:[Html5QrcodeSupportedFormats.QR_CODE],verbose:false});scanner.current=instance;const decoded=await instance.scanFile(imageFile,true);await resolve(decoded)}catch(reason){setError(message(reason));handling.current=false}finally{setBusy(false);await stop()}}
+  async function cancel(){if(!scan||saving.current)return;saving.current=true;setBusy(true);setError('');try{apply(await attendanceApi.cancelScanConfirmation(scan.confirmationId))}catch(reason){setError(message(reason))}finally{saving.current=false;setBusy(false)}}
   if(!open)return null
-  return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#0b5ea2]/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Attendance QR scanner"><div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-3xl bg-white shadow-2xl"><div className="flex items-center justify-between border-b border-[#0b5ea2]/15 p-5"><div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#0b5ea2]/55">Library entrance</p><h2 className="mt-1 font-display text-xl font-bold">Scan attendance QR</h2></div><button onClick={onClose} disabled={busy} aria-label="Close attendance scanner" className="rounded-xl p-2 hover:bg-[#0b5ea2]/5"><X/></button></div><div className="space-y-4 p-5">
-    {confirmation?<div className="rounded-2xl bg-[#FFF200] p-5 text-center"><CheckCircle2 className="mx-auto" size={36}/><h3 className="mt-3 font-display text-xl font-bold">{confirmation.message}</h3><p className="mt-2 text-sm">{confirmation.visitor.name} · {confirmation.visitor.schoolId}</p><p className="mt-1 text-xs">Current occupancy: {confirmation.occupancy.current} of {confirmation.occupancy.capacity}</p><Button className="mt-5" onClick={()=>void reset()}>Scan another visitor</Button></div>:<>
-      <p className="text-sm">Scan a visitor’s QR. Their current visit determines entry or exit automatically.</p>
-      {resolved&&!resolved.openVisit?<div><p className="mb-2 text-xs font-bold">{resolved.visitor.purpose?'Purpose from visitor’s QR':'Choose purpose before recording entry'}</p><div className="grid gap-2 sm:grid-cols-2">{purposes.map(v=><button key={v} disabled={busy||Boolean(resolved.visitor.purpose)} aria-pressed={purpose===v} onClick={()=>setPurpose(v)} className={`rounded-xl border p-3 text-sm font-bold ${purpose===v?'border-[#0b5ea2] bg-[#0b5ea2] text-white':'border-[#0b5ea2]/20'}`}>{v==='Book Borrowing'?'Borrow books':v}</button>)}</div></div>:null}
-      <div id={readerId} className="min-h-16 overflow-hidden rounded-2xl border border-[#0b5ea2]/15 bg-[#0b5ea2]/5"/>
-      <SelectedFilePreview file={imageFile} disabled={busy||Boolean(resolved)} onRemove={()=>{setImageFile(null);setError('')}}/>
-      {!resolved&&imageFile?<Button disabled={busy} onClick={()=>void upload(imageFile)}>{busy?'Reading image…':'Read QR from image'}</Button>:null}
-      {!resolved?<div className="grid gap-2 sm:grid-cols-2"><Button onClick={()=>void start()} disabled={scanning||busy}><Camera size={16}/>{scanning?'Camera active':'Start camera'}</Button><label className="relative inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-[#0b5ea2]/20 px-4 text-sm font-semibold"><Upload size={16}/>Choose saved image<input aria-label="Saved QR image" disabled={busy} type="file" accept="image/*" className="sr-only" onChange={e=>{const chosen=e.target.files?.[0]??null;e.target.value='';void reset().then(()=>setImageFile(chosen))}}/></label></div>:<div className="rounded-2xl border border-[#0b5ea2]/15 p-4"><div className="flex items-start gap-3"><span className="rounded-xl bg-[#FFF200] p-2"><QrCode size={20}/></span><div><h3 className="font-bold">{resolved.visitor.name}</h3><p className="text-sm">{resolved.visitor.schoolId} · {resolved.visitor.role}</p><p className="mt-1 text-xs text-[#0b5ea2]/65">{resolved.openVisit?'Currently inside the library':'Ready to check in'} · Occupancy {resolved.occupancy.current}/{resolved.occupancy.capacity}</p></div></div><div className="mt-4 grid gap-2 sm:grid-cols-2"><Button variant="secondary" onClick={()=>void reset()} disabled={busy}>Cancel scan</Button><Button onClick={()=>void confirm()} disabled={busy||(!resolved.openVisit&&!purpose)}>{busy?'Saving…':resolved.openVisit?'Confirm exit':'Confirm entry'}</Button></div></div>}
-    </>}
-    {error?<div className="rounded-xl bg-[#B42318] p-3 text-sm font-bold text-white" role="alert">{error}</div>:null}
-  </div></div></div>
+  const done=scan?.state==='Confirmed'
+  return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-2 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="attendance-scanner-heading"><div className="max-h-[96dvh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-[#0b5ea2]/15 bg-white text-[#0b5ea2] shadow-2xl dark:border-white/15 dark:bg-[#20212b] dark:text-white">
+    <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-[#0b5ea2]/15 bg-white p-5 dark:border-white/15 dark:bg-[#20212b]"><div><p className="text-xs font-semibold opacity-60">Library entrance</p><h2 id="attendance-scanner-heading" className="mt-1 text-balance text-xl font-bold">Scan attendance QR</h2></div><button type="button" onClick={onClose} disabled={busy} aria-label="Close attendance scanner" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl hover:bg-[#0b5ea2]/5 dark:hover:bg-white/10"><X/></button></header>
+    <div className="space-y-4 p-5 sm:p-6">
+      <p className="text-pretty text-sm leading-6 opacity-75">Scan the visitor’s QR. They choose their purpose and confirm entry or exit on their own signed-in account.</p>
+      {scan?<section aria-live="polite" className="space-y-4 rounded-2xl border border-[#0b5ea2]/15 p-4 dark:border-white/15"><div className="flex items-start gap-3">{done?<CheckCircle2 size={24}/>:scan.state==='Pending'?<Clock3 size={24}/>:<QrCode size={24}/>}<div><h3 className="font-bold">{scan.visitor.name}</h3><p className="text-sm opacity-70">{scan.visitor.schoolId} · {scan.visitor.role}</p></div></div>
+        <h3 className="text-lg font-bold">{done?scan.result?.message:scan.state==='Pending'?scan.action==='Exit'?'Waiting for user to confirm exit':'Waiting for user to choose a purpose':scan.state==='Expired'?'Scan expired':scan.state==='Cancelled'?'Request cancelled':'Scan again'}</h3>
+        {scan.state==='Pending'?<><p className="text-sm leading-6 opacity-75">Ask the visitor to open their library account. The confirmation appears automatically. Attendance is recorded after they confirm.</p><p className="text-xs opacity-60">Expires at {new Date(scan.expiresAt).toLocaleTimeString('en-PH',{timeZone:'Asia/Manila',hour:'numeric',minute:'2-digit'})}</p></>:null}
+        {done?<p className="text-sm tabular-nums">Occupied seats: {scan.occupancy.current} / {scan.occupancy.capacity}</p>:null}
+        <div className="flex flex-wrap gap-2">{scan.state==='Pending'?<Button variant="secondary" disabled={busy} onClick={()=>void cancel()}>Cancel request</Button>:null}<Button disabled={busy} onClick={()=>void reset()}>Scan another visitor</Button></div>
+      </section>:<>
+        <div id={readerId} aria-label="Attendance camera preview" className={"camera-preview w-full "+(scanning?"min-h-64 sm:min-h-96":"min-h-24")}/>
+        <form onSubmit={event=>{event.preventDefault();void resolve(typed)}} className="space-y-2"><label className="block text-sm font-semibold" htmlFor="attendance-qr-input">Visitor QR</label><input id="attendance-qr-input" autoComplete="off" autoCapitalize="none" spellCheck={false} value={typed} disabled={busy||scanning} onChange={event=>setTyped(event.target.value)} onPaste={event=>{const text=event.clipboardData.getData('text').trim();if(!text)return;event.preventDefault();setTyped(text);void resolve(text)}} placeholder="Scan with USB reader or paste QR" className="min-h-11 w-full rounded-xl border border-[#0b5ea2]/20 bg-white p-3 text-[#0b5ea2]"/><Button type="submit" disabled={busy||scanning||!typed.trim()}>{busy?'Sending…':'Send to visitor'}</Button></form>
+        <div className="grid gap-2 sm:grid-cols-2"><Button onClick={()=>void(scanning?stop():start())} disabled={busy}><Camera size={16}/>{scanning?'Stop camera':'Start camera'}</Button><label className="relative inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-[#0b5ea2]/20 px-4 text-sm font-semibold dark:border-white/20"><Upload size={16}/>Choose saved image<input aria-label="Saved QR image" disabled={busy} type="file" accept="image/*" className="sr-only" onChange={event=>{setImageFile(event.target.files?.[0]??null);setError('');event.target.value=''}}/></label></div>
+        <SelectedFilePreview file={imageFile} disabled={busy} onRemove={()=>{setImageFile(null);setError('')}}/>
+        {imageFile?<Button disabled={busy} onClick={()=>void readImage()}>{busy?'Reading image…':'Read QR from image'}</Button>:null}
+      </>}
+      {error?<div role="alert" className="auth-error rounded-xl p-3 text-sm">{error}</div>:null}
+    </div>
+  </div></div>
 }

@@ -8,7 +8,7 @@ import { CSV_INTEGRITY_MARKER, verifyIntegrityProtectedCsv } from './csv-integri
 const thesis: ThesisInventoryExportRow = {
   research_inventory_id: 1, item_title: 'SmartLib Research', title: 'SmartLib Research', authors: 'Student Authors',
   adviser: 'Faculty Adviser', publication_year: 2026, accession_number: 'TH-001', barcode: 'THESIS-001',
-  condition_state: 'good', availability_status: 'available', shelf_location: 'Shelf R-1', last_audited_at: null, row_version: 1,
+  condition_state: 'good', availability_status: 'available', shelf_location: 'Shelf R-1', shelf_column: 1, shelf_row: 1, last_audited_at: null, row_version: 1,
 }
 
 async function streamBuffer(stream: NodeJS.ReadableStream) {

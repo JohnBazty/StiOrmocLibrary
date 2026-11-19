@@ -1,3 +1,5 @@
+import {importAutomationService} from './import-automation.service.ts'
+import { researchGroupsService } from './research-groups.service.ts'
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import multer from 'multer'
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit'
@@ -6,23 +8,26 @@ import { exportFoundRows, fillFoundRows, readFoundRows } from './find-book-detai
 import * as service from './catalog-enhancements.service.ts'
 import type { SheetMapping } from './holdings-parser.ts'
 import { HttpError } from '../../core/http-error.ts'
-import { db } from '../../config/db.js'
-import { createAvailabilityReader } from './catalog-availability.ts'
+import { moveShelfCopies, restoreShelfCopies } from './shelf-copy-placement.service.ts'
 
 const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:4194304,files:1,fields:4,fieldSize:32768}})
 const run=(fn:(request:Request,response:Response)=>Promise<unknown>)=>(request:Request,response:Response,next:NextFunction)=>{response.set('Cache-Control','no-store');void fn(request,response).then(data=>response.json({success:true,data})).catch(next)}
 const mappings=(value:unknown):SheetMapping[]=>{try{return JSON.parse(String(value))}catch{throw new HttpError(422,'HOLDINGS_MAPPING_INVALID','Confirm the sheet mappings.')}}
 export const publicCatalogRouter=Router()
-// Bounded stock polling has its own budget; full catalog reads and downloads keep
-// their existing limiter. It never expands the limit for mutations or login.
-const availabilityReader=createAvailabilityReader(db)
-publicCatalogRouter.get('/availability',rateLimit({windowMs:60000,limit:6000,standardHeaders:true,legacyHeaders:false}),run(req=>availabilityReader(req.query.ids,req.query.detailId)))
 publicCatalogRouter.use(rateLimit({windowMs:60000,limit:120,standardHeaders:true,legacyHeaders:false}))
+publicCatalogRouter.get('/research-groups',run(()=>researchGroupsService.list()))
 publicCatalogRouter.get('/options',run(()=>service.catalogOptions(true)))
 publicCatalogRouter.get('/titles',run((req,res)=>service.publicCatalog(req.query)))
 publicCatalogRouter.get('/titles/:id',run((req,res)=>service.publicDetail(req.params.id)))
 publicCatalogRouter.get('/files/:id',async(req,res,next)=>{try{const file=await service.digitalDownload(req.params.id);res.set({'Content-Type':'application/pdf','Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}).send(file.bytes)}catch(e){next(e)}})
 export const catalogMaintenanceRouter=Router()
+catalogMaintenanceRouter.get('/research-groups',run(()=>researchGroupsService.list(true)))
+catalogMaintenanceRouter.post('/research-groups',run((req,res)=>researchGroupsService.save(Number(res.locals.authenticatedUser.accountId),null,req.body)))
+catalogMaintenanceRouter.patch('/research-groups/:id',run((req,res)=>researchGroupsService.save(Number(res.locals.authenticatedUser.accountId),req.params.id,req.body)))
+catalogMaintenanceRouter.get('/research-group-assignments/:titleId',run(req=>researchGroupsService.assignment(req.params.titleId)))
+catalogMaintenanceRouter.put('/research-group-assignments/:titleId',run((req,res)=>researchGroupsService.assign(Number(res.locals.authenticatedUser.accountId),req.params.titleId,req.body)))
+catalogMaintenanceRouter.post('/copies/move',run((req,res)=>moveShelfCopies(req.body,Number(res.locals.authenticatedUser.accountId))))
+catalogMaintenanceRouter.post('/copies/restore',run((req,res)=>restoreShelfCopies(req.body,Number(res.locals.authenticatedUser.accountId))))
 catalogMaintenanceRouter.get('/options',run(()=>service.catalogOptions()))
 catalogMaintenanceRouter.post('/foundation/:kind',run((req,res)=>service.saveFoundation(String(req.params.kind),null,req.body,Number(res.locals.authenticatedUser.accountId))))
 catalogMaintenanceRouter.patch('/foundation/:kind/:id',run((req,res)=>service.saveFoundation(String(req.params.kind),req.params.id,req.body,Number(res.locals.authenticatedUser.accountId))))
@@ -32,6 +37,15 @@ catalogMaintenanceRouter.post('/files/:id/archive',run((req,res)=>service.archiv
 catalogMaintenanceRouter.post('/imports/inspect',upload.single('holdings'),run((req,res)=>service.inspectHoldings(req.file)))
 catalogMaintenanceRouter.post('/imports',upload.single('holdings'),run((req,res)=>service.stageHoldings(req.file,mappings(req.body.mapping),Number(res.locals.authenticatedUser.accountId))))
 catalogMaintenanceRouter.get('/imports',run(()=>service.importBatches()))
+const automationLimit=rateLimit({windowMs:60000,limit:60,standardHeaders:true,legacyHeaders:false,keyGenerator:(req,res)=>`account:${res.locals.authenticatedUser?.accountId??ipKeyGenerator(req.ip??'')}`,message:{success:false,code:'IMPORT_AUTOMATION_RATE_LIMITED',message:'Wait a minute, then continue processing your saved list.'}})
+catalogMaintenanceRouter.get('/imports/:id/covers',run((req,res)=>importAutomationService.coverResults(Number(res.locals.authenticatedUser.accountId),req.params.id)))
+catalogMaintenanceRouter.post('/imports/:id/covers/accept',run((req,res)=>importAutomationService.acceptCovers(Number(res.locals.authenticatedUser.accountId),req.params.id,req.body??{})))
+catalogMaintenanceRouter.post('/import-covers/:rowId/remove',run((req,res)=>importAutomationService.removeCover(Number(res.locals.authenticatedUser.accountId),req.params.rowId,req.body??{})))
+catalogMaintenanceRouter.get('/imports/:id/automation',run((req,res)=>importAutomationService.preview(Number(res.locals.authenticatedUser.accountId),req.params.id)))
+catalogMaintenanceRouter.post('/imports/:id/automation',automationLimit,run((req,res)=>importAutomationService.start(Number(res.locals.authenticatedUser.accountId),req.params.id,req.body??{})))
+catalogMaintenanceRouter.get('/import-automation/:runId',run((req,res)=>importAutomationService.status(Number(res.locals.authenticatedUser.accountId),req.params.runId)))
+catalogMaintenanceRouter.post('/import-automation/:runId/step',automationLimit,run((req,res)=>importAutomationService.step(Number(res.locals.authenticatedUser.accountId),req.params.runId)))
+catalogMaintenanceRouter.patch('/import-automation/:runId/state',automationLimit,run((req,res)=>importAutomationService.changeState(Number(res.locals.authenticatedUser.accountId),req.params.runId,req.body??{})))
 catalogMaintenanceRouter.get('/imports/:id',run((req,res)=>service.importBatch(req.params.id)))
 catalogMaintenanceRouter.put('/imports/rows/:id',run((req,res)=>service.reviewImport(req.params.id,req.body,Number(res.locals.authenticatedUser.accountId))))
 // Each click looks up at most 50 rows; the limit keeps repeated clicks from using up the Google Books daily quota.

@@ -37,7 +37,7 @@ export function CategorySuggestion({ subjects, categories, categoryId, onSelect 
 
   async function openCreate() {
     setError('')
-    try { setCreating({ name: subjects[0].slice(0, 100), shelves: await categoryApi.listShelves() }) } catch (reason) { setError((reason as Error).message || 'Shelves could not be loaded.') }
+    try { setCreating({ name: subjects[0].slice(0, 100), shelves: (await categoryApi.listShelves()).filter(shelf => shelf.status !== 'Archived') }) } catch (reason) { setError((reason as Error).message || 'Shelves could not be loaded.') }
   }
 
   async function create(payload: CategoryPayload) {

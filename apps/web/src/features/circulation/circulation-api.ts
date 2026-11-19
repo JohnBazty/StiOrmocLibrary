@@ -1,10 +1,15 @@
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 import type {
   BorrowingHistoryData,
   CheckoutConfirmationInput,
   CheckoutFlow,
   CheckoutPreflightData,
   CirculationMonitorData,
+  RenewalDecisionData,
+  RenewalPreflightData,
+  DamageCaseDetail,
+  DamageCaseListData,
+  DamageDisposition,
 } from './types'
 
 export class CirculationApiError extends Error {
@@ -13,7 +18,7 @@ export class CirculationApiError extends Error {
 
 async function request<T>(url: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers); headers.set('Accept', 'application/json')
-  const token = getAccessToken(); if (token) headers.set('Authorization', `Bearer ${token}`)
+  const token = getCsrfToken(); if (token) headers.set('X-CSRF-Token', token)
   if (options.body) headers.set('Content-Type', 'application/json')
   const response = await fetch(url, { ...options, headers, credentials: 'include' })
   const payload = await response.json().catch(() => null) as { success?: boolean; data?: T; message?: string; code?: string } | null
@@ -33,6 +38,17 @@ function checkoutBody(input: CheckoutConfirmationInput) {
 export const circulationApi = {
   myBooks: () => request<Pick<BorrowingHistoryData, 'items'>>('/api/v1/borrowing/my-books', { cache: 'no-store' }),
   history: (page = 1) => request<BorrowingHistoryData>(`/api/v1/borrowing/history?page=${page}&limit=25`),
+  preflightRenewal: (transactionId: number, staff = false) => request<RenewalPreflightData>(
+    staff
+      ? `/api/v1/admin/borrowing/${transactionId}/renewals/preflight`
+      : `/api/v1/borrowing/${transactionId}/renewals/preflight`,
+  ),
+  submitRenewal: (transactionId: number, requestKey: string) => request<RenewalDecisionData>(`/api/v1/borrowing/${transactionId}/renewals`, {
+    method: 'POST', body: JSON.stringify({ requestKey }),
+  }),
+  staffRenewal: (transactionId: number, requestKey: string, staffNote: string) => request<RenewalDecisionData>(`/api/v1/admin/borrowing/${transactionId}/renewals`, {
+    method: 'POST', body: JSON.stringify({ requestKey, staffNote }),
+  }),
   cancelRequest: (transactionId: number, reason?: string) => request<{ transactionId: number; status: 'Cancelled'; copyAvailability: string }>(`/api/v1/circulation/requests/${transactionId}/cancel`, {
     method: 'PUT', body: JSON.stringify({ reason }),
   }),
@@ -48,5 +64,11 @@ export const circulationApi = {
   }),
   returnBook: (transactionId: number) => request(`/api/v1/admin/borrowing/${transactionId}/return`, { method: 'PUT' }),
   calculatePenalty: (transactionId: number) => request<{ amount: number; currency: string }>(`/api/v1/admin/borrowing/${transactionId}/calculate-penalty`, { method: 'POST' }),
+  listCases: (status = 'all', page = 1) => request<DamageCaseListData>(`/api/v1/admin/circulation/cases?${new URLSearchParams({ status, page: String(page), limit: '50' })}`),
+  getCase: (caseId: number) => request<DamageCaseDetail>(`/api/v1/admin/circulation/cases/${caseId}`),
+  addCaseNote: (caseId: number, notes: string) => request<DamageCaseDetail>(`/api/v1/admin/circulation/cases/${caseId}/notes`, { method: 'POST', body: JSON.stringify({ notes }) }),
+  recordCaseDisposition: (caseId: number, input: { disposition: DamageDisposition; reason: string; replacementCharge?: number }) => request<DamageCaseDetail>(`/api/v1/admin/circulation/cases/${caseId}/dispositions`, { method: 'POST', body: JSON.stringify(input) }),
+  closeCase: (caseId: number, action: 'resolve' | 'dismiss', reason: string) => request<DamageCaseDetail>(`/api/v1/admin/circulation/cases/${caseId}/${action}`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  reopenCase: (caseId: number, reason: string) => request<DamageCaseDetail>(`/api/v1/admin/circulation/cases/${caseId}/reopen`, { method: 'POST', body: JSON.stringify({ reason }) }),
   reportLost: (transactionId: number) => request<{ lostBookReportId: number; status: string; alreadyReported?: boolean }>(`/api/v1/admin/clearance/lost-books/loans/${transactionId}/report`, { method: 'POST' }),
 }

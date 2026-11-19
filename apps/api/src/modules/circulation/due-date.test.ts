@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { nextOperatingDueDate } from './due-date.ts'
+import { extendOperatingDueDate, nextOperatingDueDate } from './due-date.ts'
 
 test('next operating due date is fixed at 8:59 AM and skips Sunday', () => {
   const saturday = new Date(2026, 7, 22, 15, 30)
@@ -16,4 +16,43 @@ test('configured campus closure rolls the due date to the following operating da
   assert.equal(due.getDate(), 26)
   assert.equal(due.getHours(), 8)
   assert.equal(due.getMinutes(), 59)
+})
+
+test('extendOperatingDueDate advances from the current due date by policy days', () => {
+  const currentDue = new Date(2026, 7, 25, 8, 59)
+  const renewed = extendOperatingDueDate(currentDue, 1, '08:59:00')
+  assert.equal(renewed.getDate(), 26)
+  assert.equal(renewed.getHours(), 8)
+  assert.equal(renewed.getMinutes(), 59)
+})
+
+test('extendOperatingDueDate skips Sunday after a Saturday due date', () => {
+  const saturdayDue = new Date(2026, 9, 10, 8, 59)
+  const renewed = extendOperatingDueDate(saturdayDue, 1, '08:59:00')
+  assert.equal(renewed.getDay(), 1)
+  assert.equal(renewed.getDate(), 12)
+  assert.equal(renewed.getHours(), 8)
+  assert.equal(renewed.getMinutes(), 59)
+})
+
+test('extendOperatingDueDate skips a closed weekday', () => {
+  const mondayDue = new Date(2026, 9, 12, 8, 59)
+  const renewed = extendOperatingDueDate(mondayDue, 1, '08:59:00', new Set(['2026-10-13']))
+  assert.equal(renewed.getDate(), 14)
+  assert.equal(renewed.getHours(), 8)
+  assert.equal(renewed.getMinutes(), 59)
+})
+
+test('extendOperatingDueDate skips a holiday and a multi-day closure', () => {
+  const mondayDue = new Date(2026, 9, 12, 8, 59)
+  const renewed = extendOperatingDueDate(
+    mondayDue,
+    1,
+    '08:59:00',
+    new Set(['2026-10-13', '2026-10-14', '2026-10-15']),
+  )
+  assert.equal(renewed.getDate(), 16)
+  assert.equal(renewed.getDay(), 5)
+  assert.equal(renewed.getHours(), 8)
+  assert.equal(renewed.getMinutes(), 59)
 })

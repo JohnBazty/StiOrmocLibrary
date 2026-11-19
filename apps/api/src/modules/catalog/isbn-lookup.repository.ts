@@ -22,9 +22,9 @@ type LocalBookRow = RowDataPacket & {
 }
 
 export class IsbnLookupRepository {
-  private readonly pool: Pool
+  private readonly pool: Pick<Pool, 'execute'>
 
-  constructor(pool: Pool = db) { this.pool = pool }
+  constructor(pool: Pick<Pool, 'execute'> = db) { this.pool = pool }
 
   async findLocalByIsbn(isbn: string): Promise<IsbnMetadata | null> {
     const [rows] = await this.pool.execute<LocalBookRow[]>(

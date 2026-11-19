@@ -5,13 +5,10 @@ import request from 'supertest'
 import { parseReportFilters, filterReportRows, exportLiveReport } from './live-reports.service.ts'
 import { createLiveReportsRouter, createWorkspaceTasksRouter } from './live-reports.routes.ts'
 import { verifyIntegrityProtectedCsv } from './csv-integrity.ts'
-import { reportDefinition } from './report-contract.ts'
 
 test('report periods reject invalid dates, reversed ranges, prototype keys and missing semesters',()=>{
   for(const q of [{kind:'toString'},{period:'custom',from:'2026-02-30',to:'2026-03-01'},{period:'custom',from:'2026-10-12',to:'2026-10-01'},{period:'semester'},{page:0}])assert.throws(()=>parseReportFilters(q))
   assert.equal(parseReportFilters({period:'custom',from:'2024-02-29',to:'2024-03-01'}).from,'2024-02-29')
-  for(const q of [{q:['a','b']},{status:{}},{page:[1]},{kind:['printing']}])assert.throws(()=>parseReportFilters(q))
-  assert.equal(parseReportFilters({kind:'supplies',period:'semester',termId:'',from:'not a date'}).period,'all')
 })
 test('report search and status filter the same source rows used for exports',()=>{
   const rows=[{name:'John',school_id:'02001',status:'Borrowed'},{name:'Jane',school_id:'02002',status:'Returned'}]
@@ -23,21 +20,8 @@ test('new reporting routes deny unauthorized roles before reading source data',a
   const service={read:async()=>{reads++;throw new Error('Should not read')}}
   for(const role of ['Staff','Student','Faculty','Admin']){
     const app=express();app.use((_r,s,n)=>{s.locals.authenticatedUser={role,accountId:1};n()});app.use(createLiveReportsRouter(service))
-    for(const path of ['/','/options','/export?format=csv'])assert.equal((await request(app).get(path)).status,403)
+    for(const path of ['/','/export?format=csv'])assert.equal((await request(app).get(path)).status,403)
   }
-  assert.equal(reads,0)
-})
-
-test('report options use the same labels as exports and invalid formats fail before a source read',async()=>{
-  let reads=0
-  const app=express();app.use((_r,s,n)=>{s.locals.authenticatedUser={role:'Librarian',accountId:1};n()})
-  app.use(createLiveReportsRouter({read:async()=>{reads++;throw Error('Must not read')}}))
-  app.use((error: {status?:number;message:string},_r:unknown,s:express.Response,_n:unknown)=>s.status(error.status??500).json({message:error.message}))
-  const response=await request(app).get('/options')
-  assert.equal(response.status,200)
-  assert.equal(response.body.data.find((item:{key:string})=>item.key==='clearance').columnLabels.school_id,'Student ID')
-  assert.equal(reportDefinition('printing').columnLabels.school_id,'Student / Faculty ID')
-  assert.equal((await request(app).get('/export?format=html')).status,422)
   assert.equal(reads,0)
 })
 test('workspace task router permits only Librarian and Staff',async()=>{

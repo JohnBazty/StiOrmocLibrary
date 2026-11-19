@@ -1,4 +1,3 @@
-import { useLiveQuery } from '../../hooks/useLiveQuery'
 import { SelectedFilePreview } from '../../components/SelectedFilePreview'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -35,9 +34,7 @@ export function FloorPlanPage({editor=false}:{editor?:boolean}){
     setData(state);setLayout(state.layout);setAreaId(old=>state.layout?.areas.some(a=>a.id===old)?old:state.layout?.areas[0]?.id??'');setDirty(false);setUndo([])
     if(editor)setVersions(await floorRequest<Version[]>('/versions'))
   },[editor])
-  const livePlan=useLiveQuery('published-floor-plan',()=>floorRequest<PlanState>(''),{enabled:!editor})
-  useEffect(()=>{if(editor){void load().catch(e=>setError(e.message))}},[load,editor])
-  useEffect(()=>{if(!editor&&livePlan.data){setData(livePlan.data);setLayout(livePlan.data.layout);setAreaId(old=>livePlan.data?.layout?.areas.some(a=>a.id===old)?old:livePlan.data?.layout?.areas[0]?.id??'')}},[editor,livePlan.data])
+  useEffect(()=>{void load().catch(e=>setError(e.message));if(editor)return;const timer=setInterval(()=>void load().catch(e=>setError(e.message)),30000);return()=>clearInterval(timer)},[load,editor])
   useEffect(()=>{const warn=(event:BeforeUnloadEvent)=>{if(dirty){event.preventDefault();event.returnValue=''}};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn)},[dirty])
   const refreshBooks=useCallback(async()=>{
     const seq=++requestSequence.current
@@ -87,7 +84,7 @@ export function FloorPlanPage({editor=false}:{editor?:boolean}){
   })}
   return <>
     <PageHeader eyebrow={editor?'Library layout management':'Find your way around'} title="Library floor plan" description={editor?'Arrange shelves, save a draft, and publish the layout when the library is ready.':'Find a book, select its shelf, or explore the library map.'} action={editor?<div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={!undo.length||busy||preview} onClick={()=>{const previous=undo.at(-1);if(previous){setLayout(previous);setUndo(undo.slice(0,-1));setDirty(true)}}}><Undo2 size={15}/>Undo</Button><Button variant="secondary" disabled={!layout||busy} onClick={()=>setPreview(!preview)}>{preview?'Return to editing':'Preview'}</Button><Button disabled={!layout||busy} onClick={()=>save()}><Save size={15}/>Save draft</Button><Button disabled={!layout||busy} onClick={()=>save(true)}>Publish</Button></div>:undefined}/>
-    {error||livePlan.error?<div role="alert" className="mb-4 rounded-xl bg-[#FFF200] p-4 text-sm font-semibold text-[#0b5ea2]">{error||livePlan.error?.message}</div>:null}
+    {error?<div role="alert" className="mb-4 rounded-xl bg-[#FFF200] p-4 text-sm font-semibold text-[#0b5ea2]">{error}</div>:null}
     {notice?<p role="status" className="mb-4 rounded-xl bg-[#0b5ea2]/5 p-4 text-sm">{notice}</p>:null}
     {dirty?<p className="mb-3 text-sm font-semibold">Unsaved layout changes</p>:null}
     {preview?<p className="mb-3 rounded-xl bg-[#FFF200]/40 p-3 text-sm">Preview of your draft. Users see it only after publishing.</p>:null}

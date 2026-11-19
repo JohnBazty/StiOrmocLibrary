@@ -67,7 +67,7 @@ function titleQueryOf(query: { title?: unknown; author?: unknown }) {
 }
 
 function text(value: unknown, maximum: number) {
-  return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ').slice(0, maximum) : ''
+  return typeof value === 'string' ? value.replace(/<[^>]*>/g,'').replace(/[\x00-\x1f\x7f]/g,' ').trim().replace(/\s+/g, ' ').slice(0, maximum) : ''
 }
 
 function joined(value: unknown, maximum: number) {
@@ -183,14 +183,25 @@ export function createIsbnLookupService(options: {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), timeoutMs)
     try {
-      const response = await fetcher(url, { headers: { Accept: 'image/jpeg,image/png,image/webp', 'User-Agent': 'STI-Ormoc-SmartLib/0.1' }, signal: controller.signal })
-      const contentType = (response.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase()
-      if (response.status !== 200 || !['image/jpeg', 'image/png', 'image/webp'].includes(contentType) || Number(response.headers.get('content-length') ?? 0) > COVER_MAX_BYTES) {
-        void response.body?.cancel().catch(() => undefined)
-        return null
+      const allowed=new Set(['books.google.com','books.googleusercontent.com','covers.openlibrary.org'])
+      let current=url,response:Response|undefined
+      for(let hop=0;hop<4;hop++){
+        if(current.protocol!=='https:'||!allowed.has(current.hostname)||current.username||current.password||current.port)return null
+        response=await fetcher(current,{headers:{Accept:'image/jpeg,image/png,image/webp','User-Agent':'STI-Ormoc-SmartLib/0.1'},signal:controller.signal,redirect:'manual'})
+        if(![301,302,303,307,308].includes(response.status))break
+        const location=response.headers.get('location');void response.body?.cancel().catch(()=>undefined)
+        if(!location)return null
+        try{current=new URL(location,current)}catch{return null}
+        response=undefined
       }
-      const bytes = Buffer.from(await response.arrayBuffer())
-      return bytes.length && bytes.length <= COVER_MAX_BYTES && coverSignatureMatches(contentType, bytes) ? { contentType, bytes } : null
+      if(!response)return null
+      const contentType=(response.headers.get('content-type')??'').split(';')[0].trim().toLowerCase()
+      if(response.status!==200||!['image/jpeg','image/png','image/webp'].includes(contentType)||Number(response.headers.get('content-length')??0)>COVER_MAX_BYTES){void response.body?.cancel().catch(()=>undefined);return null}
+      const reader=response.body?.getReader();if(!reader)return null
+      const chunks:Uint8Array[]=[];let size=0
+      try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>COVER_MAX_BYTES){await reader.cancel();return null}chunks.push(value)}}finally{reader.releaseLock()}
+      const bytes=Buffer.concat(chunks,size)
+      return bytes.length&&coverSignatureMatches(contentType,bytes)?{contentType,bytes}:null
     } finally { clearTimeout(timeout) }
   }
 
@@ -223,7 +234,7 @@ export function createIsbnLookupService(options: {
       const validation = isbnValidationMessage(rawIsbn)
       if (validation) throw new HttpError(422, 'ISBN_INVALID', validation, { errors: { isbn: validation } })
       const isbn = normalizeIsbn(rawIsbn)
-      for (const provider of googleApiKey ? [googleCover, openLibraryCover] : [openLibraryCover, googleCover]) {
+      for (const provider of [googleCover, openLibraryCover]) {
         try {
           const found = await provider(isbn)
           if (found) return found

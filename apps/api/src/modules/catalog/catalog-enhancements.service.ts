@@ -1,3 +1,5 @@
+import {acceptedImportCover} from './import-cover.service.ts'
+import { assertShelfCapacity, listManagedShelves, lockShelfCapacity, saveManagedShelf } from './shelf-capacity.service.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { lookupReviewFacts } from './import-lookup-fill.ts'
 import { createClient } from '@supabase/supabase-js'
@@ -5,30 +7,33 @@ import type { PoolConnection, RowDataPacket, ResultSetHeader } from '../../confi
 import { db } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
+import { assignDeweyCopies, deweyService } from './dewey.service.ts'
 import { requireLibraryActor } from '../../core/library-permissions.ts'
 import { refreshCollectionReview } from './collection-review.service.ts'
 import { clean, holdingsFields, holdingsIdentity, holdingsMappingIdentity, identityList, key, mappedRows, positiveId, readHoldings, validateHoldingsData, type HoldingsData, type SheetMapping } from './holdings-parser.ts'
 import { retainImportCorrections, type ImportReferences } from './holdings-cleanup.ts'
 import { insertAuthors, insertLegacyBookMaterial, insertPhysicalCopy, insertTitle } from './catalog.repository.ts'
-import { reserveBarcodeSequence } from './bulk-book.repository.ts'
+import { lockCategoryShelf, reserveBarcodeSequence } from './bulk-book.repository.ts'
 import { renderBookLabel } from './book-label.renderer.ts'
 
 const fail=(message:string,status=422)=>new HttpError(status,'CATALOG_REVIEW_REQUIRED',message)
 const id=(value:unknown)=>{const n=positiveId(value);if(!n)throw fail('Choose a valid record.');return n}
 type Query=Pick<PoolConnection,'execute'>
 async function rows(q:Query,sql:string,values:any[]=[]){const [data]=await q.execute<RowDataPacket[]>(sql,values);return data}
-async function transaction<T>(actor:number,fn:(c:PoolConnection)=>Promise<T>){const c=await db.getConnection();try{await c.beginTransaction();await requireLibraryActor(c,actor,'library.manage');const result=await fn(c);await c.commit();return result}catch(e){await c.rollback();throw e}finally{c.release()}}
+async function transaction<T>(actor:number,fn:(c:PoolConnection)=>Promise<T>){const c=await db.getConnection();try{await c.beginTransaction();await lockShelfCapacity(c);await requireLibraryActor(c,actor,'library.manage');const result=await fn(c);await c.commit();return result}catch(e){await c.rollback();throw e}finally{c.release()}}
 const foundation={locations:{table:'catalog_locations',id:'location_id'},programs:{table:'catalog_programs',id:'program_id'},courses:{table:'catalog_courses',id:'course_id'},types:{table:'catalog_resource_types',id:'type_id'}} as const
 type FoundationKind=keyof typeof foundation
 function foundationKind(value:string):FoundationKind{if(!Object.hasOwn(foundation,value))throw fail('Choose locations, programs, courses or types.');return value as FoundationKind}
 export async function catalogOptions(publicOnly=false){
  const result:Record<string,unknown>={}
- for(const [kind,spec] of Object.entries(foundation))result[kind]=await rows(db,`SELECT ${spec.id} AS id,name,lifecycle_status AS status,row_version AS version${kind==='programs'||kind==='courses'?',code':''}${kind==='courses'?',program_id AS "programId"':''}${kind==='types'?',record_kind AS "recordKind"':''}${kind==='locations'?',COALESCE((SELECT column_count FROM floor_plan_shelves s WHERE s.label=name),1) AS "columnCount",COALESCE((SELECT row_count FROM floor_plan_shelves s WHERE s.label=name),1) AS "rowCount"':''} FROM ${spec.table} ${publicOnly?"WHERE lifecycle_status='Active'":''} ORDER BY name`)
- result.categories=await rows(db,"SELECT category_id AS id,category_name AS name,'Active' AS status,1 AS version FROM categories ORDER BY category_name")
+ for(const [kind,spec] of Object.entries(foundation)){if(kind==='locations')continue;result[kind]=await rows(db,`SELECT ${spec.id} AS id,name,lifecycle_status AS status,row_version AS version${kind==='programs'||kind==='courses'?',code':''}${kind==='courses'?',program_id AS "programId"':''}${kind==='types'?',record_kind AS "recordKind"':''}${kind==='locations'?',COALESCE((SELECT column_count FROM floor_plan_shelves s WHERE s.label=name),1) AS "columnCount",COALESCE((SELECT row_count FROM floor_plan_shelves s WHERE s.label=name),1) AS "rowCount"':''} FROM ${spec.table} ${publicOnly?"WHERE lifecycle_status='Active'":''} ORDER BY name`)}
+ result.locations=(await listManagedShelves(db,!publicOnly)).map(shelf=>({...shelf,name:shelf.label}))
+ result.categories=await rows(db,`SELECT category_id AS id,category_name AS name,'Active' AS status,1 AS version,shelf_location AS "shelfLocation",shelf_column AS "shelfColumn",shelf_row AS "shelfRow" FROM categories ORDER BY category_name`)
  return result
 }
 export async function saveFoundation(kindValue:string,recordId:unknown,body:Record<string,unknown>,actor:number){
  const kind=foundationKind(kindValue),spec=foundation[kind],record=recordId?id(recordId):null
+ if(kind==='locations'){await saveManagedShelf(record,{...body,label:body.name},actor);return catalogOptions()}
  const name=clean(body.name),code=clean(body.code).toUpperCase(),status=body.status==='Archived'?'Archived':'Active'
  if(!name||name.length>(kind==='programs'||kind==='courses'?150:100))throw fail('Enter a name within the allowed length.')
  if((kind==='programs'||kind==='courses')&&(!code||code.length>40))throw fail('Enter a code up to 40 characters.')
@@ -39,7 +44,6 @@ export async function saveFoundation(kindValue:string,recordId:unknown,body:Reco
   const old=record?(await rows(c,`SELECT * FROM ${spec.table} WHERE ${spec.id}=? FOR UPDATE`,[record]))[0]:null
   if(record&&(!old||Number(old.row_version)!==Number(body.version)))throw fail('This entry changed. Refresh and try again.',409)
   if(program&&!(await rows(c,"SELECT program_id FROM catalog_programs WHERE program_id=? AND lifecycle_status='Active'",[program])).length)throw fail('Choose an active program.')
-  if(old&&kind==='locations'&&old.name!==name&&(await rows(c,'SELECT 1 FROM physical_copies WHERE shelf_location=? UNION SELECT 1 FROM research_inventory WHERE shelf_location=? UNION SELECT 1 FROM categories WHERE shelf_location=? LIMIT 1',[old.name,old.name,old.name])).length)throw fail('This location is used by existing holdings. Create a new location and relocate copies before renaming it.')
   if(old&&kind==='types'&&old.record_kind!==recordKind&&(await rows(c,'SELECT 1 FROM catalog_title_details WHERE type_id=? LIMIT 1',[record])).length)throw fail('The type is in use. Its book/research classification cannot change.')
   if((await rows(c,`SELECT 1 FROM ${spec.table} WHERE LOWER(name)=LOWER(?) AND ${spec.id}<>?${kind==='courses'?' AND program_id=?':''} LIMIT 1`,kind==='courses'?[name,record??0,program]:[name,record??0])).length)throw fail('An entry with this name already exists.')
   const columns=['name','lifecycle_status'],values:any[]=[name,status]
@@ -52,33 +56,23 @@ export async function saveFoundation(kindValue:string,recordId:unknown,body:Reco
  return catalogOptions()
 }
 const publicSelect=`SELECT t.title_id AS id,t.title,t.record_type AS kind,t.cover_image_path AS "coverImagePath",t.isbn,t.publisher,t.publication_year AS "publicationYear",t.call_number AS "callNumber",c.category_name AS category,
+ (SELECT department_or_program FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived' ORDER BY rr.research_record_id LIMIT 1) AS department,
  COALESCE((SELECT string_agg(a.author_name,', ' ORDER BY a.author_order) FROM authors a WHERE a.title_id=t.title_id),'') AS author,
  d.copyright_year AS "copyrightYear",d.edition,d.page_count AS pages,d.synopsis,d.glossary_text AS glossary,d.row_version AS version,d.type_id AS "typeId",rt.name AS "resourceType",
  COALESCE((SELECT jsonb_agg(jsonb_build_object('id',p.program_id,'name',p.name,'code',p.code)) FROM catalog_title_programs tp JOIN catalog_programs p ON p.program_id=tp.program_id WHERE tp.title_id=t.title_id),'[]') AS programs,
  COALESCE((SELECT jsonb_agg(jsonb_build_object('id',s.course_id,'name',s.name,'programId',s.program_id,'code',s.code)) FROM catalog_title_courses tc JOIN catalog_courses s ON s.course_id=tc.course_id WHERE tc.title_id=t.title_id),'[]') AS courses,
  (SELECT COUNT(*) FROM physical_copies pc WHERE pc.title_id=t.title_id AND pc.lifecycle_status='Active') AS "copyCount",
+ (SELECT COUNT(*) FROM physical_copies pc WHERE pc.title_id=t.title_id AND pc.lifecycle_status='Active' AND pc.availability_status='Borrowed') AS borrowed,
+ (SELECT COUNT(*) FROM physical_copies pc WHERE pc.title_id=t.title_id AND pc.lifecycle_status='Active' AND pc.availability_status='Reserved') AS reserved,
  (SELECT COUNT(*) FROM physical_copies pc JOIN materials m ON m.material_id=pc.material_id WHERE pc.title_id=t.title_id AND pc.lifecycle_status='Active' AND pc.availability_status='Available' AND m.availability_status='Available' AND pc.condition_status NOT IN ('Lost','Damaged','For Repair')) AS available,
- COALESCE(research.abstract_text,'') AS abstract, research.department_or_program AS department, research.adviser_name AS adviser
- FROM titles t LEFT JOIN categories c ON c.category_id=t.category_id LEFT JOIN catalog_title_details d ON d.title_id=t.title_id LEFT JOIN catalog_resource_types rt ON rt.type_id=d.type_id
- LEFT JOIN LATERAL (SELECT rr.abstract_text,rr.department_or_program,rr.adviser_name
-   FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived'
-   ORDER BY rr.research_record_id LIMIT 1) research ON t.record_type<>'Book'`
+ COALESCE((SELECT abstract_text FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived' LIMIT 1),'') AS abstract
+ FROM titles t LEFT JOIN categories c ON c.category_id=t.category_id LEFT JOIN catalog_title_details d ON d.title_id=t.title_id LEFT JOIN catalog_resource_types rt ON rt.type_id=d.type_id`
 function publicWhere(query:Record<string,unknown>){
  const clauses=["t.lifecycle_status='Active'","(t.record_type='Book' OR EXISTS(SELECT 1 FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived'))"],values:any[]=[]
  const q=clean(query.q).slice(0,120);if(q){clauses.push('(t.title ILIKE ? OR t.isbn ILIKE ? OR EXISTS(SELECT 1 FROM authors a WHERE a.title_id=t.title_id AND a.author_name ILIKE ?))');values.push(`%${q}%`,`%${q}%`,`%${q}%`)}
  if(['Book','Research/Thesis'].includes(String(query.kind))){clauses.push('t.record_type=?');values.push(query.kind)}
  if(positiveId(query.categoryId)){clauses.push('t.category_id=?');values.push(positiveId(query.categoryId))}
  for(const [param,table,col] of [['programId','catalog_title_programs','program_id'],['courseId','catalog_title_courses','course_id'],['typeId','catalog_title_details','type_id']])if(positiveId(query[param])){clauses.push(`EXISTS(SELECT 1 FROM ${table} f WHERE f.title_id=t.title_id AND f.${col}=?)`);values.push(positiveId(query[param]))}
- const year=clean(query.publicationYear)
- if(/^\d{4}$/.test(year)&&Number(year)>=1000){clauses.push('t.publication_year=?');values.push(Number(year))}
- const author=clean(query.author).slice(0,120)
- if(author){clauses.push('EXISTS(SELECT 1 FROM authors a WHERE a.title_id=t.title_id AND STRPOS(LOWER(a.author_name),LOWER(?))>0)');values.push(author)}
- const researchFilters:string[]=[]
- for(const [parameter,column] of [['department','department_or_program'],['adviser','adviser_name']] as const){
-  const value=clean(query[parameter]).slice(0,150)
-  if(value){researchFilters.push('STRPOS(LOWER(rr.'+column+'),LOWER(?))>0');values.push(value)}
- }
- if(researchFilters.length)clauses.push("EXISTS(SELECT 1 FROM research_records rr WHERE rr.title_id=t.title_id AND rr.viewing_status<>'Archived' AND "+researchFilters.join(' AND ')+")")
  return {sql:clauses.join(' AND '),values}
 }
 export async function publicCatalog(query:Record<string,unknown>){const where=publicWhere(query),page=Math.max(1,Math.min(10000,positiveId(query.page)??1)),limit=24
@@ -86,7 +80,7 @@ export async function publicCatalog(query:Record<string,unknown>){const where=pu
  return {items,pagination:{page,limit,total:Number(count[0].total)}}
 }
 export async function publicDetail(value:unknown){const titleId=id(value),where=publicWhere({}),book=(await rows(db,`${publicSelect} WHERE ${where.sql} AND t.title_id=?`,[titleId]))[0];if(!book)throw fail('This catalog entry is unavailable.',404)
- const copies=book.kind==='Book'?await rows(db,`SELECT physical_copy_id AS id,accession_number AS accession,barcode,shelf_location AS shelf,condition_status AS condition,availability_status AS availability FROM physical_copies WHERE title_id=? AND lifecycle_status='Active' ORDER BY physical_copy_id`,[titleId]):await rows(db,`SELECT research_inventory_id AS id,accession_number AS accession,barcode,shelf_location AS shelf,condition_state AS condition,availability_status AS availability FROM research_inventory WHERE title_id=? AND lifecycle_status='Active' ORDER BY research_inventory_id`,[titleId])
+ const copies=book.kind==='Book'?await rows(db,`SELECT (SELECT code FROM dewey_classifications d WHERE d.classification_id=physical_copies.dewey_classification_id) AS "deweyCode",(SELECT description FROM dewey_classifications d WHERE d.classification_id=physical_copies.dewey_classification_id) AS "deweyDescription",physical_copy_id AS id,accession_number AS accession,barcode,shelf_location AS shelf,shelf_column AS "shelfColumn",shelf_row AS "shelfRow",row_version AS version,condition_status AS condition,availability_status AS availability FROM physical_copies WHERE title_id=? AND lifecycle_status='Active' ORDER BY physical_copy_id`,[titleId]):await rows(db,`SELECT research_inventory_id AS id,accession_number AS accession,barcode,shelf_location AS shelf,shelf_column AS "shelfColumn",shelf_row AS "shelfRow",row_version AS version,condition_state AS condition,availability_status AS availability FROM research_inventory WHERE title_id=? AND lifecycle_status='Active' ORDER BY research_inventory_id`,[titleId])
  const files=await rows(db,"SELECT file_id AS id,original_name AS name,byte_size AS size,created_at AS uploaded FROM catalog_digital_files WHERE title_id=? AND lifecycle_status='Active' ORDER BY file_id",[titleId])
  return {...book,version:Number(book.version??0),copies,files}
 }
@@ -156,13 +150,14 @@ export async function importBatch(value:unknown){const batchId=id(value),batch=(
  const matches=new Map<string,RowDataPacket[]>();for(const row of entries){const identity=holdingsIdentity(row.data);if(!matches.has(identity))matches.set(identity,existing.filter(t=>(row.data.isbn&&t.isbn===row.data.isbn)||key(t.title)===key(row.data.title)).slice(0,20));row.matches=matches.get(identity);row.overlaps=groups.get(identity)?.filter(n=>n!==Number(row.id));row.errors=validateHoldingsData(row.data,!['link','reuse','skip'].includes(row.decision))}
  return {...batch,rows:entries}
 }
-function normalizedData(body:Record<string,unknown>):HoldingsData{return {...Object.fromEntries(holdingsFields.map(f=>[f,f==='accessions'||f==='barcodes'?String(body[f]??'').trim():clean(body[f])])),categoryId:positiveId(body.categoryId),location:clean(body.location),programId:positiveId(body.programId),generateAccessions:body.generateAccessions===true} as HoldingsData}
+function normalizedData(body:Record<string,unknown>):HoldingsData{return {...Object.fromEntries(holdingsFields.map(f=>[f,f==='accessions'||f==='barcodes'?String(body[f]??'').trim():clean(body[f])])),categoryId:positiveId(body.categoryId),location:clean(body.location),locationId:body.locationId===undefined?undefined:Number(body.locationId),shelfColumn:body.shelfColumn===undefined?undefined:Number(body.shelfColumn),shelfRow:body.shelfRow===undefined?undefined:Number(body.shelfRow),programId:positiveId(body.programId),generateAccessions:body.generateAccessions===true} as HoldingsData}
 async function validateImportReferences(c:Query,data:HoldingsData,needsCopies:boolean){
  if(data.programId&&!(await rows(c,"SELECT 1 FROM catalog_programs WHERE program_id=? AND lifecycle_status='Active'",[data.programId])).length)throw fail('Choose an active program.')
  if(needsCopies){if(!(await rows(c,'SELECT 1 FROM categories WHERE category_id=?',[data.categoryId])).length)throw fail('Choose an existing category.');if(!(await rows(c,"SELECT 1 FROM catalog_locations WHERE name=? AND lifecycle_status='Active'",[data.location])).length)throw fail('Choose an active managed shelf location.')}
 }
 export async function reviewImport(value:unknown,body:Record<string,unknown>,actor:number){
  const rowId=id(value),decision=String(body.decision),data=normalizedData(body.data as Record<string,unknown>??{}),needsCopies=['new','add'].includes(decision)
+ const dewey=needsCopies?await deweyService.prepare((body.data as Record<string,unknown>)?.dewey,data.isbn):null
  if(!['new','add','link','reuse','skip'].includes(decision))throw fail('Choose how to handle this row.')
  if(decision!=='skip'){const errors=validateHoldingsData(data,needsCopies);if(errors.length)throw fail(errors.join(' '))}
  await transaction(actor,async c=>{
@@ -171,6 +166,7 @@ export async function reviewImport(value:unknown,body:Record<string,unknown>,act
   data.autoCorrections=retainImportCorrections(row.data_json?.autoCorrections)
   // Lookup facts come from the stored row; a row the lookup filled needs the librarian's checked tick (LOOKUP_NOT_CHECKED).
   Object.assign(data,lookupReviewFacts(row.data_json,decision,body.lookupChecked,actor,new Date()))
+  if(dewey)data.reviewedDewey=dewey
   if(decision!=='skip')await validateImportReferences(c,data,needsCopies)
   let target:number|null=null,reuse:number|null=null
   if(decision==='link'||decision==='add'){target=id(body.targetTitleId);if(!(await rows(c,"SELECT 1 FROM titles WHERE title_id=? AND record_type='Book' AND lifecycle_status='Active'",[target])).length)throw fail('Choose an active existing book.')}
@@ -180,20 +176,29 @@ export async function reviewImport(value:unknown,body:Record<string,unknown>,act
  });return {reviewed:true}
 }
 export async function commitImport(value:unknown,actor:number){
- const batchId=id(value),selected=await rows(db,"SELECT import_row_id FROM catalog_import_rows WHERE batch_id=? AND status='Ready' AND (error_text IS NULL OR error_text='') ORDER BY import_row_id LIMIT 10",[batchId]);const errors:Array<{rowId:number;message:string}>=[];let imported=0
+ const batchId=id(value),selected=await rows(db,"SELECT import_row_id FROM catalog_import_rows WHERE batch_id=? AND status='Ready' AND (error_text IS NULL OR error_text='') ORDER BY import_row_id LIMIT 10",[batchId]);const errors:Array<{rowId:number;message:string;code?:string;details?:unknown}>=[];let imported=0
  for(const entry of selected){const rowId=Number(entry.import_row_id)
   try{const saved=await transaction(actor,async c=>{
    // Serializes commits for the same batch and retains a durable per-row result.
    await rows(c,'SELECT batch_id FROM catalog_import_batches WHERE batch_id=? FOR UPDATE',[batchId])
    const row=(await rows(c,'SELECT * FROM catalog_import_rows WHERE import_row_id=? AND batch_id=? FOR UPDATE',[rowId,batchId]))[0];if(!row||row.status!=='Ready'||row.error_text)return false
    const data=row.data_json as HoldingsData,needsCopies=['new','add'].includes(row.decision),issues=validateHoldingsData(data,needsCopies);if(issues.length)throw fail(issues.join(' '));await validateImportReferences(c,data,needsCopies)
+   const category=needsCopies?await lockCategoryShelf(c,data.categoryId!):null
+   if(needsCopies&&!category)throw fail('Choose an existing category.')
+   const sameShelf=category?.shelfLocation===data.location
+   const placement=needsCopies?await assertShelfCapacity(c,{
+    locationId:data.locationId,shelfLocation:data.location,
+    shelfColumn:data.shelfColumn??(sameShelf?category!.shelfColumn:1),
+    shelfRow:data.shelfRow??(sameShelf?category!.shelfRow:1),
+   },Number(data.copies)):null
    // A global transaction lock closes concurrent duplicate-title races across imports.
    await c.execute("SELECT pg_advisory_xact_lock(734031)")
    let titleId=Number(row.target_title_id),copyIds:number[]=[]
    if(row.decision==='reuse'){const prior=(await rows(c,"SELECT result_json FROM catalog_import_rows WHERE import_row_id=? AND batch_id=? AND status='Imported'",[row.reuse_row_id,batchId]))[0];if(!prior)throw fail('The earlier holding has not been imported yet. Review it first.');titleId=Number(prior.result_json.titleId)}
    if(row.decision==='new'){
     if((await matchTitles(c,data)).length)throw fail('A matching title was added since review. Choose the existing holding before retrying.')
-    titleId=Number(await insertTitle(c,{title:data.title,recordType:'Book',categoryId:data.categoryId,isbn:data.isbn||null,publisher:data.publisher||null,publicationYear:data.publicationYear?Number(data.publicationYear):null,callNumber:data.callNumber||null,searchText:[data.title,data.author,data.isbn].join(' ')}));await insertAuthors(c,titleId,[data.author])
+    const coverImagePath=await acceptedImportCover(c,rowId,data as unknown as Record<string,unknown>)
+    titleId=Number(await insertTitle(c,{title:data.title,recordType:'Book',categoryId:data.categoryId,isbn:data.isbn||null,publisher:data.publisher||null,publicationYear:data.publicationYear?Number(data.publicationYear):null,callNumber:data.callNumber||null,searchText:[data.title,data.author,data.isbn].join(' ')}));if(coverImagePath)await c.execute('UPDATE titles SET cover_image_path=? WHERE title_id=?',[coverImagePath,titleId]);await insertAuthors(c,titleId,[data.author])
     await c.execute('INSERT INTO catalog_title_details(title_id,copyright_year,edition,page_count,synopsis,type_id,updated_by) VALUES (?,?,?,?,?,(SELECT type_id FROM catalog_resource_types WHERE name=?),?)',[titleId,data.copyrightYear?Number(data.copyrightYear):null,data.edition||null,data.pages?Number(data.pages):null,data.summary??'','Book',actor])
    }else if(!(await rows(c,"SELECT title_id FROM titles WHERE title_id=? AND record_type='Book' AND lifecycle_status='Active' FOR UPDATE",[titleId])).length)throw fail('The selected holding is no longer active.')
    if(needsCopies){
@@ -203,14 +208,15 @@ export async function commitImport(value:unknown,actor:number){
     for(let index=0;index<count;index++){
      const serial=String(start+index).padStart(6,'0'),barcode=barcodes[index]??`STIORMOC${year}${serial}`,accession=accessions[index]??`STI-ACC-${year}-${serial}`
      if((await rows(c,'SELECT 1 FROM physical_copies WHERE barcode=? OR accession_number=? UNION SELECT 1 FROM research_inventory WHERE barcode=? OR accession_number=? UNION SELECT 1 FROM materials WHERE barcode=? LIMIT 1',[barcode,accession,barcode,accession,barcode])).length)throw fail('An accession or barcode already exists. Correct the row before retrying.')
-     const copy={barcode,accessionNumber:accession,shelfLocation:data.location,conditionStatus:index<missing?'Lost':'Good',legacyMaterialId:null as number|null}
+     const copy={barcode,accessionNumber:accession,shelfLocation:placement!.shelfLocation,shelfColumn:placement!.shelfColumn,shelfRow:placement!.shelfRow,conditionStatus:index<missing?'Lost':'Good',legacyMaterialId:null as number|null}
      copy.legacyMaterialId=Number(await insertLegacyBookMaterial(c,{title:canonical.title,authors:[canonical.author],isbn:canonical.isbn,categoryId:canonical.category_id,publicationYear:canonical.publication_year,publisher:null,callNumber:null,copy}))
      const copyId=Number(await insertPhysicalCopy(c,titleId,copy)),label=await renderBookLabel({title_id:titleId,barcode,accession_number:accession});await c.execute('UPDATE physical_copies SET qr_code_data=?,availability_status=? WHERE physical_copy_id=?',[label.qrCodeData,index<missing?'Unavailable':'Available',copyId]);copyIds.push(copyId)
     }
    }
+   await assignDeweyCopies(c,data.reviewedDewey??null,copyIds.map(id=>({id,version:0})),actor)
    if(data.programId)await c.execute('INSERT INTO catalog_title_programs(title_id,program_id) VALUES (?,?) ON CONFLICT DO NOTHING',[titleId,data.programId])
    await c.execute("UPDATE catalog_import_rows SET status='Imported',result_json=?::jsonb,row_version=row_version+1,error_text=NULL,updated_at=NOW() WHERE import_row_id=?",[JSON.stringify({titleId,copyIds}),rowId]);await refreshCollectionReview(c);return true
-  });if(saved)imported++}catch(e){const message=e instanceof HttpError?e.message:'The row could not be imported. Review its identifiers and try again.';errors.push({rowId,message});await db.execute("UPDATE catalog_import_rows SET error_text=? WHERE import_row_id=? AND status='Ready'",[message,rowId])}
+  });if(saved)imported++}catch(e){const message=e instanceof HttpError?e.message:'The row could not be imported. Review its identifiers and try again.';errors.push({rowId,message,...(e instanceof HttpError?{code:e.code,details:e.details}:{})});await db.execute("UPDATE catalog_import_rows SET error_text=? WHERE import_row_id=? AND status='Ready'",[message,rowId])}
  }
  const remaining=await rows(db,"SELECT COUNT(*) AS total FROM catalog_import_rows WHERE batch_id=? AND status='Ready' AND (error_text IS NULL OR error_text='')",[batchId]);return {imported,remaining:Number(remaining[0].total),errors}
 }

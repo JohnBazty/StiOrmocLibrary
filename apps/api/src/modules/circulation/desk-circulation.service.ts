@@ -1,3 +1,8 @@
+import {borrowerReturnList,returnListPage} from './borrower-return-list.ts'
+import { resolveManualBorrower } from './manual-borrower.ts'
+import { requireScheduledPickup } from '../reservations/borrowing-schedule-calendar.ts'
+import { libraryState, closeAttendanceAtCutoff } from '../attendance/attendance-operations.service.ts'
+import { manilaDate } from '../attendance/attendance-intervals.ts'
 import { createHash } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 import type { Pool,PoolConnection,RowDataPacket } from '../../config/db.js'
@@ -6,11 +11,13 @@ import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
 import { validateAttendanceCredential } from '../attendance/attendance-credential.service.ts'
 import { createCirculationService } from './circulation.service.ts'
+import { openDamageCaseAtReturn } from './circulation-case.service.ts'
 import { borrowerEligibility,requireEligible,requireLoanSlot } from './desk-circulation.policy.ts'
 import { loadDeskRequest } from './desk-request-context.ts'
 import { prepareReturnedCopy } from './returned-copy-preparation.ts'
 import { localTimestamp } from '../attendance/attendance-intervals.ts'
 import { requestEventStatus, requestLabels } from '../reservations/book-request-events.ts'
+import { insertUserNotice, manilaTime, rolePath, type UserNotice } from '../notifications/user-notices.ts'
 
 export type DeskActor={accountId:number;role:string}
 export type UseMode='TakeHome'|'InLibrary'
@@ -19,6 +26,11 @@ const object=(v:unknown)=>v&&typeof v==='object'?v as Record<string,unknown>:{}
 export function scanBarcode(v:unknown){const s=typeof v==='string'?v.trim().toUpperCase():'';if(!s||s.length>100||/[\x00-\x1f\x7f]/.test(s))throw problem('DESK_BARCODE_INVALID','Scan a valid physical-copy barcode.');return s}
 export function scanMode(v:unknown):UseMode {if(v!=='TakeHome'&&v!=='InLibrary')throw problem('DESK_MODE_REQUIRED','Choose Take-home or In-library use.');return v}
 export function confirmationKey(v:unknown){if(typeof v!=='string'||! /^[A-Za-z0-9_-]{16,64}$/.test(v))throw problem('DESK_REQUEST_ID_REQUIRED','A valid confirmation request ID is required.');return v}
+export function deskRequestDigest(operation:string,input:Record<string,unknown>) {
+ const fields=[operation,input.payload??null,input.barcode,input.expectedId??null,input.reservationId??null,input.transactionId??null,input.expectedCopyId??null,input.kind??null,input.condition??null,input.assessmentNote??null]
+ if(input.schoolId!==undefined)fields.push('School ID',String(input.schoolId).trim().toUpperCase())
+ return createHash('sha256').update(JSON.stringify(fields)).digest('hex')
+}
 export function conditionAssessment(v:Record<string,unknown>){
  const condition=v.condition==null||v.condition===''?null:String(v.condition)
  const note=typeof v.assessmentNote==='string'?v.assessmentNote.trim():''
@@ -48,18 +60,34 @@ async function copyBlockers(q:PoolConnection,c:RowDataPacket,userId:number,mode:
  if(mode==='InLibrary'&&loans.length)blockers.push('A copy held for a take-home request cannot be assigned for in-library use.')
  const [queue]=await q.execute<RowDataPacket[]>(`SELECT r.* FROM reservations r WHERE r.book_title_id=? AND r.reservation_status IN ('pending','approved','ready_for_pickup') ORDER BY queue_position,reserved_at,reservation_id FOR UPDATE`,[c.title_id])
  const assigned=queue.find(r=>Number(r.assigned_physical_copy_id)===Number(c.physical_copy_id))
+ let scheduledDeadline:Date|null=null
+ if(assigned?.scheduled_pickup_date){try{scheduledDeadline=await requireScheduledPickup(q,assigned,now)}catch(error){if(error instanceof HttpError)blockers.push(error.message);else throw error}}
  const own=queue.find(r=>Number(r.user_id)===userId)
  const claim=assigned??queue.find(r=>!r.assigned_physical_copy_id)
  if(claim&&Number(claim.user_id)!==userId)blockers.push('This copy is held for another user or the waiting queue.')
  if(mode==='InLibrary'&&queue.length)blockers.push('A queued title must be prepared for its waiting borrower.')
  const cartHandover=own?.request_kind==='CartHandover'&&own.reservation_status==='approved'
  if(own&&((!cartHandover&&own.reservation_status!=='ready_for_pickup')||Number(own.assigned_physical_copy_id)!==Number(c.physical_copy_id)))blockers.push('Use the assigned copy. Reservations must first be marked Ready for pickup.')
- if(assigned?.pickup_deadline&&localTimestamp(assigned.pickup_deadline)<=now.getTime())blockers.push('The pickup deadline has expired.')
+ if(assigned?.pickup_deadline&&(scheduledDeadline?.getTime()??localTimestamp(assigned.pickup_deadline))<=now.getTime())blockers.push('The pickup deadline has expired.')
  if(!['Available','Reserved'].includes(String(c.availability_status)))blockers.push('This physical copy is not available for checkout.')
  if(c.availability_status==='Reserved'&&!loans.length&&!queue.length)blockers.push('This copy is reserved without a matching claim. Ask the Librarian to review it.')
  if(mode==='TakeHome'){
   const [rules]=await q.execute<RowDataPacket[]>('SELECT is_borrowable FROM borrowing_policy_material_rules WHERE borrowing_policy_version_id=? AND material_type=?',[policyId,c.material_type])
   if(c.record_type!=='Book'||!rules[0]?.is_borrowable)blockers.push('This material is for in-library reading only.')
+  const fulfillingOwn=Boolean(
+    (assigned && Number(assigned.user_id)===userId && (
+      assigned.reservation_status==='ready_for_pickup'
+      || (assigned.request_kind==='CartHandover' && assigned.reservation_status==='approved')
+    ))
+    || loans.some(l=>l.transaction_status==='Pending' && Number(l.user_id)===userId),
+  )
+  if(!fulfillingOwn){
+   const [duplicates]=await q.execute<RowDataPacket[]>(`SELECT reservation_id FROM reservations WHERE user_id=? AND book_title_id=? AND reservation_status IN ('pending','approved','ready_for_pickup')
+     UNION ALL SELECT bt.transaction_id FROM borrow_transactions bt JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id
+     WHERE bt.user_id=? AND pc.title_id=? AND bt.transaction_status IN ('Pending','Borrowed','Overdue')
+       AND NOT (bt.transaction_status='Pending' AND bt.physical_copy_id=? AND bt.user_id=?)`,[userId,c.title_id,userId,c.title_id,c.physical_copy_id,userId])
+   if(duplicates.length)blockers.push('You already have this title in a book request or active loan.')
+  }
  }
  return blockers
 }
@@ -76,10 +104,21 @@ async function approvedPhoto(q:PoolConnection,accountId:number){
  if(!rows[0]||!env.supabase.url||!env.supabase.secretKey)return null
  try{const {data}=await createClient(env.supabase.url,env.supabase.secretKey,{auth:{persistSession:false,autoRefreshToken:false}}).storage.from('profile-avatars').createSignedUrl(String(rows[0].storage_path),300);return data?.signedUrl??null}catch{return null}
 }
+export function inLibraryNotice(kind:'started'|'overdue',use:{useId:number;userId:number;role:unknown;title:string;handBackBy:Date|string}):UserNotice{
+ const started=kind==='started',when=manilaTime(use.handBackBy)
+ return {userId:use.userId,title:started?'In-library use started':'Please return the book to the desk',body:started?`${use.title} is checked out for in-library use. Please hand it back at the library desk by ${when}.`:`${use.title} was due back at the library desk by ${when}. Please return it to the library desk.`,triggerType:'In-Library Use',sourceType:'In-Library Use',sourceId:use.useId,actionPath:rolePath(use.role,'my-books'),priority:started?'Normal':'Important',dedupeKey:`in-library-use:${use.useId}:${kind}`}
+}
+export async function startInLibraryUse(q:Pick<PoolConnection,'execute'>,start:{userId:number;role:unknown;actorAccountId:number;attendanceLogId:number;copy:RowDataPacket;handBackBy:string|null;now:Date}){
+ const {copy:c,handBackBy}=start;if(!handBackBy)throw problem('DESK_CUTOFF_UNAVAILABLE','No hand-back time is configured for today.')
+ const [r]=await q.execute(`INSERT INTO in_library_uses(user_id,physical_copy_id,material_id,research_inventory_id,attendance_log_id,started_at,hand_back_by,condition_out,started_by_account_id) VALUES (?,?,?,?,?,?,?,?,?)`,[start.userId,c.physical_copy_id,c.material_id,c.research_inventory_id??null,start.attendanceLogId,start.now,handBackBy,c.condition_status,start.actorAccountId]) as unknown as [{insertId:number},unknown]
+ await insertUserNotice(q,inLibraryNotice('started',{useId:Number(r.insertId),userId:start.userId,role:start.role,title:String(c.title),handBackBy}))
+ if(c.research_inventory_id)await q.execute("UPDATE research_inventory SET availability_status='borrowed',row_version=row_version+1,updated_at=NOW() WHERE research_inventory_id=?",[c.research_inventory_id]);else {await q.execute("UPDATE physical_copies SET availability_status='Borrowed',row_version=row_version+1,updated_at=NOW() WHERE physical_copy_id=?",[c.physical_copy_id]);await q.execute("UPDATE materials SET availability_status='Borrowed',updated_at=NOW() WHERE material_id=?",[c.material_id])}
+ return {useId:r.insertId,title:c.title,barcode:c.barcode,handBackBy,status:'Open' as const}
+}
 export async function flagUnreturnedInLibrary(q:Pick<PoolConnection,'execute'>,now:Date):Promise<{flagged:number}>{
  if('getConnection' in q){const conn=await (q as Pool).getConnection();try{await conn.beginTransaction();await conn.execute('SELECT settings_id FROM library_profile_settings WHERE settings_id=1 FOR UPDATE');const result=await flagUnreturnedInLibrary(conn,now);await conn.commit();return result}catch(e){await conn.rollback();throw e}finally{conn.release()}}
- const [result]=await q.execute(`UPDATE in_library_uses SET status='Review',reviewed_at=?,updated_at=NOW() WHERE status='Open' AND ended_at IS NULL AND hand_back_by<=? RETURNING use_id,user_id,COALESCE(physical_copy_id,research_inventory_id) AS physical_copy_id`,[now,now]) as unknown as [{rows:RowDataPacket[]},unknown]
- for(const row of result.rows??[]){await q.execute(`INSERT INTO admin_notifications(event_type,actor_user_id,message_title,message_body) VALUES ('in_library_handback_missing',?,'In-library copy needs review',?)`,[row.user_id,`In-library use #${row.use_id}: copy #${row.physical_copy_id} has not been handed back. Verify its physical location; attendance checkout did not return it.`])}
+ const [result]=await q.execute(`UPDATE in_library_uses SET status='Review',reviewed_at=?,updated_at=NOW() WHERE status='Open' AND ended_at IS NULL AND hand_back_by<=? RETURNING use_id,user_id,hand_back_by,COALESCE(physical_copy_id,research_inventory_id) AS physical_copy_id`,[now,now]) as unknown as [{rows:RowDataPacket[]},unknown]
+ for(const row of result.rows??[]){await q.execute(`INSERT INTO admin_notifications(event_type,actor_user_id,message_title,message_body) VALUES ('in_library_handback_missing',?,'In-library copy needs review',?)`,[row.user_id,`In-library use #${row.use_id}: copy #${row.physical_copy_id} has not been handed back. Verify its physical location; attendance checkout did not return it.`]);const [infos]=await q.execute<RowDataPacket[]>(`SELECT t.title,u.user_role FROM in_library_uses iu JOIN users u ON u.user_id=iu.user_id LEFT JOIN physical_copies pc ON pc.physical_copy_id=iu.physical_copy_id LEFT JOIN research_inventory ri ON ri.research_inventory_id=iu.research_inventory_id LEFT JOIN titles t ON t.title_id=COALESCE(pc.title_id,ri.title_id) WHERE iu.use_id=?`,[row.use_id]);if(!infos[0])throw new Error(`In-library use #${row.use_id} has no borrower to notify.`);await insertUserNotice(q,inLibraryNotice('overdue',{useId:Number(row.use_id),userId:Number(row.user_id),role:infos[0].user_role,title:infos[0].title==null?'The item you used':String(infos[0].title),handBackBy:row.hand_back_by}))}
  return {flagged:result.rows?.length??0}
 }
 export function createDeskCirculationService(database:Pool=db,clock=()=>new Date()){
@@ -89,7 +128,7 @@ export function createDeskCirculationService(database:Pool=db,clock=()=>new Date
   const q=await database.getConnection();try{await q.beginTransaction();await q.execute('SELECT settings_id FROM library_profile_settings WHERE settings_id=1 FOR UPDATE');const [actors]=await q.execute<RowDataPacket[]>('SELECT account_id FROM accounts WHERE account_id=? AND role=? AND account_status=\'Active\' FOR UPDATE',[actor.accountId,actor.role]);if(!actors.length)throw new HttpError(403,'DESK_ACTOR_INACTIVE','Your desk account is not active.');const result=await work(q);await q.commit();return result}catch(e){await q.rollback();throw e}finally{q.release()}
  }
  async function receipt(q:PoolConnection,actor:DeskActor,input:Record<string,unknown>,operation:string,run:()=>Promise<any>){
-  const key=confirmationKey(input.requestId),digest=createHash('sha256').update(JSON.stringify([operation,input.payload??null,input.barcode,input.expectedId??null,input.reservationId??null,input.transactionId??null,input.expectedCopyId??null,input.kind??null,input.condition??null,input.assessmentNote??null])).digest('hex')
+  const key=confirmationKey(input.requestId),digest=deskRequestDigest(operation,input)
   const [rows]=await q.execute<RowDataPacket[]>('SELECT * FROM circulation_scan_receipts WHERE request_id=? FOR UPDATE',[key])
   if(rows[0]){if(Number(rows[0].actor_account_id)!==actor.accountId||rows[0].payload_digest!==digest||rows[0].operation!==operation)throw new HttpError(409,'DESK_REQUEST_REUSED','This confirmation ID belongs to a different transaction.');return {...rows[0].result,replayed:true}}
   const result=await run();await q.execute('INSERT INTO circulation_scan_receipts(request_id,actor_account_id,operation,payload_digest,result) VALUES (?,?,?,?,?::jsonb)',[key,actor.accountId,operation,digest,JSON.stringify(result)]);return result
@@ -102,29 +141,68 @@ export function createDeskCirculationService(database:Pool=db,clock=()=>new Date
   return {kind:'TakeHome',id:Number(loans[0].transaction_id),row:loans[0]}
  }
  async function borrowerDetails(q:PoolConnection,userId:number,mode:UseMode) {
-  const eligibility=await borrowerEligibility(q,userId,clock(),mode);
+  const eligibility=await borrowerEligibility(q,userId,clock(),mode,undefined,true);
   if(!eligibility.user)throw problem('DESK_BORROWER_NOT_FOUND','The borrower profile is unavailable.')
   const [requests]=await q.execute<RowDataPacket[]>(`SELECT r.reservation_id,r.request_kind,r.reservation_status,r.assigned_physical_copy_id,t.title,pc.barcode,pc.shelf_location,(r.pickup_deadline AT TIME ZONE 'Asia/Manila') AS deadline FROM reservations r JOIN titles t ON t.title_id=r.book_title_id LEFT JOIN physical_copies pc ON pc.physical_copy_id=r.assigned_physical_copy_id WHERE r.user_id=? AND r.reservation_status IN ('pending','approved','ready_for_pickup') ORDER BY r.reserved_at,r.reservation_id`,[userId]);return {requests:requests.map(r=>({reservationId:Number(r.reservation_id),title:r.title,statusLabel:r.request_kind==='CartHandover'?'Awaiting handover':requestLabels[requestEventStatus(String(r.reservation_status),Boolean(r.assigned_physical_copy_id))],barcode:r.barcode??null,shelfLocation:r.shelf_location??null,pickupDeadline:r.deadline??null})),user:{userId:userId,name:eligibility.user.full_name,schoolId:eligibility.user.school_id,role:eligibility.user.user_role,program:eligibility.user.course_or_strand,photoUrl:eligibility.user?.account_id?await approvedPhoto(q,Number(eligibility.user.account_id)):null},blockers:eligibility.blockers,eligible:!eligibility.blockers.length,enrollment:eligibility.enrollment,activeLoans:eligibility.loans.length,limit:eligibility.limit,hasAttendance:Boolean(eligibility.visit)}
  }
  async function identity(q:PoolConnection,input:Record<string,unknown>,mode:UseMode,confirming=false) {
+  if(input.schoolId!==undefined){if(input.payload)throw problem('DESK_IDENTITY_AMBIGUOUS','Use School ID or QR, not both.');return resolveManualBorrower(q,input.schoolId)}
   if(input.payload)return validateAttendanceCredential(q,input.payload,confirming,clock())
   if(mode!=='TakeHome')throw problem('DESK_MODE_REQUIRED','Pickup requests are for take-home borrowing.')
   return loadDeskRequest(q,input,clock(),confirming)
  }
  return {
-  async borrower(actor:DeskActor,body:unknown){const input=object(body),mode=scanMode(input.mode);return transaction(actor,async q=>{const qr=await validateAttendanceCredential(q,input.payload,false,clock());return borrowerDetails(q,qr.userId,mode)})},
-  async requestPreview(actor:DeskActor,body:unknown){const input=object(body);return transaction(actor,async q=>{const selected=await loadDeskRequest(q,input,clock()),borrower=await borrowerDetails(q,selected.userId,'TakeHome'),c=await copy(q,selected.barcode),e=await borrowerEligibility(q,selected.userId,clock(),'TakeHome');const blockers=[...e.blockers,...await copyBlockers(q,c,selected.userId,'TakeHome',Number(e.policy.borrowing_policy_version_id),clock())];try{await requireLoanSlot(q,selected.userId,selected.copyId,e.limit)}catch(error){blockers.push(error instanceof Error?error.message:'The loan limit has been reached.')};return {borrower,preview:{copy:{id:selected.copyId,title:c.title,barcode:c.barcode,condition:c.condition_status},blockers,eligible:!blockers.length},reservationId:selected.reservationId,barcode:selected.barcode}})},
+  async quickBorrower(actor:DeskActor,body:unknown){
+   const input=object(body);if(input.mode!=='Borrow'&&input.mode!=='Return')throw problem('DESK_MODE_REQUIRED','Choose Borrow or Return.')
+   const page=returnListPage(input.page)
+   if(input.schoolId!==undefined&&input.payload!==undefined)throw problem('DESK_IDENTITY_AMBIGUOUS','Use School ID or QR, not both.')
+   return transaction(actor,async q=>{
+    const qr=input.schoolId!==undefined?await resolveManualBorrower(q,input.schoolId,input.mode==='Return'):await validateAttendanceCredential(q,input.payload,false,clock(),input.mode==='Return')
+    const borrower=input.mode==='Borrow'?await borrowerDetails(q,qr.userId,'TakeHome'):{user:{userId:qr.userId,name:qr.name,schoolId:qr.schoolId,role:qr.role,program:qr.program,photoUrl:null},requests:[],blockers:[],eligible:false,enrollment:'Return review',activeLoans:0,limit:null,hasAttendance:false}
+    const loans=input.mode==='Return'?await borrowerReturnList(q,qr.userId,page):{rows:[],page:1,more:false}
+    return {borrower,loans}
+   })
+  },
+  async borrower(actor:DeskActor,body:unknown){const input=object(body),mode=scanMode(input.mode);return transaction(actor,async q=>{const qr=await identity(q,input,mode);return borrowerDetails(q,qr.userId,mode)})},
+  async manualCheckIn(actor:DeskActor,body:unknown){
+   const input=object(body),mode=scanMode(input.mode),requestId=confirmationKey(input.requestId)
+   return transaction(actor,async q=>{
+    const visitor=await resolveManualBorrower(q,input.schoolId),now=clock()
+    const [staff]=await q.execute<RowDataPacket[]>('SELECT user_id FROM accounts WHERE account_id=? LIMIT 1',[actor.accountId])
+    if(!staff[0]?.user_id)throw new HttpError(403,'DESK_ACTOR_PROFILE_REQUIRED','Your desk account needs a linked library profile.')
+    const [prior]=await q.execute<RowDataPacket[]>('SELECT user_id,checked_in_by_user_id FROM attendance_logs WHERE entry_request_id=?',[requestId])
+    if(prior[0]){
+     if(Number(prior[0].user_id)!==visitor.userId||Number(prior[0].checked_in_by_user_id)!==Number(staff[0]?.user_id))throw new HttpError(409,'DESK_REQUEST_REUSED','This entry confirmation belongs to a different visitor or staff member.')
+     return borrowerDetails(q,visitor.userId,mode)
+    }
+    await closeAttendanceAtCutoff(q,now)
+    const [open]=await q.execute<RowDataPacket[]>('SELECT log_id FROM attendance_logs WHERE user_id=? AND time_out IS NULL AND checked_out_at IS NULL',[visitor.userId])
+    if(!open.length){
+     const state=await libraryState(q,now),seat=!state.policy.servicePurposes.includes('Book Borrowing')
+     if(!state.entryOpen||!state.allowBorrowing)throw problem('ATTENDANCE_ENTRY_CLOSED','Borrowing entry is closed for the current hours or scheduled event.')
+     if(seat&&state.available<=0)throw problem('LIBRARY_AT_CAPACITY','All available library seats are occupied.')
+     await q.execute(`INSERT INTO attendance_logs(user_id,attendance_date,time_in,checked_in_at,reason_for_visit,scan_method,checked_in_by_user_id,entry_request_id,seat_visit)
+       VALUES (?,?::date,(?::timestamptz AT TIME ZONE 'Asia/Manila')::time,(?::timestamptz AT TIME ZONE 'Asia/Manila'),'Book Borrowing','Manual',?,?,?)`,[visitor.userId,manilaDate(now),now,now,Number(staff[0].user_id),requestId,seat])
+    }
+    return borrowerDetails(q,visitor.userId,mode)
+   })
+  },
+  async requestPreview(actor:DeskActor,body:unknown){const input=object(body);return transaction(actor,async q=>{const selected=await loadDeskRequest(q,input,clock()),borrower=await borrowerDetails(q,selected.userId,'TakeHome'),c=await copy(q,selected.barcode),e=await borrowerEligibility(q,selected.userId,clock(),'TakeHome',undefined,true);const blockers=[...e.blockers,...await copyBlockers(q,c,selected.userId,'TakeHome',Number(e.policy.borrowing_policy_version_id),clock())];try{await requireLoanSlot(q,selected.userId,selected.copyId,e.limit)}catch(error){blockers.push(error instanceof Error?error.message:'The loan limit has been reached.')};return {borrower,preview:{copy:{id:selected.copyId,title:c.title,barcode:c.barcode,condition:c.condition_status},blockers,eligible:!blockers.length},reservationId:selected.reservationId,barcode:selected.barcode}})},
   async preview(actor:DeskActor,body:unknown){const input=object(body),mode=scanMode(input.mode),barcode=scanBarcode(input.barcode);return transaction(actor,async q=>{const qr=await identity(q,input,mode),e=await borrowerEligibility(q,qr.userId,clock(),mode),c=await copy(q,barcode),blockers=[...e.blockers,...await copyBlockers(q,c,qr.userId,mode,Number(e.policy.borrowing_policy_version_id),clock())];await verifySelectedRequest(q,input,qr.userId,c,mode);if(mode==='TakeHome')try{await requireLoanSlot(q,qr.userId,Number(c.physical_copy_id),e.limit)}catch(error){blockers.push(error instanceof Error?error.message:'The loan limit has been reached.')};return {copy:{id:Number(c.physical_copy_id??c.research_inventory_id),title:c.title,barcode:c.barcode,condition:c.condition_status},blockers,eligible:!blockers.length}})},
   async checkout(actor:DeskActor,body:unknown){const input=object(body),mode=scanMode(input.mode),barcode=scanBarcode(input.barcode);input.barcode=barcode;return transaction(actor,q=>receipt(q,actor,input,mode,async()=>{const now=clock(),qr=await identity(q,input,mode,true),e=await borrowerEligibility(q,qr.userId,now,mode);requireEligible(e);const c=await copy(q,barcode),blockers=await copyBlockers(q,c,qr.userId,mode,Number(e.policy.borrowing_policy_version_id),now);await verifySelectedRequest(q,input,qr.userId,c,mode);if(blockers.length)throw problem('DESK_COPY_BLOCKED',blockers.join(' '));if(mode==='TakeHome'){const result=await createCirculationService(transactionPool(q),clock).confirmCheckout(actor.accountId,{barcode,userId:qr.userId,reservationId:input.reservationId});return {...result,mode,enrollment:e.enrollment}}
-   const handBackBy=e.state.cutoffAt;if(!handBackBy)throw problem('DESK_CUTOFF_UNAVAILABLE','No hand-back time is configured for today.');const [r]=await q.execute(`INSERT INTO in_library_uses(user_id,physical_copy_id,material_id,research_inventory_id,attendance_log_id,started_at,hand_back_by,condition_out,started_by_account_id) VALUES (?,?,?,?,?,?,?,?,?)`,[qr.userId,c.physical_copy_id,c.material_id,c.research_inventory_id??null,e.visit!.log_id,now,handBackBy,c.condition_status,actor.accountId]) as unknown as [{insertId:number},unknown];if(c.research_inventory_id)await q.execute("UPDATE research_inventory SET availability_status='borrowed',row_version=row_version+1,updated_at=NOW() WHERE research_inventory_id=?",[c.research_inventory_id]);else {await q.execute("UPDATE physical_copies SET availability_status='Borrowed',row_version=row_version+1,updated_at=NOW() WHERE physical_copy_id=?",[c.physical_copy_id]);await q.execute("UPDATE materials SET availability_status='Borrowed',updated_at=NOW() WHERE material_id=?",[c.material_id])};return {useId:r.insertId,mode,title:c.title,barcode:c.barcode,handBackBy,status:'Open',enrollment:e.enrollment}
+   return {...await startInLibraryUse(q,{userId:qr.userId,role:'role' in qr?qr.role:null,actorAccountId:actor.accountId,attendanceLogId:e.visit!.log_id,copy:c,handBackBy:e.state.cutoffAt,now}),mode,enrollment:e.enrollment}
   }))},
   async returnPreview(actor:DeskActor,body:unknown){const barcode=scanBarcode(object(body).barcode);return transaction(actor,async q=>{const c=await copy(q,barcode),a=await activeAssignment(q,c);return {kind:a.kind,id:a.id,title:c.title,barcode:c.barcode,condition:c.condition_status,borrower:{name:a.row.full_name,schoolId:a.row.school_id},dueAt:a.row.due_iso??a.row.hand_back_by,status:a.row.status??a.row.transaction_status}})},
-  async returnCopy(actor:DeskActor,body:unknown){const input=object(body);input.barcode=scanBarcode(input.barcode);const assessment=conditionAssessment(input);return transaction(actor,q=>receipt(q,actor,input,'Return',async()=>{const c=await copy(q,String(input.barcode)),a=await activeAssignment(q,c);if(input.kind!==a.kind||Number(input.expectedId)!==a.id)throw new HttpError(409,'DESK_RETURN_STALE','This copy assignment changed. Scan it again before returning.');if(assessment.condition==='Lost')throw problem('DESK_LOST_INCIDENT','A missing copy cannot be handed back. Use Report lost in the existing incident workflow.');if(assessment.condition){c.condition_status=assessment.condition;await q.execute('UPDATE physical_copies SET condition_status=? WHERE physical_copy_id=?',[assessment.condition,c.physical_copy_id])}let result:Record<string,unknown>;
-   if(a.kind==='TakeHome')result=await createCirculationService(transactionPool(q),clock).returnBook(actor.accountId,a.id)
+  async returnCopy(actor:DeskActor,body:unknown){const input=object(body);input.barcode=scanBarcode(input.barcode);const assessment=conditionAssessment(input);return transaction(actor,q=>receipt(q,actor,input,'Return',async()=>{const c=await copy(q,String(input.barcode)),a=await activeAssignment(q,c);if(input.kind!==a.kind||Number(input.expectedId)!==a.id)throw new HttpError(409,'DESK_RETURN_STALE','This copy assignment changed. Scan it again before returning.');if(assessment.condition==='Lost')throw problem('DESK_LOST_INCIDENT','A missing copy cannot be handed back. Use Report lost in the existing incident workflow.');const conditionBefore=c.condition_status==null?null:String(c.condition_status);if(assessment.condition){c.condition_status=assessment.condition;await q.execute('UPDATE physical_copies SET condition_status=? WHERE physical_copy_id=?',[assessment.condition,c.physical_copy_id])}let result:Record<string,unknown>;
+   if(a.kind==='TakeHome')result=await createCirculationService(transactionPool(q),clock).returnBook(actor.accountId,a.id,{condition:assessment.condition})
    else {await q.execute("UPDATE in_library_uses SET status='Returned',ended_at=?,condition_in=?,assessment_note=?,returned_by_account_id=?,updated_at=NOW() WHERE use_id=?",[clock(),assessment.condition??c.condition_status,assessment.note,actor.accountId,a.id]);await q.execute("UPDATE physical_copies SET availability_status='Available',row_version=row_version+1,updated_at=NOW() WHERE physical_copy_id=?",[c.physical_copy_id]);await q.execute("UPDATE materials SET availability_status='Available',updated_at=NOW() WHERE material_id=?",[c.material_id]);result={useId:a.id,status:'Returned',...(c.research_inventory_id?{}:await prepareReturnedCopy(q,c as any,clock()))}}
    if(assessment.condition){await q.execute('UPDATE physical_copies SET condition_status=?,availability_status=CASE WHEN ?=\'Damaged\' THEN \'Unavailable\' ELSE availability_status END,updated_at=NOW() WHERE physical_copy_id=?',[assessment.condition,assessment.condition,c.physical_copy_id]);if(assessment.condition==='Damaged')await q.execute("UPDATE materials SET availability_status='Unavailable',updated_at=NOW() WHERE material_id=?",[c.material_id]);await q.execute("INSERT INTO admin_notifications(event_type,actor_user_id,message_title,message_body) VALUES ('return_condition_assessment',?,'Returned copy assessment',?)",[a.row.user_id,`${c.barcode}: ${assessment.condition}. ${assessment.note??''}`])}
    if(c.research_inventory_id){const finalCondition=assessment.condition??c.condition_status;await q.execute('UPDATE research_inventory SET availability_status=?,condition_state=?,row_version=row_version+1,updated_at=NOW() WHERE research_inventory_id=?',[['Damaged','Lost'].includes(finalCondition)?'unavailable':'available',finalCondition==='Damaged'?'damaged':finalCondition==='Lost'?'lost':finalCondition==='Worn'?'fair':'good',c.research_inventory_id])}
-   return {...result,kind:a.kind,title:c.title,condition:assessment.condition??c.condition_status,assessmentNeeded:assessment.condition==='Damaged'}
+   // A take-home book returned Damaged opens a damage case in this same transaction (migration 017).
+   // In-library uses and Good/Worn returns open none; staff can still mark damage from inventory.
+   let damageCaseId:number|null=null
+   if(a.kind==='TakeHome'&&assessment.condition==='Damaged'&&c.physical_copy_id){const [staff]=await q.execute<RowDataPacket[]>('SELECT user_id FROM accounts WHERE account_id=? LIMIT 1',[actor.accountId]);damageCaseId=(await openDamageCaseAtReturn(q,{transactionId:a.id,physicalCopyId:Number(c.physical_copy_id),borrowerUserId:Number(a.row.user_id),actorUserId:staff[0]?.user_id?Number(staff[0].user_id):null,baselineCondition:conditionBefore,observedCondition:'Damaged',description:String(assessment.note),openedAt:clock()})).caseId}
+   return {...result,kind:a.kind,title:c.title,condition:assessment.condition??c.condition_status,assessmentNeeded:assessment.condition==='Damaged',damageCaseId}
   }))},
   async uses(actor:DeskActor){return transaction(actor,async q=>{await flagUnreturnedInLibrary(q,clock());const [rows]=await q.execute<RowDataPacket[]>(`SELECT iu.use_id,iu.user_id,iu.status,iu.started_at,iu.hand_back_by,iu.ended_at,iu.condition_out,iu.condition_in,iu.assessment_note,COALESCE(pc.barcode,ri.barcode) AS barcode,t.title,u.full_name,u.school_id FROM in_library_uses iu LEFT JOIN physical_copies pc ON pc.physical_copy_id=iu.physical_copy_id LEFT JOIN research_inventory ri ON ri.research_inventory_id=iu.research_inventory_id JOIN titles t ON t.title_id=COALESCE(pc.title_id,ri.title_id) JOIN users u ON u.user_id=iu.user_id ORDER BY (iu.ended_at IS NULL) DESC,iu.started_at DESC LIMIT 100`);return rows})},
   async mine(accountId:number){const [rows]=await database.execute<RowDataPacket[]>(`SELECT iu.use_id,iu.status,iu.started_at,iu.hand_back_by,iu.ended_at,iu.condition_out,iu.condition_in,t.title,COALESCE(pc.barcode,ri.barcode) AS barcode FROM in_library_uses iu JOIN accounts a ON a.user_id=iu.user_id LEFT JOIN physical_copies pc ON pc.physical_copy_id=iu.physical_copy_id LEFT JOIN research_inventory ri ON ri.research_inventory_id=iu.research_inventory_id JOIN titles t ON t.title_id=COALESCE(pc.title_id,ri.title_id) WHERE a.account_id=? ORDER BY iu.started_at DESC LIMIT 100`,[accountId]);return rows},

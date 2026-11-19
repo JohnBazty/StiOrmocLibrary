@@ -111,14 +111,14 @@ const image = (bytes: Uint8Array, type = 'image/jpeg', status = 200) => new Resp
 
 test('cover lookup returns the Open Library cover for a valid ISBN', async () => {
   const urls: string[] = []
-  const service = createIsbnLookupService({ repository: titleRepository(), googleApiKey: '', fetcher: (async (input) => { urls.push(String(input)); return image(JPEG) }) as typeof fetch })
+  const service = createIsbnLookupService({ repository: titleRepository(), googleApiKey: '', fetcher: (async (input) => { urls.push(String(input)); return String(input).startsWith('https://www.googleapis.com/')?json({}):image(JPEG) }) as typeof fetch })
   const cover = await service.cover('978-0-13-235088-4')
   assert.equal(cover.contentType, 'image/jpeg')
   assert.deepEqual([...cover.bytes], [...JPEG])
-  assert.equal(urls[0], `https://covers.openlibrary.org/b/isbn/${validIsbn}-L.jpg?default=false`)
+  assert.equal(urls[1], `https://covers.openlibrary.org/b/isbn/${validIsbn}-L.jpg?default=false`)
 })
 
-test('cover lookup falls back to the Google Books thumbnail on a Google host only', async () => {
+test('cover lookup uses Google Books first with an exact ISBN and a Google host only', async () => {
   const urls: string[] = []
   const service = createIsbnLookupService({
     repository: titleRepository(), googleApiKey: '',
@@ -130,7 +130,7 @@ test('cover lookup falls back to the Google Books thumbnail on a Google host onl
     }) as typeof fetch,
   })
   await service.cover(validIsbn)
-  assert.equal(urls[2], 'https://books.google.com/books/content?id=x&printsec=frontcover&img=1&zoom=1')
+  assert.equal(urls[1], 'https://books.google.com/books/content?id=x&printsec=frontcover&img=1&zoom=1')
   const evil = createIsbnLookupService({
     repository: titleRepository(), googleApiKey: '',
     fetcher: (async (input) => String(input).startsWith('https://www.googleapis.com/')
@@ -227,4 +227,14 @@ test('predictions strip search syntax, cache answers, and stay quiet on short te
   await assert.rejects(service.predict('isbn' as never, 'clean'), (error: unknown) => error instanceof HttpError && error.status === 422)
   const down = createIsbnLookupService({ repository: titleRepository(), googleApiKey: '', fetcher: (async () => { throw new Error('offline') }) as typeof fetch })
   assert.deepEqual(await down.predict('author', 'robert'), [])
+})
+
+test('cover redirects stay on approved HTTPS hosts and oversized streams stop at the byte limit',async()=>{
+ const calls:string[]=[]
+ const redirects=createIsbnLookupService({repository:titleRepository(),googleApiKey:'',fetcher:(async(input)=>{const url=String(input);calls.push(url);return url.startsWith('https://www.googleapis.com/')?json({}):new Response(null,{status:302,headers:{location:'http://169.254.169.254/latest'}})}) as typeof fetch})
+ await assert.rejects(redirects.cover(validIsbn),{status:404});assert.ok(calls.every(url=>!url.includes('169.254')))
+ let cancelled=false,pulls=0
+ const stream=new ReadableStream({pull(controller){pulls++;controller.enqueue(new Uint8Array(600_000))},cancel(){cancelled=true}})
+ const oversized=createIsbnLookupService({repository:titleRepository(),googleApiKey:'',fetcher:(async(input)=>String(input).startsWith('https://www.googleapis.com/')?json({}):new Response(stream,{headers:{'content-type':'image/jpeg'}})) as typeof fetch})
+ await assert.rejects(oversized.cover(validIsbn),{status:404});assert.equal(cancelled,true);assert.ok(pulls<=5)
 })

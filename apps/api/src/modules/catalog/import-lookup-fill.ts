@@ -10,6 +10,7 @@ export const FILL_BATCH_SIZE = 50
 /** One click stops looking up after this long, well inside common proxy timeouts. */
 export const FILL_DEADLINE_MS = 20_000
 const FILLABLE = ['title', 'author', 'isbn', 'publisher', 'publicationYear'] as const
+export const REQUIRED_IMPORT_LOOKUP_FIELDS = ['title','author'] as const
 type Fillable = typeof FILLABLE[number]
 type Source = 'local_catalog' | 'google_books' | 'open_library'
 type Found = Partial<Record<Fillable, string>> & { source: Source }
@@ -21,7 +22,7 @@ export type Lookups = {
 
 // A row still needs the lookup while one of these is blank and it was never tried.
 const NEEDS_FILL = `status = 'Review' AND batch_id = ? AND (data_json->>'lookupTried') IS NULL
-  AND (${FILLABLE.map((field) => `COALESCE(data_json->>'${field}', '') = ''`).join(' OR ')})`
+  AND (${REQUIRED_IMPORT_LOOKUP_FIELDS.map((field) => `COALESCE(data_json->>'${field}', '') = ''`).join(' OR ')})`
 
 const year = (value: number | null) => (value && value >= 1000 && value <= new Date().getFullYear() ? String(value) : '')
 const surname = (author: string) => key(author).split(' ').filter((word) => word.length > 1).pop() ?? ''
@@ -30,6 +31,7 @@ async function findFor(data: Record<string, string>, lookups: Lookups): Promise<
   const isbn = normalizeIsbn(data.isbn)
   if (isbn && isValidIsbn(isbn)) {
     const book = await lookups.lookup(isbn)
+    if(normalizeIsbn(book.isbn)!==isbn)return null
     return { title: book.title, author: book.author, publisher: book.publisher ?? '', publicationYear: year(book.publicationYear), source: book.source }
   }
   if (!data.title) return null
@@ -51,23 +53,25 @@ export type FilledValues = Record<string, { value: string; source: Source }>
  * The blanks of one book row the lookups can fill, and where each value came from; values already present are never
  * replaced. Used by the import fill and by Find book details. Throws only when the providers are unavailable.
  */
-export async function lookupBlanks(data: Record<string, string>, lookups: Lookups) {
+export async function lookupBlanks(data: Record<string, string>, lookups: Lookups, fields:readonly Fillable[]=FILLABLE, exactOnly=false) {
   let found: Found | null
-  try { found = await findFor(data, lookups) } catch (error) {
+  try { found = exactOnly&&(!data.isbn||!isValidIsbn(normalizeIsbn(data.isbn)))?null:await findFor(data, lookups) } catch (error) {
     if (error instanceof HttpError && error.status === 404) found = null
     else throw error
   }
+  // Conflicting populated facts need the row-level candidate review, never a batch guess.
+  if(exactOnly&&found&&(['title','author'] as const).some(field=>data[field]?.trim()&&found?.[field]&&key(data[field])!==key(found[field]!)))found=null
   const additions: Partial<Record<Fillable, string>> = {}
   const record: FilledValues = {}
-  for (const field of FILLABLE) {
-    const value = found?.[field]?.trim()
+  for (const field of fields) {
+    const value = found?.[field]?.replace(/<[^>]*>/g,'').replace(/[\x00-\x1f\x7f]/g,' ').trim()
     if (value && !String(data[field] ?? '').trim()) { additions[field] = value.slice(0, 255); record[field] = { value: additions[field]!, source: found!.source } }
   }
   return { additions, record }
 }
 
 /**
- * Fills blank title, author, ISBN, publisher and year in staged import rows from the book lookups, 50 rows per call.
+ * Fills missing required title/author only from exact ISBNs in staged import rows from the book lookups, 50 rows per call.
  * Spreadsheet values are never replaced. Each filled value is recorded in `lookupFilled` for the librarian to check.
  */
 export function createImportLookupFill(database: Pool = db, lookups: Lookups = isbnLookupService, clock: () => number = Date.now) {
@@ -80,7 +84,7 @@ export function createImportLookupFill(database: Pool = db, lookups: Lookups = i
       // Answer before a proxy gives up on the request; the rest stays waiting for the next click.
       if (clock() - startedAt > FILL_DEADLINE_MS) break
       let result: Awaited<ReturnType<typeof lookupBlanks>>
-      try { result = await lookupBlanks(row.data_json as Record<string, string>, lookups) } catch { unavailable = true; break }
+      try { result = await lookupBlanks(row.data_json as Record<string, string>, lookups, REQUIRED_IMPORT_LOOKUP_FIELDS, true) } catch { unavailable = true; break }
       const { additions, record } = result
       const patch = { ...additions, lookupTried: true, ...(Object.keys(record).length ? { lookupFilled: record } : {}) }
       // The version check keeps an edit the librarian saved while this lookup was running.

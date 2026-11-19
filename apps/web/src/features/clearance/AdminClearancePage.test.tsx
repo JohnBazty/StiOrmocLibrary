@@ -6,7 +6,7 @@ import type { ClearanceRecord } from './types'
 
 const api = vi.hoisted(() => ({
   terms: vi.fn().mockResolvedValue([]), schedule: vi.fn(), saveSchedule: vi.fn(), list: vi.fn(), detail: vi.fn(), override: vi.fn(), revoke: vi.fn(),
-  decideLost: vi.fn(), settleLost: vi.fn(),
+  decideLost: vi.fn(), settleLost: vi.fn(), resolveLost: vi.fn(),
 }))
 vi.mock('./clearance-api', () => ({ clearanceApi: api }))
 
@@ -26,6 +26,31 @@ function listWith(item: ClearanceRecord) {
 }
 
 describe('AdminClearancePage simplified exceptions', () => {
+  it('starts with student lookup and shows schedules only on their tab', async () => {
+    api.list.mockResolvedValue(listWith(blocked))
+    render(<MemoryRouter initialEntries={['/librarian/clearance']}><AdminClearancePage /></MemoryRouter>)
+    await screen.findByRole('heading',{name:'Clearance master list'})
+    expect(screen.queryByRole('heading',{name:'Clearance schedules'})).toBeNull()
+    fireEvent.click(screen.getByRole('button',{name:'Schedules'}))
+    expect(await screen.findByRole('heading',{name:'Clearance schedules'})).toBeTruthy()
+    expect(screen.queryByRole('heading',{name:'Clearance master list'})).toBeNull()
+  })
+
+  it('refreshes an open clearance review after payment without closing the review', async () => {
+    api.list.mockResolvedValue(listWith(blocked))
+    api.detail.mockResolvedValue(blocked)
+    render(<MemoryRouter initialEntries={['/admin/clearance']}><AdminClearancePage /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: 'Review' }))
+    await screen.findByText('Clearance review')
+    const paid: ClearanceRecord = { ...blocked, status: 'Cleared', computedStatus: 'Cleared', reason: 'No outstanding requirements.', summary: { ...blocked.summary, unpaidOverdueFines: 0, totalOutstanding: 0, blockCount: 0 } }
+    api.list.mockResolvedValue(listWith(paid))
+    api.detail.mockResolvedValue(paid)
+    window.dispatchEvent(new Event('library-payments-updated'))
+    await waitFor(() => expect(api.detail).toHaveBeenCalledTimes(2))
+    await screen.findAllByText('No outstanding requirements.')
+    expect(screen.getByText('Clearance review')).toBeTruthy()
+  })
+
   it('uses one reason field and automatically grants a cleared exception', async () => {
     const overridden: ClearanceRecord = {
       ...blocked,
@@ -74,12 +99,35 @@ describe('AdminClearancePage simplified exceptions', () => {
       paymentStatus: 'Unpaid', reportedAt: '2026-09-26T01:00:00.000Z', verifiedAt: null }] })
     render(<MemoryRouter initialEntries={['/librarian/clearance']}><AdminClearancePage /></MemoryRouter>)
 
+    fireEvent.click(screen.getByRole('button',{name:'Lost-book reports'}))
     expect(await screen.findByText('Lost-book reports awaiting review (1)')).toBeTruthy()
     expect(screen.getByText('Emma')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Review report' }))
     await waitFor(() => expect(api.detail).toHaveBeenCalledWith(7))
-    expect(await screen.findByText('Lost-book reports')).toBeTruthy()
+    expect(await screen.findByRole('heading',{name:'Lost-book reports',level:3})).toBeTruthy()
     expect(screen.getByText('Awaiting quotation')).toBeTruthy()
+  })
+
+  it('confirms a lost book at the book price and offers payment for a book-price charge', async () => {
+    const lost = { lostBookReportId: 12, transactionId: 20, titleId: 5, title: 'Emma', quotationId: 8, quotedAmount: 700, titlePrice: 450,
+      reportedAt: '2026-09-26T01:00:00.000Z', verifiedAt: null, resolutionReason: null }
+    api.list.mockResolvedValue(listWith(blocked))
+    api.detail.mockResolvedValueOnce({ ...blocked, lostBooks: [{ ...lost, status: 'Pending', chargeResolution: 'Awaiting Review', replacementCharge: 0, paymentStatus: 'Unpaid' }] })
+      .mockResolvedValue({ ...blocked, lostBooks: [{ ...lost, status: 'Confirmed', chargeResolution: 'Book Price', replacementCharge: 450, paymentStatus: 'Unpaid' }] })
+    api.decideLost.mockResolvedValue({})
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(<MemoryRouter initialEntries={['/librarian/clearance']}><AdminClearancePage /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: 'Review' }))
+    expect((await screen.findByText(/Book price: .*450\.00/)).textContent).not.toContain('700')
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm loss' }))
+    expect(confirm.mock.calls[0][0]).toMatch(/book price of .*450\.00/)
+    await waitFor(() => expect(api.decideLost).toHaveBeenCalledWith(12, 'Confirmed', 450))
+    fireEvent.click(await screen.findByRole('button', { name: 'Record replacement payment' }))
+    await waitFor(() => expect(api.settleLost).toHaveBeenCalledWith(12))
+    const prompt = vi.spyOn(window, 'prompt').mockReturnValue('Book found undamaged in the return bin.')
+    fireEvent.click(screen.getByRole('button', { name: 'Waive charge' }))
+    await waitFor(() => expect(api.resolveLost).toHaveBeenCalledWith(12, 'Waive', 'Book found undamaged in the return bin.'))
+    confirm.mockRestore(); prompt.mockRestore()
   })
 })
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PageHeader, SectionCard, StatCard } from '../../components/ui'
 import { BadgeCheck, RefreshCw, UserRoundX, Users } from 'lucide-react'
-import { getAccessToken, getCurrentIdentity } from '../auth/auth-storage'
+import { getCsrfToken, getCurrentIdentity } from '../auth/auth-storage'
 
 type Summary = { activeUsers: number; cleared: number; notCleared: number; unknown: number; generatedAt: string }
 
@@ -15,7 +15,7 @@ export function AdminAccountDashboardPage() {
     setLoading(true); setError('')
     try {
       const response = await fetch('/api/v1/admin/account-dashboard', {
-        headers: { Authorization: `Bearer ${getAccessToken() ?? ''}`, Accept: 'application/json' },
+        headers: { 'X-CSRF-Token': getCsrfToken() ?? '', Accept: 'application/json' },
       })
       const payload = await response.json() as { data?: Summary; message?: string }
       if (!response.ok || !payload.data) throw new Error(payload.message ?? 'Unable to load account totals.')

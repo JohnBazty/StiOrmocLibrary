@@ -9,7 +9,7 @@ import { ThemeProvider } from '../theme/ThemeProvider'
 describe('authentication pages', () => {
   it('retains the borrowing selection when moving between login and registration', () => {
     const loginView=render(<MemoryRouter initialEntries={['/login?catalogTitleId=42']}><ThemeProvider><LoginPage /></ThemeProvider></MemoryRouter>)
-    expect(screen.getByRole('link',{name:'Activate account'}).getAttribute('href')).toBe('/register?catalogTitleId=42')
+    expect(screen.getByRole('link',{name:'Register an account'}).getAttribute('href')).toBe('/register?catalogTitleId=42')
     expect(screen.getByRole('link',{name:'Back to browsing'}).getAttribute('href')).toBe('/#catalog')
     loginView.unmount()
     render(<MemoryRouter initialEntries={['/register?catalogTitleId=42']}><RegistrationPage /></MemoryRouter>)
@@ -19,7 +19,7 @@ describe('authentication pages', () => {
     render(<MemoryRouter><ThemeProvider><LoginPage /></ThemeProvider></MemoryRouter>)
     expect(screen.queryByLabelText('Login as')).toBeNull()
     expect(screen.getByLabelText('Student Number / Faculty ID')).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Activate account' }).getAttribute('href')).toBe('/register')
+    expect(screen.getByRole('link', { name: 'Register an account' }).getAttribute('href')).toBe('/register')
     expect(screen.queryByRole('link', { name: 'System Administrator Login' })).toBeNull()
     expect(screen.getByRole('link', { name: 'Forgot Password?' }).getAttribute('href')).toBe('/forgot-password')
   })
@@ -27,13 +27,13 @@ describe('authentication pages', () => {
   it('pauses signup before the first semester starts and directs existing users to sign in', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { enabled: true, open: false } }) }))
     render(<MemoryRouter><RegistrationPage /></MemoryRouter>)
-    expect(await screen.findByText(/Student account activation opens when the library starts the semester/)).toBeTruthy()
+    expect(await screen.findByText(/Student registration opens when the library starts the semester/)).toBeTruthy()
     expect(screen.queryByLabelText('Register as')).toBeNull()
     expect(screen.queryByLabelText('Student ID')).toBeNull()
     expect(screen.getByRole('link', { name: 'Sign In Here' })).toBeTruthy()
   })
 
-  it('verifies the roster email before accepting a password and continues to sign-in without approval', async () => {
+  it.each(['Student','Faculty'] as const)('%s verifies the roster email before accepting a password and continues to sign-in without approval', async role => {
     const request = vi.fn(async (path: string, _options?: RequestInit) => ({
       ok: true,
       json: async () => ({ data: path.endsWith('/begin') ? { challengeId: 'test-challenge' }
@@ -49,34 +49,37 @@ describe('authentication pages', () => {
       <Route path="/register" element={<RegistrationPage popup />} />
       <Route path="/login" element={<SignInDestination />} />
     </Routes></MemoryRouter>)
-    fireEvent.change(await screen.findByLabelText('Student ID'), { target: { value: '0001234' } })
+    if(role==='Faculty')fireEvent.change(screen.getByLabelText('Account type'),{target:{value:'Faculty'}})
+    fireEvent.change(await screen.findByLabelText(`${role} ID`), { target: { value: '0001234' } })
     expect(screen.queryByLabelText('School Email')).toBeNull()
     expect(screen.queryByLabelText('Password')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Send email code' }))
     fireEvent.change(await screen.findByLabelText('Email verification code'), { target: { value: '123456' } })
-    expect(request.mock.calls[1][1]?.body).toBe(JSON.stringify({ school_id: '0001234' }))
+    const begin=request.mock.calls.find(call=>call[0].endsWith('/begin'))
+    expect(begin?.[1]?.body).toBe(JSON.stringify({school_id:'0001234'}))
+    expect(begin?.[0]).toContain(role==='Faculty'?'/faculty-roster-registration/':'/roster-registration/')
     fireEvent.click(screen.getByRole('button', { name: 'Verify email code' }))
-    const password = await screen.findByLabelText<HTMLInputElement>('Password')
-    const confirmation = screen.getByLabelText<HTMLInputElement>('Confirm password')
-    const showPasswords = screen.getByRole('checkbox', { name: 'Show passwords' })
-    fireEvent.change(password, { target: { value: 'ExamplePass123' } })
-    fireEvent.change(confirmation, { target: { value: 'ExamplePass123' } })
-    expect([password.type, confirmation.type]).toEqual(['password', 'password'])
-    fireEvent.click(showPasswords)
-    expect([password.type, confirmation.type]).toEqual(['text', 'text'])
-    fireEvent.click(showPasswords)
-    expect([password.type, confirmation.type]).toEqual(['password', 'password'])
-    expect([password.value, confirmation.value]).toEqual(['ExamplePass123', 'ExamplePass123'])
-    fireEvent.click(screen.getByRole('button', { name: 'Activate account' }))
+    fireEvent.change(await screen.findByLabelText('Password'), { target: { value: 'ExamplePass123' } })
+    fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'ExamplePass123' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create account' }))
     expect(await screen.findByText('Sign in 0001234 ?catalogTitleId=42')).toBeTruthy()
   })
 
   it('provides a shared personnel login without a selectable role', () => {
     render(<MemoryRouter><ThemeProvider><AdminLoginPage /></ThemeProvider></MemoryRouter>)
     expect(screen.getByRole('heading', { name: 'Library Personnel Login' })).toBeTruthy()
-    expect(screen.getByLabelText('School ID')).toBeTruthy()
+    expect(screen.getByLabelText('Personnel ID or Ormoc email')).toBeTruthy()
     expect(screen.queryByLabelText('Login as')).toBeNull()
     expect(screen.getByRole('button', { name: 'Log In' })).toBeTruthy()
+  })
+
+  it('uses one keyboard-operable password visibility control for personnel', () => {
+    render(<MemoryRouter><ThemeProvider><AdminLoginPage /></ThemeProvider></MemoryRouter>)
+    expect(screen.queryByRole('checkbox', { name: 'Show password' })).toBeNull()
+    const toggle = screen.getByRole('button', { name: 'Show password' })
+    fireEvent.click(toggle)
+    expect(screen.getByRole('button', { name: 'Hide password' }).getAttribute('aria-pressed')).toBe('true')
+    expect((document.querySelector('input[autocomplete="current-password"]') as HTMLInputElement).type).toBe('text')
   })
 
   it('asks before switching after email verification and cancel makes no switch request', async () => {

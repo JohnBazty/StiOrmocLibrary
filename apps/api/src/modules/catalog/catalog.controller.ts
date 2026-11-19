@@ -49,7 +49,7 @@ export const catalogController = {
     })
   }),
   createBook: asyncController(async (request, response) => {
-    const result = await catalogService.createBookEntry(request.body)
+    const result = await catalogService.createBookEntry(request.body, actorAccountId(response))
     response.status(201).json({
       success: true,
       message: result.addedCopyToExistingTitle ? 'Physical copy added to the existing book title.' : 'Book title and physical copy created successfully.',

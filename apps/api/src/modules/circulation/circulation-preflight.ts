@@ -83,6 +83,7 @@ export type CheckoutEvaluationContext = {
     reservationId: number
     userId: number
     status: string
+    requestKind?: string | null
   } | null
   selectedReservationId: number | null
   studentActiveTitleCount: number
@@ -231,6 +232,24 @@ export function evaluateCheckoutRules(
       'RESERVATION_NOT_FIRST',
       'The selected reservation is not currently first in the queue.',
       'CIRCULATION_RESERVATION_NOT_FIRST',
+    ))
+  }
+  const fulfillingOwnTitle = Boolean(
+    context.borrower.found && (
+      (pendingClaim && Number(pendingClaim.userId) === Number(context.borrower.userId))
+      || (context.queueHead
+        && Number(context.queueHead.userId) === Number(context.borrower.userId)
+        && (
+          context.queueHead.status === 'ready_for_pickup'
+          || (context.queueHead.requestKind === 'CartHandover' && context.queueHead.status === 'approved')
+        ))
+    ),
+  )
+  if (context.borrower.found && context.targetTitleAlreadyActive && !fulfillingOwnTitle) {
+    blockers.push(finding(
+      'TITLE_ALREADY_ACTIVE',
+      'You already have this title in a book request or active loan.',
+      'BOOK_ALREADY_IN_ACCOUNT',
     ))
   }
   if (context.borrower.found && bookLimit !== null

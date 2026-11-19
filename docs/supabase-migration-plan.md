@@ -1,5 +1,9 @@
 # Title
 
+## Hosted-system integration — 2026-11-20
+
+Application source matches hosted deployment `dpl_8SSF1zDLKLbi4y6tHoKBB4nkSVe5` for Student, Faculty, Staff, Librarian and Admin. Existing main migration bytes are preserved. Latest applied migration **073**, next unused **074**; no migration is run by merging. See `docs/plans/2026-11-20-hosted-system-main-merge.md` for checks and source boundaries. Older deployment/tracker notes below are historical.
+
 ## November 18 fines and operating-hours integration
 
 Read-only verification found `038_fine_policy_maintenance.sql` and

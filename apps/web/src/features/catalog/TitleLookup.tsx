@@ -5,6 +5,7 @@ import type { TitleCandidate, TitleLookupResult } from './types'
 
 const SOURCE_NAMES = { google_books: 'Google Books', open_library: 'Open Library' } as const
 
+/** Archived from Add Books on 2026-11-17; retained for recovery and existing standalone checks. */
 /** Title and author lookup (ported from STI ILMS REA): search outside catalogs by the typed title, author or both, then pick a result to fill the form. */
 export function TitleLookup({ title, author, disabled, onPick }: { title: string; author: string; disabled?: boolean; onPick: (candidate: TitleCandidate) => void }) {
   const [result, setResult] = useState<TitleLookupResult | null>(null)

@@ -4,6 +4,9 @@ import { authorsAgg } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
 import { validateLayout, type Layout } from './floor-plan.validation.ts'
 
+// Whitelist of table names allowed in dynamic updates (shelf label changes)
+const SHELF_UPDATE_TABLES: readonly string[] = ['physical_copies', 'materials', 'research_inventory', 'categories']
+
 export function createFloorPlanRepository(database: Pool = db) {
   const parse=(value:string)=>JSON.parse(value) as Layout
   async function event(c:PoolConnection,actor:number,type:string,details:unknown){await c.execute('INSERT INTO floor_plan_events (account_id,event_type,details) VALUES (?,?,?)',[actor,type,JSON.stringify(details)])}
@@ -47,7 +50,7 @@ export function createFloorPlanRepository(database: Pool = db) {
           const old=known.find(s=>s.id===o.shelfId)!
           if(old.label!==o.label){
             await c.execute('UPDATE floor_plan_shelves SET label=?,updated_at=NOW() WHERE id=?',[o.label,o.shelfId])
-            for(const table of ['physical_copies','materials','research_inventory','categories'])await c.execute(`UPDATE ${table} SET shelf_location=? WHERE shelf_location=?`,[o.label,old.label])
+            for(const table of SHELF_UPDATE_TABLES)await c.execute(`UPDATE ${table} SET shelf_location=? WHERE shelf_location=?`,[o.label,old.label])
           }
         }
         await c.execute('INSERT INTO floor_plan_versions (layout,published_by_account_id) VALUES (?,?)',[JSON.stringify(layout),actor])

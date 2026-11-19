@@ -1,3 +1,6 @@
+import { AdminSidebarNavigation } from './AdminSidebarNavigation'
+import { librarianNav } from './admin-navigation'
+import { AttendanceConfirmationPrompt } from '../features/attendance/AttendanceConfirmationPrompt'
 import {
   Archive,
   BadgeCheck,
@@ -7,7 +10,6 @@ import {
   CalendarClock,
   CircleDollarSign,
   ClipboardCheck,
-  FileBarChart,
   FileText,
   LayoutDashboard,
   LibraryBig,
@@ -15,12 +17,9 @@ import {
   Menu,
   Map,
   Megaphone,
-  PackageOpen,
   Printer,
   QrCode,
-  Settings,
   ShoppingCart,
-  Tags,
   Users,
   UserRound,
   X,
@@ -44,65 +43,45 @@ type NavItem = { label: string; to: string; icon: LucideIcon; section?: string }
 const userNav = (role: 'student' | 'faculty'): NavItem[] => {
   const prefix = role === 'faculty' ? '/faculty' : '/student'
   return [
-    { label: 'Dashboard', to: `${prefix}/dashboard`, icon: LayoutDashboard, section: 'My library' },
-    { label: 'Library catalog', to: `${prefix}/library`, icon: BookOpen },
-    { label: 'Library floor plan', to: `${prefix}/floor-plan`, icon: Map },
-    { label: 'Book cart', to: `${prefix}/cart`, icon: ShoppingCart },
+    { label: 'Dashboard', to: `${prefix}/dashboard`, icon: LayoutDashboard },
+    { label: 'Library catalog', to: `${prefix}/library`, icon: BookOpen, section: 'Explore library' },
     { label: 'Research & thesis', to: `${prefix}/research`, icon: FileText },
-    { label: 'Borrowing history', to: `${prefix}/borrowing`, icon: CalendarClock, section: 'My activity' },
+    { label: 'Library schedule', to: `${prefix}/library-schedule`, icon: CalendarClock },
+    { label: 'Library floor plan', to: `${prefix}/floor-plan`, icon: Map },
+    { label: 'Book cart', to: `${prefix}/cart`, icon: ShoppingCart, section: 'My borrowing' },
     { label: 'Requests & reservations', to: `${prefix}/reservations`, icon: BookMarked },
     { label: 'My books', to: `${prefix}/my-books`, icon: LibraryBig },
-    ...(role === 'student' ? [{ label: 'Printing service', to: '/student/printing', icon: Printer }] : []),
+    { label: 'Borrowing history', to: `${prefix}/borrowing`, icon: CalendarClock },
+    { label: 'Printing service', to: `${prefix}/printing`, icon: Printer, section: 'Services' },
     { label: 'QR attendance', to: `${prefix}/attendance`, icon: QrCode },
-    { label: 'Notifications', to: `${prefix}/notifications`, icon: Bell, section: 'My account' },
-    { label: 'Fines', to: `${prefix}/fines`, icon: CircleDollarSign },
+    { label: 'Fines', to: `${prefix}/fines`, icon: CircleDollarSign, section: 'Payments & clearance' },
+    { label: 'Transactions', to: `${prefix}/transactions`, icon: CircleDollarSign },
     { label: 'Clearance status', to: `${prefix}/clearance`, icon: BadgeCheck },
-    { label: 'My profile', to: `${prefix}/profile`, icon: UserRound },
+    { label: 'My profile', to: `${prefix}/profile`, icon: UserRound, section: 'My account' },
   ]
 }
 
 const adminNav: NavItem[] = [
   { label: 'Dashboard', to: '/admin/dashboard', icon: LayoutDashboard, section: 'Accounts' },
   { label: 'Users', to: '/admin/users', icon: Users },
-  { label: 'User archive', to: '/admin/user-archive', icon: Archive },
+  { label: 'Student QR roster', to: '/admin/student-qr-roster', icon: QrCode },
   { label: 'Clearance', to: '/admin/clearance', icon: ClipboardCheck },
+  { label: 'Library schedule', to: '/admin/library-schedule', icon: CalendarClock },
   { label: 'Notifications', to: '/admin/notifications', icon: Bell },
-]
-const librarianNav: NavItem[] = [
-  { label: 'Dashboard', to: '/librarian/dashboard', icon: LayoutDashboard, section: 'Operations' },
-  { label: 'Book Reports', to: '/librarian/reports', icon: FileBarChart },
-  { label: 'Book register', to: '/librarian/book-register', icon: BookOpen },
-  { label: 'Book archive', to: '/librarian/book-archive', icon: Archive },
-  { label: 'Categories', to: '/librarian/categories', icon: Tags },
-  { label: 'Borrow & return', to: '/librarian/circulation', icon: CalendarClock },
-  { label: 'Book queue', to: '/librarian/reservations', icon: BookMarked },
-  { label: 'Fines', to: '/librarian/fines', icon: CircleDollarSign },
-  { label: 'Maintenance', to: '/librarian/maintenance', icon: Settings },
-  { label: 'Inventory', to: '/librarian/inventory', icon: Archive, section: 'Resources' },
-  { label: 'Collection review', to: '/librarian/collection-review', icon: ClipboardCheck },
-  { label: 'Floor plan', to: '/librarian/floor-plan', icon: Map },
-  { label: 'Printing queue', to: '/librarian/printing', icon: Printer },
-  { label: 'Print supplies', to: '/librarian/supplies', icon: PackageOpen },
-  { label: 'Attendance', to: '/librarian/attendance', icon: QrCode, section: 'People & records' },
-  { label: 'Clearance', to: '/librarian/clearance', icon: ClipboardCheck },
-  { label: 'Announcements', to: '/librarian/announcements', icon: Megaphone },
-  { label: 'Account overview', to: '/librarian/accounts', icon: LayoutDashboard, section: 'Account administration' },
-  { label: 'Users', to: '/librarian/users', icon: Users },
-  { label: 'User archive', to: '/librarian/user-archive', icon: Archive },
-  { label: 'Notifications', to: '/librarian/notifications', icon: Bell },
-  { label: 'My profile', to: '/librarian/profile', icon: UserRound },
 ]
 const staffNav: NavItem[] = [
   { label: 'Dashboard', to: '/staff/dashboard', icon: LayoutDashboard, section: 'My tasks' },
   { label: 'Borrow & return', to: '/staff/circulation', icon: CalendarClock },
   { label: 'Book queue', to: '/staff/reservations', icon: BookMarked },
   { label: 'Printing queue', to: '/staff/printing', icon: Printer },
+  { label: 'Online payments', to: '/staff/payments', icon: CircleDollarSign },
   { label: 'Attendance', to: '/staff/attendance', icon: QrCode },
   { label: 'Announcements', to: '/staff/announcements', icon: Megaphone },
+  { label: 'Library schedule', to: '/staff/library-schedule', icon: CalendarClock },
   { label: 'Notifications', to: '/staff/notifications', icon: Bell },
   { label: 'My profile', to: '/staff/profile', icon: UserRound },
 ]
-const navigation = (role: Role) => role === 'admin' ? adminNav : role === 'librarian' ? librarianNav : role === 'staff' ? staffNav : userNav(role)
+const navigation = (role: Role): NavItem[] => role === 'admin' ? adminNav : role === 'librarian' ? librarianNav : role === 'staff' ? staffNav : userNav(role)
 
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
@@ -123,7 +102,6 @@ function Sidebar({ role, open, onClose }: { role: Role; open: boolean; onClose: 
     return () => media.removeEventListener('change', update)
   }, [])
   const nav = navigation(role)
-  const location = useLocation()
   const preview = useMockAuth()
   const claims = preview.identity ?? getCurrentIdentity()
   return (
@@ -132,10 +110,9 @@ function Sidebar({ role, open, onClose }: { role: Role; open: boolean; onClose: 
       <aside id="portal-navigation" aria-label="Portal navigation" inert={!open && mobile ? true : undefined} className={cn('portal-sidebar fixed inset-y-0 left-0 z-50 flex w-64 max-w-[calc(100vw-2rem)] flex-col bg-[#0b5ea2] text-white transition-transform duration-300 lg:max-w-none lg:translate-x-0', open ? 'translate-x-0' : '-translate-x-full')}>
         <div className="flex h-20 items-center justify-between border-b border-white/10 px-5"><Brand /><button onClick={onClose} aria-label="Close navigation menu" className="min-h-11 min-w-11 shrink-0 rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white lg:hidden"><X size={18} /></button></div>
         <nav className="flex-1 overflow-y-auto px-3 py-5">
-          {nav.map((item) => {
+          {role === 'librarian' ? <AdminSidebarNavigation onNavigate={onClose}/> : nav.map((item) => {
             const Icon = item.icon
-            if (item.label === 'My profile' && (role === 'student' || role === 'faculty')) return <details key={item.to} className="mb-1 rounded-xl bg-white/5" open={location.pathname === item.to || undefined}><summary className="flex min-h-11 cursor-pointer items-center gap-3 px-3 py-3 text-sm"><Icon size={17} />My profile</summary><div className="pb-2 pl-6">{[['personal','Personal details'],['school','School details'],['photo','Profile photo']].map(([section,label]) => <NavLink key={section} to={`${item.to}?section=${section}`} onClick={onClose} className="block min-h-11 rounded-lg px-3 py-3 text-sm text-white hover:bg-white/10">{label}</NavLink>)}</div></details>
-            return <div key={item.to}>{item.section ? <p className="mb-2 mt-4 px-3 text-[9px] font-bold uppercase tracking-[0.2em] text-white/40 first:mt-0">{item.section}</p> : null}<NavLink onClick={onClose} to={item.to} className={({ isActive }) => cn('mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition lg:py-2.5', isActive ? 'bg-white text-[#0b5ea2] shadow-sm dark:bg-[#FFF200]' : 'text-white/70 hover:bg-white/10 hover:text-white')}><Icon size={17} /><span>{item.label}</span></NavLink></div>
+            return <div key={item.to}>{item.section ? <h2 className="mb-2 mt-4 px-3 text-xs font-bold uppercase text-white/65">{item.section}</h2> : null}<NavLink onClick={onClose} to={item.to} className={({ isActive }) => cn('mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition lg:py-2.5', isActive ? 'bg-white text-[#0b5ea2] shadow-sm dark:bg-[#FFF200]' : 'text-white/70 hover:bg-white/10 hover:text-white')}><Icon size={17} /><span>{item.label}</span></NavLink></div>
           })}
         </nav>
         <div className="border-t border-white/10 p-3"><SidebarAccountCard key={`${claims?.source}:${claims?.userId}`} identity={claims} preview={preview.enabled} /></div>
@@ -146,12 +123,13 @@ function Sidebar({ role, open, onClose }: { role: Role; open: boolean; onClose: 
 
 export function PortalLayout({ role }: { role: Role }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [confirmSignOut, setConfirmSignOut] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
   const [signOutError, setSignOutError] = useState('')
   const location = useLocation()
   const navigate = useNavigate()
   const nav = navigation(role)
-  const current = nav.find((item) => location.pathname.startsWith(item.to))
+  const current = [...nav, { label: 'Notifications', to: `/${role}/notifications` }].find((item) => location.pathname.startsWith(item.to))
   useEffect(() => {
     const media = window.matchMedia?.('(min-width: 1024px)')
     const closeOnDesktop = () => { if (media?.matches) setSidebarOpen(false) }
@@ -164,7 +142,7 @@ export function PortalLayout({ role }: { role: Role }) {
     const previousFocus = document.activeElement as HTMLElement | null
     document.body.style.overflow = 'hidden'
     const sidebar = document.getElementById('portal-navigation')
-    const controls = () => [...(sidebar?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])') ?? [])].filter(control => control.getClientRects().length)
+    const controls = () => [...(sidebar?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), summary') ?? [])].filter(control => control.getClientRects().length)
     controls()[0]?.focus()
     const keydown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setSidebarOpen(false)
@@ -183,6 +161,7 @@ export function PortalLayout({ role }: { role: Role }) {
     setSignOutError('')
     try {
       await logout()
+      setConfirmSignOut(false)
       navigate('/login', { replace: true })
     } catch {
       setSignOutError('Sign out could not be confirmed. Check your connection and try again.')
@@ -190,7 +169,7 @@ export function PortalLayout({ role }: { role: Role }) {
   }
 
   return (
-    <div className="portal-layout min-h-screen bg-[#FFFFFF] text-[#0b5ea2] transition-colors dark:bg-[#14151b] dark:text-[#f2f6ff]">
+    <div data-portal={role} className="portal-layout min-h-dvh bg-[#FFFFFF] text-[#0b5ea2] transition-colors dark:bg-[#14151b] dark:text-[#f2f6ff]">
       <Sidebar role={role} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="lg:pl-64" inert={sidebarOpen ? true : undefined}>
         <header className="sticky top-0 z-30 flex h-20 items-center border-b border-[#0b5ea2]/10 bg-white/90 px-4 backdrop-blur-xl transition-colors sm:px-6 lg:px-8 dark:border-white/10 dark:bg-[#001a4d]/92">
@@ -198,14 +177,16 @@ export function PortalLayout({ role }: { role: Role }) {
           <div className="hidden sm:block"><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#0b5ea2]/45 dark:text-white/45">{role === 'admin' ? 'Admin workspace' : role === 'librarian' ? 'Library Admin workspace' : role === 'staff' ? 'Staff workspace' : role === 'faculty' ? 'Faculty portal' : 'Student portal'}</p><p className="mt-0.5 font-display text-sm font-bold text-[#0b5ea2] dark:text-white">{current?.label ?? 'STI College Ormoc ILMS'}</p></div>
           <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
-            {role === 'admin' ? <button onClick={() => navigate('/admin/notifications')} aria-label="Notifications" className="rounded-xl border border-[#0b5ea2]/15 bg-white p-2.5 text-[#0b5ea2]/65 transition hover:bg-[#0b5ea2]/5 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><Bell size={18} /></button> : <NotificationShortcut path={`/${role}/notifications`} />}
-            <button onClick={signOut} disabled={signingOut} aria-label="Sign out" title="Sign out" className="rounded-xl border border-[#0b5ea2]/15 bg-white p-2.5 text-[#0b5ea2]/65 transition hover:bg-[#0b5ea2]/5 disabled:opacity-50 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><LogOut size={18} /></button>
+            <NotificationShortcut path={`/${role}/notifications`} />
+            <button onClick={() => { setSignOutError(''); setConfirmSignOut(true) }} disabled={signingOut} aria-label="Sign out" title="Sign out" className="rounded-xl border border-[#0b5ea2]/15 bg-white p-2.5 text-[#0b5ea2]/65 transition hover:bg-[#0b5ea2]/5 disabled:opacity-50 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80 dark:hover:bg-white/10"><LogOut size={18} /></button>
           </div>
         </header>
         {signOutError && <p role="alert" className="m-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">{signOutError}</p>}
         <SessionActivity /><main className="portal-content mx-auto min-w-0 max-w-[1500px] p-4 sm:p-6 lg:p-8"><Outlet /></main>
+        {role !== 'admin' ? <AttendanceConfirmationPrompt /> : null}
         {role !== 'admin' ? <AttendanceFab role={role} /> : null}
       </div>
+      {confirmSignOut ? <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#0b5ea2]/80 p-4" onKeyDown={(event) => { if (event.key === 'Escape' && !signingOut) setConfirmSignOut(false) }}><div role="alertdialog" aria-modal="true" aria-labelledby="sign-out-title" aria-describedby="sign-out-text" className="w-full max-w-md rounded-2xl bg-white p-5 text-[#0b5ea2] shadow-2xl dark:bg-[#001a4d] dark:text-white"><h2 id="sign-out-title" className="text-lg font-black">Are you sure you want to sign out?</h2><p id="sign-out-text" className="mt-2 text-sm opacity-75">You will need to sign in again to use this portal.</p><div className="mt-5 flex flex-wrap justify-end gap-2"><button type="button" disabled={signingOut} onClick={() => setConfirmSignOut(false)} className="h-11 rounded-xl border border-[#0b5ea2] px-4 text-sm font-bold disabled:opacity-50 dark:border-white/40">Cancel</button><button type="button" disabled={signingOut} onClick={() => void signOut()} className="h-11 rounded-xl bg-[#0b5ea2] px-4 text-sm font-bold text-white disabled:opacity-50">{signingOut ? 'Signing out…' : 'Sign out now'}</button></div></div></div> : null}
     </div>
   )
 }

@@ -1,6 +1,7 @@
+import {DeviceNotifications} from './DeviceNotifications'
 import { useLiveQuery } from '../../hooks/useLiveQuery'
 import { AlertTriangle, CheckCircle2, RefreshCw, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, PageHeader, SectionCard } from '../../components/ui'
 import { notificationApi } from './notification-api'
@@ -9,20 +10,23 @@ import type { NotificationItem } from './types'
 
 const days = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
-export function NotificationCenterPage({operations=false}:{operations?:boolean}={}) {
-  const inbox=useLiveQuery('notification-inbox',signal=>notificationApi.list(signal),{events:[notificationsUpdated]})
-  const hours=useLiveQuery('notification-schedule',()=>notificationApi.schedule(),{enabled:!operations,poll:false})
+export function NotificationCenterPage({ workspace }: { workspace?: 'admin' | 'librarian' | 'staff' } = {}) {
+  const inbox=useLiveQuery('notification-inbox',signal=>notificationApi.list(signal),{poll:false,events:[notificationsUpdated]})
+  const hours=useLiveQuery('notification-schedule',()=>notificationApi.schedule(),{enabled:!workspace,poll:false})
   const data=inbox.data,schedule=hours.data
+  const refreshInbox = inbox.refresh
+  const refreshSchedule = hours.refresh
+  useEffect(() => {
+    const timer = window.setInterval(() => { void refreshInbox(); if (!workspace) void refreshSchedule() }, 30_000)
+    return () => window.clearInterval(timer)
+  }, [refreshInbox, refreshSchedule, workspace])
   const [actionError,setError]=useState('')
   const error=actionError||inbox.error?.message||hours.error?.message||''
   const [busy, setBusy] = useState(false)
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false)
   const navigate = useNavigate()
-  const load=async()=>{
-    setError('')
-    await Promise.all([inbox.refresh(), operations ? undefined : hours.refresh()])
-  }
+  const load=async()=>{setError('');await Promise.all([refreshInbox(),workspace ? undefined : refreshSchedule()])}
   const refreshAfterChange=()=>window.dispatchEvent(new Event(notificationsUpdated))
   async function read(item: NotificationItem) {
     setError('')
@@ -45,10 +49,10 @@ export function NotificationCenterPage({operations=false}:{operations?:boolean}=
     finally { setBusy(false) }
   }
   return <>
-    <PageHeader eyebrow="Activity center" title={operations?'Alerts & reminders':'Notifications'} description={operations?'Overdue follow-ups, print requests, reservation pickup updates and announcements. Routine library events appear in Recent library activity.':'Due reminders, reservation updates, printing progress, schedules, and announcements.'} action={<div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={() => void load()}><RefreshCw size={16} /> Refresh</Button><Button disabled={busy || !data?.unreadCount} onClick={() => void readAll()}><CheckCircle2 size={16} /> Mark all read</Button><Button variant="secondary" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700" disabled={busy || !data?.items.length} onClick={() => setShowDeleteAllConfirm(true)}><Trash2 size={16}/> Delete all</Button></div>} />
-    {operations ? <p className="mb-5 text-sm leading-6 opacity-70">The bell counts unread alerts and reminders. Routine events appear in Recent library activity.</p> : null}
+    <PageHeader eyebrow="Activity center" title={workspace === 'staff' ? 'Staff notifications' : workspace ? 'Admin notifications' : 'Notifications'} description={workspace ? 'Your library alerts, updates and announcements. Open a notification to review its details.' : 'Due reminders, reservation updates, printing progress, schedules, and announcements.'} action={<div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={() => void load()}><RefreshCw size={16} /> Refresh</Button><Button disabled={busy || !data?.unreadCount} onClick={() => void readAll()}><CheckCircle2 size={16} /> Mark all read</Button><Button variant="secondary" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700" disabled={busy || !data?.items.length} onClick={() => setShowDeleteAllConfirm(true)}><Trash2 size={16}/> Delete all</Button></div>} />
+    <DeviceNotifications/>
     {error ? <div role="alert" className="mb-5 flex gap-2 rounded-xl bg-[#FFF200] p-4 font-bold text-[#0b5ea2]"><AlertTriangle size={18} />{error}</div> : null}
-    {!operations ? <div className="mb-5 grid gap-4 xl:grid-cols-[1fr_1.5fr]">
+    {!workspace ? <div className="mb-5 grid gap-4 xl:grid-cols-[1fr_1.5fr]">
       <SectionCard className="p-5"><h2 className="font-display text-lg font-bold text-[#0b5ea2]">Library schedule</h2><p className="mt-1 text-xs text-[#0b5ea2]/60">Asia/Manila campus time</p><div className="mt-4 grid grid-cols-2 gap-2 text-sm">{schedule?.weekly.map((entry) => <div key={entry.dayOfWeek} className="rounded-xl bg-[#0b5ea2]/5 p-3"><p className="font-bold text-[#0b5ea2]">{days[entry.dayOfWeek]}</p><p className="mt-1 text-xs text-[#0b5ea2]/65">{entry.isOpen ? `${String(entry.opensAt).slice(0,5)} - ${String(entry.closesAt).slice(0,5)}` : 'Closed'}</p></div>)}</div></SectionCard>
       <SectionCard className="p-5"><h2 className="font-display text-lg font-bold text-[#0b5ea2]">Upcoming closures</h2><div className="mt-4 space-y-2">{schedule?.upcomingClosures.length ? schedule.upcomingClosures.map((closure) => <div key={closure.date} className="rounded-xl border border-[#0b5ea2]/15 p-3"><p className="font-bold text-[#0b5ea2]">{formatNotificationDate(closure.date)}</p><p className="mt-1 text-sm text-[#0b5ea2]/65">{closure.reason}</p></div>) : <p className="rounded-xl bg-[#0b5ea2]/5 p-4 text-sm text-[#0b5ea2]/65">No upcoming closures are recorded.</p>}</div></SectionCard>
     </div> : null}
@@ -58,7 +62,7 @@ export function NotificationCenterPage({operations=false}:{operations?:boolean}=
         <p className="text-xs text-[#0b5ea2]/60">{data?.unreadCount ?? 0} unread</p>
       </div>
       <div className="divide-y divide-[#0b5ea2]/10">
-        {data?.items.length ? data.items.map((item) => {
+        {!data && inbox.loading ? <p role="status" className="p-6 text-sm">Loading notifications…</p> : !data && inbox.error ? <p className="p-6 text-sm">Notifications could not be loaded. Choose Refresh to try again.</p> : data?.items.length ? data.items.map((item) => {
           const Icon = notificationIcon(item.type)
           return <div key={item.notificationId} className={`flex items-start gap-2 p-3 transition hover:bg-[#0b5ea2]/5 ${item.isRead ? 'bg-white' : 'bg-[#FFF200]/20'}`}>
             <button type="button" onClick={() => void read(item)} className="flex min-w-0 flex-1 gap-4 rounded-xl p-2 text-left">

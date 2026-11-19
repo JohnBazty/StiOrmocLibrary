@@ -1,3 +1,4 @@
+import { lockShelfCapacity } from '../catalog/shelf-capacity.service.ts'
 import type { NextFunction, Request, Response } from 'express'
 import type { Pool, PoolConnection, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
@@ -68,6 +69,7 @@ export function createPhysicalCopyMutationGuard(database: Pool = db) {
 
     try {
       await connection.beginTransaction()
+      await lockShelfCapacity(connection)
 
       const [copyRows] = await connection.execute<PhysicalCopyRow[]>(
         `SELECT pc.physical_copy_id, pc.material_id, pc.accession_number, pc.barcode,

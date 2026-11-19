@@ -22,7 +22,7 @@ async function countPdfPages(contents: Buffer) {
   }
 }
 
-type RendererOptions = { fetchImpl?: typeof fetch; rendererUrl?: string; rendererToken?: string }
+type RendererOptions = { fetchImpl?: typeof fetch; rendererUrl?: string; rendererToken?: string; paper?: {widthMm:number;heightMm:number} }
 
 async function renderDocx(file: Express.Multer.File, options: RendererOptions) {
   const configured = options.rendererUrl ?? env.printing.docxRendererUrl
@@ -49,15 +49,17 @@ async function renderDocx(file: Express.Multer.File, options: RendererOptions) {
       const docxRequire = createRequire(docxScript)
       await page.addScriptTag({ path: docxRequire.resolve('jszip/dist/jszip.min.js') })
       await page.addScriptTag({ path: docxScript })
-      await page.evaluate(async base64 => {
+      await Promise.race([page.evaluate(async base64 => {
         const bytes = Uint8Array.from(atob(base64), char => char.charCodeAt(0))
         const renderer = (globalThis as typeof globalThis & { docx: { renderAsync: (data: Uint8Array, element: HTMLElement, style: null, options: Record<string, unknown>) => Promise<unknown> } }).docx
         await renderer.renderAsync(bytes, document.getElementById('document')!, null, {
           breakPages: true, ignoreLastRenderedPageBreak: false, useBase64URL: true,
           renderAltChunks: false,
         })
-      }, file.buffer.toString('base64'))
-      await page.addStyleTag({ content: '@page { size: A4; margin: 0 } html, body { padding: 0; margin: 0; background: white } .docx-wrapper { padding: 0 !important; background: white !important } .docx-wrapper > section.docx { margin: 0 !important; box-shadow: none !important; break-after: page } .docx-wrapper > section.docx:last-child { break-after: auto }' })
+      }, file.buffer.toString('base64')), new Promise<never>((_,reject)=>{const timer=setTimeout(()=>reject(new HttpError(422,'PRINT_DOCX_TOO_COMPLEX','The document took too long to convert. Upload a PDF instead.')),20000);timer.unref()})])
+      const width=options.paper?.widthMm??210,height=options.paper?.heightMm??297
+      if(!Number.isFinite(width)||!Number.isFinite(height)||width<10||height<10||width>1200||height>1200)throw new HttpError(422,'PRINT_PAPER_DIMENSIONS_INVALID','Review the paper dimensions before converting the document.')
+      await page.addStyleTag({ content: `@page { size: ${width}mm ${height}mm; margin: 0 } html, body { padding: 0; margin: 0; background: white } .docx-wrapper { padding: 0 !important; background: white !important } .docx-wrapper > section.docx { margin: 0 !important; box-shadow: none !important; break-after: page } .docx-wrapper > section.docx:last-child { break-after: auto } .docx-wrapper > section.docx { width: ${width}mm !important; min-height: ${height}mm !important; box-sizing: border-box }` })
       const contents = Buffer.from(await page.pdf({ printBackground: true, preferCSSPageSize: true, timeout: 20000 }))
       if (contents.length > maxRenderedBytes) throw new HttpError(422, 'PRINT_RENDERED_FILE_TOO_LARGE', 'The converted document is too large. Please upload a PDF.')
       if (contents.subarray(0, 5).toString('ascii') !== '%PDF-') throw new Error('Invalid PDF output')
@@ -73,7 +75,23 @@ async function renderDocx(file: Express.Multer.File, options: RendererOptions) {
   const endpoint = new URL('/forms/libreoffice/convert', configured)
   if (env.isProduction && endpoint.protocol !== 'https:') throw new HttpError(503, 'PRINT_DOCX_RENDERER_UNAVAILABLE', 'DOCX page counting is not securely configured.')
   const form = new FormData()
-  form.set('files', new Blob([new Uint8Array(file.buffer)], { type: file.mimetype }), path.basename(file.originalname))
+  let source=file.buffer
+  if(options.paper){
+    // Normalize the DOCX section page sizes before LibreOffice conversion.
+    // The PDF returned by this conversion is also the preview and print artifact.
+    const require=createRequire(import.meta.url),docxRequire=createRequire(require.resolve('docx-preview'))
+    const JSZip=docxRequire('jszip') as typeof import('jszip')
+    const zip=await JSZip.loadAsync(source)
+    const xmlEntry=zip.file('word/document.xml')
+    if(!xmlEntry)throw new HttpError(422,'PRINT_DOCX_INVALID','This DOCX does not contain a readable document.')
+    const expanded=Object.values(zip.files).reduce((sum,entry)=>sum+Number((entry as unknown as {_data?:{uncompressedSize?:number}})._data?.uncompressedSize??0),0)
+    if(expanded>25*1024*1024)throw new HttpError(422,'PRINT_DOCX_TOO_COMPLEX','The expanded document is too large. Upload a PDF instead.')
+    const xml=await xmlEntry.async('string'),width=Math.round(options.paper.widthMm*1440/25.4),height=Math.round(options.paper.heightMm*1440/25.4)
+    if(xml.length>5*1024*1024||!Number.isFinite(width)||!Number.isFinite(height)||width<567||height<567||width>68032||height>68032)throw new HttpError(422,'PRINT_DOCX_INVALID','Review the document and paper dimensions.')
+    zip.file('word/document.xml',xml.replace(/<w:pgSz\b[^>]*\/?>/g,`<w:pgSz w:w="${width}" w:h="${height}"/>`))
+    source=await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'})
+  }
+  form.set('files', new Blob([new Uint8Array(source)], { type: file.mimetype }), path.basename(file.originalname))
   const headers: Record<string, string> = {}
   const token = options.rendererToken ?? env.printing.docxRendererToken
   if (token) headers.Authorization = `Bearer ${token}`
@@ -113,6 +131,14 @@ async function renderDocx(file: Express.Multer.File, options: RendererOptions) {
 export async function inspectPrintDocument(file?: Express.Multer.File, options: RendererOptions = {}) {
   const { extension, safeOriginalName } = validatePrintDocumentFile(file)
   if (!file) throw new HttpError(422, 'PRINT_FILE_REQUIRED', 'Select a PDF or DOCX document.')
+  if(extension==='docx'&&!options.fetchImpl){
+    try{
+      const require=createRequire(import.meta.url),docxRequire=createRequire(require.resolve('docx-preview'))
+      const JSZip=docxRequire('jszip') as typeof import('jszip'),zip=await JSZip.loadAsync(file.buffer)
+      const entries=Object.values(zip.files),expanded=entries.reduce((sum,entry)=>sum+Number((entry as unknown as {_data?:{uncompressedSize?:number}})._data?.uncompressedSize??0),0)
+      if(entries.length>2000||expanded>25*1024*1024||!zip.file('word/document.xml'))throw new HttpError(422,'PRINT_DOCX_TOO_COMPLEX','This DOCX is too complex. Upload a PDF instead.')
+    }catch(error){if(error instanceof HttpError)throw error;throw new HttpError(422,'PRINT_DOCX_INVALID','The DOCX could not be read. Upload a valid document or PDF.')}
+  }
   const sourceHash = createHash('sha256').update(file.buffer).digest('hex')
   const contents = extension === 'docx' ? await renderDocx(file, options) : file.buffer
   const pageCount = await countPdfPages(contents)

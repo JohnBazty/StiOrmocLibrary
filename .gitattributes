@@ -1,2 +1,2 @@
-# Migration checksums include the original line endings.
-/database/supabase/*.sql -text
+/database/supabase/038_fine_policy_maintenance.sql -text
+/database/supabase/040_library_hours_8am_5pm.sql -text

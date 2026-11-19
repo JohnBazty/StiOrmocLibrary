@@ -20,3 +20,9 @@ it('shows an access error without falsely reporting an empty inbox', async () =>
   expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Your role cannot access this resource.')
   expect(screen.queryByText('No recent account changes.')).toBeNull()
 })
+
+it('opens a lost report for clearance review', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ data: { activity: [{ id: 'lost-2', kind: 'lost', title: 'Lost book reported', body: '1984 was reported lost.', createdAt: '2026-11-17T01:00:00Z', actionPath: '/librarian/clearance' }] } }) })))
+  render(<MemoryRouter><AdminNotificationsPage /></MemoryRouter>)
+  expect((await screen.findByRole('link', { name: 'Review lost report' })).getAttribute('href')).toBe('/librarian/clearance')
+})

@@ -5,6 +5,7 @@ import { parseQueueFilters, positiveId } from './reservation.validation.ts'
 import { queryReservationQueue } from './reservation-query.repository.ts'
 import { createBookRequestService } from './book-request.service.ts'
 import { requestEventStatus, requestInstructions, requestLabels } from './book-request-events.ts'
+import { readReservationSettings, waitingExpiresAt } from './reservation-settings.service.ts'
 
 export function createReservationService(database: Pool = db, clock: () => Date = () => new Date()) {
   return {
@@ -16,8 +17,8 @@ export function createReservationService(database: Pool = db, clock: () => Date 
       const userId = accounts[0]?.user_id ? Number(accounts[0].user_id) : null
       if (!userId) throw new HttpError(422, 'CIRCULATION_PROFILE_NOT_LINKED', 'This login account is not linked to a circulation profile.')
       const [rows] = await database.execute<RowDataPacket[]>(
-        `SELECT r.reservation_id, r.queue_position, r.reservation_status, r.reserved_at, r.pickup_deadline, ${'r.request_kind,'}
-                COALESCE(t.title, m.title) AS title, t.title_id, t.cover_image_path,
+        `SELECT r.reservation_id, r.queue_position, r.reservation_status, r.reserved_at, r.pickup_deadline, ${'r.request_kind,'} r.assigned_physical_copy_id,
+                COALESCE(t.title, m.title) AS title, t.title_id, t.cover_image_path,to_jsonb(r)->>'scheduled_pickup_date' AS scheduled_pickup_date,
                 assigned_pc.accession_number, COALESCE(assigned_pc.barcode, assigned.barcode) AS barcode,
                 COALESCE(assigned_pc.condition_status, source_pc.condition_status) AS condition_status
                 ${`, (r.pickup_deadline AT TIME ZONE 'Asia/Manila') AS deadline_iso,
@@ -34,13 +35,19 @@ export function createReservationService(database: Pool = db, clock: () => Date 
            LEFT JOIN physical_copies assigned_pc ON assigned_pc.physical_copy_id = r.assigned_physical_copy_id
           WHERE r.user_id = ? ORDER BY r.reserved_at DESC, r.reservation_id DESC`, [userId],
       )
+      // Only the computed date leaves the settings read; no staff name reaches students.
+      const settings = await readReservationSettings(database)
+      const waiting = (row: RowDataPacket) => row.request_kind !== 'CartHandover' && !row.assigned_physical_copy_id
+      const expiresAt = (row: RowDataPacket) => waiting(row) && ['pending', 'approved'].includes(String(row.reservation_status)) && row.requested_iso
+        ? waitingExpiresAt(new Date(row.requested_iso), settings)?.toISOString() ?? null : null
       return rows.map((row) => ({ requestKind:row.request_kind??'Reservation', reservationId: Number(row.reservation_id), title: row.title, titleId: row.title_id ? Number(row.title_id) : null,
         coverImagePath: row.cover_image_path ? String(row.cover_image_path) : null, queuePosition: Number(row.queue_position),
         status: row.reservation_status, reservedAt: row.requested_iso,
-        pickupDeadline: row.deadline_iso,
+        pickupDeadline: row.deadline_iso,scheduledPickupDate:row.scheduled_pickup_date??null,
         requestStatus: requestEventStatus(String(row.reservation_status),Boolean(row.barcode)),
         statusLabel: row.request_kind==='CartHandover'&&row.reservation_status==='approved'?'Awaiting handover':requestLabels[requestEventStatus(String(row.reservation_status),Boolean(row.barcode))],
-        instructions: row.request_kind==='CartHandover'&&row.reservation_status==='approved'?'Bring your selected book to the library desk. Staff will confirm handover before the loan starts.':requestInstructions(requestEventStatus(String(row.reservation_status),Boolean(row.barcode)),row.deadline_iso ? new Date(row.deadline_iso) : null),
+        instructions: row.request_kind==='CartHandover'&&row.reservation_status==='approved'?'Bring your selected book to the library desk. Staff will confirm handover before the loan starts.':requestInstructions(requestEventStatus(String(row.reservation_status),Boolean(row.barcode)),row.deadline_iso ? new Date(row.deadline_iso) : null,{ waitingList: waiting(row) && !row.deadline_iso },row.scheduled_pickup_date??null),
+        waitingExpiresAt: expiresAt(row),
         events: row.events ?? [], emailStatus: row.email_status ?? null,
         accessionNumber: row.accession_number ?? null, barcode: row.barcode ?? null,
         conditionStatus: row.condition_status ? String(row.condition_status) : null }))
@@ -57,6 +64,10 @@ export function createReservationService(database: Pool = db, clock: () => Date 
     async cancelForAccount(accountIdValue: unknown, reservationIdValue: unknown) {
       return createBookRequestService(database,clock).cancel(accountIdValue,reservationIdValue)
     },
+
+    swapCandidates: (accountId: unknown, id: unknown) => createBookRequestService(database,clock).swapCandidates(accountId,id),
+    swapCopy: (accountId: unknown, id: unknown, body: unknown) => createBookRequestService(database,clock).swapCopy(accountId,id,body),
+    moveInQueue: (accountId: unknown, id: unknown, body: unknown) => createBookRequestService(database,clock).moveInQueue(accountId,id,body),
 
     async adjustStatus(adminUserIdValue: unknown, reservationIdValue: unknown, body: unknown) {
       return createBookRequestService(database,clock).adjustStatus(adminUserIdValue,reservationIdValue,body)
