@@ -47,9 +47,9 @@ describe('AdminPages', () => {
 
     it('displays stat cards with counts', () => {
       render(<MemoryRouter><CatalogManagementPage /></MemoryRouter>)
-      expect(screen.getByText(/book titles/i)).toBeTruthy()
-      expect(screen.getByText(/research papers/i)).toBeTruthy()
-      expect(screen.getByText(/categories/i)).toBeTruthy()
+      expect(screen.getByText('Book titles')).toBeTruthy()
+      expect(screen.getByText('Research papers')).toBeTruthy()
+      expect(screen.getByText('Categories')).toBeTruthy()
     })
 
     it('shows search input', () => {
@@ -71,9 +71,9 @@ describe('AdminPages', () => {
 
     it('displays stat cards for circulation metrics', () => {
       render(<MemoryRouter><CirculationPage /></MemoryRouter>)
-      expect(screen.getByText(/active borrows/i)).toBeTruthy()
-      expect(screen.getByText(/due today/i)).toBeTruthy()
-      expect(screen.getByText(/overdue/i)).toBeTruthy()
+      expect(screen.getByText('Active borrows')).toBeTruthy()
+      expect(screen.getByText('Due today')).toBeTruthy()
+      expect(screen.getByText('Overdue')).toBeTruthy()
     })
   })
 

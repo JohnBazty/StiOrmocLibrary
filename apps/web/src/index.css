@@ -86,18 +86,62 @@ html.dark .profile-field-grid input:focus, html.dark .profile-upload:focus-withi
 
 :root {
   font-family: var(--font-sans);
-  color: #0b5ea2;
-  background: #FFFFFF;
+  color: #1e293b;
+  background: #f7f9fc;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --sl-bg: #FFFFFF;
-  --sl-bg-elevated: #FFFFFF;
-  --sl-bg-muted: rgba(11, 94, 162, 0.05);
-  --sl-text: #0b5ea2;
-  --sl-text-muted: rgba(11, 94, 162, 0.65);
-  --sl-border: rgba(11, 94, 162, 0.15);
-  --sl-accent: #FFF200;
+  /* STI College Ormoc × Vaadin Lumo semantic tokens */
   --sl-brand: #0b5ea2;
+  --sl-brand-hover: #094e87;
+  --sl-brand-active: #073e6c;
+  --sl-brand-soft: rgba(11, 94, 162, 0.10);
+  --sl-brand-contrast: #ffffff;
+  --sl-accent: #FFF200;
+  --sl-accent-ink: #132a3f;
+  --sl-sidebar-bg: #132a3f;
+  --sl-bg: #f7f9fc;
+  --sl-bg-elevated: #ffffff;
+  --sl-bg-subtle: #f1f5f9;
+  --sl-bg-muted: rgba(19, 42, 63, 0.045);
+  --sl-bg-hover: rgba(19, 42, 63, 0.045);
+  --sl-text-header: #132a3f;
+  --sl-text: #1e293b;
+  --sl-text-secondary: #475569;
+  --sl-text-muted: #64748b;
+  --sl-border: rgba(19, 42, 63, 0.12);
+  --sl-border-strong: rgba(19, 42, 63, 0.24);
+  /* Semantic feedback */
+  --sl-error: #b42318;
+  --sl-error-soft: #fef2f2;
+  --sl-error-border: #fecaca;
+  --sl-error-ink: #991b1b;
+  --sl-success: #166534;
+  --sl-success-soft: #f0fdf4;
+  --sl-success-border: #bbf7d0;
+  --sl-success-ink: #166534;
+  --sl-warning: #b45309;
+  --sl-warning-soft: #fffbeb;
+  --sl-warning-border: #fde68a;
+  --sl-warning-ink: #92400e;
+  --sl-info: #0b5ea2;
+  --sl-info-soft: rgba(11, 94, 162, 0.10);
+  --sl-info-border: rgba(11, 94, 162, 0.24);
+  --sl-info-ink: #0b5ea2;
+  /* STI-themed Vaadin Charts series */
+  --sl-chart-0: #0b5ea2;
+  --sl-chart-1: #0f766e;
+  --sl-chart-2: #d97706;
+  --sl-chart-3: #4f46e5;
+  --sl-chart-4: #64748b;
+  /* Lumo geometry & elevation */
+  --sl-radius-s: 4px;
+  --sl-radius-m: 6px;
+  --sl-radius-l: 10px;
+  --sl-shadow-xs: 0 1px 2px rgba(19, 42, 63, 0.06);
+  --sl-shadow-s: 0 2px 6px rgba(19, 42, 63, 0.08);
+  --sl-shadow-m: 0 8px 24px -4px rgba(19, 42, 63, 0.14);
+  --sl-shadow-l: 0 16px 40px -8px rgba(19, 42, 63, 0.24);
+  --sl-shadow-xl: 0 20px 56px -8px rgba(19, 42, 63, 0.30);
 }
 
 * {
@@ -184,15 +228,52 @@ a {
 
 html.dark {
   color-scheme: dark;
-  --sl-bg: #14151b;
-  --sl-bg-elevated: #22232e;
-  --sl-bg-muted: rgba(255, 255, 255, 0.08);
-  --sl-text: #f7f9ff;
-  --sl-text-muted: rgba(247, 249, 255, 0.88);
-  --sl-text-subtle: rgba(247, 249, 255, 0.72);
-  --sl-border: rgba(255, 255, 255, 0.18);
-  --sl-accent: #FFF200;
   --sl-brand: #0b5ea2;
+  --sl-brand-hover: #0e6cb8;
+  --sl-brand-active: #08497e;
+  --sl-brand-soft: rgba(56, 146, 224, 0.20);
+  --sl-brand-contrast: #ffffff;
+  --sl-accent: #FFF200;
+  --sl-accent-ink: #0b5ea2;
+  --sl-sidebar-bg: #0f1f30;
+  --sl-bg: #14151b;
+  --sl-bg-elevated: #1e202b;
+  --sl-bg-subtle: rgba(255, 255, 255, 0.06);
+  --sl-bg-muted: rgba(255, 255, 255, 0.08);
+  --sl-bg-hover: rgba(255, 255, 255, 0.08);
+  --sl-text-header: #f7f9ff;
+  --sl-text: #e9eef8;
+  --sl-text-secondary: rgba(247, 249, 255, 0.78);
+  --sl-text-muted: rgba(247, 249, 255, 0.60);
+  --sl-text-subtle: rgba(247, 249, 255, 0.72);
+  --sl-border: rgba(255, 255, 255, 0.14);
+  --sl-border-strong: rgba(255, 255, 255, 0.26);
+  --sl-error: #dc2626;
+  --sl-error-soft: rgba(180, 35, 24, 0.24);
+  --sl-error-border: rgba(248, 113, 113, 0.35);
+  --sl-error-ink: #fca5a5;
+  --sl-success: #166534;
+  --sl-success-soft: rgba(22, 101, 52, 0.26);
+  --sl-success-border: rgba(74, 222, 128, 0.35);
+  --sl-success-ink: #86efac;
+  --sl-warning: #d97706;
+  --sl-warning-soft: rgba(180, 83, 9, 0.26);
+  --sl-warning-border: rgba(251, 191, 36, 0.35);
+  --sl-warning-ink: #fcd34d;
+  --sl-info: #3892e0;
+  --sl-info-soft: rgba(56, 146, 224, 0.22);
+  --sl-info-border: rgba(96, 165, 250, 0.35);
+  --sl-info-ink: #93c5fd;
+  --sl-chart-0: #3892e0;
+  --sl-chart-1: #2dd4bf;
+  --sl-chart-2: #fbbf24;
+  --sl-chart-3: #818cf8;
+  --sl-chart-4: #94a3b8;
+  --sl-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --sl-shadow-s: 0 2px 8px rgba(0, 0, 0, 0.40);
+  --sl-shadow-m: 0 8px 24px -4px rgba(0, 0, 0, 0.45);
+  --sl-shadow-l: 0 16px 40px -8px rgba(0, 0, 0, 0.55);
+  --sl-shadow-xl: 0 20px 56px -8px rgba(0, 0, 0, 0.65);
   color: var(--sl-text);
   background: var(--sl-bg);
 }
@@ -266,36 +347,48 @@ html.dark .focus\:bg-white:focus {
 
 /*
  * Brand blue ink → light ink on dark surfaces.
- * Attribute selectors cover text-[#0b5ea2], text-[#0b5ea2]/70, placeholder:, etc.
+ * Covers both #0b5ea2 and legacy #003399 so older pages stay WCAG AA compliant in dark mode.
  */
-html.dark [class*="text-[#0b5ea2]"] {
+html.dark [class*="text-[#0b5ea2]"],
+html.dark [class*="text-[#003399]"] {
   color: var(--sl-text) !important;
 }
 
 html.dark [class*="text-[#0b5ea2]/9"],
 html.dark [class*="text-[#0b5ea2]/8"],
-html.dark [class*="text-[#0b5ea2]/7"] {
+html.dark [class*="text-[#0b5ea2]/7"],
+html.dark [class*="text-[#003399]/9"],
+html.dark [class*="text-[#003399]/8"],
+html.dark [class*="text-[#003399]/7"] {
   color: var(--sl-text) !important;
 }
 
 html.dark [class*="text-[#0b5ea2]/6"],
 html.dark [class*="text-[#0b5ea2]/5"],
 html.dark [class*="text-[#0b5ea2]/4"],
-html.dark [class*="text-[#0b5ea2]/3"] {
+html.dark [class*="text-[#0b5ea2]/3"],
+html.dark [class*="text-[#003399]/6"],
+html.dark [class*="text-[#003399]/5"],
+html.dark [class*="text-[#003399]/4"],
+html.dark [class*="text-[#003399]/3"] {
   color: var(--sl-text-muted) !important;
 }
 
 html.dark [class*="text-[#0b5ea2]/2"],
-html.dark [class*="text-[#0b5ea2]/1"] {
+html.dark [class*="text-[#0b5ea2]/1"],
+html.dark [class*="text-[#003399]/2"],
+html.dark [class*="text-[#003399]/1"] {
   color: var(--sl-text-subtle) !important;
 }
 
-html.dark .hover\:text-\[\#0b5ea2\]:hover {
+html.dark .hover\:text-\[\#0b5ea2\]:hover,
+html.dark .hover\:text-\[\#003399\]:hover {
   color: #ffffff !important;
 }
 
 /* Borders */
-html.dark [class*="border-[#0b5ea2]"] {
+html.dark [class*="border-[#0b5ea2]"],
+html.dark [class*="border-[#003399]"] {
   border-color: var(--sl-border) !important;
 }
 
@@ -459,28 +552,70 @@ html.dark aside a[class*="bg-[#FFF200]"] * {
   color: #0b5ea2 !important;
 }
 
-/* Errors are red; explicitly successful notices are green in both themes. */
-html [role="alert"]:not([data-tone="info"]):not([data-tone="success"]) {
+/* Errors are red; explicitly successful notices are green in both themes. Compact .sl-badge pills manage their own Lumo semantic palette. */
+html [role="alert"]:not([data-tone="info"]):not([data-tone="success"]):not([data-tone="warning"]):not(.sl-badge):not(.field-error) {
   background-color: #b42318 !important;
   border-color: #b42318 !important;
   color: #ffffff !important;
 }
-html [role="alert"]:not([data-tone="info"]):not([data-tone="success"]) * {
+html [role="alert"]:not([data-tone="info"]):not([data-tone="success"]):not([data-tone="warning"]):not(.sl-badge):not(.field-error) * {
   color: #ffffff !important;
 }
-html [data-tone="success"] {
+html [data-tone="success"]:not(.sl-badge) {
   background-color: #166534 !important;
   border-color: #166534 !important;
   color: #ffffff !important;
 }
-html [data-tone="success"] * { color: #ffffff !important; }
+html [data-tone="success"]:not(.sl-badge) * { color: #ffffff !important; }
 html .field-error { color: #b42318 !important; }
 html.dark .field-error { color: #ffb4ab !important; }
 
 /* Decorative warning icon for existing text-only errors; alert text remains accessible. */
-html [role="alert"]:not([data-tone="info"]):not([data-tone="success"]):not(:has(svg))::before {
+html [role="alert"]:not([data-tone="info"]):not([data-tone="success"]):not([data-tone="warning"]):not(.sl-badge):not(.field-error):not(:has(svg))::before {
   content: ""; display: inline-block; width: 1rem; height: 1rem; margin-right: .5rem; vertical-align: -.15em;
   background: url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="white" stroke-width="2"%3E%3Ccircle cx="10" cy="10" r="8"/%3E%3Cpath d="M10 5v6m0 3v1"/%3E%3C/svg%3E') center / contain no-repeat;
+}
+
+/* Lumo-styled shared table polish */
+.responsive-table table {
+  border-collapse: collapse;
+}
+.responsive-table thead th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--sl-text-secondary);
+}
+.responsive-table tbody tr {
+  transition: background-color 120ms ease;
+}
+.responsive-table tbody tr:hover {
+  background-color: var(--sl-bg-hover);
+}
+.sl-input {
+  min-height: 2.375rem;
+  width: 100%;
+  border-radius: var(--sl-radius-m);
+  border: 1px solid var(--sl-border-strong);
+  background-color: var(--sl-bg-elevated);
+  color: var(--sl-text);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.35;
+  outline: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+.sl-input:focus {
+  border-color: var(--sl-brand);
+  box-shadow: 0 0 0 3px var(--sl-brand-soft);
+}
+.sl-input[aria-invalid="true"] {
+  border-color: var(--sl-error);
+  background-color: var(--sl-error-soft);
+}
+html.dark .sl-input:focus {
+  border-color: var(--sl-accent);
+  box-shadow: 0 0 0 3px rgba(255, 242, 0, 0.22);
 }
 /* Public account dialogs share the existing forms and stay above the catalog. */
 .public-auth-dialog {

@@ -25,17 +25,17 @@ export function ExportMenu({ label = 'Export filtered results', exports, disable
 
   if (disabled) return <Button variant="secondary" disabled><Download size={16} aria-hidden="true" />{label}</Button>
 
-  return <details ref={disclosure} className="group max-w-full" onKeyDown={event => {
+  return <details ref={disclosure} className="group relative max-w-full" onKeyDown={event => {
     if (event.key === 'Escape' && disclosure.current?.open) {
       event.stopPropagation()
       close(true)
     }
   }}>
-    <summary ref={trigger} className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl border border-[#003399]/20 px-4 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 dark:border-white/20 [&::-webkit-details-marker]:hidden">
-      <Download size={16} aria-hidden="true" />{label}<ChevronDown size={16} aria-hidden="true" />
+    <summary ref={trigger} className="smartlib-button flex min-h-[38px] cursor-pointer list-none items-center gap-2 rounded-[6px] border border-[var(--sl-border-strong)] bg-[var(--sl-bg-elevated)] px-3.5 py-2 text-sm font-semibold text-[var(--sl-text-header)] shadow-[var(--sl-shadow-xs)] transition-colors hover:bg-[var(--sl-bg-subtle)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0b5ea2] dark:border-white/20 dark:bg-[#232634] dark:text-[#f7f9ff] dark:hover:bg-white/10 [&::-webkit-details-marker]:hidden">
+      <Download size={15} aria-hidden="true" />{label}<ChevronDown size={15} aria-hidden="true" className="transition-transform group-open:rotate-180" />
     </summary>
-    <div className="mt-2 flex flex-wrap gap-2 rounded-xl border border-[#003399]/15 bg-white p-2 dark:border-white/20 dark:bg-[#001a4d]">
-      {exports.map(choice => <Button key={choice.label} variant="secondary" disabled={choice.disabled} onClick={() => {
+    <div className="mt-1.5 flex flex-wrap gap-1.5 rounded-[8px] border border-[var(--sl-border)] bg-[var(--sl-bg-elevated)] p-2 shadow-[var(--sl-shadow-m)]">
+      {exports.map(choice => <Button key={choice.label} variant="secondary" size="sm" disabled={choice.disabled} onClick={() => {
         if (choice.disabled) return
         close(true)
         choice.onSelect()
