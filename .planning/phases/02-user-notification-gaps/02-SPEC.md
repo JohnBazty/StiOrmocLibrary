@@ -24,8 +24,8 @@ Gaps found on 2026-11-19 by matching every staff write route to the notices it c
 
 1. **R1 Book returned**: Every recorded return creates one "Book returned" notice for the borrower.
    - Current: Both return routes notify librarians only.
-   - Target: The borrower gets one notice naming the title and the return time in Asia/Manila time; when a fine row with an amount above ₱0 was saved for that return, the notice also states the amount as ₱ with 2 decimals, exactly as stored.
-   - Acceptance: A return through each route creates exactly one notice for the borrower with the title and time; a late return's notice shows the stored fine amount; an on-time return's notice has no fine text.
+   - Target: The borrower gets one notice naming the title and the return time in Asia/Manila time; when a fine row with an amount above ₱0 was saved for that return, the notice also states the amount as ₱ with 2 decimals, exactly as stored; when the return recorded a condition other than Good, the notice also states that condition.
+   - Acceptance: A return through each route creates exactly one notice for the borrower with the title and time; a late return's notice shows the stored fine amount; an on-time return's notice has no fine text; a return recorded as Damaged says "Condition recorded: Damaged"; a Good return has no condition text.
 
 2. **R2 Clearance override granted**: Granting an override creates one notice for the user.
    - Current: No user notice.
@@ -49,8 +49,8 @@ Gaps found on 2026-11-19 by matching every staff write route to the notices it c
 
 6. **R6 Printing paused**: Switching the printing service from accepting to not accepting requests notifies users with an open print request.
    - Current: Nobody is told.
-   - Target: Each user with at least one print request whose status is not `Completed` or `Cancelled` gets one "Printing paused" notice per switch; other users get nothing.
-   - Acceptance: With two users holding open requests and one holding only completed requests, a pause creates exactly two notices.
+   - Target: Each user with at least one print request whose status is not `Completed` or `Cancelled` gets one "Printing paused" notice per switch; other users get nothing. When the librarian saved a non-empty public unavailable reason with the pause, the notice includes it.
+   - Acceptance: With two users holding open requests and one holding only completed requests, a pause creates exactly two notices; a pause saved with reason "Out of paper" puts that text in each notice; a pause without a reason has no reason text.
 
 7. **R7 Printing resumed**: Switching back to accepting requests notifies the same set of users.
    - Current: Nobody is told.
@@ -96,6 +96,8 @@ Gaps found on 2026-11-19 by matching every staff write route to the notices it c
 - [ ] R1/E1: a return at or before the due time, or with a ₱0 fine, has no fine text
 - [ ] R1/E2: a late return's notice shows the stored fine amount as ₱ with 2 decimals, no extra rounding
 - [ ] R1/E3: one return produces one notice, whichever route recorded it
+- [ ] R1: a return recorded with a condition other than Good states "Condition recorded: <condition>"; a Good return has no condition text
+- [ ] R6: a pause saved with a non-empty unavailable reason includes that reason; a pause without one has no reason text
 - [ ] R2: a grant creates exactly one notice with the new clearance status
 - [ ] R3: a revoke creates exactly one notice with the new status and "Contact the library for details"
 - [ ] R2/R3/E4: one notice per override id; revoking an already revoked override creates none
@@ -160,7 +162,7 @@ Canon items (injection, access control, personal data handling) are owned by the
 | Goal Clarity       | 0.90  | 0.75 | ✓      | Six actions plus one field fix, named         |
 | Boundary Clarity   | 0.85  | 0.70 | ✓      | Three gaps deferred with reasons              |
 | Constraint Clarity | 0.75  | 0.65 | ✓      | Same transaction, dedupe, Manila time, ₱      |
-| Acceptance Criteria| 0.75  | 0.70 | ✓      | 19 pass/fail criteria                         |
+| Acceptance Criteria| 0.75  | 0.70 | ✓      | 21 pass/fail criteria                         |
 | **Ambiguity**      | 0.17  | ≤0.20| ✓      |                                               |
 
 ## Interview Log
