@@ -2,9 +2,9 @@
 gsd_state_version: "1.0"
 current_phase: 02
 status: in_progress
-stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-11-19T02:06:28.135Z"
-state_head: 5f35ef595fb579215ec87acdf0679a2d7f3c7918
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-11-19T02:09:46.507Z"
+state_head: d155f5b6445ec123579917a81b188228ebc1a2d2
 progress:
   total_phases: 2
   completed_phases: 0
@@ -34,6 +34,7 @@ current_phase_name: User notification gaps
 - [Phase 01]: Reservations tab sends typed text as is (blank limit sends '') and shows the server field message per card; no client-side range check
 - [Phase 01]: Book queue page names the pickup timer without a duration instead of fetching the Librarian-only window
 - [Phase 02]: 02-01: return notice states the saved fines row (omitted when Paid, Waived, Voided or 0.00) and a condition only when passed by the desk route
+- [Phase 02]: Clearance notice body is built only from the computed status and fixed text, never the override reason or names; revoke status is recomputed in the transaction
 
 ## Accumulated Context
 
@@ -49,9 +50,10 @@ current_phase_name: User notification gaps
 | Phase 01 P02 | 35min | 3 tasks | 12 files |
 | Phase 01 P03 | 4 min | 3 tasks | 6 files |
 | Phase 02 P01 | 35 min | 2 tasks | 6 files |
+| Phase 02 P02 | 12min | 2 tasks | 2 files |
 
 ## Session
 
-**Last session:** 2026-11-19T02:06:28.108Z
-**Stopped at:** Completed 02-01-PLAN.md
+**Last session:** 2026-11-19T02:09:46.479Z
+**Stopped at:** Completed 02-02-PLAN.md
 **Resume file:** None
