@@ -13,3 +13,13 @@ afterEach(cleanup)
 it('shows live capacity and saves an audited capacity change',async()=>{render(<AdminAttendancePage/>);expect(await screen.findByText('80')).toBeTruthy();fireEvent.click(screen.getByRole('button',{name:/Capacity/i}));fireEvent.change(screen.getByLabelText('Maximum occupants'),{target:{value:'100'}});fireEvent.change(screen.getByLabelText('Reason'),{target:{value:'Expanded study area'}});fireEvent.click(screen.getByRole('button',{name:'Save capacity'}));fireEvent.click(await screen.findByRole('button',{name:'Yes, save'}));await waitFor(()=>expect(api.updateCapacity).toHaveBeenCalledWith(100,'Expanded study area'))})
 
 it('opens the integrated camera scanner',async()=>{render(<AdminAttendancePage/>);await screen.findByText('Attendance logs');fireEvent.click(screen.getByRole('button',{name:'Scan QR'}));expect(screen.getByText('Scanner opened')).toBeTruthy()})
+
+it('validates capacity range inline before opening the confirmation dialog',async()=>{
+  render(<AdminAttendancePage/>)
+  await screen.findByText('80')
+  fireEvent.click(screen.getByRole('button',{name:/Capacity/i}))
+  fireEvent.change(screen.getByLabelText('Maximum occupants'),{target:{value:'0'}})
+  fireEvent.click(screen.getByRole('button',{name:'Save capacity'}))
+  expect(screen.getByText('Enter a whole maximum occupancy between 1 and 5,000.')).toBeTruthy()
+  expect(screen.queryByRole('button',{name:'Yes, save'})).toBeNull()
+})

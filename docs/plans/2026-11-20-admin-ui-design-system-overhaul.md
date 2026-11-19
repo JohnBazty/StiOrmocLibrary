@@ -78,8 +78,8 @@ Every phase follows TDD (write/update Vitest + Testing Library tests first), pre
 - [x] **Milestone 0b:** Complete code-backed Admin Side & Booking Validation Audit and save phased plan (`docs/plans/2026-11-20-admin-ui-design-system-overhaul.md`).
 - [x] **Phase 1:** STI × Vaadin Lumo tokens, shared primitives (`ui.tsx`, `ConfirmSaveDialog`, `ExportMenu`, `RowActions`, `PortalLayout`, `AdminSidebarNavigation`) + tests + commit (`695bdc8`).
 - [x] **Phase 2:** Proactive zero-dead-end validation in `book-cart.ts`, `BookCatalog.tsx`, `BookCart.tsx`, `ScheduleBorrowingForm.tsx`, `BorrowingSchedules.tsx` + tests + commit (`00b0835`).
-- [x] **Phase 3:** Admin Dashboard, Borrow & Return, Book Queue & Scheduled Borrowing overhaul + tests + commit.
-- [ ] **Phase 4:** Admin Printing, Supplies, Fines, Payments, Funds, Attendance & Clearance overhaul + tests + commit.
+- [x] **Phase 3:** Admin Dashboard, Borrow & Return, Book Queue & Scheduled Borrowing overhaul + tests + commit (`fd0a8ef`).
+- [x] **Phase 4:** Admin Printing, Supplies, Fines, Payments, Funds, Attendance & Clearance overhaul + tests + commit (`0751c16`, `4c5e77d`).
 - [ ] **Phase 5:** Admin Catalog, Inventory, Stocktake, Users, Policies, Schedule, Announcements & Notifications overhaul + tests + commit.
 - [ ] **Final QA:** Full `npm test`, `npm run typecheck`, `npm run build`, combined security/correctness/React diff review, and desktop/mobile visual verification.
 

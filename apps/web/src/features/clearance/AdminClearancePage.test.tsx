@@ -129,6 +129,26 @@ describe('AdminClearancePage simplified exceptions', () => {
     await waitFor(() => expect(api.resolveLost).toHaveBeenCalledWith(12, 'Waive', 'Book found undamaged in the return bin.'))
     confirm.mockRestore(); prompt.mockRestore()
   })
+
+  it('renders itemized blocking fines inside the review dialog and surfaces override errors in-modal', async () => {
+    const withFine: ClearanceRecord = {
+      ...blocked,
+      fines: [{ fineId: 9, transactionId: 4, title: 'Clean Code', basis: 'Overdue return', overdueUnits: 14, rate: 2, amount: 28, appliedAt: '2026-09-01T01:00:00Z', notes: null }],
+    }
+    api.list.mockResolvedValue(listWith(withFine))
+    api.detail.mockResolvedValue(withFine)
+    api.override.mockRejectedValue(new Error('Override authorization failed.'))
+    render(<MemoryRouter initialEntries={['/librarian/clearance']}><AdminClearancePage /></MemoryRouter>)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Review' }))
+    expect(await screen.findByText('Clean Code')).toBeTruthy()
+    expect(screen.getByText(/Overdue return/)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear student as an exception' }))
+    fireEvent.change(screen.getByLabelText('Reason for exception'), { target: { value: 'Temporary registrar approval' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm exception' }))
+    expect(await screen.findAllByText('Override authorization failed.')).not.toHaveLength(0)
+  })
 })
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
