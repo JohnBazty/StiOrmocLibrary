@@ -433,14 +433,28 @@ html.dark option {
 }
 
 /* Tables */
+thead.bg-\[\#0b5ea2\],
+thead.bg-\[\#003399\],
+thead.bg-\[\#132a3f\],
 html.dark thead.bg-\[\#0b5ea2\],
-html.dark thead[class*="bg-[#0b5ea2]"] {
+html.dark thead.bg-\[\#003399\],
+html.dark thead.bg-\[\#132a3f\] {
   background-color: #0b5ea2 !important;
   color: #ffffff !important;
 }
 
+thead.bg-\[\#0b5ea2\] th,
+thead.bg-\[\#0b5ea2\] *,
+thead.bg-\[\#003399\] th,
+thead.bg-\[\#003399\] *,
+thead.bg-\[\#132a3f\] th,
+thead.bg-\[\#132a3f\] *,
+html.dark thead.bg-\[\#0b5ea2\] th,
 html.dark thead.bg-\[\#0b5ea2\] *,
-html.dark thead[class*="bg-[#0b5ea2]"] * {
+html.dark thead.bg-\[\#003399\] th,
+html.dark thead.bg-\[\#003399\] *,
+html.dark thead.bg-\[\#132a3f\] th,
+html.dark thead.bg-\[\#132a3f\] * {
   color: #ffffff !important;
 }
 
@@ -584,7 +598,16 @@ html [role="alert"]:not([data-tone="info"]):not([data-tone="success"]):not([data
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.03em;
-  color: var(--sl-text-secondary);
+}
+.responsive-table thead:not(.bg-\[\#0b5ea2\]):not(.bg-\[\#003399\]):not(.bg-\[\#132a3f\]):not(.text-white):not(.text-\[\#FFFFFF\]) th {
+  color: var(--sl-text-header);
+}
+.responsive-table thead.bg-\[\#0b5ea2\] th,
+.responsive-table thead.bg-\[\#003399\] th,
+.responsive-table thead.bg-\[\#132a3f\] th,
+.responsive-table thead.text-white th,
+.responsive-table thead.text-\[\#FFFFFF\] th {
+  color: #ffffff !important;
 }
 .responsive-table tbody tr {
   transition: background-color 120ms ease;

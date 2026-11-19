@@ -7,11 +7,108 @@ import {
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { PageHeader, SectionCard, StatCard, cn } from '../../components/ui'
+import { AssetCodeModal } from '../catalog/AssetCodeModal'
+import { catalogApi } from '../catalog/catalog-api'
 import { inventoryApi, InventoryApiError } from './inventory-api'
 import type { InventoryCopy, InventoryFilters, InventoryPagination, InventoryRemovalTarget, InventorySummary, ThesisInventoryFilters, ThesisInventoryRow, ThesisInventorySummary } from './types'
 import { useDesktopScanner } from './useDesktopScanner'
 import { InventoryRemovalDialog } from './InventoryRemovalDialog'
 import { useConfirmSave } from '../../components/ConfirmSaveDialog'
+
+async function downloadBulkBarcodeSheet(
+  entries: Array<{ id: number; title: string; accession: string; barcode: string; callNumber?: string | null; assetType: 'book' | 'research' }>,
+) {
+  if (!entries.length) throw new Error('No copies available for bulk barcode download.')
+  const loaded: Array<{ entry: (typeof entries)[number]; img: HTMLImageElement }> = []
+  for (let start = 0; start < entries.length; start += 6) {
+    const chunk = entries.slice(start, start + 6)
+    const assets = await Promise.all(
+      chunk.map((entry) =>
+        entry.assetType === 'research' ? catalogApi.researchAsset(entry.id) : catalogApi.asset(entry.id),
+      ),
+    )
+    for (let i = 0; i < chunk.length; i++) {
+      const asset = assets[i]
+      const img = new Image()
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve()
+        img.onerror = () => reject(new Error(`Unable to decode barcode for ${chunk[i].accession}.`))
+        img.src = asset.barcodeImageData
+      })
+      loaded.push({ entry: chunk[i], img })
+    }
+  }
+
+  const cols = loaded.length === 1 ? 1 : 2
+  const rows = Math.ceil(loaded.length / cols)
+  const cardW = 480
+  const cardH = 220
+  const gap = 24
+  const pad = 32
+  const width = pad * 2 + cols * cardW + (cols - 1) * gap
+  const height = pad * 2 + rows * cardH + (rows - 1) * gap
+  const scale = 2
+  const canvas = document.createElement('canvas')
+  canvas.width = width * scale
+  canvas.height = height * scale
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Canvas rendering is unavailable.')
+  ctx.scale(scale, scale)
+  ctx.fillStyle = '#FFFFFF'
+  ctx.fillRect(0, 0, width, height)
+
+  loaded.forEach(({ entry, img }, index) => {
+    const col = index % cols
+    const row = Math.floor(index / cols)
+    const x = pad + col * (cardW + gap)
+    const y = pad + row * (cardH + gap)
+
+    ctx.strokeStyle = '#cbd5e1'
+    ctx.lineWidth = 1.5
+    ctx.strokeRect(x, y, cardW, cardH)
+
+    ctx.fillStyle = '#132a3f'
+    ctx.font = '700 12px Arial, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('STI COLLEGE ORMOC LIBRARY', x + cardW / 2, y + 20)
+
+    const shortTitle = entry.title.length > 48 ? `${entry.title.slice(0, 45)}…` : entry.title
+    ctx.fillStyle = '#334155'
+    ctx.font = '600 11px Arial, sans-serif'
+    ctx.fillText(shortTitle, x + cardW / 2, y + 38)
+
+    const maxW = cardW - 48
+    const maxH = 112
+    const ratio = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight)
+    const drawW = img.naturalWidth * ratio
+    const drawH = img.naturalHeight * ratio
+    ctx.imageSmoothingEnabled = false
+    ctx.drawImage(img, x + (cardW - drawW) / 2, y + 52 + (maxH - drawH) / 2, drawW, drawH)
+
+    ctx.fillStyle = '#0b5ea2'
+    ctx.font = '700 13px monospace'
+    ctx.fillText(entry.barcode, x + cardW / 2, y + 180)
+
+    const meta = [entry.accession, entry.callNumber].filter(Boolean).join('  ·  ')
+    ctx.fillStyle = '#475569'
+    ctx.font = '600 11px monospace'
+    ctx.fillText(meta, x + cardW / 2, y + 200)
+  })
+
+  const blob = await new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob((value) => (value ? resolve(value) : reject(new Error('Could not generate bulk barcode sheet.'))), 'image/png'),
+  )
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  const stamp = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date())
+  link.download = `sti-library-barcodes-${loaded.length}-copies-${stamp}.png`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
+}
 
 const EMPTY_SUMMARY: InventorySummary = { total_catalog_materials: 0, total_physical_copies: 0, damaged_copies_count: 0, lost_copies_count: 0 }
 const DEFAULT_FILTERS: InventoryFilters = { page: 1, limit: 25, query: '', conditionState: '', availabilityStatus: '' }
@@ -124,7 +221,7 @@ function formatDate(value: string | null) {
   if (!value) return 'Never verified'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Manila' }).format(date)
+  return new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Manila', hour12: true }).format(date)
 }
 
 function displayThesisCondition(value: string) {
@@ -239,6 +336,84 @@ export function InventoryDashboard() {
   const [availabilityError, setAvailabilityError] = useState<string | null>(null)
   const [thesisExportingPdf, setThesisExportingPdf] = useState(false)
   const [removalTarget, setRemovalTarget] = useState<InventoryRemovalTarget | null>(null)
+  const [selectedCopyIds, setSelectedCopyIds] = useState<Set<number>>(() => new Set())
+  const [selectedThesisIds, setSelectedThesisIds] = useState<Set<number>>(() => new Set())
+  const [downloadingBarcodeId, setDownloadingBarcodeId] = useState<string | null>(null)
+  const [bulkBarcodeBusy, setBulkBarcodeBusy] = useState(false)
+  const [assetModalTarget, setAssetModalTarget] = useState<{ kind: 'book' | 'research'; id: number } | null>(null)
+
+  const toggleCopySelection = (id: number) => {
+    setSelectedCopyIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  const allCopiesSelected = copies.length > 0 && copies.every((copy) => selectedCopyIds.has(copy.physical_copy_id))
+  const toggleAllCopies = () => {
+    if (allCopiesSelected) setSelectedCopyIds(new Set())
+    else setSelectedCopyIds(new Set(copies.map((copy) => copy.physical_copy_id)))
+  }
+
+  const toggleThesisSelection = (id: number) => {
+    setSelectedThesisIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  const allThesisSelected = thesisRows.length > 0 && thesisRows.every((row) => selectedThesisIds.has(row.research_inventory_id))
+  const toggleAllThesis = () => {
+    if (allThesisSelected) setSelectedThesisIds(new Set())
+    else setSelectedThesisIds(new Set(thesisRows.map((row) => row.research_inventory_id)))
+  }
+
+  const downloadSingleBarcode = async (id: number, accession: string, kind: 'book' | 'research' = 'book') => {
+    const key = `${kind}-${id}`
+    if (downloadingBarcodeId) return
+    setDownloadingBarcodeId(key); setError(null)
+    try {
+      await catalogApi.downloadAssetPng(id, 'barcode', kind)
+      setNotice(`Barcode PNG downloaded for ${accession}.`)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Unable to download the barcode PNG.')
+    } finally {
+      setDownloadingBarcodeId(null)
+    }
+  }
+
+  const downloadBulkBarcodes = async (kind: 'book' | 'research') => {
+    if (bulkBarcodeBusy) return
+    setBulkBarcodeBusy(true); setError(null)
+    try {
+      const entries =
+        kind === 'book'
+          ? (selectedCopyIds.size > 0 ? copies.filter((c) => selectedCopyIds.has(c.physical_copy_id)) : copies).map((c) => ({
+              id: c.physical_copy_id,
+              title: c.item_title,
+              accession: c.accession_number,
+              barcode: c.barcode,
+              callNumber: c.call_number,
+              assetType: 'book' as const,
+            }))
+          : (selectedThesisIds.size > 0 ? thesisRows.filter((t) => selectedThesisIds.has(t.research_inventory_id)) : thesisRows).map((t) => ({
+              id: t.research_inventory_id,
+              title: t.title,
+              accession: t.accession_number,
+              barcode: t.barcode,
+              callNumber: t.shelf_location,
+              assetType: 'research' as const,
+            }))
+      await downloadBulkBarcodeSheet(entries)
+      setNotice(`Downloaded bulk barcode sheet for ${entries.length} ${entries.length === 1 ? 'copy' : 'copies'}.`)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Unable to generate the bulk barcode sheet.')
+    } finally {
+      setBulkBarcodeBusy(false)
+    }
+  }
 
   const load = useCallback(async (nextFilters: InventoryFilters) => {
     setLoading(true); setError(null)
@@ -370,7 +545,7 @@ export function InventoryDashboard() {
         <SectionCard className="p-5"><span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#FFF200] text-[#0b5ea2]"><XCircle size={21} /></span><p className="mt-4 text-xs font-bold uppercase tracking-wide text-[#0b5ea2]/60">Lost research papers</p><p className="mt-1 text-3xl font-black text-[#0b5ea2]">{thesisSummary.lost_thesis_count}</p></SectionCard>
       </div>
       <SectionCard className="mt-5 overflow-hidden">
-        <div className="flex flex-col gap-3 border-b border-[#0b5ea2]/15 p-5 sm:flex-row sm:items-center"><h2 id="thesis-inventory-title" className="flex-1 text-lg font-black text-[#0b5ea2]">Research and thesis inventory</h2></div>
+        <div className="flex flex-col gap-3 border-b border-[#0b5ea2]/15 p-5 sm:flex-row sm:items-center"><h2 id="thesis-inventory-title" className="flex-1 text-lg font-black text-[#0b5ea2]">Research and thesis inventory</h2><button type="button" disabled={bulkBarcodeBusy || thesisRows.length === 0} onClick={() => void downloadBulkBarcodes('research')} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0b5ea2] px-4 text-sm font-bold text-white disabled:opacity-50"><Download size={15} />{bulkBarcodeBusy ? 'Building barcodes…' : selectedThesisIds.size > 0 ? `Download selected barcodes (${selectedThesisIds.size})` : `Bulk download barcodes (${thesisRows.length})`}</button></div>
         <form onSubmit={(event) => { event.preventDefault(); setThesisFilters({ ...thesisDraftFilters, page: 1 }) }} className="grid gap-3 border-b border-[#0b5ea2]/15 bg-[#0b5ea2]/5 p-4 md:grid-cols-2 xl:grid-cols-[minmax(240px,1fr)_180px_180px_140px_auto_auto]">
           <label className="relative"><span className="sr-only">Search research inventory</span><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#0b5ea2]/45" size={15} /><input value={thesisDraftFilters.query} onChange={(event) => setThesisDraftFilters((current) => ({ ...current, query: event.target.value }))} placeholder="Title, author, adviser, barcode…" className="h-10 w-full rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] pl-9 pr-3 text-sm text-[#0b5ea2] outline-none focus:ring-2 focus:ring-[#0b5ea2]/20" /></label>
           <select aria-label="Filter research by condition" value={thesisDraftFilters.conditionState} onChange={(event) => setThesisDraftFilters((current) => ({ ...current, conditionState: event.target.value }))} className="h-10 rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] px-3 text-sm text-[#0b5ea2]"><option value="">All conditions</option><option value="good">Good</option><option value="fair">Fair</option><option value="for_repair">For repair</option><option value="damaged">Damaged</option><option value="lost">Lost</option></select>
@@ -379,10 +554,12 @@ export function InventoryDashboard() {
           <button type="submit" disabled={thesisLoading} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0b5ea2] px-4 text-sm font-bold text-[#FFFFFF] disabled:opacity-50"><Search size={15} />{thesisLoading ? 'Searching…' : 'Search'}</button>
           <button type="button" onClick={() => { setThesisDraftFilters(DEFAULT_THESIS_FILTERS); setThesisFilters(DEFAULT_THESIS_FILTERS) }} className="h-10 rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] px-4 text-sm font-bold text-[#0b5ea2]">Clear</button>
         </form>
-        <ResponsiveTable><table className="w-full min-w-[1120px] text-left text-sm"><thead className="bg-[#0b5ea2] text-[11px] uppercase tracking-wider text-[#FFFFFF]"><tr><th className="px-4 py-3">Title and authors</th><th className="px-4 py-3">Adviser / year</th><th className="px-4 py-3">Accession / barcode</th><th className="px-4 py-3">Shelf</th><th className="px-4 py-3">Condition</th><th className="px-4 py-3">Availability</th><th className="px-4 py-3">Actions</th></tr></thead><tbody className="divide-y divide-[#0b5ea2]/10">
-          {thesisLoading && thesisRows.length === 0 ? <tr><td colSpan={7} className="px-5 py-12 text-center text-[#0b5ea2]/65"><RefreshCw className="mx-auto mb-3 animate-spin" size={22} />Loading research inventory…</td></tr> : null}
-          {!thesisLoading && thesisRows.length === 0 ? <tr><td colSpan={7} className="px-5 py-12 text-center"><GraduationCap className="mx-auto text-[#0b5ea2]/45" size={28} /><p className="mt-3 font-bold text-[#0b5ea2]">No bound research papers found</p></td></tr> : null}
-          {thesisRows.map((thesis) => { const activeCirculation = thesis.availability_status === 'borrowed' || thesis.availability_status === 'reserved'; const availabilityLocked = activeCirculation || thesis.condition_state === 'lost'; const removalLocked = activeCirculation || thesis.condition_state !== 'lost'; const removalTitle = activeCirculation ? 'Resolve the active allocation before removing this research copy.' : thesis.condition_state !== 'lost' ? 'Mark this research copy as Lost before removing it.' : 'Remove this Lost research copy from active inventory.'; return <tr key={thesis.research_inventory_id} className="hover:bg-[#0b5ea2]/5"><td className="px-4 py-4"><p className="font-bold text-[#0b5ea2]">{thesis.title}</p><p className="mt-1 text-xs text-[#0b5ea2]/60">{thesis.authors}</p></td><td className="px-4 py-4 text-[#0b5ea2]"><p>{thesis.adviser}</p><p className="mt-1 text-xs text-[#0b5ea2]/60">{thesis.publication_year}</p></td><td className="px-4 py-4 font-mono text-xs text-[#0b5ea2]"><p className="font-bold">{thesis.accession_number}</p><p className="mt-1 text-[#0b5ea2]/60">{thesis.barcode}</p></td><td className="px-4 py-4 text-[#0b5ea2]">{thesis.shelf_location}</td><td className="px-4 py-4"><ConditionBadge condition={displayThesisCondition(thesis.condition_state)} /></td><td className="px-4 py-4"><AvailabilityBadge status={displayThesisAvailability(thesis.availability_status)} /></td><td className="px-4 py-4"><InventoryActions accession={thesis.accession_number} actions={[
+        <ResponsiveTable><table className="w-full min-w-[1160px] text-left text-sm"><thead className="bg-[#0b5ea2] text-[11px] uppercase tracking-wider text-[#FFFFFF]"><tr><th className="w-10 px-3 py-3"><input type="checkbox" aria-label="Select all research copies on this page" checked={allThesisSelected} onChange={toggleAllThesis} className="h-4 w-4 rounded accent-[#FFF200]" /></th><th className="px-4 py-3">Title and authors</th><th className="px-4 py-3">Adviser / year</th><th className="px-4 py-3">Accession / barcode</th><th className="px-4 py-3">Shelf</th><th className="px-4 py-3">Condition</th><th className="px-4 py-3">Availability</th><th className="px-4 py-3">Actions</th></tr></thead><tbody className="divide-y divide-[#0b5ea2]/10">
+          {thesisLoading && thesisRows.length === 0 ? <tr><td colSpan={8} className="px-5 py-12 text-center text-[#0b5ea2]/65"><RefreshCw className="mx-auto mb-3 animate-spin" size={22} />Loading research inventory…</td></tr> : null}
+          {!thesisLoading && thesisRows.length === 0 ? <tr><td colSpan={8} className="px-5 py-12 text-center"><GraduationCap className="mx-auto text-[#0b5ea2]/45" size={28} /><p className="mt-3 font-bold text-[#0b5ea2]">No bound research papers found</p></td></tr> : null}
+          {thesisRows.map((thesis) => { const activeCirculation = thesis.availability_status === 'borrowed' || thesis.availability_status === 'reserved'; const availabilityLocked = activeCirculation || thesis.condition_state === 'lost'; const removalLocked = activeCirculation || thesis.condition_state !== 'lost'; const removalTitle = activeCirculation ? 'Resolve the active allocation before removing this research copy.' : thesis.condition_state !== 'lost' ? 'Mark this research copy as Lost before removing it.' : 'Remove this Lost research copy from active inventory.'; return <tr key={thesis.research_inventory_id} className="hover:bg-[#0b5ea2]/5"><td className="px-3 py-4"><input type="checkbox" aria-label={`Select ${thesis.accession_number}`} checked={selectedThesisIds.has(thesis.research_inventory_id)} onChange={() => toggleThesisSelection(thesis.research_inventory_id)} className="h-4 w-4 rounded accent-[#0b5ea2]" /></td><td className="px-4 py-4"><p className="font-bold text-[#0b5ea2]">{thesis.title}</p><p className="mt-1 text-xs text-[#0b5ea2]/60">{thesis.authors}</p></td><td className="px-4 py-4 text-[#0b5ea2]"><p>{thesis.adviser}</p><p className="mt-1 text-xs text-[#0b5ea2]/60">{thesis.publication_year}</p></td><td className="px-4 py-4 font-mono text-xs text-[#0b5ea2]"><p className="font-bold">{thesis.accession_number}</p><p className="mt-1 text-[#0b5ea2]/60">{thesis.barcode}</p><button type="button" disabled={downloadingBarcodeId !== null} onClick={() => void downloadSingleBarcode(thesis.research_inventory_id, thesis.accession_number, 'research')} className="mt-1.5 inline-flex items-center gap-1 rounded-[4px] border border-[#0b5ea2]/25 bg-white px-2 py-0.5 font-sans text-[11px] font-semibold text-[#0b5ea2] hover:bg-[#0b5ea2]/10 disabled:opacity-50"><Download size={11} />{downloadingBarcodeId === `research-${thesis.research_inventory_id}` ? 'Downloading…' : 'Barcode PNG'}</button></td><td className="px-4 py-4 text-[#0b5ea2]">{thesis.shelf_location}</td><td className="px-4 py-4"><ConditionBadge condition={displayThesisCondition(thesis.condition_state)} /></td><td className="px-4 py-4"><AvailabilityBadge status={displayThesisAvailability(thesis.availability_status)} /></td><td className="px-4 py-4"><InventoryActions accession={thesis.accession_number} actions={[
+            { label: 'Download barcode PNG', description: 'Download Code-128 barcode image', onSelect: () => void downloadSingleBarcode(thesis.research_inventory_id, thesis.accession_number, 'research') },
+            { label: 'View barcode & QR', description: 'Preview and print asset labels', onSelect: () => setAssetModalTarget({ kind: 'research', id: thesis.research_inventory_id }) },
             { label: 'Move copies', description: 'Choose another shelf compartment', onSelect: () => setMoving({kind:'Research/Thesis',copies:[{id:thesis.research_inventory_id,accession:thesis.accession_number,shelfLocation:thesis.shelf_location,shelfColumn:thesis.shelf_column ?? 1,shelfRow:thesis.shelf_row ?? 1}]}) },
             { label: 'Audit condition', onSelect: () => setSelectedThesis(thesis) },
             { label: thesis.availability_status === 'available' ? 'Make unavailable' : 'Make available', disabled: availabilityLocked,
@@ -398,11 +575,19 @@ export function InventoryDashboard() {
     <div hidden={resource !== 'books'}>
     <SectionCard className="mb-5 flex flex-col gap-4 p-4 sm:flex-row sm:items-center"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#FFF200] text-[#0b5ea2]"><ScanBarcode size={22} /></span><div className="flex-1"><h2 className="font-bold text-[#0b5ea2]">Desktop scanner listener</h2><p className="mt-1 text-xs text-[#0b5ea2]/65">Scan a barcode at normal scanner speed and press Enter. Verification is recorded without refreshing the page.</p></div><span className="inline-flex items-center gap-2 rounded-xl bg-[#0b5ea2] px-4 py-2 text-xs font-bold text-[#FFFFFF]"><span className={cn('h-2 w-2 rounded-full bg-[#FFF200]', scanning && 'animate-pulse')} />{scanning ? 'Verifying scan' : 'Scanner listening'}</span></SectionCard>
     <SectionCard className="overflow-hidden">
-      <div className="flex flex-col gap-3 border-b border-[#0b5ea2]/15 p-4 lg:flex-row lg:items-center"><h2 className="flex-1 font-bold text-[#0b5ea2]">Physical copy register</h2><label className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#0b5ea2]/45" size={15} /><input value={filters.query} onChange={(event) => setFilters((current) => ({ ...current, page: 1, query: event.target.value }))} placeholder="Title, author, barcode, accession…" className="h-10 w-full rounded-xl border border-[#0b5ea2]/20 bg-[#0b5ea2]/5 pl-9 pr-3 text-sm text-[#0b5ea2] outline-none focus:bg-[#FFFFFF] lg:w-72" /></label><select aria-label="Filter by condition" value={filters.conditionState} onChange={(event) => setFilters((current) => ({ ...current, page: 1, conditionState: event.target.value }))} className="h-10 rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] px-3 text-sm text-[#0b5ea2]"><option value="">All conditions</option>{['Good', 'Fair', 'For Repair', 'Damaged', 'Lost'].map((item) => <option key={item}>{item}</option>)}</select><button onClick={() => void load(filters)} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#0b5ea2]/20 px-4 text-sm font-bold text-[#0b5ea2]"><RefreshCw className={cn(loading && 'animate-spin')} size={15} />Refresh</button></div>
-      <ResponsiveTable><table className="w-full min-w-[1050px] text-left text-sm"><thead className="bg-[#0b5ea2] text-[11px] uppercase tracking-wider text-[#FFFFFF]"><tr><th className="px-5 py-3">Item title</th><th className="px-5 py-3">Accession</th><th className="px-5 py-3">Barcode</th><th className="px-5 py-3">Shelf</th><th className="px-5 py-3">Condition</th><th className="px-5 py-3">Availability</th><th className="px-5 py-3">Last verified</th><th className="px-5 py-3">Action</th></tr></thead><tbody className="divide-y divide-[#0b5ea2]/10">
-        {loading && copies.length === 0 ? <tr><td colSpan={8} className="px-5 py-14 text-center text-[#0b5ea2]/65"><RefreshCw className="mx-auto mb-3 animate-spin" size={22} />Loading physical inventory…</td></tr> : null}
-        {!loading && copies.length === 0 ? <tr><td colSpan={8} className="px-5 py-14 text-center"><Barcode className="mx-auto text-[#0b5ea2]/45" size={28} /><p className="mt-3 font-bold text-[#0b5ea2]">No physical copies found</p></td></tr> : null}
-          {copies.map((copy) => { const activeCirculation = copy.availability_status === 'Borrowed' || copy.availability_status === 'Reserved'; const availabilityLocked = activeCirculation || copy.condition_status === 'Lost'; const removalLocked = activeCirculation || copy.condition_status !== 'Lost'; const removalTitle = activeCirculation ? 'Process the return or cancel the reservation before removing this copy.' : copy.condition_status !== 'Lost' ? 'Mark this copy as Lost before removing it.' : 'Remove this Lost copy from active inventory.'; return <tr key={copy.physical_copy_id} className="hover:bg-[#0b5ea2]/5"><td className="px-5 py-4"><p className="font-bold text-[#0b5ea2]">{copy.item_title}</p><p className="mt-1 text-xs text-[#0b5ea2]/60">{copy.authors.join(', ') || copy.category_name || 'No author metadata'}</p></td><td className="px-5 py-4 font-mono text-xs font-bold text-[#0b5ea2]">{copy.accession_number}</td><td className="px-5 py-4 font-mono text-xs text-[#0b5ea2]/70">{copy.barcode}</td><td className="px-5 py-4 text-[#0b5ea2]"><p className="font-bold">{copy.shelf_location} · C{copy.shelf_column} · R{copy.shelf_row}</p><p className="mt-1 font-mono text-[10px] text-[#0b5ea2]/60">{copy.call_number||'Call number pending'}</p><p className="mt-1 text-xs">Dewey: {copy.dewey_code??'Not assigned'}</p></td><td className="px-5 py-4"><ConditionBadge condition={copy.condition_status} /></td><td className="px-5 py-4"><AvailabilityBadge status={copy.availability_status} /></td><td className="px-5 py-4 text-xs text-[#0b5ea2]/70">{formatDate(copy.last_verified_at)}</td><td className="px-5 py-4"><InventoryActions accession={copy.accession_number} actions={[
+      <div className="flex flex-col gap-3 border-b border-[#0b5ea2]/15 p-4 lg:flex-row lg:flex-wrap lg:items-center">
+        <h2 className="flex-1 font-bold text-[#0b5ea2]">Physical copy register</h2>
+        <label className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#0b5ea2]/45" size={15} /><input value={filters.query} onChange={(event) => setFilters((current) => ({ ...current, page: 1, query: event.target.value }))} placeholder="Title, author, barcode, accession…" className="h-10 w-full rounded-[6px] border border-[var(--sl-border-strong)] bg-[var(--sl-bg-elevated)] pl-9 pr-3 text-sm text-[var(--sl-text)] outline-none focus:border-[#0b5ea2] lg:w-64" /></label>
+        <select aria-label="Filter by condition" value={filters.conditionState} onChange={(event) => setFilters((current) => ({ ...current, page: 1, conditionState: event.target.value }))} className="h-10 rounded-[6px] border border-[var(--sl-border-strong)] bg-[var(--sl-bg-elevated)] px-3 text-sm text-[var(--sl-text)]"><option value="">All conditions</option>{['Good', 'Fair', 'For Repair', 'Damaged', 'Lost'].map((item) => <option key={item}>{item}</option>)}</select>
+        <button type="button" disabled={bulkBarcodeBusy || copies.length === 0} onClick={() => void downloadBulkBarcodes('book')} className="inline-flex h-10 items-center justify-center gap-2 rounded-[6px] bg-[#0b5ea2] px-3.5 text-sm font-semibold text-white transition hover:bg-[#094e87] disabled:opacity-50"><Download size={15} />{bulkBarcodeBusy ? 'Building barcodes…' : selectedCopyIds.size > 0 ? `Download selected barcodes (${selectedCopyIds.size})` : `Bulk download barcodes (${copies.length})`}</button>
+        <button onClick={() => void load(filters)} className="inline-flex h-10 items-center justify-center gap-2 rounded-[6px] border border-[var(--sl-border-strong)] px-3.5 text-sm font-semibold text-[var(--sl-text-header)] hover:bg-[var(--sl-bg-subtle)]"><RefreshCw className={cn(loading && 'animate-spin')} size={15} />Refresh</button>
+      </div>
+      <ResponsiveTable><table className="w-full min-w-[1100px] text-left text-sm"><thead className="bg-[#0b5ea2] text-[11px] uppercase tracking-wider text-[#FFFFFF]"><tr><th className="w-10 px-3 py-3"><input type="checkbox" aria-label="Select all physical copies on this page" checked={allCopiesSelected} onChange={toggleAllCopies} className="h-4 w-4 rounded accent-[#FFF200]" /></th><th className="px-4 py-3">Item title</th><th className="px-4 py-3">Accession</th><th className="px-4 py-3">Barcode</th><th className="px-4 py-3">Shelf</th><th className="px-4 py-3">Condition</th><th className="px-4 py-3">Availability</th><th className="px-4 py-3">Last verified</th><th className="px-4 py-3">Action</th></tr></thead><tbody className="divide-y divide-[#0b5ea2]/10">
+        {loading && copies.length === 0 ? <tr><td colSpan={9} className="px-5 py-14 text-center text-[#0b5ea2]/65"><RefreshCw className="mx-auto mb-3 animate-spin" size={22} />Loading physical inventory…</td></tr> : null}
+        {!loading && copies.length === 0 ? <tr><td colSpan={9} className="px-5 py-14 text-center"><Barcode className="mx-auto text-[#0b5ea2]/45" size={28} /><p className="mt-3 font-bold text-[#0b5ea2]">No physical copies found</p></td></tr> : null}
+          {copies.map((copy) => { const activeCirculation = copy.availability_status === 'Borrowed' || copy.availability_status === 'Reserved'; const availabilityLocked = activeCirculation || copy.condition_status === 'Lost'; const removalLocked = activeCirculation || copy.condition_status !== 'Lost'; const removalTitle = activeCirculation ? 'Process the return or cancel the reservation before removing this copy.' : copy.condition_status !== 'Lost' ? 'Mark this copy as Lost before removing it.' : 'Remove this Lost copy from active inventory.'; return <tr key={copy.physical_copy_id} className="hover:bg-[#0b5ea2]/5"><td className="px-3 py-4"><input type="checkbox" aria-label={`Select ${copy.accession_number}`} checked={selectedCopyIds.has(copy.physical_copy_id)} onChange={() => toggleCopySelection(copy.physical_copy_id)} className="h-4 w-4 rounded accent-[#0b5ea2]" /></td><td className="px-4 py-4"><p className="font-bold text-[#0b5ea2]">{copy.item_title}</p><p className="mt-1 text-xs text-[#0b5ea2]/60">{copy.authors.join(', ') || copy.category_name || 'No author metadata'}</p></td><td className="px-4 py-4 font-mono text-xs font-bold text-[#0b5ea2]">{copy.accession_number}</td><td className="px-4 py-4 font-mono text-xs text-[#0b5ea2]/80"><p className="font-semibold">{copy.barcode}</p><button type="button" disabled={downloadingBarcodeId !== null} onClick={() => void downloadSingleBarcode(copy.physical_copy_id, copy.accession_number, 'book')} className="mt-1.5 inline-flex items-center gap-1 rounded-[4px] border border-[#0b5ea2]/25 bg-white px-2 py-0.5 font-sans text-[11px] font-semibold text-[#0b5ea2] hover:bg-[#0b5ea2]/10 disabled:opacity-50"><Download size={11} />{downloadingBarcodeId === `book-${copy.physical_copy_id}` ? 'Downloading…' : 'Download barcode'}</button></td><td className="px-4 py-4 text-[#0b5ea2]"><p className="font-bold">{copy.shelf_location} · C{copy.shelf_column} · R{copy.shelf_row}</p><p className="mt-1 font-mono text-[10px] text-[#0b5ea2]/60">{copy.call_number||'Call number pending'}</p><p className="mt-1 text-xs">Dewey: {copy.dewey_code??'Not assigned'}</p></td><td className="px-4 py-4"><ConditionBadge condition={copy.condition_status} /></td><td className="px-4 py-4"><AvailabilityBadge status={copy.availability_status} /></td><td className="px-4 py-4 text-xs text-[#0b5ea2]/70">{formatDate(copy.last_verified_at)}</td><td className="px-4 py-4"><InventoryActions accession={copy.accession_number} actions={[
+            { label: 'Download barcode PNG', description: 'Download Code-128 barcode image', onSelect: () => void downloadSingleBarcode(copy.physical_copy_id, copy.accession_number, 'book') },
+            { label: 'View barcode & QR', description: 'Preview and print asset labels', onSelect: () => setAssetModalTarget({ kind: 'book', id: copy.physical_copy_id }) },
             { label: 'Move copies', description: 'Choose another shelf compartment', onSelect: () => setMoving({kind:'Book',copies:[{id:copy.physical_copy_id,accession:copy.accession_number,shelfLocation:copy.shelf_location,shelfColumn:copy.shelf_column,shelfRow:copy.shelf_row}]}) },
             { label: 'Condition', description: 'Change physical condition', onSelect: () => setSelected(copy) },
             ...(copy.condition_status !== 'Lost' ? [{ label: 'Report lost', disabled: copy.availability_status === 'Borrowed',
@@ -424,6 +609,13 @@ export function InventoryDashboard() {
     {selectedThesis ? <ConditionModal copy={selectedThesis} onClose={() => setSelectedThesis(null)} onSaved={() => loadThesis(thesisFilters)} saveCondition={inventoryApi.auditThesis} /> : null}
     {availabilityTarget ? <AvailabilityConfirmationDialog copy={availabilityTarget} saving={availabilitySaving} error={availabilityError} onCancel={() => { if (!availabilitySaving) setAvailabilityTarget(null) }} onConfirm={() => void confirmAvailabilityChange()} /> : null}
     {thesisAvailabilityTarget ? <AvailabilityConfirmationDialog copy={thesisAvailabilityTarget} saving={availabilitySaving} error={availabilityError} onCancel={() => { if (!availabilitySaving) setThesisAvailabilityTarget(null) }} onConfirm={() => void confirmThesisAvailabilityChange()} /> : null}
+    {assetModalTarget ? (
+      assetModalTarget.kind === 'research' ? (
+        <AssetCodeModal assetType="research" researchInventoryId={assetModalTarget.id} onClose={() => setAssetModalTarget(null)} />
+      ) : (
+        <AssetCodeModal physicalCopyId={assetModalTarget.id} onClose={() => setAssetModalTarget(null)} />
+      )
+    ) : null}
     {removalTarget ? <InventoryRemovalDialog
       key={`${removalTarget.kind}-${removalTarget.id}`}
       target={removalTarget}
