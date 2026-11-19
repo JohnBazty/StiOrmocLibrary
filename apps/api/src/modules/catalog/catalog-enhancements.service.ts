@@ -28,7 +28,7 @@ export async function catalogOptions(publicOnly=false){
  const result:Record<string,unknown>={}
  for(const [kind,spec] of Object.entries(foundation)){if(kind==='locations')continue;result[kind]=await rows(db,`SELECT ${spec.id} AS id,name,lifecycle_status AS status,row_version AS version${kind==='programs'||kind==='courses'?',code':''}${kind==='courses'?',program_id AS "programId"':''}${kind==='types'?',record_kind AS "recordKind"':''}${kind==='locations'?',COALESCE((SELECT column_count FROM floor_plan_shelves s WHERE s.label=name),1) AS "columnCount",COALESCE((SELECT row_count FROM floor_plan_shelves s WHERE s.label=name),1) AS "rowCount"':''} FROM ${spec.table} ${publicOnly?"WHERE lifecycle_status='Active'":''} ORDER BY name`)}
  result.locations=(await listManagedShelves(db,!publicOnly)).map(shelf=>({...shelf,name:shelf.label}))
- result.categories=await rows(db,`SELECT category_id AS id,category_name AS name,'Active' AS status,1 AS version,shelf_location AS "shelfLocation",shelf_column AS "shelfColumn",shelf_row AS "shelfRow" FROM categories ORDER BY category_name`)
+ result.categories=await rows(db,`SELECT category_id AS id,category_name AS name,'Active' AS status,1 AS version,shelf_location AS "shelfLocation",shelf_column AS "shelfColumn",shelf_row AS "shelfRow",record_kind AS "recordKind" FROM categories ORDER BY category_name`)
  return result
 }
 export async function saveFoundation(kindValue:string,recordId:unknown,body:Record<string,unknown>,actor:number){
@@ -128,7 +128,7 @@ export async function stageHoldings(file:Express.Multer.File|undefined,mappings:
  if(!file)throw fail('Choose a holdings file.');if(!Array.isArray(mappings)||!mappings.length||mappings.length>12)throw fail('Confirm the sheet mappings.')
  const sheets=await readHoldings(file)
  const [categories,locations]=await Promise.all([
-  rows(db,"SELECT category_id AS id,category_name AS name,'Active' AS status FROM categories"),
+  rows(db,"SELECT category_id AS id,category_name AS name,'Active' AS status FROM categories WHERE COALESCE(record_kind,'Book')='Book'"),
   rows(db,"SELECT location_id AS id,name,lifecycle_status AS status FROM catalog_locations WHERE lifecycle_status='Active'"),
  ])
  const {items,ignored}=mappedRows(sheets,mappings,{categories,locations} as ImportReferences)
@@ -154,7 +154,12 @@ export async function importBatch(value:unknown){const batchId=id(value),batch=(
 function normalizedData(body:Record<string,unknown>):HoldingsData{return {...Object.fromEntries(holdingsFields.map(f=>[f,f==='accessions'||f==='barcodes'?String(body[f]??'').trim():clean(body[f])])),categoryId:positiveId(body.categoryId),location:clean(body.location),locationId:body.locationId===undefined?undefined:Number(body.locationId),shelfColumn:body.shelfColumn===undefined?undefined:Number(body.shelfColumn),shelfRow:body.shelfRow===undefined?undefined:Number(body.shelfRow),programId:positiveId(body.programId),generateAccessions:body.generateAccessions===true} as HoldingsData}
 async function validateImportReferences(c:Query,data:HoldingsData,needsCopies:boolean){
  if(data.programId&&!(await rows(c,"SELECT 1 FROM catalog_programs WHERE program_id=? AND lifecycle_status='Active'",[data.programId])).length)throw fail('Choose an active program.')
- if(needsCopies){if(!(await rows(c,'SELECT 1 FROM categories WHERE category_id=?',[data.categoryId])).length)throw fail('Choose an existing category.');if(!(await rows(c,"SELECT 1 FROM catalog_locations WHERE name=? AND lifecycle_status='Active'",[data.location])).length)throw fail('Choose an active managed shelf location.')}
+ if(needsCopies){
+  const category=(await rows(c,'SELECT category_id,record_kind FROM categories WHERE category_id=?',[data.categoryId]))[0]
+  if(!category)throw fail('Choose an existing category.')
+  if(category.record_kind&&String(category.record_kind)!=='Book')throw fail('Choose a book category.')
+  if(!(await rows(c,"SELECT 1 FROM catalog_locations WHERE name=? AND lifecycle_status='Active'",[data.location])).length)throw fail('Choose an active managed shelf location.')
+ }
 }
 export async function reviewImport(value:unknown,body:Record<string,unknown>,actor:number){
  const rowId=id(value),decision=String(body.decision),data=normalizedData(body.data as Record<string,unknown>??{}),needsCopies=['new','add'].includes(decision)
@@ -231,8 +236,10 @@ export async function commitImport(value:unknown,actor:number){
    }
    await assignDeweyCopies(c,data.reviewedDewey??null,copyIds.map(id=>({id,version:0})),actor)
    if(data.programId)await c.execute('INSERT INTO catalog_title_programs(title_id,program_id) VALUES (?,?) ON CONFLICT DO NOTHING',[titleId,data.programId])
-   await c.execute("UPDATE catalog_import_rows SET status='Imported',result_json=?::jsonb,row_version=row_version+1,error_text=NULL,updated_at=NOW() WHERE import_row_id=?",[JSON.stringify({titleId,copyIds}),rowId]);await refreshCollectionReview(c);return true
-  });if(saved)imported++}catch(e){const message=e instanceof HttpError?e.message:'The row could not be imported. Review its identifiers and try again.';errors.push({rowId,message,...(e instanceof HttpError?{code:e.code,details:e.details}:{})});await db.execute("UPDATE catalog_import_rows SET error_text=? WHERE import_row_id=? AND status='Ready'",[message,rowId])}
+   await c.execute("UPDATE catalog_import_rows SET status='Imported',result_json=?::jsonb,row_version=row_version+1,error_text=NULL,updated_at=NOW() WHERE import_row_id=?",[JSON.stringify({titleId,copyIds}),rowId]);return true
+  });if(saved)imported++}catch(e){const pgConstraint=(e as {code?:string;message?:string})?.code==='23514'&&typeof (e as {message?:string})?.message==='string'?(e as {message:string}).message:null;const message=e instanceof HttpError?e.message:pgConstraint??'The row could not be imported. Review its identifiers and try again.';errors.push({rowId,message,...(e instanceof HttpError?{code:e.code,details:e.details}:{})});await db.execute("UPDATE catalog_import_rows SET error_text=? WHERE import_row_id=? AND status='Ready'",[message,rowId])}
  }
+ // Refresh collection review once per commit chunk instead of re-scanning the entire catalog on every single row.
+ if(imported>0){try{await transaction(actor,c=>refreshCollectionReview(c))}catch{/* Collection review can refresh on next read without failing already-saved books. */}}
  const remaining=await rows(db,"SELECT COUNT(*) AS total FROM catalog_import_rows WHERE batch_id=? AND status='Ready' AND (error_text IS NULL OR error_text='')",[batchId]);return {imported,remaining:Number(remaining[0].total),errors}
 }

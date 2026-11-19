@@ -366,3 +366,42 @@ it('limits same-copy choices to matching earlier reviewed entries and shows the 
  const choices=screen.getByLabelText('Which earlier entry lists these copies?') as HTMLSelectElement
  expect(Array.from(choices.options).map(option=>option.value)).toEqual(['','1']);expect(screen.getByRole('region',{name:'Compare matching book entries'})).toBeTruthy()
 })
+
+describe('Import bug protections', () => {
+ it('excludes Research/Thesis categories from book import pickers and defaults', async () => {
+  api.options.mockResolvedValue({
+   ...options,
+   categories: [
+    { id: 1, name: 'Literature', status: 'Active', version: 1, recordKind: 'Book' },
+    { id: 25, name: 'Tourism Management', status: 'Active', version: 1, recordKind: 'Research/Thesis' },
+   ],
+  })
+  const needsCategory = row(1, { errors: ['Choose a book category.'], data: { ...row(1).data, categoryId: null } })
+  api.batch.mockResolvedValue({ ...initial, rows: [needsCategory] })
+  await upload()
+  const select = screen.getByLabelText('Category') as HTMLSelectElement
+  expect(Array.from(select.options).map(option => option.text)).toEqual(['Choose category', 'Literature'])
+ })
+
+ it('shows live save progress inside the confirmation card and refreshes shelf options after saving', async () => {
+  let resolveCommit!: (value: { imported: number; remaining: number; errors: Array<{ rowId: number; message: string }> }) => void
+  api.commit.mockImplementation(() => new Promise(resolve => { resolveCommit = resolve }))
+  api.batch.mockResolvedValueOnce(initial).mockResolvedValue(finished)
+  await upload()
+  const card = screen.getByText('Ready to add these books?').closest('div')!
+  fireEvent.click(within(card).getByRole('button', { name: 'Add 5 copies' }))
+  await waitFor(() => expect(within(card).getByText(/Checking books: 2 of 2 ready/)).toBeTruthy())
+  resolveCommit({ imported: 2, remaining: 0, errors: [] })
+  await screen.findByText('This upload is finished')
+  expect(api.options).toHaveBeenCalledTimes(2)
+ })
+
+ it('reports failed rows when Exclude all flagged books cannot update every row', async () => {
+  const flagged = [row(1, { errors: ['Category required.'] }), row(2, { errors: ['Duplicate book.'] })]
+  api.batch.mockResolvedValue({ ...initial, rows: flagged })
+  api.review.mockResolvedValueOnce({ reviewed: true }).mockRejectedValueOnce(new Error('This row changed. Reload before reviewing.'))
+  await upload()
+  fireEvent.click(screen.getByRole('button', { name: /Exclude all 2 duplicates/i }))
+  expect(await screen.findByText(/1 of 2 flagged books could not be skipped.*This row changed/i)).toBeTruthy()
+ })
+})

@@ -52,6 +52,7 @@ export function HoldingsImportPage() {
   const [category, setCategory] = useState('')
   const [shelf, setShelf] = useState('')
   const finalReview = useRef<HTMLDivElement>(null)
+  const errorBanner = useRef<HTMLParagraphElement>(null)
   const running = useRef(false)
   const rowWorking = useRef(false)
   const summary = batch ? importSummary(batch) : null
@@ -81,7 +82,9 @@ export function HoldingsImportPage() {
       if (!active) return
       if (settings.status === 'fulfilled') {
         setOptions(settings.value)
-        const categories = settings.value.categories.filter((item) => item.status === 'Active' || !item.status)
+        const categories = settings.value.categories.filter(
+          (item) => (item.status === 'Active' || !item.status) && (!item.recordKind || item.recordKind === 'Book'),
+        )
         const shelves = settings.value.locations.filter((item) => item.status === 'Active')
         if (categories.length === 1) setCategory(String(categories[0].id))
         if (shelves.length === 1) setShelf(shelves[0].name)
@@ -121,6 +124,11 @@ export function HoldingsImportPage() {
 
   async function reload(batchId = batch?.id) {
     if (batchId) setBatch(await enhancedCatalog.batch(Number(batchId)))
+    try {
+      setOptions(await enhancedCatalog.options(true))
+    } catch {
+      /* Keep current shelf/category options if a background refresh fails. */
+    }
     await refreshSavedLists()
   }
 
@@ -180,10 +188,12 @@ export function HoldingsImportPage() {
     const batchId = batch.id
     await act(async () => {
       let resolved = 0
+      let succeeded = 0
+      const failures: string[] = []
       const targets = summary.attention
       for (let start = 0; start < targets.length; start += 6) {
         const slice = targets.slice(start, start + 6)
-        await Promise.allSettled(
+        const results = await Promise.allSettled(
           slice.map((row) => {
             const placement = importPlacement(row, options)
             return enhancedCatalog.review({
@@ -199,16 +209,27 @@ export function HoldingsImportPage() {
             })
           }),
         )
+        for (const result of results) {
+          if (result.status === 'fulfilled') succeeded += 1
+          else failures.push(result.reason instanceof Error ? result.reason.message : 'Needs correction.')
+        }
         resolved += slice.length
         setNotice(`Updating flagged books: ${resolved} of ${targets.length} processed…`)
       }
       await reload(batchId)
-      setFilter('all')
       setPage(1)
+      if (failures.length) {
+        setFilter('attention')
+        const firstReason = failures[0]
+        throw new Error(
+          `${failures.length} of ${targets.length} flagged ${targets.length === 1 ? 'book' : 'books'} could not be ${decision === 'new' ? 'approved' : 'skipped'} (${succeeded} updated). ${firstReason} Open the flagged rows to fix them.`,
+        )
+      }
+      setFilter('all')
       setNotice(
         decision === 'new'
-          ? `Approved ${targets.length} flagged books as ready to add. Scroll down or click "Jump to Add books" to commit them.`
-          : `Skipped ${targets.length} flagged books.`,
+          ? `Approved ${succeeded} flagged books as ready to add. Scroll down or click "Jump to Add books" to commit them.`
+          : `Skipped ${succeeded} flagged books.`,
       )
     })
   }
@@ -425,11 +446,11 @@ export function HoldingsImportPage() {
       </ol>
 
       {error ? (
-        <p role="alert" className="auth-error rounded-xl border border-red-300 bg-red-50 p-4 text-sm font-semibold text-red-900 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200">
+        <p ref={errorBanner} role="alert" className="auth-error rounded-xl border border-red-300 bg-red-50 p-4 text-sm font-semibold text-red-900 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200">
           {error}
         </p>
       ) : null}
-      {notice ? (
+      {notice && !busy ? (
         <p
           role="status"
           data-tone={finished ? 'success' : undefined}
@@ -875,7 +896,7 @@ export function HoldingsImportPage() {
                       {summary.attention.length === 1
                         ? 'book with an unanswered question'
                         : 'books with unanswered questions'}{' '}
-                      will stay in this saved list for later (or click &ldquo;Approve all {summary.attention.length} as ready books&rdquo; above).
+                      will stay in this saved list for later (or click &ldquo;Exclude all {summary.attention.length} duplicates (do not add)&rdquo; above).
                     </p>
                   ) : null}
                   {summary.failedReady ? (
@@ -883,16 +904,36 @@ export function HoldingsImportPage() {
                       Books with save errors will stay in this saved list. Other ready books can still be added.
                     </p>
                   ) : null}
-                  <Button
-                    disabled={locked || !summary.ready.length || shelfShortage}
-                    onClick={() => void addBooks()}
-                  >
-                    {busy
-                      ? 'Saving your books…'
-                      : summary.copies
-                        ? `Add ${summary.copies} ${summary.copies === 1 ? 'copy' : 'copies'}`
-                        : 'Save reviewed choices'}
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Button
+                      disabled={locked || !summary.ready.length || shelfShortage}
+                      onClick={() => void addBooks()}
+                    >
+                      {busy
+                        ? 'Saving your books…'
+                        : summary.copies
+                          ? `Add ${summary.copies} ${summary.copies === 1 ? 'copy' : 'copies'}`
+                          : 'Save reviewed choices'}
+                    </Button>
+                    {busy && notice ? (
+                      <p role="status" className="text-sm font-semibold text-[#0b5ea2] dark:text-sky-300">
+                        {notice}
+                      </p>
+                    ) : null}
+                  </div>
+                  {error && !busy ? (
+                    <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-900 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200">
+                      Save stopped —{' '}
+                      <button
+                        type="button"
+                        className="underline"
+                        onClick={() => errorBanner.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })}
+                      >
+                        view the error message above
+                      </button>
+                      .
+                    </p>
+                  ) : null}
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     Nothing is added to the library until you press this button. Keep this page open until adding finishes. If you leave, return to this saved list to continue; completed entries will not be added twice.
                   </p>

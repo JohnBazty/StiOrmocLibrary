@@ -8,7 +8,7 @@ type Props = { sheets: Sheet[]; mapping: Mapping[]; options: Options; category: 
   onMapping: (sheet: string, patch: Partial<Mapping>) => void; onInclude: (sheet: Sheet, include: boolean) => void }
 
 export function HoldingsFileQuestions({ sheets, mapping, options, category, shelf, disabled, onCategory, onShelf, onMapping, onInclude }: Props) {
-  const categories = options.categories.filter(item => item.status === 'Active' || !item.status)
+  const categories = options.categories.filter(item => (item.status === 'Active' || !item.status) && (!item.recordKind || item.recordKind === 'Book'))
   const locations = options.locations.filter(item => item.status === 'Active')
   const needsCategory = mapping.some(item => !item.categoryId && !item.columns.categoryName)
   const needsShelf = mapping.some(item => !item.location && !item.columns.shelfLocation)
