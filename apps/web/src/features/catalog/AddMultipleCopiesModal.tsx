@@ -159,7 +159,7 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
         category_id: data.categoryId, shelf_location: data.bookLocation,
         locationId: data.locationId, shelfColumn: Number(data.shelfColumn), shelfRow: Number(data.shelfRow),
         cover_image_data: coverImageData,
-        classification: data.classification, edition: data.edition, volumes: data.volumes, pages: data.pages, remarks: data.remarks,
+        classification: data.callNumber, edition: data.edition, volumes: data.volumes, pages: data.pages, remarks: data.remarks,
         fund_source: data.fundSource, fund_detail: data.fundDetail, cost_php: data.costPhp, received_on: data.receivedOn,
       })
       setBatch(result)
@@ -219,15 +219,14 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
           <summary className="min-h-11 cursor-pointer font-semibold text-[#0b5ea2]">More book details</summary>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <Field label="Publication year" name="publicationYear" value={metadata.publicationYear} onChange={(publicationYear) => setMetadata((current) => ({ ...current, publicationYear }))} /><Field label="Publisher" name="publisher" value={metadata.publisher} onChange={(publisher) => setMetadata((current) => ({ ...current, publisher }))} />
-        <p className="self-center text-sm text-[#0b5ea2]/70">Supplier quotation optional. You can attach one from the catalog after saving this book.</p>
-        <Field label="Call number" name="callNumber" />
+        <p className="self-center text-sm text-[#0b5ea2]/70 sm:col-span-2">Supplier quotation optional. You can attach one from the catalog after saving this book.</p>
         <fieldset className="grid gap-4 rounded-xl border border-[#0b5ea2]/15 p-4 sm:col-span-2 sm:grid-cols-2"><legend className="px-1 text-sm font-black text-[#0b5ea2]">Book register</legend>
-          <Field label="Class" name="classification" /><Field label="Edition" name="edition" />
+          <Field label="Call number" name="callNumber" /><Field label="Edition" name="edition" />
           <Field label="Volumes" name="volumes" /><label><span className={labelClass}>Pages</span><input name="pages" type="number" min="1" max="100000" className={fieldClass} /></label>
           <label><span className={labelClass}>Source of fund</span><select name="fundSource" defaultValue="" className={fieldClass}><option value="">Not recorded</option>{FUND_SOURCES.map((source) => <option key={source}>{source}</option>)}</select></label><Field label="Fund details" name="fundDetail" />
           <label><span className={labelClass}>Cost price (PHP, each copy)</span><input name="costPhp" type="number" min="0" max="999999.99" step="0.01" inputMode="decimal" className={fieldClass} /></label><label><span className={labelClass}>Date received</span><input name="receivedOn" type="date" className={fieldClass} /></label>
           <label className="sm:col-span-2"><span className={labelClass}>Remarks</span><textarea name="remarks" maxLength={2000} rows={2} className="w-full rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] p-3 text-sm text-[#0b5ea2] outline-none focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/10" /></label>
-          <p className="text-xs text-[#0b5ea2]/70 sm:col-span-2">Class, edition, volumes, pages and remarks are saved when this entry creates a new title. Fund, cost and date received are saved on every copy.</p>
+          <p className="text-xs text-[#0b5ea2]/70 sm:col-span-2">Call number, edition, volumes, pages and remarks are saved when this entry creates a new title. Fund, cost and date received are saved on every copy.</p>
         </fieldset>
           </div>
         </details>
@@ -235,7 +234,7 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
           <h3 id="book-review-title" ref={reviewHeading} tabIndex={-1} className="font-bold outline-none">Review book and copies</h3>
           <p className="text-sm">Check this entry before adding it. Changes to the draft or lookup results require another review. Existing catalog details are preserved when the ISBN already belongs to a book.</p>
           <dl className="grid gap-3 text-sm sm:grid-cols-2">
-            {[['Title', review.data.title], ['Author', review.data.author], ['ISBN', normalizeIsbnInput(isbn)], ['Copies', copyQuantity], ['Category', allCategories.find(item => String(item.categoryId) === categoryId)?.categoryName], ['Shelf placement', `${bookLocation}, Column ${shelfColumn}, Row ${shelfRow}`], ['Dewey', dewey?.code ? `${dewey.code}  -  ${dewey.source === 'manual' ? 'Entered manually' : 'Open Library'}  -  Reviewed` : 'Unassigned'], ['Cover', coverFile?.name ?? 'No new cover selected'], ['Publication year', review.data.publicationYear], ['Publisher', review.data.publisher], ['Call number', review.data.callNumber], ['Class', review.data.classification], ['Edition', review.data.edition], ['Volumes', review.data.volumes], ['Pages', review.data.pages], ['Source of fund', review.data.fundSource], ['Fund details', review.data.fundDetail], ['Cost per copy (PHP)', review.data.costPhp], ['Date received', review.data.receivedOn], ['Remarks', review.data.remarks]].map(([label, value]) => <div key={String(label)}><dt className="font-semibold">{String(label)}</dt><dd className="break-words">{String(value || 'Not recorded')}</dd></div>)}
+            {[['Title', review.data.title], ['Author', review.data.author], ['ISBN', normalizeIsbnInput(isbn)], ['Copies', copyQuantity], ['Category', allCategories.find(item => String(item.categoryId) === categoryId)?.categoryName], ['Shelf placement', `${bookLocation}, Column ${shelfColumn}, Row ${shelfRow}`], ['Dewey', dewey?.code ? `${dewey.code}  -  ${dewey.source === 'manual' ? 'Entered manually' : 'Open Library'}  -  Reviewed` : 'Unassigned'], ['Cover', coverFile?.name ?? 'No new cover selected'], ['Publication year', review.data.publicationYear], ['Publisher', review.data.publisher], ['Call number', review.data.callNumber], ['Edition', review.data.edition], ['Volumes', review.data.volumes], ['Pages', review.data.pages], ['Source of fund', review.data.fundSource], ['Fund details', review.data.fundDetail], ['Cost per copy (PHP)', review.data.costPhp], ['Date received', review.data.receivedOn], ['Remarks', review.data.remarks]].map(([label, value]) => <div key={String(label)}><dt className="font-semibold">{String(label)}</dt><dd className="break-words">{String(value || 'Not recorded')}</dd></div>)}
           </dl>
           <button type="button" disabled={saving} onClick={() => setReview(null)} className="min-h-11 rounded-xl border border-[#0b5ea2]/25 px-4 text-sm font-semibold">Keep editing</button>
         </section> : null}

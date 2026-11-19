@@ -167,7 +167,9 @@ describe('AddMultipleCopiesModal', () => {
     fireEvent.change(screen.getByLabelText(/Author \*/i), { target: { value: 'Robert C. Martin' } })
     fireEvent.change(screen.getByLabelText(/ISBN \*/i), { target: { value: '9780132350884' } })
     fireEvent.change(screen.getByLabelText(/Category \*/i), { target: { value: '1' } })
-    fireEvent.change(screen.getByLabelText(/^Class/i), { target: { value: '005.1' } })
+    expect(screen.queryByLabelText(/^Class/i)).toBeNull()
+    expect(screen.getAllByLabelText(/^Call number/i)).toHaveLength(1)
+    fireEvent.change(screen.getByLabelText(/^Call number/i), { target: { value: '005.1' } })
     fireEvent.change(screen.getByLabelText(/^Edition/i), { target: { value: '1st ed.' } })
     fireEvent.change(screen.getByLabelText(/^Volumes/i), { target: { value: '1 vol.' } })
     fireEvent.change(screen.getByLabelText(/^Pages/i), { target: { value: '464' } })
@@ -180,7 +182,7 @@ describe('AddMultipleCopiesModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /Review book and copies/i }))
     fireEvent.click(await screen.findByRole('button', { name: /^Add book and \d+ cop/ }))
     await waitFor(() => expect(api.createBulkBook).toHaveBeenLastCalledWith(expect.objectContaining({
-      classification: '005.1', edition: '1st ed.', volumes: '1 vol.', pages: '464', remarks: 'Donated set',
+      call_number: '005.1', classification: '005.1', edition: '1st ed.', volumes: '1 vol.', pages: '464', remarks: 'Donated set',
       fund_source: 'Donation', fund_detail: 'Alumni', cost_php: '450', received_on: '2026-11-02',
     })))
   })
