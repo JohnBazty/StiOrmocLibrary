@@ -6,6 +6,7 @@ import { requireLibraryActor } from '../../core/library-permissions.ts'
 import { validateAttendanceCredential } from './attendance-credential.service.ts'
 import { attendancePurposes } from './attendance.validation.ts'
 import { manilaDate, localTimestamp } from './attendance-intervals.ts'
+import { decodeClosureReason, manilaNowParts } from '../notifications/library-schedule.validation.ts'
 import { evaluateLibraryState, parseAttendancePolicy, parseOperationalEvent, type AttendancePolicy, type OperationalEvent } from './attendance-operations.policy.ts'
 
 type Query=Pick<PoolConnection,'execute'>
@@ -18,7 +19,13 @@ export async function attendancePolicy(q:Query):Promise<AttendancePolicy>{
 export async function libraryState(q:Query,now=new Date()) {
  const date=manilaDate(now),weekday=((new Date(`${date}T00:00:00Z`).getUTCDay()+6)%7)+1
  const policy=await attendancePolicy(q),schedule=(await rows(q,'SELECT is_open,opens_at,closes_at FROM library_operating_schedule WHERE day_of_week=?',[weekday]))[0]
- const closed=(await rows(q,'SELECT closed_date FROM library_closed_days WHERE closed_date=?',[date])).length>0
+ const closedRows=await rows(q,'SELECT * FROM library_closed_days WHERE closed_date=?',[date])
+ const nowHHMM=manilaNowParts(now).time
+ const closed=closedRows.some(row=>{
+  const decoded=decodeClosureReason(String(row.reason??''))
+  if(decoded.startsAt&&decoded.endsAt)return nowHHMM>=decoded.startsAt&&nowHHMM<decoded.endsAt
+  return true
+ })
  const base=Number((await rows(q,'SELECT seat_capacity FROM library_profile_settings WHERE settings_id=1'))[0]?.seat_capacity??80)
  const events=await rows(q,"SELECT * FROM library_operational_events WHERE lifecycle_status='Active' AND starts_at<=? AND ends_at>? ORDER BY starts_at,event_id",[now,now]) as OperationalEvent[]
  const state=evaluateLibraryState(now,policy,schedule as any,closed,base,events)

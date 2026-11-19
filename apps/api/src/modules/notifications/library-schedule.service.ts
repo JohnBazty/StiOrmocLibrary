@@ -3,7 +3,12 @@ import type { Pool, PoolConnection, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { requireLibraryActor } from '../../core/library-permissions.ts'
 import { HttpError } from '../../core/http-error.ts'
-import { scheduleToday, validateLibrarySchedule } from './library-schedule.validation.ts'
+import {
+  decodeClosureReason,
+  encodeClosureReason,
+  scheduleToday,
+  validateLibrarySchedule,
+} from './library-schedule.validation.ts'
 
 type Query = Pick<PoolConnection, 'execute'>
 export function createLibraryScheduleService(database: Pool = db, clock = () => new Date()) {
@@ -13,7 +18,12 @@ export function createLibraryScheduleService(database: Pool = db, clock = () => 
     const data = {
       timezone: 'Asia/Manila',
       weekly: weekly.map(day => ({ dayOfWeek: Number(day.day_of_week), isOpen: Boolean(day.is_open), opensAt: day.opens_at ? String(day.opens_at).slice(0, 5) : null, closesAt: day.closes_at ? String(day.closes_at).slice(0, 5) : null })),
-      upcomingClosures: closures.map(closure => ({ date: String(closure.date), reason: String(closure.reason) })),
+      upcomingClosures: closures.map(closure => {
+        const decoded = decodeClosureReason(String(closure.reason))
+        return decoded.startsAt && decoded.endsAt
+          ? { date: String(closure.date), reason: decoded.reason, startsAt: decoded.startsAt, endsAt: decoded.endsAt }
+          : { date: String(closure.date), reason: decoded.reason }
+      }),
     }
     return { ...data, revision: createHash('sha256').update(JSON.stringify(data)).digest('hex') }
   }
@@ -41,7 +51,10 @@ export function createLibraryScheduleService(database: Pool = db, clock = () => 
         for (const closure of before.upcomingClosures) {
           if (!input.upcomingClosures.some(day => day.date === closure.date)) await c.execute('DELETE FROM library_closed_days WHERE closed_date=?::date', [closure.date])
         }
-        for (const closure of input.upcomingClosures) await c.execute('INSERT INTO library_closed_days(closed_date,reason,created_by_user_id) VALUES(?::date,?,(SELECT user_id FROM accounts WHERE account_id=?)) ON CONFLICT(closed_date) DO UPDATE SET reason=EXCLUDED.reason', [closure.date, closure.reason, accountId])
+        for (const closure of input.upcomingClosures) {
+          const encoded = encodeClosureReason(closure.reason, closure.startsAt, closure.endsAt)
+          await c.execute('INSERT INTO library_closed_days(closed_date,reason,created_by_user_id) VALUES(?::date,?,(SELECT user_id FROM accounts WHERE account_id=?)) ON CONFLICT(closed_date) DO UPDATE SET reason=EXCLUDED.reason', [closure.date, encoded, accountId])
+        }
         const saved = await current(c)
         await c.commit()
         return saved

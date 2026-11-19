@@ -3,7 +3,7 @@ import { AdminRightQuickSidebar } from './AdminRightQuickSidebar'
 import { librarianNav } from './admin-navigation'
 import { AttendanceConfirmationPrompt } from '../features/attendance/AttendanceConfirmationPrompt'
 import {
-  Archive,
+  AlertTriangle,
   BadgeCheck,
   Bell,
   BookMarked,
@@ -14,6 +14,7 @@ import {
   FileText,
   LayoutDashboard,
   LibraryBig,
+  Lock,
   LogOut,
   Menu,
   Map,
@@ -26,7 +27,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { cn } from '../components/ui'
 import { getCurrentIdentity } from '../features/auth/auth-storage'
@@ -36,7 +37,39 @@ import { useMockAuth } from '../features/inventory/MockAuthContext'
 import { ThemeToggle } from '../features/theme/ThemeToggle'
 import { SessionActivity } from '../features/auth/SessionActivity'
 import { NotificationShortcut } from '../features/notifications/NotificationShortcut'
+import { notificationApi } from '../features/notifications/notification-api'
+import { formatManilaTime12 } from '../features/notifications/LibrarySchedulePage'
+import type { ManagedLibrarySchedule } from '../features/notifications/types'
 import { SidebarAccountCard } from './SidebarAccountCard'
+
+function getPatronLibraryClosedReason(schedule: ManagedLibrarySchedule | null, now = new Date()): string | null {
+  if (!schedule) return null
+  const shifted = new Date(now.getTime() + 8 * 3600_000)
+  const dateKey = shifted.toISOString().slice(0, 10)
+  const timeHHMM = shifted.toISOString().slice(11, 16)
+  const jsDay = shifted.getUTCDay()
+  const dayOfWeek = jsDay === 0 ? 7 : jsDay
+
+  const closure = schedule.upcomingClosures.find((c) => c.date === dateKey)
+  if (closure) {
+    if (closure.startsAt && closure.endsAt) {
+      if (timeHHMM >= closure.startsAt && timeHHMM < closure.endsAt) {
+        return `${closure.reason} (${formatManilaTime12(closure.startsAt)} – ${formatManilaTime12(closure.endsAt)} Manila time)`
+      }
+    } else {
+      return `${closure.reason} (Closed all day)`
+    }
+  }
+
+  const rule = schedule.weekly.find((d) => d.dayOfWeek === dayOfWeek)
+  if (!rule || !rule.isOpen || !rule.opensAt || !rule.closesAt) {
+    return 'Scheduled weekly closed day'
+  }
+  if (timeHHMM < rule.opensAt || timeHHMM >= rule.closesAt) {
+    return `Outside library operating hours (${formatManilaTime12(rule.opensAt)} – ${formatManilaTime12(rule.closesAt)} Manila time)`
+  }
+  return null
+}
 
 type Role = 'student' | 'faculty' | 'admin' | 'librarian' | 'staff'
 type NavItem = { label: string; to: string; icon: LucideIcon; section?: string }
@@ -127,6 +160,37 @@ export function PortalLayout({ role }: { role: Role }) {
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
   const [confirmSignOut, setConfirmSignOut] = useState(false)
   const isStaffWorkspace = role === 'librarian' || role === 'admin' || role === 'staff'
+  const isPatronWorkspace = role === 'student' || role === 'faculty'
+  const [librarySchedule, setLibrarySchedule] = useState<ManagedLibrarySchedule | null>(null)
+  const [clockTick, setClockTick] = useState(() => Date.now())
+
+  useEffect(() => {
+    if (!isPatronWorkspace) return
+    const controller = new AbortController()
+    const loadSchedule = () => {
+      void notificationApi
+        .librarySchedule(controller.signal)
+        .then((data) => {
+          if (!controller.signal.aborted) setLibrarySchedule(data)
+        })
+        .catch(() => {})
+    }
+    loadSchedule()
+    const timer = window.setInterval(() => {
+      setClockTick(Date.now())
+      loadSchedule()
+    }, 60_000)
+    return () => {
+      controller.abort()
+      window.clearInterval(timer)
+    }
+  }, [isPatronWorkspace])
+
+  const viewOnlyReason = useMemo(
+    () => (isPatronWorkspace ? getPatronLibraryClosedReason(librarySchedule, new Date(clockTick)) : null),
+    [isPatronWorkspace, librarySchedule, clockTick],
+  )
+  const isViewOnly = Boolean(viewOnlyReason)
   const [signingOut, setSigningOut] = useState(false)
   const [signOutError, setSignOutError] = useState('')
   const location = useLocation()
@@ -185,9 +249,38 @@ export function PortalLayout({ role }: { role: Role }) {
           </div>
         </header>
         {signOutError && <p role="alert" className="m-4 rounded-[8px] p-3 text-sm">{signOutError}</p>}
-        <SessionActivity /><main className="portal-content mx-auto min-w-0 max-w-[1500px] p-4 sm:p-6 lg:p-8"><Outlet /></main>
-        {role !== 'admin' ? <AttendanceConfirmationPrompt /> : null}
-        {role !== 'admin' ? <AttendanceFab role={role} /> : null}
+        <SessionActivity />
+        {isViewOnly ? (
+          <div
+            role="status"
+            data-tone="warning"
+            className="mx-4 mt-4 flex flex-wrap items-start gap-3 rounded-[8px] border border-[#fecaca] bg-[#fef2f2] px-4 py-3 text-sm text-[#991b1b] sm:mx-6 lg:mx-8 dark:border-red-900/50 dark:bg-red-950/35 dark:text-red-200"
+          >
+            <Lock size={18} className="mt-0.5 shrink-0 text-[#b42318] dark:text-red-400" />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">
+                Library Closed — View-Only Mode ({viewOnlyReason})
+              </p>
+              <p className="mt-0.5 text-xs opacity-90">
+                Borrowing, reservations, check-ins, and printing transactions are disabled while the library is closed. You can continue viewing the catalog, your history, and library schedule.
+              </p>
+            </div>
+            <NavLink
+              to={`/${role}/library-schedule`}
+              className="inline-flex min-h-[34px] items-center gap-1.5 rounded-[6px] border border-red-300 bg-white px-3 text-xs font-semibold text-[#991b1b] hover:bg-red-50 dark:border-red-800 dark:bg-red-950/60 dark:text-red-100"
+            >
+              <AlertTriangle size={13} /> View library schedule
+            </NavLink>
+          </div>
+        ) : null}
+        <main
+          data-view-only={isViewOnly ? 'true' : undefined}
+          className="portal-content mx-auto min-w-0 max-w-[1500px] p-4 sm:p-6 lg:p-8"
+        >
+          <Outlet />
+        </main>
+        {role !== 'admin' && !isViewOnly ? <AttendanceConfirmationPrompt /> : null}
+        {role !== 'admin' && !isViewOnly ? <AttendanceFab role={role} /> : null}
       </div>
       {isStaffWorkspace ? (
         <AdminRightQuickSidebar

@@ -182,22 +182,26 @@ export function AdminRightQuickSidebar({
 
   // Map closures and weekly operating rules
   const closureByDate = useMemo(() => {
-    const map = new Map<string, string>()
+    const map = new Map<string, { reason: string; startsAt?: string | null; endsAt?: string | null }>()
     for (const closure of schedule?.upcomingClosures ?? []) {
-      map.set(closure.date, closure.reason)
+      map.set(closure.date, { reason: closure.reason, startsAt: closure.startsAt, endsAt: closure.endsAt })
     }
     return map
   }, [schedule])
 
   const getDayOperatingInfo = useCallback(
     (dateKey: string) => {
-      const explicitReason = closureByDate.get(dateKey)
-      if (explicitReason) {
+      const explicit = closureByDate.get(dateKey)
+      if (explicit) {
+        const timeWindow =
+          explicit.startsAt && explicit.endsAt
+            ? `${formatClock12Hour(explicit.startsAt, '08:00')} – ${formatClock12Hour(explicit.endsAt, '17:00')}`
+            : 'All day'
         return {
           isClosed: true,
           isDatedClosure: true,
-          label: 'Closed (Holiday / Maintenance)',
-          detail: explicitReason,
+          label: `Closed (${timeWindow})`,
+          detail: explicit.reason,
         }
       }
       const [y, m, d] = dateKey.split('-').map(Number)
@@ -254,11 +258,16 @@ export function AdminRightQuickSidebar({
 
     // 1. Dated closures from Library Hours
     for (const closure of schedule?.upcomingClosures ?? []) {
+      const windowText =
+        closure.startsAt && closure.endsAt
+          ? `${formatClock12Hour(closure.startsAt, '08:00')} – ${formatClock12Hour(closure.endsAt, '17:00')}`
+          : 'All day'
       push(closure.date, {
         id: `closure-${closure.date}`,
         kind: 'closure',
         title: 'Library Closure Flag',
-        subtitle: closure.reason,
+        subtitle: `${closure.reason} (${windowText})`,
+        timeLabel: windowText,
         badgeText: 'Closed',
         tone: 'error',
         actionPath: schedulePath,

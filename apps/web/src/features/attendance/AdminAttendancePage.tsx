@@ -21,6 +21,7 @@ import {
   StatCard,
   StatusBadge,
 } from '../../components/ui'
+import { formatManilaTime12, formatPhDate } from '../notifications/LibrarySchedulePage'
 import {
   attendanceApi,
   type AcademicTerm,
@@ -551,10 +552,10 @@ export function AdminAttendancePage() {
                       <p className="mt-0.5 text-xs text-[var(--sl-text-muted)]">{r.school_id}</p>
                     </td>
                     <td className="px-5 py-3.5 text-xs font-medium text-[var(--sl-text-secondary)]">{r.role}</td>
-                    <td className="px-5 py-3.5 text-xs tabular-nums">{r.attendance_date}</td>
-                    <td className="px-5 py-3.5 text-xs tabular-nums">{r.time_in}</td>
+                    <td className="px-5 py-3.5 text-xs tabular-nums">{formatPhDate(r.attendance_date, 'medium')}</td>
+                    <td className="px-5 py-3.5 text-xs tabular-nums">{formatManilaTime12(r.time_in)}</td>
                     <td className="px-5 py-3.5 text-xs tabular-nums">
-                      <p>{r.time_out ?? '—'}</p>
+                      <p>{r.time_out ? formatManilaTime12(r.time_out) : '—'}</p>
                       {r.checkout_source === 'Automatic closing' ? (
                         <p className="mt-0.5 text-[11px] text-[var(--sl-text-muted)]">Automatic closing checkout</p>
                       ) : null}

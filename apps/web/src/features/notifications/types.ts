@@ -6,7 +6,7 @@ export type NotificationList = { items: NotificationItem[]; unreadCount: number;
 export type LibrarySchedule = {
   timezone: string
   weekly: Array<{ dayOfWeek: number; isOpen: boolean; opensAt: string | null; closesAt: string | null }>
-  upcomingClosures: Array<{ date: string; reason: string }>
+  upcomingClosures: Array<{ date: string; reason: string; startsAt?: string | null; endsAt?: string | null }>
 }
 export type ManagedLibrarySchedule = LibrarySchedule & { revision: string }
 export type Announcement = {

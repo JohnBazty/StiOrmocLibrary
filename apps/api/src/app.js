@@ -36,6 +36,7 @@ import { adminPrintingV1Router, userPrintingV1Router } from './modules/printing/
 import { adminClearanceV1Router, userClearanceV1Router } from './modules/clearance/clearance.routes.ts'
 import { adminAnnouncementsV1Router, userNotificationsV1Router } from './modules/notifications/notifications.routes.ts'
 import { libraryScheduleRouter } from './modules/notifications/library-schedule.routes.ts'
+import { requireLibraryOpenForUserTransactions } from './modules/notifications/library-schedule-guard.ts'
 import { adminFinesV1Router, userFinesV1Router } from './modules/fines/fines.routes.ts'
 import { adminDashboardV1Router, userDashboardV1Router } from './modules/dashboard/dashboard.routes.ts'
 import { liveReportsRouter, workspaceTasksRouter } from './modules/reports/live-reports.routes.ts'
@@ -150,22 +151,23 @@ export function createApp() {
   app.use('/api/v1/admin/catalog', authenticateJwt, requireLibraryPermission('library.manage'), catalogAdminRouter)
   app.use('/api/v1/admin/invoices', authenticateJwt, requireLibraryPermission('library.manage'), archivedInvoiceRouter)
   app.use('/api/v1/invoices', authenticateJwt, requireJwtRoles('Student', 'Faculty'), archivedInvoiceRouter)
-  app.use('/api/v1/reservations', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userReservationsV1Router)
-  app.use('/api/v1/borrowing-schedules', requireJwtRoles('Student', 'Faculty'), createBorrowingScheduleRouter())
-  app.use('/api/v1/borrowing', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userCirculationRouter)
-  app.use('/api/v1/borrowing', requireJwtRoles('Student','Faculty'),userInLibraryRouter)
+  const enforceLibraryOpen = requireLibraryOpenForUserTransactions()
+  app.use('/api/v1/reservations', authenticateJwt, requireJwtRoles('Student', 'Faculty'), enforceLibraryOpen, userReservationsV1Router)
+  app.use('/api/v1/borrowing-schedules', requireJwtRoles('Student', 'Faculty'), enforceLibraryOpen, createBorrowingScheduleRouter())
+  app.use('/api/v1/borrowing', authenticateJwt, requireJwtRoles('Student', 'Faculty'), enforceLibraryOpen, userCirculationRouter)
+  app.use('/api/v1/borrowing', requireJwtRoles('Student','Faculty'), enforceLibraryOpen, userInLibraryRouter)
   app.use('/api/v1/admin/circulation-desk',requireLibraryPermission('desk.operate'),deskCirculationRouter)
-  app.use('/api/v1/borrow', authenticateJwt, requireJwtRoles('Student', 'Faculty'), borrowCartRouter)
-  app.use('/api/v1/circulation', authenticateJwt, requireJwtRoles('Student', 'Faculty', 'Librarian', 'Staff'), circulationRequestRouter)
+  app.use('/api/v1/borrow', authenticateJwt, requireJwtRoles('Student', 'Faculty'), enforceLibraryOpen, borrowCartRouter)
+  app.use('/api/v1/circulation', authenticateJwt, requireJwtRoles('Student', 'Faculty', 'Librarian', 'Staff'), enforceLibraryOpen, circulationRequestRouter)
   app.use('/api/v1/admin/reservations', authenticateJwt, requireLibraryPermission('desk.operate'), adminReservationsV1Router)
   app.use('/api/v1/admin/borrowing-schedules', createAdminBorrowingScheduleRouter())
   app.use('/api/v1/admin/attendance', authenticateJwt, requireLibraryPermission('desk.operate'), adminAttendanceV1Router)
-  app.use('/api/v1/attendance', authenticateJwt, requireJwtRoles('Librarian', 'Student', 'Faculty'), userAttendanceV1Router)
+  app.use('/api/v1/attendance', authenticateJwt, requireJwtRoles('Librarian', 'Student', 'Faculty'), enforceLibraryOpen, userAttendanceV1Router)
   app.use('/api/v1/admin/users', authenticateJwt, requireLibraryPermission('accounts.manage'), adminUsersV1Router)
   app.use('/api/v1/admin/notifications', requireLibraryPermission('accounts.manage'), adminNotificationsRouter)
-  app.use('/api/v1/printing', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userPrintingV1Router)
+  app.use('/api/v1/printing', authenticateJwt, requireJwtRoles('Student', 'Faculty'), enforceLibraryOpen, userPrintingV1Router)
   app.use('/api/v1/clearance', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userClearanceV1Router)
-  app.use('/api/v1/fines', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userFinesV1Router)
+  app.use('/api/v1/fines', authenticateJwt, requireJwtRoles('Student', 'Faculty'), enforceLibraryOpen, userFinesV1Router)
   app.use('/api/v1/notifications', authenticateJwt, requireJwtRoles('Student', 'Faculty', 'Librarian', 'Staff', 'Admin'), userNotificationsV1Router)
   app.use('/api/v1/library-schedule', authenticateJwt, requireJwtRoles('Student', 'Faculty', 'Librarian', 'Staff', 'Admin'), libraryScheduleRouter)
   app.use('/api/v1/dashboard', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userDashboardV1Router)
