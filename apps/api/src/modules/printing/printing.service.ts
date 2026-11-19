@@ -1,6 +1,6 @@
 import { requireOperationalService } from '../attendance/attendance-operations.service.ts'
-import type { Pool, ResultSetHeader, RowDataPacket } from '../../config/db.js'
-import { randomBytes } from 'node:crypto'
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { db } from '../../config/db.js'
 import { excluded } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
@@ -9,8 +9,21 @@ import { inspectPrintDocument } from './printing.document.ts'
 import { parseFinanceFilters, parseNewInkStock, parsePrintRequest, parseQueueFilters, parseRestock, parseServiceStatus, parseStatusUpdate, parseStockMovement } from './printing.validation.ts'
 import { PrintingRepository, printingRepository } from './printing.repository.ts'
 import { notifyLibrarians } from '../notifications/library-alerts.ts'
+import { insertUserNotice, rolePath } from '../notifications/user-notices.ts'
 
 type Actor = { schoolId?: string; role?: string }
+
+/** One notice per user with an open print request for this switch; runs on the caller's transaction connection. */
+export async function notifyPrintingServiceChange(q: Pick<PoolConnection, 'execute'>, accepting: boolean, reason: string | null) {
+  const [users] = await q.execute<RowDataPacket[]>(`SELECT DISTINCT pr.user_id,u.user_role FROM print_requests pr JOIN users u ON u.user_id=pr.user_id WHERE pr.job_status NOT IN ('Completed','Cancelled')`)
+  const event = randomUUID(), publicReason = String(reason ?? '').trim()
+  for (const user of users) await insertUserNotice(q, {
+    userId: Number(user.user_id), title: accepting ? 'Printing resumed' : 'Printing paused',
+    body: accepting ? 'Printing has resumed. Your open requests will continue.' : `Printing is paused${publicReason ? `: ${publicReason}` : ''}. Your open requests are kept.`,
+    triggerType: 'Printing Update', sourceType: 'Printing Service', sourceId: 1, actionPath: rolePath(user.user_role, 'printing'),
+    priority: accepting ? 'Normal' : 'Important', dedupeKey: `print-service:${event}:${accepting ? 'resumed' : 'paused'}`,
+  })
+}
 const transitions: Record<string, string[]> = { Pending:['Printing','Cancelled'],Printing:['Ready for Pickup'], 'Ready for Pickup':['Completed'],Completed:[],Cancelled:[] }
 function receiptDateKey(value: Date) { return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(value).replaceAll('-','') }
 function receiptId(value: unknown) { const id=Number(value);if(!Number.isSafeInteger(id)||id<1)throw new HttpError(422,'PRINT_RECEIPT_INVALID','The printing receipt ID is invalid.');return id }
@@ -122,7 +135,18 @@ export function createPrintingService(pool: Pool = db, repository: PrintingRepos
       await connection.commit();return{request_id:requestId,job_status:input.status}
     }catch(error){await connection.rollback();throw error}finally{connection.release()}},
 
-    async setServiceStatus(actor:Actor,body:Record<string,unknown>){const staffId=await actorUserId(actor.schoolId),input=parseServiceStatus(body);await pool.execute(`INSERT INTO printing_service_settings(settings_id,accepting_requests,unavailable_reason,updated_by_user_id,updated_at) VALUES (1,?,?,?,NOW()) ON CONFLICT (settings_id) DO UPDATE SET accepting_requests=${excluded('accepting_requests')},unavailable_reason=${excluded('unavailable_reason')},updated_by_user_id=${excluded('updated_by_user_id')},updated_at=NOW()`,[input.acceptingRequests?1:0,input.reason,staffId]);return{accepting_requests:input.acceptingRequests,unavailable_reason:input.reason}},
+    async setServiceStatus(actor:Actor,body:Record<string,unknown>){
+      const staffId=await actorUserId(actor.schoolId),input=parseServiceStatus(body),connection=await pool.getConnection()
+      try{
+        await connection.beginTransaction()
+        const[previous]=await connection.execute<RowDataPacket[]>('SELECT accepting_requests FROM printing_service_settings WHERE settings_id=1 FOR UPDATE')
+        const wasAccepting=previous[0]?Number(previous[0].accepting_requests)!==0:true
+        await connection.execute(`INSERT INTO printing_service_settings(settings_id,accepting_requests,unavailable_reason,updated_by_user_id,updated_at) VALUES (1,?,?,?,NOW()) ON CONFLICT (settings_id) DO UPDATE SET accepting_requests=${excluded('accepting_requests')},unavailable_reason=${excluded('unavailable_reason')},updated_by_user_id=${excluded('updated_by_user_id')},updated_at=NOW()`,[input.acceptingRequests?1:0,input.reason,staffId])
+        if(wasAccepting!==input.acceptingRequests)await notifyPrintingServiceChange(connection,input.acceptingRequests,input.reason)
+        await connection.commit()
+        return{accepting_requests:input.acceptingRequests,unavailable_reason:input.reason}
+      }catch(error){await connection.rollback();throw error}finally{connection.release()}
+    },
 
     async downloadDocument(actor:Actor,requestIdValue:unknown,metadata:{sourceIp?:string;userAgent?:string}){const staffId=await actorUserId(actor.schoolId),requestId=Number(requestIdValue);if(!Number.isSafeInteger(requestId)||requestId<1)throw new HttpError(422,'PRINT_REQUEST_INVALID','The print request ID is invalid.');const[rows]=await pool.execute<RowDataPacket[]>(`SELECT request_id,file_name,file_path FROM print_requests WHERE request_id=? LIMIT 1`,[requestId]);const row=rows[0];if(!row)throw new HttpError(404,'PRINT_REQUEST_NOT_FOUND','The print request was not found.');const contents=await resolvePrintDocument(String(row.file_path));await pool.execute(`INSERT INTO print_file_download_audit(request_id,downloaded_by_user_id,source_ip,user_agent) VALUES (?,?,?,?)`,[requestId,staffId,String(metadata.sourceIp??'').slice(0,45)||null,String(metadata.userAgent??'').slice(0,255)||null]);const fileName=String(row.file_name),mime=fileName.toLowerCase().endsWith('.pdf')?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document';return{contents,fileName,mime}},
 

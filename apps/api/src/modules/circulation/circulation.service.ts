@@ -16,6 +16,7 @@ import { createBorrowingPolicyService } from './borrowing-policy.service.ts'
 import { roleBookLimit } from './borrowing-policy.types.ts'
 import { borrowerEligibility, borrowingPolicy, requireEligible, requireLoanSlot, policyDueDate } from './desk-circulation.policy.ts'
 import { prepareReturnedCopy } from './returned-copy-preparation.ts'
+import { insertUserNotice, manilaTime, rolePath } from '../notifications/user-notices.ts'
 import { localTimestamp } from '../attendance/attendance-intervals.ts'
 import { positiveCirculationId, validateBorrowCart, validateCancellation, validateCheckout, validateHistoryQuery, validatePreflight, type BorrowCartInput } from './circulation.validation.ts'
 
@@ -30,6 +31,15 @@ function loanTimestamp(column: string) {
 type OperationalUser = RowDataPacket & {
   user_id: number; full_name: string; institutional_id: string; school_id: string
   role_name: string; account_status: string
+}
+
+/** Return sentence, then the saved late fine, then a recorded non-Good condition (D-07). Never the copy's prior condition. */
+function returnedNoticeBody(title: string, returnedAt: Date, lateFine: number, condition?: string | null) {
+  return [
+    `${title} was returned on ${manilaTime(returnedAt)}.`,
+    lateFine > 0 ? `Late fine: ₱${lateFine.toFixed(2)}.` : '',
+    condition && condition !== 'Good' ? `Condition recorded: ${condition}.` : '',
+  ].filter(Boolean).join(' ')
 }
 
 async function actorUserId(connection: PoolConnection, accountId: number) {
@@ -585,7 +595,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         }
         await connection.execute("UPDATE physical_copies SET availability_status = 'Borrowed', row_version = row_version + 1, updated_at = NOW() WHERE physical_copy_id = ?", [copy.physical_copy_id])
         await connection.execute("UPDATE materials SET availability_status = 'Borrowed', updated_at = NOW() WHERE material_id = ?", [copy.material_id])
-        await connection.execute(`INSERT INTO notifications (user_id, message_title, message_body, trigger_type, is_read) VALUES (?, 'Borrow confirmed', ?, 'Due Date', 0)`, [borrower.user_id, `${copy.title} is due ${dueAt.toLocaleString('en-PH',{timeZone:'Asia/Manila',dateStyle:'medium',timeStyle:'short'})}.`])
+        await insertUserNotice(connection, { userId: Number(borrower.user_id), title: 'Borrow confirmed', body: `${copy.title} is due ${manilaTime(dueAt)}.`, triggerType: 'Due Date', sourceType: 'Borrow Transaction', sourceId: transactionId, actionPath: rolePath(borrower.role_name, 'my-books'), priority: 'Normal', dedupeKey: `loan:${transactionId}:borrowed` })
         await connection.execute(`INSERT INTO admin_notifications (event_type, actor_user_id, reservation_id, borrow_transaction_id, book_title_id, message_title, message_body) VALUES ('checkout_confirmed', ?, ?, ?, ?, 'Checkout confirmed', ?)`, [borrower.user_id, fulfilledReservation?.reservation_id ?? null, transactionId, copy.title_id, `${borrower.full_name} borrowed ${copy.title}.`])
         if (confirmation.overrideReason && confirmation.decisionId && confirmation.warningCodes.length > 0 && processedByUserId) {
           await connection.execute(
@@ -618,7 +628,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
       return createCirculationService(database, clock).confirmCheckout(actorAccountId, body, true)
     },
 
-    async returnBook(actorAccountIdValue: unknown, transactionIdValue: unknown) {
+    async returnBook(actorAccountIdValue: unknown, transactionIdValue: unknown, options: { condition?: string | null } = {}) {
       const actorAccountId = positiveCirculationId(actorAccountIdValue, 'actorAccountId'); const transactionId = positiveCirculationId(transactionIdValue, 'transactionId')
       const connection = await database.getConnection()
       try {
@@ -627,7 +637,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         await actorUserId(connection, actorAccountId)
         const [rows] = await connection.execute<RowDataPacket[]>(
           `SELECT bt.transaction_id, bt.user_id, bt.material_id, bt.physical_copy_id, ${loanTimestamp('bt.due_at')}, bt.transaction_status,
-                  pc.title_id, pc.accession_number, pc.condition_status, t.title FROM borrow_transactions bt
+                  pc.title_id, pc.accession_number, pc.condition_status, t.title, (SELECT user_role FROM users WHERE user_id = bt.user_id) AS user_role FROM borrow_transactions bt
              INNER JOIN physical_copies pc ON pc.physical_copy_id = bt.physical_copy_id INNER JOIN titles t ON t.title_id = pc.title_id
             WHERE bt.transaction_id = ? LIMIT 1 FOR UPDATE`, [transactionId],
         )
@@ -636,6 +646,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         if (!['Borrowed', 'Overdue'].includes(String(loan.transaction_status))) throw new HttpError(422, 'CIRCULATION_RETURN_INVALID', 'Only active or overdue transactions can be returned.')
         const returnedAt = clock()
         await connection.execute(`UPDATE borrow_transactions SET transaction_status = 'Returned', returned_at = ${"(?::timestamptz AT TIME ZONE 'Asia/Manila')"}, updated_at = NOW() WHERE transaction_id = ?`, [returnedAt, transactionId])
+        let lateFine = 0
         if(loan.due_at&&(loan.transaction_status==='Overdue'||localTimestamp(loan.due_at)<returnedAt.getTime())){
           const due=new Date(localTimestamp(loan.due_at));const context=await loadFineContext(connection,due,returnedAt);const charge=calculateOperatingFine(due,returnedAt,context.policy,context.calendar)
           await connection.execute(
@@ -644,7 +655,11 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
              ON CONFLICT (transaction_id) DO UPDATE SET fine_amount=${excluded('fine_amount')},payment_status=${caseIf("fines.payment_status IN ('Paid','Waived','Voided')", 'fines.payment_status', "'Unpaid'")},calculation_basis=${excluded('calculation_basis')},overdue_units=${excluded('overdue_units')},rate_applied=${excluded('rate_applied')},maximum_cap_applied=${excluded('maximum_cap_applied')},finalized_at=${excluded('finalized_at')},notes=${excluded('notes')},updated_at=NOW()`,
             [transactionId,loan.user_id,charge.amount,charge.basis,charge.units,charge.rate,charge.capApplied?context.policy.maximumPenalty:null,returnedAt],
           )
+          // The notice states what was saved, not the recalculated charge; a settled fine is not owed.
+          const [saved] = await connection.execute<RowDataPacket[]>('SELECT fine_amount,payment_status FROM fines WHERE transaction_id=? LIMIT 1', [transactionId])
+          if (saved[0] && !['Paid', 'Waived', 'Voided'].includes(String(saved[0].payment_status))) lateFine = Number(saved[0].fine_amount)
         }
+        await insertUserNotice(connection, { userId: Number(loan.user_id), title: 'Book returned', body: returnedNoticeBody(String(loan.title), returnedAt, lateFine, options.condition), triggerType: 'Return', sourceType: 'Borrow Transaction', sourceId: transactionId, actionPath: rolePath(loan.user_role, 'borrowing'), priority: 'Normal', dedupeKey: `loan:${transactionId}:returned` })
         {const release=await prepareReturnedCopy(connection,loan as any,clock());await connection.execute("INSERT INTO admin_notifications(event_type,actor_user_id,borrow_transaction_id,book_title_id,message_title,message_body) VALUES ('return_completed',?,?,?,'Return completed',?)",[loan.user_id,transactionId,loan.title_id,`${loan.title} was returned${release.nextReservationId?' and assigned for preparation':''}.`]);await connection.commit();return {transactionId,status:'Returned',returnedAt,...release}}
       } catch (error) { await connection.rollback(); throw error } finally { connection.release() }
     },
