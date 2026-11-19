@@ -2,7 +2,7 @@ import { MoveCopiesDialog, type MovableCopy } from '../shelves/MoveCopiesDialog'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import {
   AlertTriangle, Barcode, BookCopy, CheckCircle2, ChevronDown, Download, PackageSearch,
-  FileText, GraduationCap, RefreshCw, ScanBarcode, Search, ShieldAlert, X, XCircle,
+  FileText, GraduationCap, RefreshCw, Search, ShieldAlert, X, XCircle,
 } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
@@ -11,7 +11,6 @@ import { AssetCodeModal } from '../catalog/AssetCodeModal'
 import { catalogApi } from '../catalog/catalog-api'
 import { inventoryApi, InventoryApiError } from './inventory-api'
 import type { InventoryCopy, InventoryFilters, InventoryPagination, InventoryRemovalTarget, InventorySummary, ThesisInventoryFilters, ThesisInventoryRow, ThesisInventorySummary } from './types'
-import { useDesktopScanner } from './useDesktopScanner'
 import { InventoryRemovalDialog } from './InventoryRemovalDialog'
 import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 
@@ -332,7 +331,6 @@ export function InventoryDashboard() {
   const [thesisLoading, setThesisLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [scanning, setScanning] = useState(false)
   const [exportingPdf, setExportingPdf] = useState(false)
   const [moving, setMoving] = useState<{kind:'Book'|'Research/Thesis';copies:MovableCopy[]} | null>(null)
   const [selected, setSelected] = useState<InventoryCopy | null>(null)
@@ -447,23 +445,6 @@ export function InventoryDashboard() {
 
   useEffect(() => { const timer = window.setTimeout(() => { void load(filters) }, 250); return () => window.clearTimeout(timer) }, [filters, load])
   useEffect(() => { void loadThesis(thesisFilters) }, [loadThesis, thesisFilters])
-
-  const scan = useCallback(async (barcode: string) => {
-    if (scanning) return
-    setScanning(true); setError(null); setNotice(null)
-    try {
-      const thesis = thesisRows.find((row) => row.barcode.toUpperCase() === barcode.trim().toUpperCase())
-      if (thesis) {
-        setSelectedThesis(thesis)
-        setNotice(`${thesis.accession_number} scanned. Select the audited thesis condition.`)
-        return
-      }
-      const copy = await inventoryApi.scan(barcode); setNotice(`${copy.accession_number} verified successfully.`); await load(filters)
-    }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'The scanned barcode could not be verified.') }
-    finally { setScanning(false) }
-  }, [filters, load, scanning, thesisRows])
-  useDesktopScanner(scan, !moving && !selected && !lostTarget && !availabilityTarget && !selectedThesis && !thesisAvailabilityTarget)
 
   const downloadPdf = async () => {
     setExportingPdf(true); setError(null)
@@ -581,7 +562,6 @@ export function InventoryDashboard() {
       </SectionCard>
     </section>
     <div hidden={resource !== 'books'}>
-    <SectionCard className="mb-5 flex flex-col gap-4 p-4 sm:flex-row sm:items-center"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#FFF200] text-[#0b5ea2]"><ScanBarcode size={22} /></span><div className="flex-1"><h2 className="font-bold text-[#0b5ea2]">Desktop scanner listener</h2><p className="mt-1 text-xs text-[#0b5ea2]/65">Scan a barcode at normal scanner speed and press Enter. Verification is recorded without refreshing the page.</p></div><span className="inline-flex items-center gap-2 rounded-xl bg-[#0b5ea2] px-4 py-2 text-xs font-bold text-[#FFFFFF]"><span className={cn('h-2 w-2 rounded-full bg-[#FFF200]', scanning && 'animate-pulse')} />{scanning ? 'Verifying scan' : 'Scanner listening'}</span></SectionCard>
     <SectionCard className="overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-[#0b5ea2]/15 p-4 lg:flex-row lg:flex-wrap lg:items-center">
         <h2 className="flex-1 font-bold text-[#0b5ea2]">Physical copy register</h2>
