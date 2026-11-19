@@ -132,6 +132,7 @@ export async function stageHoldings(file:Express.Multer.File|undefined,mappings:
   rows(db,"SELECT location_id AS id,name,lifecycle_status AS status FROM catalog_locations WHERE lifecycle_status='Active'"),
  ])
  const {items,ignored}=mappedRows(sheets,mappings,{categories,locations} as ImportReferences)
+ for(const item of items){item.data.accessions='';item.data.generateAccessions=true}
  const fingerprint=createHash('sha256').update(file.buffer).update(holdingsMappingIdentity(mappings)).digest('hex')
  const batchId=await transaction(actor,async c=>{
   const [insert]=await c.execute<ResultSetHeader>('INSERT INTO catalog_import_batches(fingerprint,filename,mapping_json,created_by) VALUES (?,?,?::jsonb,?) ON CONFLICT(fingerprint) DO NOTHING',[fingerprint,file.originalname.slice(0,255),JSON.stringify(mappings),actor])
@@ -203,7 +204,7 @@ export async function commitImport(value:unknown,actor:number){
     await c.execute('INSERT INTO catalog_title_details(title_id,copyright_year,edition,page_count,synopsis,type_id,updated_by) VALUES (?,?,?,?,?,(SELECT type_id FROM catalog_resource_types WHERE name=?),?)',[titleId,data.copyrightYear?Number(data.copyrightYear):null,data.edition||null,data.pages?Number(data.pages):null,data.summary||data.remarks||'','Book',actor])
    }else if(!(await rows(c,"SELECT title_id FROM titles WHERE title_id=? AND record_type='Book' AND lifecycle_status='Active' FOR UPDATE",[titleId])).length)throw fail('The selected holding is no longer active.')
    if(needsCopies){
-    const count=Number(data.copies),missing=Number(data.missingCopies||0),year=new Date().getFullYear(),start=await reserveBarcodeSequence(c,year,count),accessions=data.generateAccessions?[]:identityList(data.accessions),barcodes=identityList(data.barcodes)
+    const count=Number(data.copies),missing=Number(data.missingCopies||0),year=new Date().getFullYear(),start=await reserveBarcodeSequence(c,year,count),accessions:string[]=[],barcodes=identityList(data.barcodes)
     // Existing-title additions use canonical title metadata for the legacy circulation bridge.
     const canonical=(await rows(c,'SELECT t.title,t.isbn,t.category_id,t.publication_year,COALESCE((SELECT string_agg(author_name,\', \') FROM authors WHERE title_id=t.title_id),?) AS author FROM titles t WHERE title_id=?',[data.author,titleId]))[0]
     for(let index=0;index<count;index++){

@@ -151,7 +151,7 @@ export default function App() {
           <Route path="/librarian/student-qr-roster" element={<AppLayout><StudentQrRosterPage /></AppLayout>} />
           <Route path="/librarian/user-archive" element={<Navigate to="/librarian/student-qr-roster" replace />} />
           <Route path="/librarian/approvals" element={<Navigate to="/librarian/users" replace />} />
-          <Route path="/librarian/library-schedule" element={<AppLayout><LibrarySchedulePage manage /></AppLayout>} />
+          <Route path="/librarian/library-schedule" element={<Navigate to="/librarian/maintenance?tab=schedule" replace />} />
           <Route path="/librarian/notifications" element={<AppLayout><LibrarianNotificationsPage /></AppLayout>} />
           <Route path="/librarian/borrowing-policies" element={<AppLayout><AdminBorrowingPoliciesPage /></AppLayout>} />
           <Route path="/librarian/catalog" element={<AppLayout><CatalogWorkspace /></AppLayout>} />
@@ -163,7 +163,7 @@ export default function App() {
           <Route path="/librarian/categories" element={<AppLayout><CategoryManagementPage /></AppLayout>} />
           <Route path="/librarian/circulation" element={<AppLayout><AdminCirculationMonitor /></AppLayout>} />
           <Route path="/librarian/reservations" element={<AppLayout><AdminReservationQueuePage /></AppLayout>} />
-          <Route path="/librarian/fine-policies" element={<AppLayout><AdminFinePoliciesPage /></AppLayout>} />
+          <Route path="/librarian/fine-policies" element={<Navigate to="/librarian/maintenance?tab=fine-rules" replace />} />
           <Route path="/librarian/fines" element={<AppLayout><AdminFinesPage /></AppLayout>} />
           <Route path="/librarian/inventory" element={<AppLayout><InventoryDashboard /></AppLayout>} />
           <Route path="/librarian/inventory/stocktake" element={<AppLayout><StocktakePage /></AppLayout>} />

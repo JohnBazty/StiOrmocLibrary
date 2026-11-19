@@ -27,7 +27,7 @@ function fromVersion(version: FinePolicyVersion | null): Draft {
   }
 }
 
-export function AdminFinePoliciesPage() {
+export function AdminFinePoliciesPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [data, setData] = useState<FinePolicyList | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -190,17 +190,33 @@ export function AdminFinePoliciesPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        eyebrow="Fines settings"
-        title="Fine rules"
-        description="Configure hourly due-date rates, daily overdue rates, and the maximum fine cap for borrowed books."
-        action={(
+      {embedded ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs dark:border-slate-700/60 dark:bg-slate-900">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-[#0b5ea2] dark:text-sky-300">Fines settings</p>
+            <h2 className="mt-1 font-display text-xl font-bold text-slate-900 dark:text-slate-100">Fine rules &amp; overdue penalties</h2>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+              Configure hourly due-date rates, daily overdue rates, and the maximum fine cap for borrowed books.
+            </p>
+          </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" disabled={busy} onClick={() => void load()}><RefreshCw size={16} />Refresh</Button>
             <Button disabled={busy || !data} onClick={openForm}><SlidersHorizontal size={16} />Change fine rules</Button>
           </div>
-        )}
-      />
+        </div>
+      ) : (
+        <PageHeader
+          eyebrow="Fines settings"
+          title="Fine rules"
+          description="Configure hourly due-date rates, daily overdue rates, and the maximum fine cap for borrowed books."
+          action={(
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" disabled={busy} onClick={() => void load()}><RefreshCw size={16} />Refresh</Button>
+              <Button disabled={busy || !data} onClick={openForm}><SlidersHorizontal size={16} />Change fine rules</Button>
+            </div>
+          )}
+        />
+      )}
 
       {error ? <NoticeBanner tone="error">{error}</NoticeBanner> : null}
       {notice ? <div role="status" data-tone="success" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-900 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-200">{notice}</div> : null}

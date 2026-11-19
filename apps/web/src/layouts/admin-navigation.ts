@@ -21,8 +21,6 @@ export const adminNavigation: AdminNavItem[] = [
     ]},
     link('Print supplies','supplies',PackageOpen),
     link('Borrowing policies','borrowing-policies',Scale),
-    link('Fine rules','fine-policies',SlidersHorizontal),
-    link('Library schedule','library-schedule',CalendarClock),
   ]},
   {id:'transaction',label:'Transactions',icon:CalendarClock,section:true,children:[
     link('Borrow & return','circulation',CalendarClock),
