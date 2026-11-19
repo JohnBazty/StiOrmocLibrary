@@ -724,7 +724,11 @@ export function CatalogManagementPage({ maintenance = false }: { maintenance?: b
                         >
                           {item.shelfStatus === 'Mapped'
                             ? `${item.activeInventoryCount} active ${item.activeInventoryCount === 1 ? 'copy' : 'copies'}`
-                            : item.shelfStatus}
+                            : item.shelfStatus === 'Mismatch'
+                              ? item.actualShelfLocations.length > 0
+                                ? `Mismatch · Copies on: ${item.actualShelfLocations.join(', ')}`
+                                : 'Mismatch · No shelf on copies'
+                              : item.shelfStatus}
                         </p>
                       </td>
 

@@ -39,3 +39,42 @@ it('does not let a slow manual refresh replace results for newer filters', async
  expect(screen.queryByText('99 matching titles')).toBeNull()
  expect(screen.getByText('2 matching titles')).toBeTruthy()
 })
+it('shows the copies actual shelf locations alongside Mismatch so staff can see what differs', async () => {
+ const base = {
+  recordType: 'Book' as const,
+  coverImagePath: null,
+  authors: ['Author'],
+  isbn: null,
+  publicationYear: 2024,
+  publisher: 'Publisher',
+  callNumber: 'QA76',
+  accessionNumber: 'ACC-1',
+  lastAccessionNumber: 'ACC-6',
+  deweyCode: null,
+  classification: null,
+  edition: null,
+  volumes: null,
+  pages: null,
+  remarks: null,
+  categoryId: 1,
+  categoryName: 'Reference',
+  rowVersion: 1,
+  shelfLocation: 'Reference Section',
+  activeInventoryCount: 6,
+  shelfStatus: 'Mismatch' as const,
+  availability: 'Available' as const,
+  totalCopies: 6,
+  availableCopies: 6,
+  research: null,
+ }
+ api.search.mockResolvedValueOnce({
+  items: [
+   { ...base, titleId: 1, title: 'Split Shelf Book', actualShelfLocations: ['Reference Section', 'SHELF 3B'] },
+   { ...base, titleId: 2, title: 'Unassigned Shelf Book', actualShelfLocations: [] },
+  ],
+  pagination: { total: 2, page: 1, limit: 25, pages: 1 },
+ })
+ render(<CatalogManagementPage />)
+ expect(await screen.findByText('Mismatch · Copies on: Reference Section, SHELF 3B')).toBeTruthy()
+ expect(screen.getByText('Mismatch · No shelf on copies')).toBeTruthy()
+})
