@@ -1,6 +1,6 @@
 ---
 phase: 02-user-notification-gaps
-verified: 2026-11-19T12:00:00Z
+verified: 2026-11-19T13:00:00Z
 status: human_needed
 score: 37/38 must-haves verified
 covered_files:
@@ -24,7 +24,7 @@ covered_files:
   - "apps/api/src/modules/notifications/user-notices.ts"
   - "apps/api/src/modules/printing/printing-service-notices.test.ts"
   - "apps/api/src/modules/printing/printing.service.ts"
-covered_digest: "v4:sha256:fc4c9e0932c939be6e0f8e3252707e3c2bd75b44a48c69cdd8b34f8cebdfd18d"
+covered_digest: "v4:sha256:5aa5d6dbfe36d5d7ad3126d02c91cdab5de75491887783e740378c0465da2f85"
 behavior_unverified: 0
 overrides_applied: 0
 human_verification:
@@ -41,7 +41,7 @@ human_verification:
 **Phase Goal:** Users get one in-app notice when a librarian records a return, grants or revokes a clearance override, starts an in-library use or flags it overdue, or pauses or resumes printing. The Borrow confirmed notice gets a source, action path and dedupe key like the other notices. Account status, semester end and invoice notices are deferred (see 02-SPEC.md).
 **Verified:** 2026-11-19
 **Status:** human_needed (all automated checks pass; 2 human items, neither a defect)
-**Re-verification:** No, initial verification
+**Re-verification:** Yes, after commit 000995d (overdue sweep title lookup changed to LEFT JOIN). Truths 32-34, 37 and 38 (P4) and NOTIF-05/NOTIF-09 re-checked against the new code; all other rows carried forward unchanged.
 
 ## Goal Achievement
 
@@ -82,13 +82,13 @@ ROADMAP has no separate Success Criteria list for Phase 2, so the roadmap contra
 | 29 | R4: in-library start writes one "In-library use started" notice (Normal) with title + Manila hand-back time | VERIFIED | `startInLibraryUse` inserts use then `insertUserNotice(q,inLibraryNotice('started',...))`; role comes from `validateAttendanceCredential` (returns `role`), so path is not null on the real checkout path |
 | 30 | R4/E5 research item named by title like a book | VERIFIED | `copy()` research branch joins `titles`; test passes |
 | 31 | R4 call site: keyed by returned use id; notice failure propagates before commit | VERIFIED | `in-library-use:${useId}:started`; tests pass |
-| 32 | R5: sweep gives one "Please return the book to the desk" (Important) notice per use moved to Review | VERIFIED | `flagUnreturnedInLibrary` RETURNING adds `hand_back_by`; per-row `insertUserNotice(q,inLibraryNotice('overdue',...))` |
-| 33 | R5/E6: second sweep, handed-back, not-yet-due uses get none | VERIFIED | UPDATE only moves `status='Open'` rows; tests pass |
+| 32 | R5: sweep gives one "Please return the book to the desk" (Important) notice per use moved to Review | VERIFIED | `flagUnreturnedInLibrary` RETURNING adds `hand_back_by`; per-row `insertUserNotice(q,inLibraryNotice('overdue',...))`. Re-checked after 000995d: title is now `LEFT JOIN titles`; a null title gives "The item you used" and the use still moves to Review with its notice (new test "a use whose title cannot be found still moves to Review and gets a generic notice" passes, flagged 3). The borrower `JOIN users` stays inner, so a missing borrower still throws. |
+| 33 | R5/E6: second sweep, handed-back, not-yet-due uses get none | VERIFIED | UPDATE only moves `status='Open'` rows (unchanged by 000995d); "a second sweep sends nothing more" and the once-per-use dedupe key `in-library-use:<id>:overdue` still pass |
 | 34 | R5: librarian alert unchanged | VERIFIED | admin_notifications insert retained verbatim |
 | 35 | D-09 in-library links /student|faculty/my-books, Staff and Librarian fallback | VERIFIED | `rolePath`; tests pass |
 | 36 | R8/E10: Borrow confirmed has source_type 'Borrow Transaction', source_id, dedupe `loan:<id>:borrowed`, role-correct path; title/body/trigger unchanged | VERIFIED | `confirmCheckout` now uses `insertUserNotice` with all four fields; circulation.service.test.ts extended and passing |
-| 37 | R9/E11 in-library and checkout: failing notice rolls back start, sweep and checkout | VERIFIED | tests pass |
-| 38 | Prohibitions P1, P2, P3 (test tier) and P4 (judgment tier) | VERIFIED for P1/P2/P3; P4 flagged | P1: clearance test uses reason 'ZZ-secret-reason-ZZ', asserted absent from every notice parameter; P2: name assertions in each suite; P3: no-fine cases; notice builders contain no user or staff name. P4 body read, no penalty wording; judgment-tier so flagged (human item 2). Counted VERIFIED in score; flag recorded. |
+| 37 | R9/E11 in-library and checkout: failing notice rolls back start, sweep and checkout | VERIFIED | tests pass, including "a failing overdue notice rolls the whole sweep back" after 000995d (a notice insert failure still throws and rolls back; only the missing-title case no longer throws) |
+| 38 | Prohibitions P1, P2, P3 (test tier) and P4 (judgment tier) | VERIFIED for P1/P2/P3; P4 flagged | P1: clearance test uses reason 'ZZ-secret-reason-ZZ', asserted absent from every notice parameter; P2: name assertions in each suite; P3: no-fine cases; notice builders contain no user or staff name. P4 body read, no penalty wording (the new fallback text "The item you used was due back at the library desk by <time>. Please return it to the library desk." has none either); judgment-tier so flagged (human item 2). Counted VERIFIED in score; flag recorded. |
 
 **Score:** 37/38 truths verified (1 backstop truth abstained, 0 present-but-behavior-unverified)
 
@@ -134,8 +134,8 @@ None. Account status, semester end and invoice notices are explicitly out of sco
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| Phase test files | `node --test` on the 5 new test files + circulation.service.test.ts (run from apps/api) | 66 pass, 0 fail | PASS |
-| Full gate | orchestrator: `npm run build` exit 0; `npm test` 551/551 API, 373/373 web | reported by orchestrator, not re-run | PASS (reported) |
+| Phase test files | `node --test` on the 5 new test files + circulation.service.test.ts (run from apps/api) | 66 pass, 0 fail (initial run); re-run after 000995d of `node --test src/modules/circulation/in-library-notices.test.ts`: 13 pass, 0 fail | PASS |
+| Full gate | orchestrator: `npm run build` exit 0; `npm test` 551/551 API, 373/373 web; after 000995d `npm test -w @sti-library/api` 552/552 and typecheck exit 0 | reported by orchestrator, not re-run | PASS (reported) |
 
 ### Probe Execution
 
@@ -162,7 +162,7 @@ REQUIREMENTS.md lists the nine IDs as plain bullets (`- **NOTIF-0N**: ...`), wit
 | File | Line | Pattern | Severity | Impact |
 |------|------|---------|----------|--------|
 | (changed files) | - | No TBD/FIXME/XXX/TODO, no stubs, no empty handlers in the phase diff | - | None |
-| desk-circulation.service.ts `flagUnreturnedInLibrary` | per-row title read | Throws if a flagged use has no joinable title, rolling back the whole sweep | Advisory | Intentional (comment/test "a failing overdue notice rolls the whole sweep back"), consistent with R9. A single use with no title would block the sweep until fixed. The `copy()` helper already requires a title join to start a use, so it cannot occur through normal checkout. |
+| desk-circulation.service.ts `flagUnreturnedInLibrary` | per-row title read | Resolved by 000995d: title is a LEFT JOIN, a missing title gives the notice "The item you used" instead of throwing, so one orphan row no longer blocks every sweep. Still throws (and rolls back, per R9) if the borrower row is missing or the notice insert fails. | Resolved | None. Residual: the overdue notice for such a use cannot name the item (acceptable, still has source, path and dedupe key). |
 | desk-circulation.service.ts | - | Dense one-line style, file well over 800 lines | Advisory | Pre-existing house style; not introduced by this phase |
 
 ### Human Verification Required
