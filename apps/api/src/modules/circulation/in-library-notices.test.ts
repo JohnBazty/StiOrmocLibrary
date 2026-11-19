@@ -160,6 +160,14 @@ test('overdue notices name no user and threaten no penalty', async () => {
   }
 })
 
+test('a use whose title cannot be found still moves to Review and gets a generic notice', async () => {
+  const { pg, pool, notices } = await sweepDb()
+  await pg.exec("INSERT INTO physical_copies VALUES (21,99); INSERT INTO in_library_uses VALUES (5,7,21,NULL,'Open','2026-11-19T01:15:00Z',NULL,NULL,NULL)")
+  assert.deepEqual(await flagUnreturnedInLibrary(pool, SWEEP_NOW), { flagged: 3 })
+  const orphan = (await notices()).find(r => r.dedupe_key === 'in-library-use:5:overdue')
+  assert.equal(orphan?.message_body, `The item you used was due back at the library desk by ${manilaTime('2026-11-19T01:15:00Z')}. Please return it to the library desk.`)
+})
+
 test('a failing overdue notice rolls the whole sweep back', async () => {
   const { pg, pool, notices } = await sweepDb()
   const failing = {
