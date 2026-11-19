@@ -45,6 +45,9 @@ export function calculateOperatingFine(dueAt:Date,evaluatedAt:Date,policy:FinePo
   return days>0&&days*policy.dailyRate>=dueDay.rawAmount?result(days*policy.dailyRate,days,'Daily'):dueDay
 }
 
+/** Faculty pay no automatic overdue fine (Ethan, 2026-11-19); they are charged only for lost or damaged books. */
+export function overdueFineApplies(role: unknown) { return role !== 'Faculty' }
+
 export async function loadFineContext(executor:Pool|PoolConnection,from:Date,to:Date){
   const [policies]=await executor.execute<RowDataPacket[]>(
     `SELECT hourly_rate,daily_rate,maximum_penalty FROM fine_policy_versions

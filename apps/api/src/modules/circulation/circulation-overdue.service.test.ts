@@ -58,3 +58,40 @@ test('D5: the overdue scan continues after the cursor and returns the next one w
   assert.equal(seen[2].values.length, 1)
   assert.equal(first.evaluatedCount, 2)
 })
+
+function overdueConnection(role: string, state: { fine: number; overdue: number; clearance: Array<unknown[]> }) {
+  return {
+    async beginTransaction() {}, async commit() {}, async rollback() {}, release() {},
+    async execute(sql: string, values: unknown[] = []) {
+      if (sql.includes('FROM borrow_transactions bt') && sql.includes('FOR UPDATE')) return [[{ transaction_id: 8, user_id: 4, user_role: role, due_at: new Date(2026, 7, 24, 8, 0), title: 'Networks' }]]
+      if (sql.includes('FROM fine_policy_versions')) return [[{ hourly_rate: 2, daily_rate: 10, maximum_penalty: 500 }]]
+      if (sql.includes('FROM library_operating_schedule')) return [[1, 2, 3, 4, 5, 6].map((day_of_week) => ({ day_of_week, is_open: 1 }))]
+      if (sql.includes('FROM library_closed_days')) return [[]]
+      if (sql.startsWith('UPDATE borrow_transactions')) { state.overdue += 1; return [{ affectedRows: 1 }] }
+      if (sql.includes('INSERT INTO fines')) { state.fine += 1; return [{ affectedRows: 1 }] }
+      if (sql.includes('INSERT INTO clearance_statuses')) { state.clearance.push(values); return [{ affectedRows: 1 }] }
+      return [{ affectedRows: 1 }]
+    },
+  }
+}
+
+test('an overdue faculty loan gets no fine but is still overdue and not cleared', async () => {
+  const state = { fine: 0, overdue: 0, clearance: [] as Array<unknown[]> }
+  await escalateOverdueTransactions({ getConnection: async () => overdueConnection('Faculty', state) } as unknown as Pool, new Date(2026, 7, 24, 10, 0))
+  assert.equal(state.fine, 0, 'no automatic overdue fine for faculty')
+  assert.equal(state.overdue, 1)
+  assert.equal(state.clearance.length, 1)
+  assert.doesNotMatch(String(state.clearance[0][1]), /fine/i, 'the hold reason does not mention a fine')
+})
+
+test('an overdue student loan still gets a fine', async () => {
+  const state = { fine: 0, overdue: 0, clearance: [] as Array<unknown[]> }
+  await escalateOverdueTransactions({ getConnection: async () => overdueConnection('Student', state) } as unknown as Pool, new Date(2026, 7, 24, 10, 0))
+  assert.equal(state.fine, 1)
+})
+
+test('the overdue scan reads the borrower role', async () => {
+  const seen: Array<{ sql: string; values: unknown[] }> = []
+  await escalateOverdueTransactions({ getConnection: async () => scanConnection([], seen) } as unknown as Pool, new Date(2026, 7, 24, 10, 0))
+  assert.match(seen[0].sql, /user_role/)
+})
