@@ -26,9 +26,10 @@ function requireLibrarian(actor: ClearanceActor) {
 }
 
 export function createClearanceService(database: Pool = db) {
-  async function aggregateStudents() {
+  /** Faculty are listed with students so an unreturned faculty loan shows as Not Cleared (2026-11-19). */
+  async function aggregateStudents(roles: string[] = ['Student']) {
     const [rows] = await database.execute<RowDataPacket[]>(
-      `SELECT u.user_id,u.school_id,u.full_name,u.course_or_strand,u.section,u.account_status,
+      `SELECT u.user_id,u.school_id,u.full_name,u.user_role,u.course_or_strand,u.section,u.account_status,
               COALESCE(loans.active_loans,0) ${'+ (SELECT COUNT(*) FROM in_library_uses iu WHERE iu.user_id=u.user_id AND iu.ended_at IS NULL)'} AS active_loans,
               COALESCE(fines.unpaid_fines,0) AS unpaid_fines,
               COALESCE(losses.unpaid_replacement,0) AS unpaid_replacement,
@@ -60,7 +61,7 @@ export function createClearanceService(database: Pool = db) {
                 AND (recent.expires_at IS NULL OR recent.expires_at>NOW())
               ORDER BY recent.applied_at DESC,recent.clearance_override_id DESC LIMIT 1
            )
-        WHERE u.user_role='Student' ORDER BY u.full_name,u.user_id`,
+        WHERE u.user_role = ANY(?::text[]) ORDER BY u.full_name,u.user_id`, [roles],
     )
     return rows.map((row) => {
       const activeLoans = Number(row.active_loans ?? 0)
@@ -70,7 +71,7 @@ export function createClearanceService(database: Pool = db) {
       const status = row.override_status ? String(row.override_status) : computedStatus
       const reasons = [activeLoans ? `${activeLoans} unreturned ${activeLoans === 1 ? 'book' : 'books'}` : '', unpaidFines ? `PHP ${unpaidFines.toFixed(2)} unpaid overdue fines` : '', unpaidReplacement ? `PHP ${unpaidReplacement.toFixed(2)} unpaid lost-book replacement charges` : ''].filter(Boolean)
       return {
-        student: { userId: Number(row.user_id), schoolId: String(row.school_id), name: String(row.full_name), program: row.course_or_strand ?? null, section: row.section ?? null, accountStatus: String(row.account_status) },
+        student: { userId: Number(row.user_id), schoolId: String(row.school_id), name: String(row.full_name), role: String(row.user_role ?? 'Student'), program: row.course_or_strand ?? null, section: row.section ?? null, accountStatus: String(row.account_status) },
         status, computedStatus, reason: row.override_status ? `Authorized override: ${row.override_reason}` : reasons.join('; ') || 'No library obligations', checkedAt: new Date(),
         summary: { activeLoans, unpaidOverdueFines: unpaidFines, unpaidReplacementCharges: unpaidReplacement, totalOutstanding: unpaidFines + unpaidReplacement, blockCount: activeLoans + (unpaidFines > 0 ? 1 : 0) + (unpaidReplacement > 0 ? 1 : 0) },
         loans: [], fines: [], lostBooks: [], activeOverride: row.clearance_override_id ? { overrideId: Number(row.clearance_override_id), status: String(row.override_status), reason: String(row.override_reason) } : null, overrideHistory: [],
@@ -201,7 +202,7 @@ export function createClearanceService(database: Pool = db) {
       const search = typeof query.search === 'string' ? query.search.trim().slice(0, 100) : ''
       const offset = (page - 1) * limit
       const [all, [pendingLostRows]] = await Promise.all([
-        aggregateStudents(),
+        aggregateStudents(['Student', 'Faculty']),
         database.execute<RowDataPacket[]>(
           `SELECT l.lost_book_report_id,l.user_id,l.reported_at,u.school_id,u.full_name,u.user_role,
                   COALESCE(t.title,m.title) AS title

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { checkoutWindowBlocker, policyDueDate } from './desk-circulation.policy.ts'
+import { checkoutWindowBlocker, policyDueDate, requireLoanSlot } from './desk-circulation.policy.ts'
 
 const policy = { checkout_opens_at: '14:00:00' }
 const at = (time: string) => new Date(`2026-11-23T${time}+08:00`)
@@ -37,4 +37,11 @@ test('policy due date uses the policy due time on the next open day', async () =
   } } as never
   const due = await policyDueDate(q, new Date('2026-11-21T15:10:00+08:00'), { borrowing_days: 1, due_time_cutoff: '08:00:00' } as never)
   assert.equal(due.toISOString(), '2026-11-23T00:00:00.000Z', 'Saturday 15:10 is due Monday 08:00 Manila')
+})
+
+test('the loan slot check refuses a sixth commitment when the faculty limit is 5', async () => {
+  const withCommitments = (count: number) => ({ async execute() { return [[{ commitments: count }]] } }) as never
+  await assert.rejects(requireLoanSlot(withCommitments(5), 9, 20, 5), /limit is 5/)
+  await requireLoanSlot(withCommitments(4), 9, 20, 5)
+  await requireLoanSlot(withCommitments(50), 9, 20, null)
 })

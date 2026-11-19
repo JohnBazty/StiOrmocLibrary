@@ -52,6 +52,13 @@ describe('AdminClearancePage simplified exceptions', () => {
     }))
   })
 
+  it('marks faculty rows so they stand apart from students', async () => {
+    const faculty: ClearanceRecord = { ...blocked, student: { ...blocked.student, role: 'Faculty', program: null }, reason: '1 unreturned book', summary: { ...blocked.summary, activeLoans: 1, unpaidOverdueFines: 0, totalOutstanding: 0 } }
+    api.list.mockResolvedValue(listWith(faculty))
+    render(<MemoryRouter><AdminClearancePage /></MemoryRouter>)
+    expect(await screen.findByText('Faculty')).toBeTruthy()
+  })
+
   it('does not offer an override when the computed standing is already cleared', async () => {
     const cleared: ClearanceRecord = { ...blocked, status: 'Cleared', computedStatus: 'Cleared', reason: 'No library obligations', summary: { ...blocked.summary, unpaidOverdueFines: 0, totalOutstanding: 0, blockCount: 0 } }
     api.list.mockResolvedValue(listWith(cleared))
