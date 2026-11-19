@@ -1,4 +1,5 @@
 import { AdminSidebarNavigation } from './AdminSidebarNavigation'
+import { AdminRightQuickSidebar } from './AdminRightQuickSidebar'
 import { librarianNav } from './admin-navigation'
 import { AttendanceConfirmationPrompt } from '../features/attendance/AttendanceConfirmationPrompt'
 import {
@@ -123,7 +124,9 @@ function Sidebar({ role, open, onClose }: { role: Role; open: boolean; onClose: 
 
 export function PortalLayout({ role }: { role: Role }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
   const [confirmSignOut, setConfirmSignOut] = useState(false)
+  const isStaffWorkspace = role === 'librarian' || role === 'admin' || role === 'staff'
   const [signingOut, setSigningOut] = useState(false)
   const [signOutError, setSignOutError] = useState('')
   const location = useLocation()
@@ -171,7 +174,7 @@ export function PortalLayout({ role }: { role: Role }) {
   return (
     <div data-portal={role} className="portal-layout min-h-dvh bg-[var(--sl-bg)] text-[var(--sl-text)] transition-colors">
       <Sidebar role={role} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="lg:pl-64" inert={sidebarOpen ? true : undefined}>
+      <div className={cn('lg:pl-64 transition-[padding] duration-200', isStaffWorkspace && rightSidebarOpen ? 'xl:pr-80' : '')} inert={sidebarOpen ? true : undefined}>
         <header className="sticky top-0 z-30 flex h-16 items-center border-b border-[var(--sl-border)] bg-[var(--sl-bg-elevated)]/95 px-4 backdrop-blur-md transition-colors sm:px-6 lg:px-8">
           <button onClick={() => setSidebarOpen(true)} aria-label="Open navigation" aria-controls="portal-navigation" aria-expanded={sidebarOpen} className="mr-3 shrink-0 rounded-[6px] border border-[var(--sl-border-strong)] p-2 text-[var(--sl-text-secondary)] hover:bg-[var(--sl-bg-hover)] lg:hidden"><Menu size={19} /></button>
           <div className="hidden sm:block"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--sl-text-muted)]">{role === 'admin' ? 'Admin workspace' : role === 'librarian' ? 'Library Admin workspace' : role === 'staff' ? 'Staff workspace' : role === 'faculty' ? 'Faculty portal' : 'Student portal'}</p><p className="mt-0.5 font-display text-sm font-semibold text-[var(--sl-text-header)]">{current?.label ?? 'STI College Ormoc ILMS'}</p></div>
@@ -186,6 +189,13 @@ export function PortalLayout({ role }: { role: Role }) {
         {role !== 'admin' ? <AttendanceConfirmationPrompt /> : null}
         {role !== 'admin' ? <AttendanceFab role={role} /> : null}
       </div>
+      {isStaffWorkspace ? (
+        <AdminRightQuickSidebar
+          role={role}
+          open={rightSidebarOpen}
+          onToggle={() => setRightSidebarOpen((current) => !current)}
+        />
+      ) : null}
       {confirmSignOut ? <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-[2px]" onKeyDown={(event) => { if (event.key === 'Escape' && !signingOut) setConfirmSignOut(false) }}><div role="alertdialog" aria-modal="true" aria-labelledby="sign-out-title" aria-describedby="sign-out-text" className="w-full max-w-md overflow-hidden rounded-[10px] border border-[var(--sl-border)] bg-[var(--sl-bg-elevated)] text-[var(--sl-text)] shadow-[var(--sl-shadow-l)]"><div className="px-6 py-5"><h2 id="sign-out-title" className="font-display text-lg font-semibold text-[var(--sl-text-header)]">Are you sure you want to sign out?</h2><p id="sign-out-text" className="mt-2 text-sm text-[var(--sl-text-secondary)]">You will need to sign in again to use this portal.</p></div><div className="flex flex-wrap justify-end gap-2 border-t border-[var(--sl-border)] bg-[var(--sl-bg-subtle)] px-6 py-3"><button type="button" disabled={signingOut} onClick={() => setConfirmSignOut(false)} className="min-h-[38px] rounded-[6px] border border-[var(--sl-border-strong)] bg-[var(--sl-bg-elevated)] px-4 text-sm font-semibold text-[var(--sl-text-header)] hover:bg-[var(--sl-bg-hover)] disabled:opacity-50">Cancel</button><button type="button" disabled={signingOut} onClick={() => void signOut()} className="min-h-[38px] rounded-[6px] bg-[#0b5ea2] px-4 text-sm font-semibold text-white hover:bg-[#094e87] disabled:opacity-50">{signingOut ? 'Signing out…' : 'Sign out now'}</button></div></div></div> : null}
     </div>
   )
