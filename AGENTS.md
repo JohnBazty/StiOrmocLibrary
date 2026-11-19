@@ -60,12 +60,14 @@ These skills are committed in both `.claude/skills/` (Claude Code) and `.agents/
 
 | Skill | Use it for |
 |---|---|
+| `sti-vaadin-design-system` | STI College Ormoc UI design system: Vaadin Lumo components, Vaadin Icons, and Vaadin Charts via Figma MCP, themed strictly with STI's project colors (`#0b5ea2`, `#132a3f`, `#FFF200` accent, readable neutrals, semantic red/green/amber/blue) and Vibe Monday UX Writing Handbook rules. Project-specific. |
+| `sti-ux-qa-critic` | Critical UI/UX Quality Assurance and page-by-page overhaul critique across 7 gates: table vs. card representation, section necessity/anti-noise, zero dead-end proactive validation, next-step guidance, Vibe UX writing, visual consistency, and business-rule preservation. Project-specific. |
 | `ui-ux-pro-max` | Designing, building or reviewing screens: layout, accessibility, typography, charts, UX rules. Its search scripts need Python 3. |
 | `design-system` | Design-token structure and component specs. |
 | `ui-styling` | Tailwind styling patterns and accessible components. |
 | `start-session` | The `start session` briefing: greet as Agent Alpha, catch up wiki-first, report migration numbers and open plans, then wait. Project-specific (this repo only). |
 
-Project rules win over skill advice. Use only the STI colors in `agent.md` "Frontend Visual Rules" (blue `#003399`, yellow `#FFF200`, white and their opacity variants), never a palette a skill suggests. Add no new UI library without Ethan's approval. When a skill changes, update both copies; the `.agents/skills/` copy uses `.agents/skills/...` paths. Other skills Ethan has installed (banner-design, brand, design, slides, stageshow) stay local and are not committed.
+Project rules win over skill advice. Use the STI project color theme in `agent.md` "Frontend Visual Rules" (`#0b5ea2` STI blue, `#132a3f` navy chrome, `#FFF200` accent, readable neutrals, and strict semantic error/success/warning/info colors), never Vaadin Lumo's default blue or another palette a skill suggests. Add no new UI library without Ethan's approval. When a skill changes, update both copies; the `.agents/skills/` copy uses `.agents/skills/...` paths. Other skills Ethan has installed (banner-design, brand, design, slides, stageshow) stay local and are not committed.
 
 ## Automation and memory (do by hand what Claude Code does automatically)
 Claude Code runs hooks, MCP servers and a session-start memory load for this repo. Other tools do none of this, so do these steps yourself.

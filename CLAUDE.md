@@ -17,6 +17,7 @@ STI College Ormoc's live library system (npm workspaces: `apps/api` Express + Ty
 - **Reviews before each PR:** one combined `security-reviewer` (security, correctness, React); add `database-reviewer` when the change adds a migration (`database/supabase/`) or concurrent SQL. Fix CRITICAL, HIGH and MEDIUM findings first; fix LOW findings in the main session.
 - **Lean sessions:** one feature per session, at most 3 review agents, no separate `code-reviewer`. Start from the wiki (`wiki/hot.md`, `wiki/entities/StiOrmocLibrary.md`); do not re-read what it already summarises.
 - **Start session:** when Ethan says `start session`, use the `start-session` skill. It runs the `.cursor/agent-protocol.md` protocol (greet as Agent Alpha, brief, wait) wiki-first.
+- **UI Design System & QA skills:** use `sti-vaadin-design-system` (Vaadin Lumo/Icons/Charts via Figma MCP themed with STI's project colors + Vibe Monday UX Writing Handbook) and `sti-ux-qa-critic` (7-gate page critique, proactive zero-dead-end validation, table-vs-card & noise audit) on every UI build or overhaul. Both live in `.claude/skills/` and `.agents/skills/`.
 - **Live systems:** the hook asks before `db:supabase`, `db:backfill:*`, `auth:create-user`, `tools/ai/smoke-*`, `migrate-*`, `audit-*` and `vercel` commands. Approve only a step Ethan asked for.
 
 ## Team (`.claude/agents/` plus user-level agents)
