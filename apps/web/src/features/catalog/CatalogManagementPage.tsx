@@ -33,9 +33,9 @@ import type { CatalogFilters, CatalogItem, Category } from './types'
 import { useBarcodeScanner } from './useBarcodeScanner'
 
 const fieldClass =
-  'h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/15 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
+  'h-[38px] w-full rounded-[6px] border border-[var(--sl-border-strong)] bg-[var(--sl-bg-elevated)] px-3 text-sm font-medium text-[var(--sl-text)] shadow-[var(--sl-shadow-xs)] outline-none transition focus:border-[#0b5ea2] focus:ring-3 focus:ring-[#0b5ea2]/15 dark:border-white/20 dark:bg-[#1e202b] dark:text-[#f7f9ff]'
 
-const labelClass = 'mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300'
+const labelClass = 'mb-1.5 block truncate text-[13px] font-semibold leading-[17px] text-[var(--sl-text-secondary)]'
 
 const emptyFilters: CatalogFilters = {
   page: 1,
@@ -440,17 +440,17 @@ export function CatalogManagementPage({ maintenance = false }: { maintenance?: b
 
       {loadError && <NoticeBanner tone="error">{loadError} Use Refresh to try again.</NoticeBanner>}
 
-      <SectionCard className="p-5">
-        <div className="grid gap-3 md:grid-cols-4 xl:grid-cols-7">
-          <label className="md:col-span-2 xl:col-span-1">
+      <SectionCard className="p-4 sm:p-5">
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="sm:col-span-2">
             <span className={labelClass}>Search catalog</span>
             <span className="relative block">
-              <Search className="absolute left-3 top-3.5 text-slate-400" size={16} />
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--sl-text-muted)]" size={16} />
               <input
                 aria-label="Search catalog"
                 value={filters.q}
                 onChange={(e) => changeFilters({ ...filters, q: e.target.value })}
-                placeholder="Accession #, DDC, title..."
+                placeholder="Search by Accession #, DDC + Cutter, ISBN, title, or author…"
                 className={`${fieldClass} pl-9`}
               />
             </span>
@@ -490,7 +490,7 @@ export function CatalogManagementPage({ maintenance = false }: { maintenance?: b
               aria-label="Author"
               value={filters.author}
               onChange={(e) => changeFilters({ ...filters, author: e.target.value })}
-              placeholder="Filter by author"
+              placeholder="Filter by author name"
               className={fieldClass}
             />
           </label>
@@ -537,8 +537,8 @@ export function CatalogManagementPage({ maintenance = false }: { maintenance?: b
             </select>
           </label>
         </div>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200/70 pt-3 dark:border-slate-700/50">
-          <div className="flex flex-wrap gap-2">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--sl-border)] pt-3.5">
+          <div className="flex flex-wrap items-center gap-2">
             {!maintenance && (
               <ExportMenu
                 disabled={exportingPdf || loading}
@@ -553,7 +553,7 @@ export function CatalogManagementPage({ maintenance = false }: { maintenance?: b
               Clear filters
             </Button>
           </div>
-          <span className="text-xs text-slate-500 dark:text-slate-400">
+          <span className="text-xs font-medium text-[var(--sl-text-muted)]">
             Column 1: Accession # · Column 2: DDC + Cutter Table
           </span>
         </div>
