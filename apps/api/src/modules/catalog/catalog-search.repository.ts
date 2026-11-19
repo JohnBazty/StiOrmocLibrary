@@ -118,16 +118,18 @@ export function buildCatalogSearchQuery(filters: CatalogSearchFilters) {
   if (filters.query) {
     const like = `%${filters.query}%`
     where.push(`(
-      t.title ILIKE ? OR t.isbn ILIKE ? OR t.call_number ILIKE ? OR
+      t.title ILIKE ? OR t.isbn ILIKE ? OR t.call_number ILIKE ? OR t.classification ILIKE ? OR
       rr.research_code ILIKE ? OR rr.abstract_text ILIKE ? OR
-      EXISTS (SELECT 1 FROM authors aq WHERE aq.title_id = t.title_id AND aq.author_name ILIKE ?)
+      EXISTS (SELECT 1 FROM authors aq WHERE aq.title_id = t.title_id AND aq.author_name ILIKE ?) OR
+      EXISTS (SELECT 1 FROM physical_copies pcq WHERE pcq.title_id = t.title_id AND pcq.lifecycle_status = 'Active' AND pcq.accession_number ILIKE ?)
     )`)
-    parameters.push(like, like, like, like, like, like)
+    parameters.push(like, like, like, like, like, like, like, like)
   }
 
   const whereSql = `WHERE ${where.join('\n AND ')}`
   const fromSql = `FROM titles t
     LEFT JOIN categories c ON c.category_id = t.category_id
+    LEFT JOIN catalog_title_details ctd ON ctd.title_id = t.title_id
     LEFT JOIN research_records rr ON rr.title_id = t.title_id
     LEFT JOIN (
       SELECT title_id, MIN(research_inventory_id) AS research_inventory_id,
@@ -143,12 +145,17 @@ export function buildCatalogSearchQuery(filters: CatalogSearchFilters) {
   const safeOffset = Math.max((Math.trunc(filters.page) - 1) * safeLimit, 0)
   const dataSql = `SELECT
       t.title_id, t.record_type, t.title, t.cover_image_path, t.isbn, t.publication_year,
-      t.publisher, t.call_number, t.category_id, t.row_version, c.category_name,
+      t.publisher, t.call_number, t.classification, t.volumes, t.remarks,
+      ctd.edition, ctd.page_count AS pages,
+      t.category_id, t.row_version, c.category_name,
       c.shelf_location AS category_shelf_location,
       rr.research_record_id, rr.research_code, rr.adviser_name,
       rr.department_or_program, rr.abstract_text, rr.keywords_text, rr.viewing_status,
       ri_lookup.research_inventory_id,
       ${authorsAggDistinct('a')} AS authors,
+      MIN(CASE WHEN pc.lifecycle_status = 'Active' THEN pc.accession_number END) AS first_accession_number,
+      MAX(CASE WHEN pc.lifecycle_status = 'Active' THEN pc.accession_number END) AS last_accession_number,
+      MIN(CASE WHEN pc.lifecycle_status = 'Active' THEN (SELECT d.code FROM dewey_classifications d WHERE d.classification_id = pc.dewey_classification_id) END) AS dewey_code,
       COUNT(DISTINCT CASE WHEN pc.lifecycle_status = 'Active' THEN pc.physical_copy_id END) AS total_copies,
       COUNT(DISTINCT CASE WHEN pc.lifecycle_status = 'Active' AND pc.availability_status = 'Available' THEN pc.physical_copy_id END) AS available_copies,
       COUNT(DISTINCT CASE WHEN pc.lifecycle_status = 'Active' THEN pc.shelf_location END) AS book_shelf_count,
@@ -165,7 +172,9 @@ export function buildCatalogSearchQuery(filters: CatalogSearchFilters) {
     LEFT JOIN physical_copies pc ON pc.title_id = t.title_id
     ${whereSql}
     GROUP BY t.title_id, t.record_type, t.title, t.cover_image_path, t.isbn, t.publication_year,
-      t.publisher, t.call_number, t.category_id, t.row_version, c.category_name, c.shelf_location,
+      t.publisher, t.call_number, t.classification, t.volumes, t.remarks,
+      ctd.edition, ctd.page_count,
+      t.category_id, t.row_version, c.category_name, c.shelf_location,
       rr.research_record_id, rr.research_code, rr.adviser_name,
       rr.department_or_program, rr.abstract_text, rr.keywords_text, rr.viewing_status,
       ri_lookup.research_inventory_id, ri_lookup.active_inventory_count,
@@ -199,6 +208,14 @@ function toCatalogItem(row: RowDataPacket) {
     publicationYear: row.publication_year,
     publisher: row.publisher,
     callNumber: row.call_number,
+    accessionNumber: row.first_accession_number ? String(row.first_accession_number) : null,
+    lastAccessionNumber: row.last_accession_number ? String(row.last_accession_number) : null,
+    deweyCode: row.dewey_code ? String(row.dewey_code) : null,
+    classification: row.classification ? String(row.classification) : null,
+    edition: row.edition ? String(row.edition) : null,
+    volumes: row.volumes ? String(row.volumes) : null,
+    pages: row.pages === null || row.pages === undefined ? null : Number(row.pages),
+    remarks: row.remarks ? String(row.remarks) : null,
     categoryId: row.category_id,
     categoryName: row.category_name,
     rowVersion: Number(row.row_version),

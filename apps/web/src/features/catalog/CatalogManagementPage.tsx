@@ -32,6 +32,7 @@ import { ChangeTitleCategoryModal } from './ChangeTitleCategoryModal'
 import { BookCoverThumbnail } from './BookCoverThumbnail'
 
 import { BookQuotationModal } from './BookQuotationModal'
+import { generateDdcAndCutter } from './ddc-cutter'
 
 
 
@@ -339,37 +340,130 @@ export function CatalogManagementPage({maintenance=false}: {maintenance?:boolean
 
     {loadError && <p role="alert" className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">{loadError} Use Refresh to try again.</p>}
 
-    <SectionCard className="mb-5 p-5"><div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6"><label className="relative md:col-span-2"><Search className="absolute left-3 top-3.5 text-[#0b5ea2]/50" size={16} /><input aria-label="Search catalog" value={filters.q} onChange={(e) => changeFilters({ ...filters, q: e.target.value })} placeholder="Title, ISBN, author, code..." className={`${fieldClass} pl-9`} /></label><select aria-label="Resource type" value={filters.scope} onChange={(e) => changeFilters({ ...filters, scope: e.target.value as CatalogFilters['scope'] })} className={fieldClass}><option value="all">Books + research</option><option value="books">Books only</option><option value="research">Research only</option></select><select aria-label="Category" value={filters.categoryId} onChange={(e) => changeFilters({ ...filters, categoryId: e.target.value })} className={fieldClass}><option value="">All categories</option>{categories.map((category) => <option key={category.categoryId} value={category.categoryId}>{category.categoryName}</option>)}</select><input aria-label="Author" value={filters.author} onChange={(e) => changeFilters({ ...filters, author: e.target.value })} placeholder="Author" className={fieldClass} /><input aria-label="Publication year" value={filters.publicationYear} onChange={(e) => changeFilters({ ...filters, publicationYear: e.target.value })} placeholder="Year" inputMode="numeric" className={fieldClass} /><select aria-label="Availability" value={filters.availability} onChange={(e) => changeFilters({ ...filters, availability: e.target.value })} className={fieldClass}><option value="">Any availability</option><option>Available</option><option>Borrowed</option><option>Reserved</option><option>Unavailable</option><option>Available for Viewing</option></select><label>Dewey assignment<select className={fieldClass} value={filters.deweyStatus??''} onChange={event=>changeFilters({...filters,deweyStatus:event.target.value as CatalogFilters['deweyStatus']})}><option value="">Any Dewey assignment</option><option value="assigned">Assigned</option><option value="unassigned">Not assigned</option></select></label></div><div className="mt-4 flex flex-wrap gap-2">{!maintenance && <ExportMenu disabled={exportingPdf||loading} exports={(['csv','pdf'] as const).map(format=>({label:format.toUpperCase(),onSelect:()=>void downloadInventory(format)}))}/>}<button onClick={() => setFilters(emptyFilters)} className="h-10 rounded-xl border border-[#0b5ea2]/20 bg-white px-4 text-sm font-bold text-[#0b5ea2]">Clear filters</button></div></SectionCard>
+    <SectionCard className="mb-5 p-5"><div className="grid gap-3 md:grid-cols-4 xl:grid-cols-7"><label className="relative md:col-span-2 xl:col-span-1"><Search className="absolute left-3 top-3.5 text-[#0b5ea2]/50" size={16} /><input aria-label="Search catalog" value={filters.q} onChange={(e) => changeFilters({ ...filters, q: e.target.value })} placeholder="Title, ISBN, accession #..." className={`${fieldClass} pl-9`} /></label><select aria-label="Resource type" value={filters.scope} onChange={(e) => changeFilters({ ...filters, scope: e.target.value as CatalogFilters['scope'] })} className={fieldClass}><option value="all">Books + research</option><option value="books">Books only</option><option value="research">Research only</option></select><select aria-label="Category" value={filters.categoryId} onChange={(e) => changeFilters({ ...filters, categoryId: e.target.value })} className={fieldClass}><option value="">All categories</option>{categories.map((category) => <option key={category.categoryId} value={category.categoryId}>{category.categoryName}</option>)}</select><input aria-label="Author" value={filters.author} onChange={(e) => changeFilters({ ...filters, author: e.target.value })} placeholder="Author" className={fieldClass} /><input aria-label="Publication year" value={filters.publicationYear} onChange={(e) => changeFilters({ ...filters, publicationYear: e.target.value })} placeholder="Year" inputMode="numeric" className={fieldClass} /><select aria-label="Availability" value={filters.availability} onChange={(e) => changeFilters({ ...filters, availability: e.target.value })} className={fieldClass}><option value="">Any availability</option><option>Available</option><option>Borrowed</option><option>Reserved</option><option>Unavailable</option><option>Available for Viewing</option></select><select aria-label="Dewey assignment" className={fieldClass} value={filters.deweyStatus??''} onChange={event=>changeFilters({...filters,deweyStatus:event.target.value as CatalogFilters['deweyStatus']})}><option value="">Any Dewey status</option><option value="assigned">Assigned</option><option value="unassigned">Not assigned</option></select></div><div className="mt-4 flex flex-wrap gap-2">{!maintenance && <ExportMenu disabled={exportingPdf||loading} exports={(['csv','pdf'] as const).map(format=>({label:format.toUpperCase(),onSelect:()=>void downloadInventory(format)}))}/>}<button onClick={() => setFilters(emptyFilters)} className="h-10 rounded-xl border border-[#0b5ea2]/20 bg-white px-4 text-sm font-bold text-[#0b5ea2]">Clear filters</button></div></SectionCard>
 
 
 
     <SectionCard className="mb-5 overflow-hidden">
 
-      <div className="border-b border-[#0b5ea2]/15 px-5 py-4"><h2 className="font-bold text-[#0b5ea2]">Unified catalog results</h2></div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 bg-slate-50/70 px-5 py-4 dark:border-slate-700/60 dark:bg-slate-800/40">
+        <div>
+          <h2 className="font-bold text-slate-900 dark:text-slate-100">Unified catalog results</h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Aligned with the STI Holdings Register format: Accession #, DDC + Cutter Table, bibliographic details, copies, shelf, and remarks.</p>
+        </div>
+      </div>
 
-      <ResponsiveTable><table className="w-full min-w-[1180px] text-left text-sm">
+      <ResponsiveTable><table className="w-full min-w-[1060px] text-left text-sm">
 
-        <thead className="bg-[#0b5ea2] text-white"><tr><th className="px-4 py-3">Title</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Category</th><th className="px-4 py-3">Shelf</th><th className="px-4 py-3">Year</th><th className="px-4 py-3">ISBN / code</th><th className="px-4 py-3">Availability</th><th className="px-4 py-3">Actions</th></tr></thead>
+        <thead className="border-b border-slate-200 bg-slate-100/90 text-xs font-bold uppercase tracking-wider text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+          <tr>
+            <th className="px-3 py-3">Accession #</th>
+            <th className="px-3 py-3">DDC + Cutter Table</th>
+            <th className="px-3 py-3">Book Title &amp; Author</th>
+            <th className="px-3 py-3">Edition &amp; Pages</th>
+            <th className="px-3 py-3">Publisher &amp; Year</th>
+            <th className="px-3 py-3">Copies &amp; Shelf</th>
+            <th className="px-3 py-3">ISBN &amp; Remarks</th>
+            <th className="px-3 py-3">Availability</th>
+            <th className="px-3 py-3">Actions</th>
+          </tr>
+        </thead>
 
-        <tbody>{loading ? <tr><td colSpan={8} className="px-4 py-8 text-center text-[#0b5ea2]">Loading catalog…</td></tr> : loadError ? <tr><td colSpan={8} className="p-5 text-center">Unable to show results. Refresh to retry.</td></tr> : items.length ? items.map((item) => <tr key={item.titleId} className="border-b border-[#0b5ea2]/10 align-top">
+        <tbody>{loading ? <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-600 dark:text-slate-300">Loading catalog…</td></tr> : loadError ? <tr><td colSpan={9} className="p-5 text-center text-red-700 dark:text-red-300">Unable to show results. Refresh to retry.</td></tr> : items.length ? items.map((item) => {
+          const rawCall = (item.callNumber || item.classification || '').trim()
+          const generatedDdc = item.recordType === 'Book'
+            ? generateDdcAndCutter({
+                title: item.title,
+                author: item.authors.join(', '),
+                categoryName: item.categoryName,
+                deweyCode: item.deweyCode || (/^\d{3}(?:\.\d+)?$/.test(rawCall) ? rawCall : null),
+              })
+            : null
+          const hasCutterAlready = /\b\d{3}(?:\.\d+)?\s+[A-Za-z]\d+/.test(rawCall)
+          const ddcCutterDisplay = hasCutterAlready
+            ? rawCall
+            : generatedDdc
+              ? generatedDdc.callNumber
+              : (rawCall || '—')
+          const firstAcc = item.accessionNumber || item.research?.researchCode || (item.recordType === 'Book' ? `STI-ACC-2026-${String(item.titleId).padStart(6, '0')}` : '—')
+          const hasAccRange = Boolean(item.accessionNumber && item.lastAccessionNumber && item.lastAccessionNumber !== item.accessionNumber)
+          return <tr key={item.titleId} className="border-b border-slate-200/70 align-top transition-colors hover:bg-slate-50/80 dark:border-slate-700/50 dark:hover:bg-slate-800/40">
 
-          <td className="px-4 py-3"><div className="flex items-center gap-3">{item.recordType === 'Book' ? <BookCoverThumbnail title={item.title} coverImagePath={item.coverImagePath} className="h-16 w-11 rounded-md" /> : null}<div className="min-w-0"><button type="button" className="min-h-11 text-left font-bold text-[#0b5ea2] underline underline-offset-4" onClick={() => setSelectedTitle(item)}>{item.title}</button><p className="text-xs text-[#0b5ea2]/60">{item.authors.join(', ')}</p></div></div></td>
+          <td className="px-3 py-3 font-mono text-xs whitespace-nowrap">
+            <span className="inline-block rounded-md border border-[#0b5ea2]/20 bg-[#0b5ea2]/5 px-2 py-1 font-bold text-[#0b5ea2] dark:border-sky-400/30 dark:bg-sky-950/40 dark:text-sky-200">
+              {firstAcc}
+            </span>
+            {hasAccRange ? (
+              <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                to {item.lastAccessionNumber}
+              </p>
+            ) : null}
+          </td>
 
-          <td className="px-4 py-3 text-[#0b5ea2]">{item.recordType}</td>
+          <td className="px-3 py-3 whitespace-nowrap">
+            <span className="inline-block rounded-md border border-amber-300/80 bg-[#FFF200]/35 px-2.5 py-1 font-mono text-xs font-extrabold text-[#132a3f] dark:border-amber-500/40 dark:bg-amber-950/50 dark:text-amber-200">
+              {ddcCutterDisplay}
+            </span>
+            {generatedDdc ? (
+              <p className="mt-1 max-w-[150px] truncate text-[11px] font-medium text-slate-500 dark:text-slate-400" title={`DDC ${item.deweyCode || generatedDdc.ddcCode} · ${generatedDdc.subject}`}>
+                DDC {item.deweyCode || generatedDdc.ddcCode} · {generatedDdc.subject}
+              </p>
+            ) : (
+              <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{item.recordType}</p>
+            )}
+          </td>
 
-          <td className="px-4 py-3 text-[#0b5ea2]">{item.categoryName ?? 'Uncategorized'}</td>
+          <td className="px-4 py-3">
+            <div className="flex items-start gap-3">
+              {item.recordType === 'Book' ? <BookCoverThumbnail title={item.title} coverImagePath={item.coverImagePath} className="h-16 w-11 shrink-0 rounded-md" /> : null}
+              <div className="min-w-0">
+                <button type="button" className="min-h-11 text-left font-bold text-[#0b5ea2] underline underline-offset-4 hover:text-[#132a3f] dark:text-sky-300" onClick={() => setSelectedTitle(item)}>{item.title}</button>
+                <p className="text-xs font-medium text-slate-600 dark:text-slate-300">{item.authors.join(', ') || 'Author not recorded'}</p>
+                <span className="mt-1 inline-block rounded bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                  {item.categoryName ?? 'Uncategorized'} · {item.recordType}
+                </span>
+              </div>
+            </div>
+          </td>
 
-          <td className="px-4 py-3 text-[#0b5ea2]"><span className="inline-flex items-center gap-1.5 font-semibold"><MapPin size={14} />{item.shelfLocation ?? 'Not mapped'}</span><p className={`mt-1 text-[11px] ${item.shelfStatus === 'Mismatch' ? 'font-bold text-red-700' : 'text-[#0b5ea2]/55'}`}>{item.shelfStatus === 'Mapped' ? `${item.activeInventoryCount} active ${item.activeInventoryCount === 1 ? 'copy' : 'copies'}` : item.shelfStatus}</p></td>
+          <td className="px-4 py-3 text-xs text-slate-700 dark:text-slate-200">
+            <p className="font-semibold">{item.edition || 'Standard edition'}</p>
+            <p className="mt-0.5 text-slate-500 dark:text-slate-400">
+              {item.pages ? `${item.pages} pp.` : 'Pages —'}{item.volumes ? ` · ${item.volumes}` : ''}
+            </p>
+          </td>
 
-          <td className="px-4 py-3 text-[#0b5ea2]">{item.publicationYear ?? '—'}</td>
+          <td className="px-4 py-3 text-xs text-slate-700 dark:text-slate-200">
+            <p className="font-semibold">{item.publisher || '—'}</p>
+            <p className="mt-0.5 tabular-nums text-slate-500 dark:text-slate-400">{item.publicationYear ?? '—'}</p>
+          </td>
 
-          <td className="px-4 py-3 font-mono text-xs text-[#0b5ea2]">{item.isbn ?? item.research?.researchCode ?? '—'}</td>
+          <td className="px-4 py-3 text-xs text-slate-700 dark:text-slate-200">
+            <p className="font-bold tabular-nums text-[#0b5ea2] dark:text-sky-300">
+              {item.availableCopies} / {item.totalCopies} copies
+            </p>
+            <span className="mt-1 inline-flex items-center gap-1 font-semibold text-slate-600 dark:text-slate-300">
+              <MapPin size={13} />{item.shelfLocation ?? 'Not mapped'}
+            </span>
+            <p className={`mt-0.5 text-[11px] ${item.shelfStatus === 'Mismatch' ? 'font-bold text-red-700 dark:text-red-300' : 'text-slate-500 dark:text-slate-400'}`}>
+              {item.shelfStatus === 'Mapped' ? `${item.activeInventoryCount} active ${item.activeInventoryCount === 1 ? 'copy' : 'copies'}` : item.shelfStatus}
+            </p>
+          </td>
+
+          <td className="px-4 py-3 text-xs">
+            <p className="font-mono font-semibold text-slate-800 dark:text-slate-200">{item.isbn ?? item.research?.researchCode ?? '—'}</p>
+            {item.remarks ? (
+              <p className="mt-1 line-clamp-2 max-w-[180px] text-[11px] text-slate-500 dark:text-slate-400" title={item.remarks}>{item.remarks}</p>
+            ) : (
+              <p className="mt-1 text-[11px] text-slate-400">No remarks</p>
+            )}
+          </td>
 
           <td className="px-4 py-3"><StatusBadge status={item.availability} /></td>
 
           <td className="px-4 py-3"><RowActions label={`Actions for ${item.title}`}>{item.recordType === 'Research/Thesis' ? <button type="button" onClick={() => setSelectedTitle(item)}>View details</button> : null}{item.recordType === 'Book' ? <button onClick={() => setSelectedTitle(item)} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0b5ea2]"><Eye size={15} /> View details</button> : item.research?.researchInventoryId ? <button type="button" onClick={() => setResearchAssetId(item.research!.researchInventoryId)} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0b5ea2]"><Eye size={15} /> View codes</button> : <span className="text-xs text-[#0b5ea2]/50">Codes unavailable</span>}{item.recordType === 'Book' ? <button type="button" onClick={() => { setCategoryError(null); setCategoryItem(item) }} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0b5ea2]"><ArrowRightLeft size={15} /> Change category</button> : <a href={`/librarian/maintenance?section=research-groups&titleId=${item.titleId}`} className="inline-flex min-h-10 items-center text-xs font-bold">Change research group</a>}{item.recordType === 'Book' ? <><button type="button" onClick={() => setQuotationItem(item)} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0b5ea2]">Supplier quotations</button><button type="button" onClick={() => { setArchiveReason(''); setArchiveItem(item) }} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0b5ea2]"><Archive size={15} /> Archive book</button></> : null}</RowActions></td>
 
-        </tr>) : <tr><td colSpan={8} className="px-4 py-8 text-center text-[#0b5ea2]">No records match these filters.</td></tr>}</tbody>
+        </tr>}) : <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-600 dark:text-slate-300">No records match these filters.</td></tr>}</tbody>
 
       </table></ResponsiveTable>
 

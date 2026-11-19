@@ -11,7 +11,6 @@ export const adminNavigation: AdminNavItem[] = [
   {id:'file-maintenance',label:'File maintenance',icon:Folder,section:true,children:[
     {id:'book-records',label:'Books',icon:BookOpen,children:[
       link('Catalog','catalog',BookOpen),
-      link('Accession register','book-register',BookOpen),
       link('Categories','categories',Tags),
       link('Inventory','inventory',Archive),
       link('Book archive','book-archive',Archive),
@@ -20,13 +19,10 @@ export const adminNavigation: AdminNavItem[] = [
       link('Users','users',Users),
       link('Student QR roster','student-qr-roster',QrCode),
     ]},
-    link('Floor plan','floor-plan',Map),
     link('Print supplies','supplies',PackageOpen),
-    link('Library setup','maintenance',Settings),
     link('Borrowing policies','borrowing-policies',Scale),
     link('Fine rules','fine-policies',SlidersHorizontal),
     link('Library schedule','library-schedule',CalendarClock),
-    link('Announcements','announcements',Megaphone),
   ]},
   {id:'transaction',label:'Transactions',icon:CalendarClock,section:true,children:[
     link('Borrow & return','circulation',CalendarClock),
@@ -42,6 +38,11 @@ export const adminNavigation: AdminNavItem[] = [
   ]},
   {id:'reports',label:'Reports',icon:FileBarChart,section:true,children:[
     link('Reports','reports',FileBarChart),
+  ]},
+  {id:'library',label:'Library',icon:BookOpen,section:true,children:[
+    link('Library setup','maintenance',Settings),
+    link('Floor plan','floor-plan',Map),
+    link('Announcements','announcements',Megaphone),
   ]},
   {id:'settings-account',label:'My account',icon:Settings,section:true,children:[
     link('My profile','profile',UserRound),

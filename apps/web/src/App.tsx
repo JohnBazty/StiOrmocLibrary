@@ -158,7 +158,7 @@ export default function App() {
           <Route path="/librarian/maintenance" element={<AppLayout><CatalogMaintenancePage /></AppLayout>} />
           <Route path="/librarian/reports" element={<AppLayout><CatalogReportsPage /></AppLayout>} />
           <Route path="/librarian/collection-review" element={<Navigate to="/librarian/maintenance" replace />} />
-          <Route path="/librarian/book-register" element={<AppLayout><BookRegisterPage /></AppLayout>} />
+          <Route path="/librarian/book-register" element={<Navigate to="/librarian/catalog" replace />} />
           <Route path="/librarian/book-archive" element={<AppLayout><BookArchivePage /></AppLayout>} />
           <Route path="/librarian/categories" element={<AppLayout><CategoryManagementPage /></AppLayout>} />
           <Route path="/librarian/circulation" element={<AppLayout><AdminCirculationMonitor /></AppLayout>} />

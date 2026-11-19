@@ -6,6 +6,16 @@ export type CatalogItem = {
   authors: string[]
   isbn: string | null
   publicationYear: number | null
+  publisher?: string | null
+  callNumber?: string | null
+  accessionNumber?: string | null
+  lastAccessionNumber?: string | null
+  deweyCode?: string | null
+  classification?: string | null
+  edition?: string | null
+  volumes?: string | null
+  pages?: number | null
+  remarks?: string | null
   categoryId: number | null
   categoryName: string | null
   rowVersion: number

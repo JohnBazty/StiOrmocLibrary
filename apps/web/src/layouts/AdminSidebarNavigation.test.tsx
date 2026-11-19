@@ -11,11 +11,16 @@ const section=(label:string)=>screen.getByRole('heading',{name:label}).closest('
 it('uses the requested order as visible sections, with only Books, Accounts and Payments collapsed',()=>{
  render(<MemoryRouter initialEntries={['/librarian/dashboard']}><AdminSidebarNavigation onNavigate={()=>{}}/></MemoryRouter>)
  const menu=screen.getByRole('list',{name:'Admin menu'})
- expect(Array.from(menu.children).map(row=>row.querySelector(':scope > a, :scope > h2')?.textContent?.trim())).toEqual(['Dashboard','File maintenance','Transactions','Reports','My account'])
+ expect(Array.from(menu.children).map(row=>row.querySelector(':scope > a, :scope > h2')?.textContent?.trim())).toEqual(['Dashboard','File maintenance','Transactions','Reports','Library','My account'])
  expect(Array.from(menu.querySelectorAll('summary')).map(item=>item.textContent?.trim())).toEqual(['Books','Accounts','Payments'])
  for(const name of ['File maintenance','Transactions','Reports'])expect(screen.getByRole('heading',{name}).closest('details')).toBeNull()
  expect(within(section('My account')).getByRole('link',{name:'My profile'})).toBeTruthy()
- expect(within(section('File maintenance')).getByRole('link',{name:'Library setup'}).getAttribute('href')).toBe('/librarian/maintenance')
+ const libraryLinks=within(section('Library')).getAllByRole('link')
+ expect(libraryLinks.map(link=>[link.textContent,link.getAttribute('href')])).toEqual([
+  ['Library setup','/librarian/maintenance'],
+  ['Floor plan','/librarian/floor-plan'],
+  ['Announcements','/librarian/announcements'],
+ ])
  expect(within(section('File maintenance')).getByRole('link',{name:'Print supplies'}).getAttribute('href')).toBe('/librarian/supplies')
  expect(screen.queryByRole('link',{name:'Maintenance'})).toBeNull()
  expect(within(section('My account')).getByRole('link',{name:'Notifications'}).getAttribute('href')).toBe('/librarian/notifications')
@@ -26,9 +31,9 @@ it('uses the requested order as visible sections, with only Books, Accounts and 
  const accounts=group('Accounts',section('File maintenance'))
  expect(within(accounts).getAllByRole('link',{hidden:true}).map(link=>link.textContent)).toEqual(['Users','Student QR roster'])
  const routes=librarianNav.map(item=>item.to)
- expect(routes).toHaveLength(26)
- expect(new Set(routes).size).toBe(26)
- expect(routes.map(route=>route.replace('/librarian/','')).sort()).toEqual(['fine-policies','borrowing-policies','library-schedule','dashboard','book-register','reports','book-archive','categories','circulation','reservations','fines','payments','funds','maintenance','inventory','floor-plan','printing','supplies','attendance','clearance','announcements','users','student-qr-roster','catalog','notifications','profile'].sort())
+ expect(routes).toHaveLength(25)
+ expect(new Set(routes).size).toBe(25)
+ expect(routes.map(route=>route.replace('/librarian/','')).sort()).toEqual(['fine-policies','borrowing-policies','library-schedule','dashboard','reports','book-archive','categories','circulation','reservations','fines','payments','funds','maintenance','inventory','floor-plan','printing','supplies','attendance','clearance','announcements','users','student-qr-roster','catalog','notifications','profile'].sort())
 })
 
 it('opens only the active payment branch and highlights the current page',()=>{
@@ -52,7 +57,7 @@ it('toggles a group without navigating and closes mobile navigation only for a p
 })
 
 it('keeps a manually closed group closed on rerender, then opens the destination branch on navigation',async()=>{
- function View(){const navigate=useNavigate();return <><button onClick={()=>navigate('/librarian/book-register')}>Go to books</button><AdminSidebarNavigation onNavigate={()=>{}}/></>}
+ function View(){const navigate=useNavigate();return <><button onClick={()=>navigate('/librarian/catalog')}>Go to books</button><AdminSidebarNavigation onNavigate={()=>{}}/></>}
  const view=render(<MemoryRouter initialEntries={['/librarian/funds']}><View/></MemoryRouter>)
  fireEvent.click(group('Payments').querySelector('summary')!)
  expect(group('Payments').open).toBe(false)
