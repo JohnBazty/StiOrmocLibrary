@@ -49,3 +49,31 @@ it('multiple results require an explicit choice; provider failure offers a retry
   fireEvent.change(screen.getByLabelText('Choose a Dewey suggestion'),{target:{value:'200'}})
   expect((screen.getByLabelText('Dewey number') as HTMLInputElement).value).toBe('200')
 })
+it('identifies the classification and auto-generates DDC and LC Cutter when Generate DDC & Cutter is clicked',async()=>{
+  lookup.mockResolvedValue({status:'not_found',candidates:[]})
+  const onGenerate = vi.fn()
+  function Wrapper() {
+    const [value, setValue] = useState<DeweySelection | null>(null)
+    return (
+      <DeweyField
+        isbn=""
+        title="Basic English for College"
+        author="Emy M. Pascasio"
+        value={value}
+        onChange={setValue}
+        onGenerateCallNumber={onGenerate}
+      />
+    )
+  }
+  render(<Wrapper />)
+  fireEvent.click(screen.getByRole('button', { name: /Generate DDC & Cutter/i }))
+  expect((screen.getByLabelText('Dewey number') as HTMLInputElement).value).toBe('428')
+  expect(screen.getByText(/Standard English usage/i)).toBeTruthy()
+  expect(screen.getByText('P373')).toBeTruthy()
+  expect(screen.getByText('428 P373')).toBeTruthy()
+  expect(onGenerate).toHaveBeenCalledWith(expect.objectContaining({
+    ddcCode: '428',
+    cutter: 'P373',
+    callNumber: '428 P373',
+  }))
+})

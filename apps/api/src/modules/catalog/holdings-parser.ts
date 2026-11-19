@@ -1,16 +1,17 @@
 import ExcelJS from 'exceljs'
 import { Readable } from 'node:stream'
+import { inflateRawSync } from 'node:zlib'
 import { HttpError } from '../../core/http-error.ts'
 import { isValidIsbn, normalizeIsbn } from './catalog.validation.ts'
 import { cleanImportValue, matchImportReference, type ImportCorrection, type ImportReferences } from './holdings-cleanup.ts'
 
 const legacyHoldingsFields = ['title','author','isbn','edition','publisher','publicationYear','copyrightYear','pages','copies','missingCopies','accessions','barcodes','callNumber'] as const
-export const holdingsFields = [...legacyHoldingsFields, 'categoryName', 'shelfLocation', 'summary'] as const
+export const holdingsFields = [...legacyHoldingsFields, 'categoryName', 'shelfLocation', 'summary', 'deweyNumber', 'volumes', 'fundSource', 'fundDetail', 'costPhp', 'receivedOn', 'remarks'] as const
 export type HoldingsField = typeof holdingsFields[number]
 export type SheetMapping = { sheet: string; headerRow: number; columns: Partial<Record<HoldingsField, number>>; categoryId?: number; location?: string; programId?: number }
 export type HoldingsSheet = { name: string; rows: string[][]; mapping: SheetMapping; headers: string[] }
 import type { ReviewedDewey } from "./dewey.service.ts"
-export type HoldingsData = { reviewedDewey?: ReviewedDewey; summary?: string; title: string; author: string; isbn: string; edition: string; publisher: string; publicationYear: string; copyrightYear: string; pages: string; copies: string; missingCopies: string; accessions: string; barcodes: string; callNumber: string; categoryId: number | null; location: string; locationId?: number; shelfColumn?: number; shelfRow?: number; programId: number | null; generateAccessions: boolean; categoryName?: string; shelfLocation?: string; autoCorrections?: ImportCorrection[] }
+export type HoldingsData = { reviewedDewey?: ReviewedDewey; summary?: string; deweyNumber?: string; volumes?: string; fundSource?: string; fundDetail?: string; costPhp?: string; receivedOn?: string; remarks?: string; title: string; author: string; isbn: string; edition: string; publisher: string; publicationYear: string; copyrightYear: string; pages: string; copies: string; missingCopies: string; accessions: string; barcodes: string; callNumber: string; categoryId: number | null; location: string; locationId?: number; shelfColumn?: number; shelfRow?: number; programId: number | null; generateAccessions: boolean; categoryName?: string; shelfLocation?: string; autoCorrections?: ImportCorrection[] }
 const bad = (message: string) => new HttpError(422,'HOLDINGS_FILE_INVALID',message)
 export const clean = (value: unknown) => String(value ?? '').trim().replace(/\s+/g,' ')
 export const key = (value: unknown) => clean(value).normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim()
@@ -59,10 +60,125 @@ const aliases: Record<HoldingsField, RegExp> = {
  missingCopies:/^(missing|missing copies)$/,
  accessions:/^(accesion|accession)( numbers?| nos?)?$/,
  barcodes:/^(book )?barcodes?$/,
- callNumber:/^call number$/,
+ callNumber:/^(call number|ddc cutter(s)?( table)?|ddc and cutter(s)?( table)?)$/,
  categoryName:/^(category|category name|classification)$/,
- shelfLocation:/^(shelf|shelf location|shelf label|location)$/,
+ shelfLocation:/^(shelf|shelf location|shelf label|location|book location)$/,
  summary:/^(abstract|summary|abstract summary|synopsis|book summary)$/,
+ deweyNumber:/^(dewey|dewey number|dewey classification|ddc|ddc code|ddc number)$/,
+ volumes:/^volumes?$/,
+ fundSource:/^(source of fund|fund source)$/,
+ fundDetail:/^(fund details?|fund note)$/,
+ costPhp:/^(cost price(?: php(?: each copy)?)?|cost php|cost per copy|price|unit cost)$/,
+ receivedOn:/^(date received|received on|acquired at|acquisition date)$/,
+ remarks:/^remarks?$/,
+}
+
+function decodeXmlEntities(text: string): string {
+  return text
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&amp;/g, '&')
+}
+
+/** Fallback reader for OpenXML workbooks that use `<x:...>` namespace prefixes which ExcelJS fails to parse. */
+function readPrefixedOpenXmlSheets(bytes: Buffer): Array<{ name: string; rows: string[][] }> {
+  let end = -1
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
+    if (bytes.readUInt32LE(i) === 0x06054b50) { end = i; break }
+  }
+  const count = bytes.readUInt16LE(end + 10), start = bytes.readUInt32LE(end + 16)
+  const files = new Map<string, Buffer>()
+  let offset = start
+  for (let i = 0; i < count; i++) {
+    const method = bytes.readUInt16LE(offset + 10)
+    const compSize = bytes.readUInt32LE(offset + 20)
+    const nameLen = bytes.readUInt16LE(offset + 28)
+    const extraLen = bytes.readUInt16LE(offset + 30)
+    const commentLen = bytes.readUInt16LE(offset + 32)
+    const localOffset = bytes.readUInt32LE(offset + 42)
+    const name = bytes.subarray(offset + 46, offset + 46 + nameLen).toString('utf8').replace(/^\/+/, '')
+    const localNameLen = bytes.readUInt16LE(localOffset + 26)
+    const localExtraLen = bytes.readUInt16LE(localOffset + 28)
+    const dataStart = localOffset + 30 + localNameLen + localExtraLen
+    const raw = bytes.subarray(dataStart, dataStart + compSize)
+    if (/\.(xml|rels)$/i.test(name)) {
+      files.set(name, method === 8 ? inflateRawSync(raw) : raw)
+    }
+    offset += 46 + nameLen + extraLen + commentLen
+  }
+  const wbXml = files.get('xl/workbook.xml')?.toString('utf8') ?? ''
+  const relsXml = files.get('xl/_rels/workbook.xml.rels')?.toString('utf8') ?? ''
+  if (!wbXml || !relsXml) throw bad('The workbook is incomplete.')
+  const sstXml = files.get('xl/sharedStrings.xml')?.toString('utf8') ?? ''
+  const sharedStrings: string[] = []
+  for (const siMatch of sstXml.matchAll(/<(?:[a-zA-Z0-9_]+:)?si\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_]+:)?si>/g)) {
+    const parts: string[] = []
+    for (const tMatch of siMatch[1].matchAll(/<(?:[a-zA-Z0-9_]+:)?t\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_]+:)?t>/g)) {
+      parts.push(decodeXmlEntities(tMatch[1]))
+    }
+    sharedStrings.push(parts.join(''))
+  }
+  const relTargets = new Map<string, string>()
+  for (const relMatch of relsXml.matchAll(/<Relationship\b([^>]*?)\/?>/g)) {
+    const attrs = relMatch[1]
+    const id = attrs.match(/\bId="([^"]+)"/)?.[1]
+    const target = attrs.match(/\bTarget="([^"]+)"/)?.[1]
+    if (id && target) {
+      const normalizedTarget = target.replace(/^\/+/, '')
+      relTargets.set(id, normalizedTarget.startsWith('xl/') ? normalizedTarget : `xl/${normalizedTarget}`)
+    }
+  }
+  const parsedSheets: Array<{ name: string; rows: string[][] }> = []
+  for (const sheetMatch of wbXml.matchAll(/<(?:[a-zA-Z0-9_]+:)?sheet\b([^>]*?)\/?>/g)) {
+    const attrs = sheetMatch[1]
+    const sheetName = decodeXmlEntities(attrs.match(/\bname="([^"]+)"/)?.[1] ?? 'Sheet')
+    const rId = attrs.match(/\b(?:r:)?id="([^"]+)"/)?.[1] ?? ''
+    const target = relTargets.get(rId)
+    const sheetXml = target ? files.get(target)?.toString('utf8') ?? '' : ''
+    if (!sheetXml) continue
+    const rowMap = new Map<number, Map<number, string>>()
+    let maxRow = 0, maxCol = 0
+    for (const rowMatch of sheetXml.matchAll(/<(?:[a-zA-Z0-9_]+:)?row\b([^>]*)>([\s\S]*?)<\/(?:[a-zA-Z0-9_]+:)?row>/g)) {
+      const rAttr = Number(rowMatch[1].match(/\br="(\d+)"/)?.[1] ?? 0)
+      const rowIdx = rAttr > 0 ? rAttr : maxRow + 1
+      if (rowIdx > maxRow) maxRow = rowIdx
+      const cells = rowMap.get(rowIdx) ?? new Map<number, string>()
+      let nextCol = 1
+      for (const cellMatch of rowMatch[2].matchAll(/<(?:[a-zA-Z0-9_]+:)?c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:[a-zA-Z0-9_]+:)?c>)/g)) {
+        const cAttrs = cellMatch[1], cBody = cellMatch[2] ?? ''
+        const refLetters = cAttrs.match(/\br="([A-Z]+)\d+"/)?.[1]
+        let colIdx = nextCol
+        if (refLetters) {
+          colIdx = 0
+          for (let k = 0; k < refLetters.length; k++) colIdx = colIdx * 26 + (refLetters.charCodeAt(k) - 64)
+        }
+        nextCol = colIdx + 1
+        if (colIdx > maxCol) maxCol = colIdx
+        const cType = cAttrs.match(/\bt="([^"]+)"/)?.[1] ?? ''
+        let val = ''
+        if (cType === 'inlineStr') {
+          val = [...cBody.matchAll(/<(?:[a-zA-Z0-9_]+:)?t\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_]+:)?t>/g)].map(m => decodeXmlEntities(m[1])).join('')
+        } else {
+          const rawVal = decodeXmlEntities(cBody.match(/<(?:[a-zA-Z0-9_]+:)?v\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_]+:)?v>/)?.[1] ?? '')
+          val = cType === 's' && /^\d+$/.test(rawVal) ? (sharedStrings[Number(rawVal)] ?? '') : rawVal
+        }
+        cells.set(colIdx, val.slice(0, 2000))
+      }
+      rowMap.set(rowIdx, cells)
+    }
+    if (maxRow > 10000 || maxCol > 40) throw bad('Each sheet must have at most 10,000 rows and 40 columns.')
+    const rows: string[][] = []
+    for (let r = 1; r <= maxRow; r++) {
+      const cells = rowMap.get(r)
+      rows.push(Array.from({ length: maxCol }, (_, c) => cells?.get(c + 1) ?? ''))
+    }
+    parsedSheets.push({ name: sheetName, rows })
+  }
+  return parsedSheets
 }
 export function detectMapping(name:string, rows:string[][]): SheetMapping {
   let headerRow=1,best=0
@@ -81,15 +197,34 @@ export function detectMapping(name:string, rows:string[][]): SheetMapping {
 export async function readHoldings(file: {buffer:Buffer;originalname:string}) {
   if(!file.buffer.length || file.buffer.length>4*1024*1024) throw bad('Choose a workbook or CSV up to 4 MB.')
   const workbook=new ExcelJS.Workbook()
+  let fallbackSheets: Array<{ name: string; rows: string[][] }> | null = null
   try {
     if(/\.xlsx$/i.test(file.originalname)){
       if(file.buffer.length<22) throw bad('The workbook is incomplete.')
       validateXlsxArchive(file.buffer)
-      await workbook.xlsx.load(file.buffer as unknown as ExcelJS.Buffer)
+      try {
+        await workbook.xlsx.load(file.buffer as unknown as ExcelJS.Buffer)
+      } catch (xlsxErr) {
+        if (xlsxErr instanceof HttpError) throw xlsxErr
+        fallbackSheets = readPrefixedOpenXmlSheets(file.buffer)
+        if (!fallbackSheets.length) throw xlsxErr
+      }
     }else if(/\.csv$/i.test(file.originalname)){
       await workbook.csv.read(Readable.from(file.buffer),{map:value=>String(value??''),parserOptions:{maxRows:10001}})
     }else throw bad('Only XLSX and UTF-8 CSV files are supported.')
   }catch(error){if(error instanceof HttpError)throw error;throw bad('The file cannot be read. Save it as an unencrypted XLSX or UTF-8 CSV and try again.')}
+  if (fallbackSheets) {
+    if (fallbackSheets.length > 12) throw bad('Import at most 12 sheets at a time.')
+    const sheets: HoldingsSheet[] = []
+    let total = 0
+    for (const sheet of fallbackSheets) {
+      total += sheet.rows.length
+      if (total > 20000) throw bad('Import at most 20,000 source rows at a time.')
+      const mapping = detectMapping(sheet.name, sheet.rows)
+      sheets.push({ name: sheet.name, rows: sheet.rows, mapping, headers: sheet.rows[mapping.headerRow - 1] ?? [] })
+    }
+    return sheets
+  }
   if(workbook.worksheets.length>12) throw bad('Import at most 12 sheets at a time.')
   const sheets:HoldingsSheet[]=[]
   let total=0
@@ -156,7 +291,11 @@ export function mappedRows(sheets:HoldingsSheet[],mappings:SheetMapping[],refere
         location = shelf?.name ?? ''
         if (shelf && shelf.name !== values.shelfLocation) recordReferenceCorrection(corrections, 'shelfLocation', values.shelfLocation, shelf.name, 'shelf')
       }
-      items.push({sheet:sheet.name,sourceRow:i+1,source,data:{...values,categoryId,location,programId:positiveId(mapping.programId),generateAccessions:false,...(corrections.length ? {autoCorrections:corrections} : {})}})
+      const rawDewey = values.deweyNumber || values.callNumber.match(/^(\d{3}(?:\.\d+)?)\b/)?.[1] || ''
+      const reviewedDewey: ReviewedDewey | undefined = /^\d{3}(?:\.\d+)?$/.test(rawDewey)
+        ? { code: rawDewey, source: 'manual', sourceUrl: null, isbn: values.isbn }
+        : undefined
+      items.push({sheet:sheet.name,sourceRow:i+1,source,data:{...values,categoryId,location,programId:positiveId(mapping.programId),generateAccessions:false,...(reviewedDewey ? {reviewedDewey} : {}),...(corrections.length ? {autoCorrections:corrections} : {})}})
     }
   }
   if(!items.length)throw bad('No book entries were found using the selected mapping.')

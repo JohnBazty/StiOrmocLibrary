@@ -75,6 +75,11 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
     coverSuppressed.current='';coverSource.current='auto';setAutoCover(true);setCoverFile(file);setCoverNotice('Cover found for this ISBN. Review it before saving.')
   }, [])
   const [metadata, setMetadata] = useState({ title: '', author: '', publisher: '', publicationYear: '' })
+  const [callNumber, setCallNumber] = useState('')
+  const selectedCategoryName = useMemo(
+    () => allCategories.find((category) => String(category.categoryId) === categoryId)?.categoryName ?? '',
+    [allCategories, categoryId],
+  )
   const titlePredictions = usePredictions('title', metadata.title)
   const authorPredictions = usePredictions('author', metadata.author)
   const [lookupStatus, setLookupStatus] = useState<{ state: 'idle' | 'loading' | 'found' | 'error'; message: string }>({ state: 'idle', message: '' })
@@ -123,7 +128,7 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
   useEffect(() => {mounted.current=true;return()=>{mounted.current=false;lookupAbort.current?.abort();coverAbort.current?.abort();coverRequest.current++}}, [])
 
   // Any manual edit or asynchronous lookup changes what must be reviewed.
-  useEffect(() => { setReview(null) }, [metadata, isbn, categoryId, bookLocation, shelfColumn, shelfRow, copyQuantity, dewey, coverFile])
+  useEffect(() => { setReview(null) }, [metadata, callNumber, isbn, categoryId, bookLocation, shelfColumn, shelfRow, copyQuantity, dewey, coverFile])
   useEffect(() => { if (review) reviewHeading.current?.focus() }, [review])
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -151,15 +156,16 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
         reader.onerror = () => reject(new Error('The cover could not be read. Choose the image again.'))
         reader.readAsDataURL(coverFile)
       }) : null
+      const resolvedCallNumber = String(data.callNumber || callNumber || '').trim()
       const result = await catalogApi.createBulkBook({
         title: data.title, author: data.author, isbn: normalizeIsbnInput(isbn),
         dewey,
         number_of_copies: data.numberOfCopies, publication_year: data.publicationYear || null,
-        publisher: data.publisher, call_number: data.callNumber,
+        publisher: data.publisher, call_number: resolvedCallNumber,
         category_id: data.categoryId, shelf_location: data.bookLocation,
         locationId: data.locationId, shelfColumn: Number(data.shelfColumn), shelfRow: Number(data.shelfRow),
         cover_image_data: coverImageData,
-        classification: data.callNumber, edition: data.edition, volumes: data.volumes, pages: data.pages, remarks: data.remarks,
+        classification: resolvedCallNumber, edition: data.edition, volumes: data.volumes, pages: data.pages, remarks: data.remarks,
         fund_source: data.fundSource, fund_detail: data.fundDetail, cost_php: data.costPhp, received_on: data.receivedOn,
       })
       setBatch(result)
@@ -207,7 +213,19 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
         <Field label="Title" name="title" required list="title-predictions" value={metadata.title} onChange={(title) => setMetadata((current) => ({ ...current, title }))} /><Field label="Author" name="author" required list="author-predictions" value={metadata.author} onChange={(author) => setMetadata((current) => ({ ...current, author }))} />
         <label><span className={labelClass}>ISBN *</span><input name="isbn" required value={isbn} inputMode="text" autoComplete="off" aria-invalid={Boolean(liveIsbnError || errors.isbn)} aria-describedby="isbn-feedback isbn-lookup-feedback" onChange={(event) => { setIsbn(event.target.value);lookupAbort.current?.abort();coverAbort.current?.abort();coverRequest.current++;coverInFlight.current='';setCoverBusy(false);setCoverNotice(''); if (coverSource.current === 'auto') clearCover();if(normalizeIsbnInput(event.target.value)!==currentIsbn.current)coverSuppressed.current=''; if (normalizeIsbnInput(event.target.value) !== lastLookup.current) lastLookup.current = ''; setErrors((current) => { const next = { ...current }; delete next.isbn; return next }) }} onBlur={() => { const normalized = normalizeIsbnInput(isbn); setIsbn(normalized); if (!isbnInputError(normalized)) void lookupIsbn(normalized, true) }} onKeyDown={(event) => { if (event.key === 'Enter' && !liveIsbnError) { event.preventDefault(); const normalized = normalizeIsbnInput(isbn); setIsbn(normalized); void lookupIsbn(normalized, true) } }} placeholder="ISBN-10 or ISBN-13" className={fieldClass} /><span id="isbn-feedback" className={`mt-1.5 block text-xs font-semibold ${liveIsbnError || errors.isbn ? 'text-[#0b5ea2]' : 'text-[#0b5ea2]/65'}`}>{liveIsbnError ?? errors.isbn ?? (isbn ? `Valid ${normalizeIsbnInput(isbn).length === 10 ? 'ISBN-10' : 'ISBN-13'} checksum` : 'Hyphens and spaces are accepted.')}</span>{lookupStatus.message ? <span id="isbn-lookup-feedback" role={lookupStatus.state === 'error' ? 'alert' : 'status'} className={`mt-1 block text-xs font-bold ${lookupStatus.state === 'error' ? 'rounded-lg bg-[#FFF200] p-2 text-[#0b5ea2]' : 'text-[#0b5ea2]'}`}>{lookupStatus.message}</span> : null}</label><label><span className={labelClass}>Number of copies *</span><input name="numberOfCopies" required type="number" min="1" max="100" value={copyQuantity} onChange={event => setCopyQuantity(Number(event.target.value))} className={fieldClass} /></label>
         <RequiredBookInformation draft={{title:metadata.title,author:metadata.author,isbn}} requireIsbn disabled={saving||Boolean(batch)} onApply={patch=>{setMetadata(current=>({...current,title:current.title.trim()?current.title:patch.title??current.title,author:current.author.trim()?current.author:patch.author??current.author}));if(patch.isbn)setIsbn(current=>current.trim()?current:patch.isbn!)}}/>
-        <div className="sm:col-span-2"><DeweyField isbn={isbn} value={dewey} onChange={setDewey} disabled={saving||Boolean(batch)}/><p className="mt-2 text-sm">The reviewed number applies to every new copy in this entry.</p></div>
+        <div className="sm:col-span-2">
+          <DeweyField
+            isbn={isbn}
+            title={metadata.title}
+            author={metadata.author}
+            categoryName={selectedCategoryName}
+            value={dewey}
+            onChange={setDewey}
+            onGenerateCallNumber={(generated) => setCallNumber(generated.callNumber)}
+            disabled={saving||Boolean(batch)}
+          />
+          <p className="mt-2 text-sm">The reviewed number applies to every new copy in this entry.</p>
+        </div>
         <div className="space-y-3"><label><span className={labelClass}>Cover page</span><span className="flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] px-3 text-sm font-bold text-[#0b5ea2]"><ImagePlus size={17} />{coverFile ? 'Choose a different cover' : 'Upload cover image'}<input ref={coverInput} disabled={saving || Boolean(batch)} aria-label="Upload cover page" type="file" accept="image/jpeg,image/png,image/webp" onChange={selectCover} className="sr-only" /></span></label><button type="button" disabled={saving||Boolean(batch)||coverBusy||lookupStatus.state==='loading'||!normalizeIsbnInput(isbn)||Boolean(liveIsbnError)||coverSource.current==='manual'} onClick={()=>void attachLookupCover(normalizeIsbnInput(isbn),true)} className="min-h-11 rounded-xl border border-[#0b5ea2]/30 px-3 text-sm font-bold text-[#0b5ea2] disabled:opacity-50">{coverBusy?'Finding cover…':'Find cover automatically'}</button>{coverNotice&&<p role="status" className="text-xs text-[#0b5ea2]">{coverNotice}</p>}{coverSource.current==='manual'&&<p className="text-xs text-[#0b5ea2]">Your uploaded cover is kept. Remove it to find a cover automatically.</p>}<SelectedFilePreview file={coverFile} onRemove={clearCover} disabled={saving || Boolean(batch)} />{autoCover ? <p role="status" className="text-xs font-semibold text-[#0b5ea2]">Cover added from the book lookup. Choose a different cover or remove it if it is wrong.</p> : null}</div>
         <label><span className={labelClass}>Category *</span><select name="categoryId" required value={categoryId} onChange={(event) => changeCategory(event.target.value)} className={fieldClass}><option value="">Select category</option>{allCategories.map((category) => <option key={category.categoryId} value={category.categoryId}>{category.categoryName}</option>)}</select></label>
         <CategorySuggestion subjects={subjects} categories={allCategories} categoryId={categoryId} onSelect={(category, created) => {
@@ -221,7 +239,7 @@ export function AddMultipleCopiesModal({ categories, locations, onCreated, onClo
         <Field label="Publication year" name="publicationYear" value={metadata.publicationYear} onChange={(publicationYear) => setMetadata((current) => ({ ...current, publicationYear }))} /><Field label="Publisher" name="publisher" value={metadata.publisher} onChange={(publisher) => setMetadata((current) => ({ ...current, publisher }))} />
         <p className="self-center text-sm text-[#0b5ea2]/70 sm:col-span-2">Supplier quotation optional. You can attach one from the catalog after saving this book.</p>
         <fieldset className="grid gap-4 rounded-xl border border-[#0b5ea2]/15 p-4 sm:col-span-2 sm:grid-cols-2"><legend className="px-1 text-sm font-black text-[#0b5ea2]">Book register</legend>
-          <Field label="Call number" name="callNumber" /><Field label="Edition" name="edition" />
+          <Field label="Call number" name="callNumber" value={callNumber} onChange={setCallNumber} /><Field label="Edition" name="edition" />
           <Field label="Volumes" name="volumes" /><label><span className={labelClass}>Pages</span><input name="pages" type="number" min="1" max="100000" className={fieldClass} /></label>
           <label><span className={labelClass}>Source of fund</span><select name="fundSource" defaultValue="" className={fieldClass}><option value="">Not recorded</option>{FUND_SOURCES.map((source) => <option key={source}>{source}</option>)}</select></label><Field label="Fund details" name="fundDetail" />
           <label><span className={labelClass}>Cost price (PHP, each copy)</span><input name="costPhp" type="number" min="0" max="999999.99" step="0.01" inputMode="decimal" className={fieldClass} /></label><label><span className={labelClass}>Date received</span><input name="receivedOn" type="date" className={fieldClass} /></label>
