@@ -55,7 +55,7 @@ export type AdminBookAsset = {
   barcodeImageData: string
 }
 
-export type Category = { categoryId: number; categoryName: string; shelfLocation: string; shelfColumn?: number; shelfRow?: number; totalBooksCount?: number; totalThesisCount?: number }
+export type Category = { categoryId: number; categoryName: string; shelfLocation: string; shelfColumn?: number; shelfRow?: number; recordKind?: 'Book' | 'Research/Thesis' | null; totalBooksCount?: number; totalThesisCount?: number }
 
 export type GeneratedBookLabel = {
   physicalCopyId: number

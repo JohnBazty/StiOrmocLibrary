@@ -4,7 +4,7 @@ import type { Pool } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { createCatalogManagementService } from './catalog-management.service.ts'
 
-function catalogPool(options: { recordType?: 'Book' | 'Research/Thesis'; rowVersion?: number } = {}) {
+function catalogPool(options: { recordType?: 'Book' | 'Research/Thesis'; rowVersion?: number; targetRecordKind?: 'Book' | 'Research/Thesis' | null } = {}) {
   const state = { commits: 0, rollbacks: 0, statements: [] as Array<{ sql: string; values: unknown[] }> }
   const recordType = options.recordType ?? 'Book'
   const connection = {
@@ -21,6 +21,7 @@ function catalogPool(options: { recordType?: 'Book' | 'Research/Thesis'; rowVers
       }]]
       if (sql.includes('FROM categories c') && sql.includes('catalog_locations')) return [[{
         category_id: 8, category_name: 'Fantasy', shelf_location: 'Shelf F', shelf_id: 11,
+        record_kind: options.targetRecordKind === undefined ? 'Book' : options.targetRecordKind,
       }]]
       if (sql.includes('FROM physical_copies') && sql.includes('SELECT shelf_location')) return [[
         { physical_copy_id: 30, material_id: 40, shelf_location: 'Shelf A' },
@@ -70,4 +71,15 @@ test('rolls back a stale category change without updating inventory', async () =
   assert.equal(state.commits, 0)
   assert.equal(state.rollbacks, 1)
   assert.equal(state.statements.some(({ sql }) => sql.includes('UPDATE physical_copies')), false)
+})
+
+test('rejects moving a book into a Research/Thesis category with 422 instead of a server error', async () => {
+  const { state, database } = catalogPool({ targetRecordKind: 'Research/Thesis' })
+  await assert.rejects(
+    createCatalogManagementService(database).changeTitleCategory(14, { targetCategoryId: 8, expectedRowVersion: 3 }, 5),
+    (error: unknown) => error instanceof HttpError && error.status === 422 && error.code === 'CATEGORY_RECORD_KIND_MISMATCH',
+  )
+  assert.equal(state.commits, 0)
+  assert.equal(state.rollbacks, 1)
+  assert.equal(state.statements.some(({ sql }) => /^\s*(UPDATE|INSERT)/.test(sql)), false)
 })

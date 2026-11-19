@@ -91,6 +91,13 @@ export function createCatalogManagementService(database: Pool = db) {
         }
         const target = await lockCategoryWithManagedShelf(connection, input.targetCategoryId)
         if (!target) throw new HttpError(404, 'CATEGORY_NOT_FOUND', 'The selected category no longer exists.')
+        if (target.record_kind && String(target.record_kind) !== String(title.record_type)) {
+          throw new HttpError(
+            422,
+            'CATEGORY_RECORD_KIND_MISMATCH',
+            title.record_type === 'Research/Thesis' ? 'Choose a research category.' : 'Choose a book category.',
+          )
+        }
         if (!target.shelf_id) {
           throw new HttpError(422, 'CATEGORY_SHELF_NOT_MANAGED', 'The selected category must use a shelf managed in Category Management.')
         }

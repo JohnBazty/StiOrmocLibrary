@@ -713,7 +713,9 @@ export function CatalogManagementPage({ maintenance = false }: { maintenance?: b
                         </p>
                         <span className="mt-1 inline-flex items-center gap-1 font-semibold text-slate-600 dark:text-slate-300">
                           <MapPin size={13} />
-                          {item.shelfLocation ?? 'Not mapped'}
+                          {item.actualShelfLocations.length > 0
+                            ? item.actualShelfLocations.join(', ')
+                            : (item.shelfLocation ?? 'Not mapped')}
                         </span>
                         <p
                           className={`mt-0.5 text-[11px] ${
@@ -725,9 +727,7 @@ export function CatalogManagementPage({ maintenance = false }: { maintenance?: b
                           {item.shelfStatus === 'Mapped'
                             ? `${item.activeInventoryCount} active ${item.activeInventoryCount === 1 ? 'copy' : 'copies'}`
                             : item.shelfStatus === 'Mismatch'
-                              ? item.actualShelfLocations.length > 0
-                                ? `Mismatch · Copies on: ${item.actualShelfLocations.join(', ')}`
-                                : 'Mismatch · No shelf on copies'
+                              ? 'No shelf on copies'
                               : item.shelfStatus}
                         </p>
                       </td>
@@ -865,7 +865,7 @@ export function CatalogManagementPage({ maintenance = false }: { maintenance?: b
       {selectedTitle ? <CatalogTitleDetails item={selectedTitle} onClose={() => setSelectedTitle(null)} /> : null}
       {form === 'book' ? (
         <AddMultipleCopiesModal
-          categories={categories}
+          categories={categories.filter((category) => !category.recordKind || category.recordKind === 'Book')}
           locations={managedLocations}
           onClose={() => setForm(null)}
           onCreated={async () => {

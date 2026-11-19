@@ -5,9 +5,16 @@ import { buildBookSearchText, buildThesisSearchText, insertAuthors } from './cat
 
 export async function listCategories(database: Pool) {
   const [rows] = await database.execute<RowDataPacket[]>(
-    'SELECT category_id, category_name, shelf_location, shelf_column, shelf_row FROM categories ORDER BY category_name ASC',
+    'SELECT category_id, category_name, shelf_location, shelf_column, shelf_row, record_kind FROM categories ORDER BY category_name ASC',
   )
-  return rows.map((row) => ({ categoryId: row.category_id, categoryName: row.category_name, shelfLocation: row.shelf_location, shelfColumn: Number(row.shelf_column), shelfRow: Number(row.shelf_row) }))
+  return rows.map((row) => ({
+    categoryId: row.category_id,
+    categoryName: row.category_name,
+    shelfLocation: row.shelf_location,
+    shelfColumn: Number(row.shelf_column),
+    shelfRow: Number(row.shelf_row),
+    recordKind: row.record_kind ? String(row.record_kind) : null,
+  }))
 }
 
 export async function listPhysicalCopies(database: Pool, limit = 100) {
@@ -85,8 +92,8 @@ export async function lockTitle(connection: PoolConnection, titleId: number) {
 
 export async function lockCategoryWithManagedShelf(connection: PoolConnection, categoryId: number) {
   const [rows] = await connection.execute<RowDataPacket[]>(
-    `SELECT c.category_id, c.category_name, c.shelf_location, c.shelf_column, c.shelf_row, s.location_id AS shelf_id,
-            s.column_count, s.row_count
+    `SELECT c.category_id, c.category_name, c.shelf_location, c.shelf_column, c.shelf_row, c.record_kind,
+            s.location_id AS shelf_id, s.column_count, s.row_count
        FROM categories c
        LEFT JOIN catalog_locations s ON s.name = c.shelf_location AND s.lifecycle_status = 'Active'
       WHERE c.category_id = ? LIMIT 1 ${forUpdate('c')}`,

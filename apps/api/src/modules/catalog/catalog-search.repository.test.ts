@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildCatalogSearchQuery, parseCatalogSearchFilters } from './catalog-search.repository.ts'
+import type { Pool } from '../../config/db.js'
+import { buildCatalogSearchQuery, parseCatalogSearchFilters, searchCatalog } from './catalog-search.repository.ts'
 
 test('builds one prepared query for combined category, author, year, availability, and text filters', () => {
   const filters = parseCatalogSearchFilters({
@@ -37,4 +38,33 @@ test('catalog results expose the authoritative category shelf and actual active 
   assert.match(query.dataSql, /book_shelf_locations/)
   assert.match(query.dataSql, /active_inventory_count/)
   assert.match(query.dataSql, /t\.row_version/)
+})
+
+test('treats active copies placed on any shelf as Mapped and only flags Mismatch when copies have no shelf', async () => {
+  const baseRow = {
+    record_type: 'Book', cover_image_path: null, authors: 'Author', isbn: null, publication_year: 2024,
+    publisher: 'Publisher', call_number: 'PL6054', first_accession_number: 'ACC-1', last_accession_number: 'ACC-6',
+    dewey_code: null, classification: null, edition: null, volumes: null, pages: null, remarks: null,
+    category_id: 27, category_name: 'Philosophy & Psychology', row_version: 1,
+    category_shelf_location: 'Reference Section', availability: 'Available', total_copies: 6, available_copies: 6,
+    research_record_id: null,
+  }
+  const database = {
+    execute: async (sql: string) => {
+      if (sql.includes('COUNT(DISTINCT t.title_id)')) return [[{ total: 3 }]]
+      return [[
+        { ...baseRow, title_id: 36, title: 'Different Shelf Book', book_shelf_locations: 'AISLE 3' },
+        { ...baseRow, title_id: 37, title: 'Split Shelf Book', book_shelf_locations: 'AISLE 3, SHELF 2B' },
+        { ...baseRow, title_id: 38, title: 'Unassigned Shelf Book', book_shelf_locations: null },
+      ]]
+    },
+  } as unknown as Pool
+
+  const result = await searchCatalog(database, parseCatalogSearchFilters({}))
+  assert.equal(result.items[0].shelfStatus, 'Mapped')
+  assert.deepEqual(result.items[0].actualShelfLocations, ['AISLE 3'])
+  assert.equal(result.items[1].shelfStatus, 'Mapped')
+  assert.deepEqual(result.items[1].actualShelfLocations, ['AISLE 3', 'SHELF 2B'])
+  assert.equal(result.items[2].shelfStatus, 'Mismatch')
+  assert.deepEqual(result.items[2].actualShelfLocations, [])
 })

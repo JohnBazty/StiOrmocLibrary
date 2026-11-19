@@ -193,7 +193,9 @@ export function buildCatalogSearchQuery(filters: CatalogSearchFilters) {
 
 function toCatalogItem(row: RowDataPacket) {
   const shelfLocationsValue = row.record_type === 'Research/Thesis' ? row.shelf_locations : row.book_shelf_locations
-  const shelfLocations = shelfLocationsValue ? String(shelfLocationsValue).split(', ') : []
+  const shelfLocations = shelfLocationsValue
+    ? String(shelfLocationsValue).split(', ').map((location) => location.trim()).filter(Boolean)
+    : []
   const activeInventoryCount = row.record_type === 'Research/Thesis'
     ? Number(row.active_inventory_count ?? 0)
     : Number(row.total_copies ?? 0)
@@ -222,9 +224,10 @@ function toCatalogItem(row: RowDataPacket) {
     shelfLocation: categoryShelfLocation,
     actualShelfLocations: shelfLocations,
     activeInventoryCount,
+    // Categories provide default shelves only; copies placed on any shelf are Mapped.
     shelfStatus: activeInventoryCount === 0
       ? 'No active copies'
-      : shelfLocations.length === 1 && shelfLocations[0] === categoryShelfLocation ? 'Mapped' : 'Mismatch',
+      : shelfLocations.length > 0 ? 'Mapped' : 'Mismatch',
     availability: row.availability,
     totalCopies: Number(row.total_copies ?? 0),
     availableCopies: Number(row.available_copies ?? 0),

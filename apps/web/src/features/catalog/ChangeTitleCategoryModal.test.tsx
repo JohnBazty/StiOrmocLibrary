@@ -25,20 +25,22 @@ const item: CatalogItem = {
 }
 
 describe('ChangeTitleCategoryModal', () => {
-  it('shows the destination shelf and confirms the selected category', async () => {
+  it('shows only book categories, clarifies that copies keep their shelf, and confirms the change', async () => {
     const confirm = vi.fn()
     render(<ChangeTitleCategoryModal item={item} categories={[
-      { categoryId: 2, categoryName: 'Action', shelfLocation: 'Shelf A' },
-      { categoryId: 8, categoryName: 'Fantasy', shelfLocation: 'Shelf F' },
-      { categoryId: 9, categoryName: 'Classics', shelfLocation: 'Shelf C' },
+      { categoryId: 2, categoryName: 'Action', shelfLocation: 'Shelf A', recordKind: 'Book' },
+      { categoryId: 25, categoryName: 'Tourism Management', shelfLocation: 'SHELF 2B', recordKind: 'Research/Thesis' },
+      { categoryId: 8, categoryName: 'Fantasy', shelfLocation: 'Shelf F', recordKind: 'Book' },
+      { categoryId: 9, categoryName: 'Classics', shelfLocation: 'Shelf C', recordKind: 'Book' },
     ]} saving={false} error={null} onClose={() => undefined} onConfirm={confirm} />)
 
+    expect(screen.queryByRole('option', { name: 'Tourism Management' })).toBeNull()
     expect(screen.getByText(/Shelf F · Column 1 · Row 1/)).toBeTruthy()
     fireEvent.change(screen.getByLabelText('Move to category'), { target: { value: '9' } })
     expect(screen.getByText(/Shelf C · Column 1 · Row 1/)).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'Change book category' })).toBeTruthy()
-    expect(screen.getByText(/This moves this book and 2 active book copies/)).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: /Move book/i }))
+    expect(screen.getByText(/2 active book copies stay on their current shelf/i)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /Save category|Move book/i }))
     fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
     expect(confirm).toHaveBeenCalledWith(9)
   })

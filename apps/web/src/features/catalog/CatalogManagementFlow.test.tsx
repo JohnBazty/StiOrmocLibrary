@@ -39,7 +39,7 @@ it('does not let a slow manual refresh replace results for newer filters', async
  expect(screen.queryByText('99 matching titles')).toBeNull()
  expect(screen.getByText('2 matching titles')).toBeTruthy()
 })
-it('shows the copies actual shelf locations alongside Mismatch so staff can see what differs', async () => {
+it('displays actual copy shelf locations without a false Mismatch and flags only copies missing a shelf', async () => {
  const base = {
   recordType: 'Book' as const,
   coverImagePath: null,
@@ -56,12 +56,11 @@ it('shows the copies actual shelf locations alongside Mismatch so staff can see 
   volumes: null,
   pages: null,
   remarks: null,
-  categoryId: 1,
-  categoryName: 'Reference',
+  categoryId: 27,
+  categoryName: 'Philosophy & Psychology',
   rowVersion: 1,
   shelfLocation: 'Reference Section',
   activeInventoryCount: 6,
-  shelfStatus: 'Mismatch' as const,
   availability: 'Available' as const,
   totalCopies: 6,
   availableCopies: 6,
@@ -69,12 +68,14 @@ it('shows the copies actual shelf locations alongside Mismatch so staff can see 
  }
  api.search.mockResolvedValueOnce({
   items: [
-   { ...base, titleId: 1, title: 'Split Shelf Book', actualShelfLocations: ['Reference Section', 'SHELF 3B'] },
-   { ...base, titleId: 2, title: 'Unassigned Shelf Book', actualShelfLocations: [] },
+   { ...base, titleId: 36, title: 'Different Shelf Book', actualShelfLocations: ['AISLE 3'], shelfStatus: 'Mapped' as const },
+   { ...base, titleId: 37, title: 'Unassigned Shelf Book', actualShelfLocations: [], shelfStatus: 'Mismatch' as const },
   ],
   pagination: { total: 2, page: 1, limit: 25, pages: 1 },
  })
  render(<CatalogManagementPage />)
- expect(await screen.findByText('Mismatch · Copies on: Reference Section, SHELF 3B')).toBeTruthy()
- expect(screen.getByText('Mismatch · No shelf on copies')).toBeTruthy()
+ expect(await screen.findByText('AISLE 3')).toBeTruthy()
+ expect(screen.getByText('6 active copies')).toBeTruthy()
+ expect(screen.getByText('No shelf on copies')).toBeTruthy()
+ expect(screen.queryByText(/Mismatch/)).toBeNull()
 })
