@@ -13,6 +13,7 @@ export type BorrowingPolicyVersion = {
   facultyMaxActiveBooks: number | null
   borrowingDays: number
   dueTimeCutoff: string
+  checkoutOpensAt: string
   maxRenewals: number
   renewalExtensionDays: number
   studentMaxActiveReservations: number
@@ -35,6 +36,7 @@ export type PublishBorrowingPolicyInput = {
   facultyMaxActiveBooks: number | null
   borrowingDays: number
   dueTimeCutoff: string
+  checkoutOpensAt: string
   maxRenewals: number
   renewalExtensionDays: number
   studentMaxActiveReservations: number

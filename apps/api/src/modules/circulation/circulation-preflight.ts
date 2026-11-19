@@ -16,6 +16,7 @@ export const LEGACY_BORROWING_POLICY: BorrowingPolicyVersion = {
   facultyMaxActiveBooks: null,
   borrowingDays: 1,
   dueTimeCutoff: '08:59:00',
+  checkoutOpensAt: '14:00:00',
   maxRenewals: 1,
   renewalExtensionDays: 1,
   studentMaxActiveReservations: 2,

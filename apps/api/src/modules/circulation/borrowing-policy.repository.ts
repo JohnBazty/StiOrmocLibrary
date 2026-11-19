@@ -32,6 +32,7 @@ function mapVersion(row: RowDataPacket, materialRules: BorrowingPolicyMaterialRu
       : Number(row.faculty_max_active_books),
     borrowingDays: Number(row.borrowing_days),
     dueTimeCutoff: sqlTime(row.due_time_cutoff),
+    checkoutOpensAt: sqlTime(row.checkout_opens_at ?? '14:00:00'),
     maxRenewals: Number(row.max_renewals),
     renewalExtensionDays: Number(row.renewal_extension_days),
     studentMaxActiveReservations: Number(row.student_max_active_reservations),
@@ -120,17 +121,18 @@ export function createBorrowingPolicyRepository(database: Pool = db) {
     ): Promise<BorrowingPolicyVersion> {
       const [insert] = await executor.execute<ResultSetHeader>(
         `INSERT INTO borrowing_policy_versions (
-           effective_on, student_max_active_books, faculty_max_active_books, borrowing_days, due_time_cutoff,
+           effective_on, student_max_active_books, faculty_max_active_books, borrowing_days, due_time_cutoff, checkout_opens_at,
            max_renewals, renewal_extension_days, student_max_active_reservations, faculty_max_active_reservations,
            block_renewal_if_overdue, block_renewal_if_unpaid_fines, block_renewal_if_reserved,
            long_overdue_after_days, change_reason, created_by_user_id
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           input.effectiveOn,
           input.studentMaxActiveBooks,
           input.facultyMaxActiveBooks,
           input.borrowingDays,
           input.dueTimeCutoff,
+          input.checkoutOpensAt,
           input.maxRenewals,
           input.renewalExtensionDays,
           input.studentMaxActiveReservations,
