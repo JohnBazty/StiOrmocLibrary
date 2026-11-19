@@ -1,9 +1,15 @@
-import { AlertTriangle, ShieldAlert, X } from 'lucide-react'
+import { AlertTriangle, ShieldAlert } from 'lucide-react'
 import { useState } from 'react'
+import { Button, FormField, LumoDialog, NoticeBanner } from '../../components/ui'
 import type { PreflightFinding } from './types'
 
 const REASON_MIN = 10
 const REASON_MAX = 500
+
+function readableWarningTitle(code: string) {
+  const words = code.toLowerCase().replace(/_/g, ' ').trim()
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : 'Checkout warning'
+}
 
 export function CheckoutPreflightDialog({
   title,
@@ -21,69 +27,76 @@ export function CheckoutPreflightDialog({
   onConfirm: (reason: string) => void
 }) {
   const [reason, setReason] = useState('')
+  const [touched, setTouched] = useState(false)
   const trimmed = reason.trim().replace(/\s+/g, ' ')
   const reasonReady = trimmed.length >= REASON_MIN && trimmed.length <= REASON_MAX
+  const inlineError = touched && !reasonReady ? `Enter at least ${REASON_MIN} characters explaining why this copy is safe to lend.` : undefined
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="checkout-preflight-title" className="fixed inset-0 z-[120] flex items-center justify-center bg-[#0b5ea2]/60 p-4">
-      <div className="w-full max-w-lg rounded-2xl bg-[#FFFFFF] shadow-2xl">
-        <header className="flex items-start justify-between border-b border-[#0b5ea2]/15 p-5">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-[#0b5ea2]">Staff confirmation required</p>
-            <h2 id="checkout-preflight-title" className="mt-1 text-xl font-black text-[#0b5ea2]">Review warnings before checkout</h2>
-          </div>
-          <button type="button" disabled={busy} aria-label="Close confirmation" onClick={onCancel} className="rounded-xl p-2 text-[#0b5ea2] disabled:opacity-40">
-            <X size={19} />
-          </button>
-        </header>
-        <div className="space-y-4 p-5">
-          <div className="flex gap-3 rounded-xl bg-[#FFF200] p-4 text-[#0b5ea2]">
-            <ShieldAlert className="shrink-0" size={19} aria-hidden="true" />
-            <p className="text-sm">
-              Checkout for <strong>{title}</strong> needs a recorded reason before it can continue.
-            </p>
-          </div>
-          <ul className="space-y-2">
-            {warnings.map((warning) => (
-              <li key={warning.code} className="flex gap-3 rounded-xl border border-[#0b5ea2]/15 bg-[#FFFFFF] p-3 text-sm text-[#0b5ea2]">
-                <AlertTriangle className="mt-0.5 shrink-0" size={16} aria-hidden="true" />
-                <div>
-                  <p className="font-bold">{warning.code.replace(/_/g, ' ')}</p>
-                  <p className="mt-1">{warning.message}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
-          {error ? <div role="alert" className="rounded-xl bg-[#FFF200] p-3 text-sm font-semibold text-[#0b5ea2]">{error}</div> : null}
-          <label className="block text-xs font-bold uppercase text-[#0b5ea2]">
-            Override reason (required)
-            <textarea
-              value={reason}
-              maxLength={REASON_MAX}
-              onChange={(event) => setReason(event.target.value)}
-              rows={3}
-              className="mt-2 w-full rounded-xl border border-[#0b5ea2]/20 p-3 text-sm font-normal text-[#0b5ea2] outline-none focus:border-[#0b5ea2]"
-              placeholder="Explain why this copy is safe to lend"
-            />
-            <span className="mt-1 block text-[11px] font-semibold normal-case text-[#0b5ea2]/70">
-              {trimmed.length}/{REASON_MAX} characters (minimum {REASON_MIN})
-            </span>
-          </label>
-        </div>
-        <footer className="flex justify-end gap-2 border-t border-[#0b5ea2]/15 p-4">
-          <button type="button" disabled={busy} onClick={onCancel} className="h-10 rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] px-4 text-sm font-bold text-[#0b5ea2] disabled:opacity-40">
+    <LumoDialog
+      eyebrow="Staff confirmation required"
+      title="Review warnings before checkout"
+      busy={busy}
+      onClose={onCancel}
+      footer={
+        <>
+          <Button variant="secondary" disabled={busy} onClick={onCancel}>
             Cancel checkout
-          </button>
-          <button
-            type="button"
-            disabled={busy || !reasonReady}
-            onClick={() => onConfirm(trimmed)}
-            className="h-10 rounded-xl bg-[#0b5ea2] px-4 text-sm font-bold text-white disabled:opacity-40"
-          >
+          </Button>
+          <Button disabled={busy || !reasonReady} onClick={() => onConfirm(trimmed)}>
             {busy ? 'Confirming…' : 'Confirm with reason'}
-          </button>
-        </footer>
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <NoticeBanner tone="warning" className="mb-0">
+          <span className="inline-flex items-start gap-2">
+            <ShieldAlert className="mt-0.5 shrink-0" size={16} aria-hidden="true" />
+            <span>
+              Checkout for <strong>{title}</strong> requires a documented reason before continuing.
+            </span>
+          </span>
+        </NoticeBanner>
+        <ul className="space-y-2">
+          {warnings.map(warning => (
+            <li
+              key={warning.code}
+              className="flex gap-2.5 rounded-[8px] border border-[var(--sl-border)] bg-[var(--sl-bg-subtle)] p-3 text-sm"
+            >
+              <AlertTriangle className="mt-0.5 shrink-0 text-[#b45309] dark:text-[#fcd34d]" size={16} aria-hidden="true" />
+              <div className="min-w-0">
+                <p className="font-semibold text-[var(--sl-text-header)]">{readableWarningTitle(warning.code)}</p>
+                <p className="mt-0.5 text-xs text-[var(--sl-text-secondary)]">{warning.message}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+        {error ? (
+          <NoticeBanner tone="error" className="mb-0">
+            {error}
+          </NoticeBanner>
+        ) : null}
+        <FormField
+          id="checkout-override-reason"
+          label="Override reason"
+          required
+          error={inlineError}
+          helperText={`${trimmed.length}/${REASON_MAX} characters (minimum ${REASON_MIN})`}
+        >
+          <textarea
+            id="checkout-override-reason"
+            value={reason}
+            maxLength={REASON_MAX}
+            aria-invalid={Boolean(inlineError)}
+            onBlur={() => setTouched(true)}
+            onChange={event => setReason(event.target.value)}
+            rows={3}
+            className="sl-input min-h-[84px] py-2"
+            placeholder="Explain why this copy is safe to lend"
+          />
+        </FormField>
       </div>
-    </div>
+    </LumoDialog>
   )
 }

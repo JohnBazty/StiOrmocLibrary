@@ -99,3 +99,14 @@ it('shows available cart handovers at the desk with direct checkout and cancella
  fireEvent.click(screen.getByRole('button',{name:'Cancel handover'}))
  await waitFor(()=>expect(reservations.adjustStatus).toHaveBeenCalledWith(45,'cancelled'))
 })
+
+it('renders open loans in a scannable table and offers Clear filters on empty search', async () => {
+ api.monitor.mockResolvedValue(monitor)
+ render(<AdminCirculationMonitor />)
+ await screen.findByText('Database Systems')
+ expect(screen.getByRole('table')).toBeTruthy()
+ fireEvent.change(screen.getByPlaceholderText(/Search book, borrower/i), { target: { value: 'NoSuchTitle' } })
+ expect(await screen.findByText(/No loans match/i)).toBeTruthy()
+ fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+ expect(screen.getByText('Database Systems')).toBeTruthy()
+})

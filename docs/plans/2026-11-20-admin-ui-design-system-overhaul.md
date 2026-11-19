@@ -76,9 +76,9 @@ Every phase follows TDD (write/update Vitest + Testing Library tests first), pre
 
 - [x] **Milestone 0:** Create and commit project skills `sti-vaadin-design-system` and `sti-ux-qa-critic` in both `.agents/skills/` and `.claude/skills/`, registered in `AGENTS.md` and `CLAUDE.md` (commit `8c458b5`).
 - [x] **Milestone 0b:** Complete code-backed Admin Side & Booking Validation Audit and save phased plan (`docs/plans/2026-11-20-admin-ui-design-system-overhaul.md`).
-- [x] **Phase 1:** STI × Vaadin Lumo tokens, shared primitives (`ui.tsx`, `ConfirmSaveDialog`, `ExportMenu`, `RowActions`, `PortalLayout`, `AdminSidebarNavigation`) + tests + commit.
-- [x] **Phase 2:** Proactive zero-dead-end validation in `book-cart.ts`, `BookCatalog.tsx`, `BookCart.tsx`, `ScheduleBorrowingForm.tsx`, `BorrowingSchedules.tsx` + tests + commit.
-- [ ] **Phase 3:** Admin Dashboard, Borrow & Return, Book Queue & Scheduled Borrowing overhaul + tests + commit.
+- [x] **Phase 1:** STI × Vaadin Lumo tokens, shared primitives (`ui.tsx`, `ConfirmSaveDialog`, `ExportMenu`, `RowActions`, `PortalLayout`, `AdminSidebarNavigation`) + tests + commit (`695bdc8`).
+- [x] **Phase 2:** Proactive zero-dead-end validation in `book-cart.ts`, `BookCatalog.tsx`, `BookCart.tsx`, `ScheduleBorrowingForm.tsx`, `BorrowingSchedules.tsx` + tests + commit (`00b0835`).
+- [x] **Phase 3:** Admin Dashboard, Borrow & Return, Book Queue & Scheduled Borrowing overhaul + tests + commit.
 - [ ] **Phase 4:** Admin Printing, Supplies, Fines, Payments, Funds, Attendance & Clearance overhaul + tests + commit.
 - [ ] **Phase 5:** Admin Catalog, Inventory, Stocktake, Users, Policies, Schedule, Announcements & Notifications overhaul + tests + commit.
 - [ ] **Final QA:** Full `npm test`, `npm run typecheck`, `npm run build`, combined security/correctness/React diff review, and desktop/mobile visual verification.
@@ -90,3 +90,4 @@ Every phase follows TDD (write/update Vitest + Testing Library tests first), pre
 | Date | Change |
 | --- | --- |
 | 2026-11-20 | Created skills `sti-vaadin-design-system` (Vaadin Lumo, Icons, Charts via Figma MCP + STI palette + Vibe Monday UX Writing Handbook) and `sti-ux-qa-critic` (7-gate UX QA & page critic). Completed full Admin Side & Booking Validation audit and saved 5-phase implementation plan. |
+| 2026-11-20 | Completed Phase 1 (`695bdc8`, STI × Lumo tokens & shared primitives), Phase 2 (`00b0835`, proactive booking/cart/schedule validation), and Phase 3 (Admin Dashboard, Borrow & Return tables, Book Queue & Scheduled Borrowing tables; 21/21 test files, 137/137 tests + build passed). |

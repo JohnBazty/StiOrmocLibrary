@@ -108,3 +108,12 @@ it('uses the server clock and Manila midnight for calendar days past due', async
   expect(screen.queryByText('0 calendar days past due')).toBeNull()
  } finally {clock.mockRestore()}
 })
+
+it('offers Clear filters when dashboard tasks return zero matching rows', async () => {
+ vi.mocked(deskDashboardApi.tasks).mockResolvedValueOnce(dashboardPreviewTasks).mockResolvedValue({ ...dashboardPreviewTasks, total: 0, items: [] })
+ open(); await screen.findByText('Ana Flores')
+ fireEvent.change(screen.getByLabelText('Search dashboard tasks'), { target: { value: 'UnknownBorrower' } })
+ expect(await screen.findByText(/No tasks match these filters/i)).toBeTruthy()
+ fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+ expect((screen.getByLabelText('Search dashboard tasks') as HTMLInputElement).value).toBe('')
+})

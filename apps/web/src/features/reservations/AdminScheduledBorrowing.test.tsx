@@ -25,3 +25,12 @@ it('paginates and shows a useful empty state on an empty page',async()=>{
  await waitFor(()=>expect(api.queue).toHaveBeenLastCalledWith(expect.any(Object),2,expect.any(AbortSignal)))
  expect(await screen.findByText('No pending schedules match these filters.')).toBeTruthy()
 })
+it('renders scheduled pickups as a table, validates inverted date ranges, and links missing schedules',async()=>{
+ api.queue.mockResolvedValue({available:true,items:[{...item,preparationStartsAt:null}],pagination:{page:1,limit:25,total:1,pages:1}})
+ render(<AdminScheduledBorrowing refreshKey={0}/>);await screen.findByText('Future book')
+ expect(screen.getByRole('table')).toBeTruthy()
+ expect(screen.getByRole('link',{name:'Review library schedule'}).getAttribute('href')).toBe('/librarian/library-schedule')
+ fireEvent.change(screen.getByLabelText('Pickup from'),{target:{value:'2026-11-28'}})
+ fireEvent.change(screen.getByLabelText('Pickup through'),{target:{value:'2026-11-20'}})
+ expect(screen.getByText(/Pickup from date must be on or before/i)).toBeTruthy()
+})
