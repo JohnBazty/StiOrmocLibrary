@@ -151,16 +151,19 @@ T4, T5 and T6 do not depend on the migration and can be built in any order.
 
 ## Implementation tracking
 
-- [ ] Migration `041_checkout_opens_at.sql` (tracker: next unused becomes `042`)
-- [ ] Policy type, validation, repository, Librarian page field
-- [ ] Checkout 14:00 blocker
-- [ ] Due date 08:00 next open day
-- [ ] No automatic overdue fines for Faculty
+- [x] Migration `041_checkout_opens_at.sql` (tracker: next unused becomes `042`); written, not applied live
+- [x] Policy type, validation, repository, Librarian page field
+- [x] Checkout 14:00 blocker
+- [x] Due date 08:00 next open day
+- [x] No automatic overdue fines for Faculty
+- [x] Faculty charged only for lost or damaged books ("Damaged book" capped at the copy price)
 - [x] Hourly fine only while open (restore fair-fine calculator)
-- [ ] Faculty in clearance list
-- [ ] Tests listed above
-- [ ] `plan-verifier`, `security-reviewer`, `database-reviewer`
-- [ ] Borrowing policy maintenance page restored for Librarian, with the checkout field, new labels and fixed-rule text
+- [x] Faculty in clearance list
+- [x] Tests listed above
+- [x] `plan-verifier`, `security-reviewer`, `database-reviewer`
+- [x] Borrowing policy maintenance page restored for Librarian, with the checkout field, new labels and fixed-rule text
+- [ ] Ask John why `c44d5bb3` reverted the editor (the rollback record says only "owner requested")
+- [ ] Apply `041` live, then deploy (Ethan's go-ahead)
 - [ ] Librarian publishes the new policy version after deploy
 
 ## Change log
@@ -173,3 +176,5 @@ T4, T5 and T6 do not depend on the migration and can be built in any order.
 - 2026-11-19: Wording (Ethan): "take-home" is called "checkout". Column `checkout_opens_at`, migration `041_checkout_opens_at.sql`, page field "Checkout opens at". The existing code mode `'TakeHome'` keeps its name.
 - 2026-11-19: Added Spec (R1–R11, scope, edge cases, must-not) and Build order (T1–T9). Ethan: manual fines still allowed for Faculty; "Checkout opens at" limited to 08:00–16:59; fine rates read-only on the page. `/gsd-spec-phase` and `/gsd-plan-phase` could not run (no `.planning/ROADMAP.md`), so the same steps were done in this doc.
 - 2026-11-19: T1–T4 built and committed. Ethan changed R6: Faculty are charged only for lost or damaged books; damage amount entered by the Librarian, capped at the copy's price. Added T5b.
+- 2026-11-19: T5, T5b, T6, T7 and T8 built and committed. API 539 and web 382 tests pass; typecheck and build pass.
+- 2026-11-19: Reviews (plan-verifier, security-reviewer, database-reviewer): no CRITICAL or HIGH. Fixed: `041` sets `lock_timeout` and names `public.` tables; the API requires `checkoutOpensAt` so a publish never silently resets it; history table empty-row `colSpan` 9; the confirm-changes box is a live region; tests added for preview due date = stored due date (R2), faculty limit 5 in eligibility (R3), overdue faculty blocked (R5). Open for Ethan: existing faculty overdue fines (spec leaves them for the Librarian to waive), and the damage charge cap (no cap when the copy has no price; several charges on one copy can add up past its price). Not done: a focus trap in the confirm dialog (LOW).

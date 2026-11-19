@@ -232,7 +232,7 @@ export function AdminBorrowingPoliciesPage() {
                   <td className="max-w-xs px-4 py-4 text-[#0b5ea2]/75">{policy.changeReason}</td>
                   <td className="px-4 py-4 text-xs">{new Date(policy.createdAt).toLocaleString()}</td>
                 </tr>
-              )) : <tr><td colSpan={8} className="p-12 text-center font-semibold">No policy versions yet.</td></tr>}
+              )) : <tr><td colSpan={9} className="p-12 text-center font-semibold">No policy versions yet.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -277,7 +277,7 @@ export function AdminBorrowingPoliciesPage() {
               ))}
               <label className="text-sm font-bold text-[#0b5ea2] sm:col-span-2">Change reason<textarea required minLength={10} maxLength={500} value={draft.changeReason} onChange={(event) => editDraft({ ...draft, changeReason: event.target.value })} className={`${field} mt-1 h-28 py-3`} placeholder="Explain why this policy version is being published" /></label>
               {confirming ? (
-                <div className="rounded-xl bg-[#FFF200] p-4 text-sm font-semibold text-[#0b5ea2] sm:col-span-2">
+                <div role="status" aria-live="polite" className="rounded-xl bg-[#FFF200] p-4 text-sm font-semibold text-[#0b5ea2] sm:col-span-2">
                   <p className="mb-2">Confirm permanent publication. Changed fields:</p>
                   <ul className="list-disc space-y-1 pl-5">{changes.length ? changes.map((item) => <li key={item}>{item}</li>) : <li>No field differences from the active policy (same values, new version).</li>}</ul>
                 </div>

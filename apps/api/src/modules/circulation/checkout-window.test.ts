@@ -45,3 +45,27 @@ test('the loan slot check refuses a sixth commitment when the faculty limit is 5
   await requireLoanSlot(withCommitments(4), 9, 20, 5)
   await requireLoanSlot(withCommitments(50), 9, 20, null)
 })
+
+async function facultyEligibility(overdue: boolean) {
+  const { borrowerEligibility } = await import('./desk-circulation.policy.ts')
+  const { borrowerEligibilityRows } = await import('../attendance/attendance-test-fixtures.ts')
+  const q = { async execute(sql: string) {
+    if (overdue && sql.includes("transaction_status='Overdue' OR due_at")) return [[{ transaction_id: 3 }]]
+    if (sql.includes('FROM borrowing_policy_versions')) return [[{ student_max_active_books: 2, faculty_max_active_books: 5, checkout_opens_at: '14:00:00' }]]
+    const rows = borrowerEligibilityRows(sql, 'Faculty', 9)
+    if (rows) return [rows]
+    throw new Error(`Unexpected SQL: ${sql}`)
+  } } as never
+  return borrowerEligibility(q, 9, at('15:00:00'))
+}
+
+test('faculty eligibility reads the faculty limit of 5 from the policy (R3)', async () => {
+  const result = await facultyEligibility(false)
+  assert.equal(result.limit, 5)
+  assert.deepEqual(result.blockers, [])
+})
+
+test('an overdue faculty member is blocked from borrowing (R5)', async () => {
+  const result = await facultyEligibility(true)
+  assert.ok(result.blockers.includes('Return overdue books before borrowing another material.'))
+})

@@ -66,7 +66,6 @@ function requireCutoff(value: unknown, field = 'dueTimeCutoff'): string {
 
 /** Checkout must open while the library is open (08:00 to 16:59); matches migration 041's check. */
 function requireCheckoutOpensAt(value: unknown): string {
-  if (value === undefined || value === null || value === '') return '14:00:00'
   const time = requireCutoff(value, 'checkoutOpensAt')
   if (time < '08:00:00' || time >= '17:00:00') {
     throw new HttpError(422, 'BORROWING_POLICY_VALIDATION_FAILED', 'checkoutOpensAt must be between 08:00 and 16:59.', {

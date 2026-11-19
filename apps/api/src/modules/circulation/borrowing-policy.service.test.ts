@@ -100,8 +100,9 @@ test('checkout opens at must fall between 08:00 and 16:59', () => {
   assert.throws(() => validatePublishBorrowingPolicy({ ...validPolicyBody, checkoutOpensAt: 'noon' }), fieldError('checkoutOpensAt'))
 })
 
-test('checkout opens at defaults to 14:00 when omitted', () => {
-  assert.equal(validatePublishBorrowingPolicy(validPolicyBody).checkoutOpensAt, '14:00:00')
+test('checkout opens at is required so a publish never silently resets it', () => {
+  assert.throws(() => validatePublishBorrowingPolicy(validPolicyBody), fieldError('checkoutOpensAt'))
+  assert.equal(validatePublishBorrowingPolicy({ ...validPolicyBody, checkoutOpensAt: '14:00' }).checkoutOpensAt, '14:00:00')
 })
 
 test('resolver returns the checkout opens at time', async () => {

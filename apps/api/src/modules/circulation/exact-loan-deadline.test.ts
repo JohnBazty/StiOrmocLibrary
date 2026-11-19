@@ -30,3 +30,12 @@ test('a due time skips a closed day: Monday borrow with Tuesday closed is due We
 test('a malformed due time fails instead of inventing a deadline', () => {
   assert.throws(() => exactLoanDeadline(new Date('2026-11-23T15:00:00+08:00'), 1, weekdays, new Set(), '8am'), /due time/)
 })
+
+test('preview due date equals the stored checkout due date at 08:00 (R2)', async () => {
+  process.env.TZ = 'Asia/Manila' // the API forces this at startup; the preview uses local time
+  const { calculateOperatingDueDate } = await import('./due-date.ts')
+  for (const [borrowed, closed] of [['2026-11-23T14:30:00+08:00', []], ['2026-11-21T15:00:00+08:00', []], ['2026-11-23T15:00:00+08:00', ['2026-11-24']]] as const) {
+    const closures = new Set<string>(closed)
+    assert.equal(calculateOperatingDueDate(new Date(borrowed), 1, '08:00:00', closures).toISOString(), at8(borrowed, [...closed]))
+  }
+})
