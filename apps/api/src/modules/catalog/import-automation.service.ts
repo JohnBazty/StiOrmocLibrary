@@ -48,7 +48,7 @@ export function createImportAutomationService(database:Pool=db,lookups:Lookups=i
    await q.execute('SELECT batch_id FROM catalog_import_batches WHERE batch_id=? FOR UPDATE',[batch])
    const replay=(await rows(q,'SELECT * FROM catalog_import_automation_runs WHERE request_key=?',[requestKey]))[0]
    if(replay){if(replay.plan_digest!==planDigest||Number(replay.started_by_account_id)!==actor)throw fail('This request belongs to another correction plan.',409);return dto(replay)}
-   if((await rows(q,"SELECT run_id FROM catalog_import_automation_runs WHERE batch_id=? AND status IN ('running','paused')",[batch])).length)throw fail('Continue or cancel the existing correction run before starting another.',409)
+   if((await rows(q,"SELECT run_id FROM catalog_import_automation_runs WHERE batch_id=? AND automation_kind=? AND status IN ('running','paused')",[batch,kind])).length)throw fail('Continue or cancel the existing correction run before starting another.',409)
    const all=await entries(q,batch);if(revision(all)!==body.revision)throw fail('The saved list changed. Refresh the correction review before starting.',409)
    const coverTargets=kind==='cover'?await importCoverTargets(q,batch):[]
    const pending=kind==='cover'?coverTargets.filter(r=>r.cover_eligible).map(r=>({id:r.import_row_id,version:r.row_version,data:r.data_json})):all.filter(r=>r.status==='Review');if(!pending.length||pending.length>5000)throw fail('Choose a saved list with 1 to 5,000 pending entries.')

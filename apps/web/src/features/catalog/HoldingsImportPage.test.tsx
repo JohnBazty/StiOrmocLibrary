@@ -321,7 +321,7 @@ describe('Fill missing details from the book lookup', () => {
 
  it('offers whole-list correction instead of a next-50-row control',async()=>{
   await upload()
-  expect(screen.getByRole('button',{name:'Auto-correct all 2 pending books'})).toBeTruthy()
+  expect(await screen.findByText(/Review choices for 2 pending books/)).toBeTruthy()
   expect(screen.queryByRole('button',{name:/next 50/i})).toBeNull()
   expect(api.fillFromLookup).not.toHaveBeenCalled()
  })

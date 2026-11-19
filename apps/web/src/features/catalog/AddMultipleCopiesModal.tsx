@@ -202,6 +202,14 @@ export function AddMultipleCopiesModal({
   )
   const titlePredictions = usePredictions('title', metadata.title)
   const authorPredictions = usePredictions('author', metadata.author)
+  const isDuplicateTitleInCatalog = useMemo(
+    () =>
+      Boolean(
+        metadata.title.trim() &&
+          titlePredictions.some((item) => item.trim().toLowerCase() === metadata.title.trim().toLowerCase()),
+      ),
+    [metadata.title, titlePredictions],
+  )
   const [lookupStatus, setLookupStatus] = useState<{
     state: 'idle' | 'loading' | 'found' | 'error'
     message: string
@@ -295,6 +303,7 @@ export function AddMultipleCopiesModal({
   const readinessIssues = useMemo(() => {
     const list: string[] = []
     if (!metadata.title.trim()) list.push('Enter a Book Title')
+    else if (isDuplicateTitleInCatalog) list.push(`Duplicate book: "${metadata.title.trim()}" is already in the catalog and cannot be added again`)
     if (!metadata.author.trim()) list.push('Enter an Author name')
     if (!isbn.trim()) list.push('Enter a 10- or 13-digit ISBN (or click Generate ISBN-13)')
     else if (liveIsbnError) list.push(`Fix ISBN: ${liveIsbnError}`)
@@ -303,11 +312,15 @@ export function AddMultipleCopiesModal({
     else if (!canPlace) list.push('Choose a shelf compartment with enough remaining space')
     if (dewey?.code && !dewey.reviewed) list.push("Tick 'I reviewed this Dewey number' (or click Leave Dewey unassigned)")
     return list
-  }, [metadata.title, metadata.author, isbn, liveIsbnError, categoryId, bookLocation, canPlace, dewey])
+  }, [metadata.title, isDuplicateTitleInCatalog, metadata.author, isbn, liveIsbnError, categoryId, bookLocation, canPlace, dewey])
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (saving || batch) return
+    if (isDuplicateTitleInCatalog) {
+      setMessage(`Duplicate book error: "${metadata.title.trim()}" already exists in the library catalog and cannot be added again.`)
+      return
+    }
     if (coverBusy || lookupStatus.state === 'loading') {
       setMessage('Wait for the book and cover lookup to finish before saving.')
       return
@@ -520,15 +533,22 @@ export function AddMultipleCopiesModal({
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field
-                    label="Title"
-                    name="title"
-                    required
-                    list="title-predictions"
-                    placeholder="e.g. Clean Code"
-                    value={metadata.title}
-                    onChange={(title) => setMetadata((current) => ({ ...current, title }))}
-                  />
+                  <div>
+                    <Field
+                      label="Title"
+                      name="title"
+                      required
+                      list="title-predictions"
+                      placeholder="e.g. Clean Code"
+                      value={metadata.title}
+                      onChange={(title) => setMetadata((current) => ({ ...current, title }))}
+                    />
+                    {isDuplicateTitleInCatalog ? (
+                      <p role="alert" className="mt-1.5 rounded-lg border border-red-300 bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200">
+                        Duplicate book error: &ldquo;{metadata.title.trim()}&rdquo; already exists in the library catalog and cannot be added again.
+                      </p>
+                    ) : null}
+                  </div>
                   <Field
                     label="Author"
                     name="author"
@@ -960,6 +980,7 @@ export function AddMultipleCopiesModal({
                         lookupStatus.state === 'loading' ||
                         !allCategories.length ||
                         Boolean(liveIsbnError) ||
+                        isDuplicateTitleInCatalog ||
                         !canPlace ||
                         Boolean(dewey?.code && !dewey.reviewed)
                       }

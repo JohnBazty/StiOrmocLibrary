@@ -171,9 +171,18 @@ export async function reviewImport(value:unknown,body:Record<string,unknown>,act
   if(decision!=='skip')await validateImportReferences(c,data,needsCopies)
   let target:number|null=null,reuse:number|null=null
   if(decision==='link'||decision==='add'){target=id(body.targetTitleId);if(!(await rows(c,"SELECT 1 FROM titles WHERE title_id=? AND record_type='Book' AND lifecycle_status='Active'",[target])).length)throw fail('Choose an active existing book.')}
-  if(decision==='new'&&(await matchTitles(c,data)).length)throw fail('A matching title already exists. Review it and choose add copies or reuse existing holdings.')
-  if(decision==='reuse'){reuse=id(body.reuseRowId);if(reuse>=rowId||!(await rows(c,"SELECT 1 FROM catalog_import_rows WHERE import_row_id=? AND batch_id=? AND decision IN ('new','add','link','reuse') AND status IN ('Ready','Imported')",[reuse,row.batch_id])).length)throw fail('Choose an earlier reviewed row in this batch.')}
-  await c.execute("UPDATE catalog_import_rows SET data_json=?::jsonb,decision=?,target_title_id=?,reuse_row_id=?,status=?,reviewed_by=?,reviewed_at=NOW(),row_version=row_version+1,error_text=NULL,updated_at=NOW() WHERE import_row_id=?",[JSON.stringify(data),decision,target,reuse,decision==='skip'?'Skipped':'Ready',actor,rowId])
+  if(decision==='new'&&(await matchTitles(c,data)).length)throw fail(`Duplicate book error: "${data.title}" already exists in the library catalog and cannot be added again.`)
+  if(decision==='reuse'){
+   const requestedReuse=positiveId(body.reuseRowId)
+   if(requestedReuse){
+    if(requestedReuse>=rowId||!(await rows(c,"SELECT 1 FROM catalog_import_rows WHERE import_row_id=? AND batch_id=? AND decision IN ('new','add','link','reuse') AND status IN ('Ready','Imported')",[requestedReuse,row.batch_id])).length)throw fail('Choose an earlier reviewed row in this batch.')
+    reuse=requestedReuse
+   }else{
+    const earlier=(await rows(c,"SELECT import_row_id FROM catalog_import_rows WHERE batch_id=? AND import_row_id<>? ORDER BY import_row_id ASC LIMIT 1",[row.batch_id,rowId]))[0]
+    reuse=earlier?Number(earlier.import_row_id):null
+   }
+  }
+  await c.execute("UPDATE catalog_import_rows SET data_json=?::jsonb,decision=?,target_title_id=?,reuse_row_id=?,status=?,reviewed_by=?,reviewed_at=NOW(),row_version=row_version+1,error_text=NULL,updated_at=NOW() WHERE import_row_id=?",[JSON.stringify(data),decision,target,reuse,decision==='skip'||(decision==='reuse'&&!reuse)?'Skipped':'Ready',actor,rowId])
  });return {reviewed:true}
 }
 export async function commitImport(value:unknown,actor:number){
@@ -195,14 +204,17 @@ export async function commitImport(value:unknown,actor:number){
    // A global transaction lock closes concurrent duplicate-title races across imports.
    await c.execute("SELECT pg_advisory_xact_lock(734031)")
    let titleId=Number(row.target_title_id),copyIds:number[]=[]
-   if(row.decision==='reuse'){const prior=(await rows(c,"SELECT result_json FROM catalog_import_rows WHERE import_row_id=? AND batch_id=? AND status='Imported'",[row.reuse_row_id,batchId]))[0];if(!prior)throw fail('The earlier holding has not been imported yet. Review it first.');titleId=Number(prior.result_json.titleId)}
+   if(row.decision==='reuse'){
+    const prior=row.reuse_row_id?(await rows(c,"SELECT result_json FROM catalog_import_rows WHERE import_row_id=? AND batch_id=? AND status='Imported'",[row.reuse_row_id,batchId]))[0]:null
+    titleId=prior?.result_json?.titleId?Number(prior.result_json.titleId):0
+   }
    if(row.decision==='new'){
-    const existingMatch=(await matchTitles(c,data)).find(m=>m.status==='Active')
-    if(existingMatch){titleId=Number(existingMatch.id)}else{const coverImagePath=await acceptedImportCover(c,rowId,data as unknown as Record<string,unknown>)
+    if((await matchTitles(c,data)).length)throw fail(`Duplicate book error: "${data.title}" already exists in the library catalog and cannot be added as a duplicate.`)
+    const coverImagePath=await acceptedImportCover(c,rowId,data as unknown as Record<string,unknown>)
     titleId=Number(await insertTitle(c,{title:data.title,recordType:'Book',categoryId:data.categoryId,isbn:data.isbn||null,publisher:data.publisher||null,publicationYear:data.publicationYear?Number(data.publicationYear):null,callNumber:data.callNumber||null,searchText:[data.title,data.author,data.isbn].join(' ')}));if(coverImagePath)await c.execute('UPDATE titles SET cover_image_path=? WHERE title_id=?',[coverImagePath,titleId]);await insertAuthors(c,titleId,[data.author])
     if(data.callNumber||data.volumes||data.remarks)await c.execute('UPDATE titles SET classification=COALESCE(?,classification),volumes=COALESCE(?,volumes),remarks=COALESCE(?,remarks) WHERE title_id=?',[data.callNumber||null,data.volumes||null,data.remarks||null,titleId])
-    await c.execute('INSERT INTO catalog_title_details(title_id,copyright_year,edition,page_count,synopsis,type_id,updated_by) VALUES (?,?,?,?,?,(SELECT type_id FROM catalog_resource_types WHERE name=?),?)',[titleId,data.copyrightYear?Number(data.copyrightYear):null,data.edition||null,data.pages?Number(data.pages):null,data.summary||data.remarks||'','Book',actor])}
-   }else if(!(await rows(c,"SELECT title_id FROM titles WHERE title_id=? AND record_type='Book' AND lifecycle_status='Active' FOR UPDATE",[titleId])).length)throw fail('The selected holding is no longer active.')
+    await c.execute('INSERT INTO catalog_title_details(title_id,copyright_year,edition,page_count,synopsis,type_id,updated_by) VALUES (?,?,?,?,?,(SELECT type_id FROM catalog_resource_types WHERE name=?),?)',[titleId,data.copyrightYear?Number(data.copyrightYear):null,data.edition||null,data.pages?Number(data.pages):null,data.summary||data.remarks||'','Book',actor])
+   }else if(row.decision!=='reuse'&&!(await rows(c,"SELECT title_id FROM titles WHERE title_id=? AND record_type='Book' AND lifecycle_status='Active' FOR UPDATE",[titleId])).length)throw fail('The selected holding is no longer active.')
    if(needsCopies){
     const count=Number(data.copies),missing=Number(data.missingCopies||0),year=new Date().getFullYear(),start=await reserveBarcodeSequence(c,year,count),accessions:string[]=[],barcodes=identityList(data.barcodes)
     // Existing-title additions use canonical title metadata for the legacy circulation bridge.

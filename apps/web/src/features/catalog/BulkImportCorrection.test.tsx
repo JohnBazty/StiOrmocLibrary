@@ -11,7 +11,7 @@ const options={categories:[{id:1,name:'Reviewed category',status:'Active',versio
 const run=(processed=0,status:ImportAutomationRun['status']='running'):ImportAutomationRun=>({id:'00000000-0000-0000-0000-000000000001',batchId:14,kind:'correction',status,processed,total:1645,counters:{checked:processed,changed:processed,unresolved:0,conflicts:0},error:null,version:processed+1,createdAt:'',updatedAt:''})
 const preview={batchId:14,total:1645,imported:2,revision:'reviewed-revision',groups,invalidIsbns:223,invalidYears:98,latest:null}
 beforeEach(()=>{vi.resetAllMocks();vi.mocked(importAutomationApi.preview).mockResolvedValue(preview);vi.mocked(importAutomationApi.start).mockResolvedValue(run())})
-async function review(){fireEvent.click(await screen.findByRole('button',{name:'Auto-correct all 1645 pending books'}));await screen.findByText(/Review choices for 1645 pending books/);for(const group of groups)fireEvent.change(screen.getByLabelText(`Category for ${group.sheet}`),{target:{value:'1'}})}
+async function review(){await screen.findByText(/Review choices for 1645 pending books/);for(const group of groups)fireEvent.change(screen.getByLabelText(`Category for ${group.sheet}`),{target:{value:'1'}})}
 it('reviews all five source sections once then automatically continues to all 1,645 entries',async()=>{
  vi.mocked(importAutomationApi.step).mockResolvedValueOnce(run(100)).mockResolvedValueOnce(run(1645,'completed'))
  const done=vi.fn(async()=>{}),working=vi.fn();render(<BulkImportCorrection batch={batch} options={options} disabled={false} onWorking={working} onDone={done} onReviewReady={()=>{}}/>)

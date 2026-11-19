@@ -667,34 +667,27 @@ export function HoldingsImportPage() {
             {sourcePreview}
           </SectionCard>
 
-          {/* QUESTIONS / DUPLICATES BANNER WITH 1-CLICK BULK RESOLUTION */}
+          {/* QUESTIONS / DUPLICATES BANNER WITH 1-CLICK BULK EXCLUSION */}
           {summary.attention.length ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950 shadow-2xs dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-300 bg-red-50 p-4 text-red-950 shadow-2xs dark:border-red-800 dark:bg-red-950/30 dark:text-red-100">
               <div className="flex items-start gap-3">
-                <AlertCircle aria-hidden size={20} className="mt-0.5 shrink-0 text-amber-700 dark:text-amber-300" />
+                <AlertCircle aria-hidden size={20} className="mt-0.5 shrink-0 text-red-700 dark:text-red-300" />
                 <div>
                   <h3 className="font-bold">
-                    {summary.attention.length} {summary.attention.length === 1 ? 'book needs' : 'books need'} your help
+                    {summary.attention.length} {summary.attention.length === 1 ? 'book needs' : 'books need'} your help — Duplicate or flagged entries blocked
                   </h3>
                   <p className="mt-0.5 text-xs sm:text-sm">
-                    Check missing details or possible duplicates below, or resolve all {summary.attention.length} flagged books at once with one click:
+                    Duplicate books and entries with missing details are blocked and will NOT be added. Click &ldquo;Exclude all {summary.attention.length} duplicates (do not add)&rdquo; to leave them out:
                   </p>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
-                  variant="primary"
-                  disabled={locked}
-                  onClick={() => void bulkResolveAttention('new')}
-                >
-                  <CheckSquare size={15} /> Approve all {summary.attention.length} as ready books
-                </Button>
-                <Button
-                  variant="secondary"
+                  variant="danger"
                   disabled={locked}
                   onClick={() => void bulkResolveAttention('skip')}
                 >
-                  <XCircle size={15} /> Skip all {summary.attention.length}
+                  <XCircle size={15} /> Exclude all {summary.attention.length} duplicates (do not add)
                 </Button>
               </div>
             </div>
