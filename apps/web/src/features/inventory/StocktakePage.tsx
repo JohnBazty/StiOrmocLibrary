@@ -9,6 +9,7 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
+  ImageUp,
   Info,
   LocateFixed,
   Play,
@@ -18,7 +19,7 @@ import {
   X,
   XCircle,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Button, PageHeader, SectionCard as Card, StatusBadge } from '../../components/ui'
 import {
@@ -29,6 +30,7 @@ import {
   type ScanResponse,
   type StocktakeDetail,
 } from './stocktake-api'
+import { decodeUploadedBarcodeFile } from './barcode-image-decoder'
 import { StocktakeCameraScanner } from './StocktakeCameraScanner'
 import { StocktakeConditionDialog, type ObservedCondition } from './StocktakeConditionDialog'
 
@@ -387,6 +389,7 @@ export function StocktakePage() {
   }>({})
 
   const [cameraOn, setCameraOn] = useState(false)
+  const [imageScanBusy, setImageScanBusy] = useState(false)
   const [detected, setDetected] = useState<Detected | null>(null)
   const [recentScans, setRecentScans] = useState<RecentScan[]>([])
 
@@ -717,6 +720,34 @@ export function StocktakePage() {
         showToast({ tone: 'error', title: 'Could not look up label', text: msg })
         if (/finished/i.test(msg)) setCameraOn(false)
       })
+  }
+
+  async function handleDirectBarcodeImageUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file || busy || imageScanBusy || detected) return
+    if (!location.trim()) {
+      const msg = 'Choose the location being checked first.'
+      setScanFieldErrors(prev => ({ ...prev, location: msg }))
+      showToast({ tone: 'error', title: 'Location required', text: msg })
+      locationInput.current?.focus()
+      return
+    }
+    setImageScanBusy(true)
+    try {
+      const decoded = await decodeUploadedBarcodeFile(file)
+      if (!decoded) {
+        showToast({
+          tone: 'error',
+          title: 'Could not read barcode image',
+          text: 'No Code-128 barcode or QR code was found in that image. Upload a downloaded barcode PNG, QR label, or a sharper photo of one copy label.',
+        })
+        return
+      }
+      cameraDetected(decoded)
+    } finally {
+      setImageScanBusy(false)
+    }
   }
 
   async function saveDetected(chosenCondition: ObservedCondition) {
@@ -1474,14 +1505,33 @@ export function StocktakePage() {
                             : 'Choose the location being checked first.'}
                         </p>
                       </div>
-                      <Button
-                        variant={cameraOn ? 'secondary' : 'primary'}
-                        disabled={busy || !location.trim()}
-                        onClick={() => setCameraOn(on => !on)}
-                      >
-                        <Camera size={15} aria-hidden="true" />
-                        {cameraOn ? 'Stop camera' : 'Scan with camera'}
-                      </Button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          variant={cameraOn ? 'secondary' : 'primary'}
+                          disabled={busy || !location.trim()}
+                          onClick={() => setCameraOn(on => !on)}
+                        >
+                          <Camera size={15} aria-hidden="true" />
+                          {cameraOn ? 'Stop camera' : 'Scan with camera'}
+                        </Button>
+                        <label
+                          className={`inline-flex min-h-[38px] items-center gap-1.5 rounded-[6px] border border-[var(--sl-border-strong)] bg-[var(--sl-bg-elevated)] px-3.5 py-2 text-sm font-semibold text-[var(--sl-text-header)] shadow-[var(--sl-shadow-xs)] transition-colors ${
+                            busy || imageScanBusy || !location.trim()
+                              ? 'cursor-not-allowed opacity-45'
+                              : 'cursor-pointer hover:bg-[var(--sl-bg-hover)]'
+                          }`}
+                        >
+                          <ImageUp size={15} className="text-[#0b5ea2] dark:text-[#93c5fd]" aria-hidden="true" />
+                          <span>{imageScanBusy ? 'Reading image…' : 'Upload barcode image'}</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="sr-only"
+                            disabled={busy || imageScanBusy || !location.trim()}
+                            onChange={e => void handleDirectBarcodeImageUpload(e)}
+                          />
+                        </label>
+                      </div>
                     </div>
 
                     {cameraOn ? (

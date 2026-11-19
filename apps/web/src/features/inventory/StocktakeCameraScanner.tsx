@@ -2,20 +2,20 @@ import { Camera, Check, ImageUp, RefreshCw, RotateCcw, ScanBarcode, Video } from
 import { useEffect, useId, useRef, useState, type ChangeEvent } from 'react'
 import type { Html5Qrcode } from 'html5-qrcode'
 import { barcodeScanBox } from '../../components/scanner-viewport'
+import {
+  decodeLiveVideoFrame,
+  decodeUploadedBarcodeFile,
+  normalizeScannedBarcode,
+} from './barcode-image-decoder'
 
 /** The same label must be read twice within this window before it counts. This drops blurred or half-read frames. */
 const CONFIRM_WINDOW_MS = 1000
 /** After a label is accepted, the same label is ignored for this long so one held-up label is not counted twice. */
 const REPEAT_HOLD_MS = 3000
-const MAX_CODE_LENGTH = 100
-const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/
-const HD_ASSIST_INTERVAL_MS = 850
+const HD_ASSIST_INTERVAL_MS = 380
 
 type CameraDevice = { id: string; label: string }
 type Props = { paused: boolean; onDetected: (code: string) => void }
-type NativeBarcodeDetector = {
-  detect: (source: CanvasImageSource) => Promise<Array<{ rawValue?: string }>>
-}
 
 function cameraMessage(reason: unknown) {
   const name = reason instanceof Error ? reason.name : ''
@@ -59,117 +59,10 @@ function signalRead() {
   }
 }
 
-function isValidCode(text: string) {
-  return Boolean(text) && text.length <= MAX_CODE_LENGTH && !CONTROL_CHARACTERS.test(text)
-}
-
-/**
- * Extracts a full-resolution horizontal strip from the live webcam <video>,
- * adds white quiet-zone padding, and stretches grayscale contrast so low-contrast
- * prints and bright phone screens decode reliably as Code-128.
- */
-function buildEnhancedVideoCanvas(viewportId: string): HTMLCanvasElement | null {
-  const host = document.getElementById(viewportId)
-  const video = host?.querySelector('video')
-  if (!video || video.readyState < 2 || video.videoWidth < 80 || video.videoHeight < 80) return null
-
-  const vw = video.videoWidth
-  const vh = video.videoHeight
-  const cropW = Math.floor(vw * 0.96)
-  const cropH = Math.floor(vh * 0.62)
-  const cropX = Math.floor((vw - cropW) / 2)
-  const cropY = Math.floor((vh - cropH) / 2)
-  const pad = 36
-
-  const canvas = document.createElement('canvas')
-  canvas.width = cropW + pad * 2
-  canvas.height = cropH + pad * 2
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })
-  if (!ctx) return null
-
-  ctx.fillStyle = '#ffffff'
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
-  ctx.drawImage(video, cropX, cropY, cropW, cropH, pad, pad, cropW, cropH)
-
-  try {
-    const img = ctx.getImageData(pad, pad, cropW, cropH)
-    const data = img.data
-    let minLum = 255
-    let maxLum = 0
-    for (let i = 0; i < data.length; i += 4) {
-      const lum = (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) >> 8
-      if (lum < minLum) minLum = lum
-      if (lum > maxLum) maxLum = lum
-    }
-    const span = Math.max(1, maxLum - minLum)
-    // Trim 12% highlights/shadows so phone LCD glow becomes crisp black bars on white.
-    const low = minLum + span * 0.14
-    const high = maxLum - span * 0.12
-    const range = Math.max(1, high - low)
-    for (let i = 0; i < data.length; i += 4) {
-      const lum = (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) >> 8
-      const norm = Math.max(0, Math.min(255, Math.round(((lum - low) * 255) / range)))
-      data[i] = norm
-      data[i + 1] = norm
-      data[i + 2] = norm
-    }
-    ctx.putImageData(img, pad, pad)
-  } catch {
-    /* Return unenhanced high-res canvas if pixel access is restricted. */
-  }
-  return canvas
-}
-
-async function decodeCanvasCode128(canvas: HTMLCanvasElement, helperElementId: string): Promise<string | null> {
-  // 1. Try browser-native BarcodeDetector first when supported (macOS / Android / ChromeOS).
-  const DetectorCtor = (window as unknown as {
-    BarcodeDetector?: new (opts: { formats: string[] }) => NativeBarcodeDetector
-  }).BarcodeDetector
-  if (DetectorCtor) {
-    try {
-      const detector = new DetectorCtor({ formats: ['code_128'] })
-      const hits = await detector.detect(canvas)
-      const hit = hits.find(entry => entry.rawValue?.trim())?.rawValue?.trim()
-      if (hit && isValidCode(hit)) return hit
-    } catch {
-      /* Fall back to Html5Qrcode full-resolution decodeRobustlyAsync. */
-    }
-  }
-
-  // 2. Fall back to Html5Qrcode scanFile (runs decodeRobustlyAsync at native resolution + quiet-zone padding).
-  const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
-  if (!blob) return null
-  const file = new File([blob], 'frame.png', { type: 'image/png' })
-  return decodeImageFileCode128(file, helperElementId)
-}
-
-async function decodeImageFileCode128(file: File, helperElementId: string): Promise<string | null> {
-  const { Html5Qrcode: Reader, Html5QrcodeSupportedFormats } = await import('html5-qrcode')
-  const helper = new Reader(helperElementId, {
-    formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128],
-    verbose: false,
-    experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-  })
-  try {
-    const raw = await helper.scanFile(file, false)
-    const text = raw.trim()
-    return isValidCode(text) ? text : null
-  } catch {
-    return null
-  } finally {
-    try {
-      helper.clear()
-    } catch {
-      /* Helper element may already be empty. */
-    }
-  }
-}
-
 /** Keeps the webcam open between items and reports each confirmed Code 128 copy label once. */
 export function StocktakeCameraScanner({ paused, onDetected }: Props) {
   const uid = useId().replaceAll(':', '')
   const viewportId = `stocktake-camera-${uid}`
-  const helperViewportId = `stocktake-camera-helper-${uid}`
   const [error, setError] = useState('')
   const [cameras, setCameras] = useState<CameraDevice[]>([])
   const [cameraId, setCameraId] = useState('')
@@ -193,8 +86,8 @@ export function StocktakeCameraScanner({ paused, onDetected }: Props) {
   detectedRef.current = onDetected
 
   const acceptImmediately = (raw: string) => {
-    const text = raw.trim()
-    if (pausedRef.current || !isValidCode(text)) return
+    const text = normalizeScannedBarcode(raw)
+    if (pausedRef.current || !text) return
     pending.current = null
     accepted.current = { text, at: Date.now() }
     setCandidateCode(null)
@@ -229,8 +122,8 @@ export function StocktakeCameraScanner({ paused, onDetected }: Props) {
       }
     }
     const read = (raw: string) => {
-      const text = raw.trim()
-      if (pausedRef.current || !isValidCode(text)) return
+      const text = normalizeScannedBarcode(raw)
+      if (pausedRef.current || !text) return
       const now = Date.now()
       const held = accepted.current
       if (held && held.text === text && now - held.at < REPEAT_HOLD_MS) {
@@ -310,15 +203,15 @@ export function StocktakeCameraScanner({ paused, onDetected }: Props) {
     }
   }, [viewportId, cameraId, attempt])
 
-  // Automatic full-resolution contrast-boosted background assist for USB webcams & bright phone screens.
+  // Fast, zero-DOM-conflict RED-channel Code-128 scanline assist on the native webcam video.
   useEffect(() => {
     if (!ready || paused || error) return
     const timer = window.setInterval(() => {
       if (pausedRef.current || assistBusyRef.current) return
-      const canvas = buildEnhancedVideoCanvas(viewportId)
-      if (!canvas) return
+      const video = document.getElementById(viewportId)?.querySelector('video')
+      if (!video || video.readyState < 2 || video.videoWidth < 80) return
       assistBusyRef.current = true
-      void decodeCanvasCode128(canvas, helperViewportId)
+      void decodeLiveVideoFrame(video, false)
         .then(hit => {
           if (hit) readHandlerRef.current(hit)
         })
@@ -327,28 +220,28 @@ export function StocktakeCameraScanner({ paused, onDetected }: Props) {
         })
     }, HD_ASSIST_INTERVAL_MS)
     return () => window.clearInterval(timer)
-  }, [ready, paused, error, viewportId, helperViewportId])
+  }, [ready, paused, error, viewportId])
 
   async function handleManualCapture() {
     if (paused || captureBusy) return
     setCaptureBusy(true)
     setCaptureFeedback(null)
     try {
-      const canvas = buildEnhancedVideoCanvas(viewportId)
-      if (!canvas) {
+      const video = document.getElementById(viewportId)?.querySelector('video')
+      if (!video || video.readyState < 2 || video.videoWidth < 80) {
         setCaptureFeedback({
           tone: 'warn',
           text: 'Camera video is still warming up. Wait a moment and try capturing again.',
         })
         return
       }
-      const hit = await decodeCanvasCode128(canvas, helperViewportId)
+      const hit = await decodeLiveVideoFrame(video, true)
       if (hit) {
         acceptImmediately(hit)
       } else {
         setCaptureFeedback({
           tone: 'warn',
-          text: 'No Code-128 barcode was readable in that frame. Hold the label flat, leave white margin on both ends, reduce phone brightness/glare, and try again.',
+          text: 'No barcode was readable in that frame. Hold the label steady, leave white margin on both ends, lower phone screen brightness to reduce glare, or use Scan barcode image.',
         })
       }
     } finally {
@@ -363,13 +256,13 @@ export function StocktakeCameraScanner({ paused, onDetected }: Props) {
     setCaptureBusy(true)
     setCaptureFeedback(null)
     try {
-      const hit = await decodeImageFileCode128(file, helperViewportId)
+      const hit = await decodeUploadedBarcodeFile(file)
       if (hit) {
         acceptImmediately(hit)
       } else {
         setCaptureFeedback({
           tone: 'warn',
-          text: 'No Code-128 barcode was found in that image. Upload a sharper photo or screenshot of the copy label.',
+          text: 'No readable barcode or QR code was found in that image. Upload a downloaded barcode PNG, QR label, or a sharper photo of one copy label.',
         })
       }
     } finally {
@@ -441,7 +334,6 @@ export function StocktakeCameraScanner({ paused, onDetected }: Props) {
           aria-label="Live camera preview"
           className="camera-preview min-h-64 w-full overflow-hidden bg-[#0f172a]"
         />
-        <div id={helperViewportId} className="sr-only" aria-hidden="true" />
 
         {!error ? (
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 bg-[#132a3f] px-3.5 py-2 text-xs text-white">
@@ -469,7 +361,7 @@ export function StocktakeCameraScanner({ paused, onDetected }: Props) {
               ) : (
                 <span className="inline-flex items-center gap-1.5">
                   <ScanBarcode size={14} aria-hidden="true" className="text-[#93c5fd]" />
-                  <span>Live Code-128 scanner active · Auto + HD contrast assist</span>
+                  <span>Live Code-128 scanner active · Red-channel HD assist</span>
                 </span>
               )}
             </div>
@@ -532,7 +424,7 @@ export function StocktakeCameraScanner({ paused, onDetected }: Props) {
           Hold the copy label 20 to 30 cm from the camera, flat, with white space on both ends inside the guide.{' '}
           {paused
             ? 'Scanning is paused until you finish the pop-up.'
-            : 'The code is read automatically — or click Scan current frame now if a phone screen has glare.'}
+            : 'The code is read automatically — or click Scan current frame now / Scan barcode image.'}
         </p>
       )}
     </div>
