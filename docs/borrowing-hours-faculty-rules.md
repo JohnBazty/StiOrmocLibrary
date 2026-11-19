@@ -113,7 +113,7 @@
    - Rename labels to match the rules: "Due cutoff" becomes "Due time (next open day)"; the loan period summary reads "Due 8:00 AM, 1 open day after borrowing".
    - Show the fixed rules as read-only text on the page: fines PHP 2 per open hour on the due date (max PHP 10), PHP 10 per open day after, cap PHP 500, students only; faculty pay no overdue fine but are blocked and Not Cleared. These are not editable here.
    - Each save publishes a new version with a change reason; past versions stay (the current versioning).
-9. **Publish the values:** after deploy the Librarian publishes a new version on that page: student 2, faculty 5, borrowing days 1, due time 08:00, checkout opens 14:00. No live write from code.
+9. **Publish the values (changed 2026-11-19, Ethan):** migration `042_librarian_borrowing_rules.sql` publishes a new policy version effective on the Manila date it runs: student 2, faculty 5, borrowing days 1, due time 08:00, checkout opens 14:00. Every other value and the material rules are copied from the version effective then; a rerun does nothing. Apply 041 then 042 (Ethan's go-ahead), then deploy. The Librarian can publish later changes on the page.
 
 ## Build order
 
@@ -163,8 +163,8 @@ T4, T5 and T6 do not depend on the migration and can be built in any order.
 - [x] `plan-verifier`, `security-reviewer`, `database-reviewer`
 - [x] Borrowing policy maintenance page restored for Librarian, with the checkout field, new labels and fixed-rule text
 - [ ] Ask John why `c44d5bb3` reverted the editor (the rollback record says only "owner requested")
-- [ ] Apply `041` live, then deploy (Ethan's go-ahead)
-- [ ] Librarian publishes the new policy version after deploy
+- [x] Migration `042_librarian_borrowing_rules.sql` publishes the new policy version (tracker: next unused becomes `043`); written, not applied live
+- [ ] Apply `041` and `042` live, then deploy (Ethan's go-ahead)
 
 ## Change log
 
@@ -178,3 +178,4 @@ T4, T5 and T6 do not depend on the migration and can be built in any order.
 - 2026-11-19: T1–T4 built and committed. Ethan changed R6: Faculty are charged only for lost or damaged books; damage amount entered by the Librarian, capped at the copy's price. Added T5b.
 - 2026-11-19: T5, T5b, T6, T7 and T8 built and committed. API 539 and web 382 tests pass; typecheck and build pass.
 - 2026-11-19: Reviews (plan-verifier, security-reviewer, database-reviewer): no CRITICAL or HIGH. Fixed: `041` sets `lock_timeout` and names `public.` tables; the API requires `checkoutOpensAt` so a publish never silently resets it; history table empty-row `colSpan` 9; the confirm-changes box is a live region; tests added for preview due date = stored due date (R2), faculty limit 5 in eligibility (R3), overdue faculty blocked (R5). Open for Ethan: existing faculty overdue fines (spec leaves them for the Librarian to waive), and the damage charge cap (no cap when the copy has no price; several charges on one copy can add up past its price). Not done: a focus trap in the confirm dialog (LOW).
+- 2026-11-19: Ethan confirmed the Librarian's rules again (checkout 2 PM, due 8 AM, students 2, faculty cap 5, fines unchanged) and chose a migration over a manual publish. Added `042_librarian_borrowing_rules.sql` with a PGlite test (`borrowing-policy-rules.migration.test.ts`); trackers now say next unused `043`.
