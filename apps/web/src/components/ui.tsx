@@ -12,7 +12,7 @@ import {
   Search,
   X,
 } from 'lucide-react'
-import { isValidElement, useEffect, useId, type ReactElement, type ReactNode } from 'react'
+import { isValidElement, useEffect, useId, type HTMLAttributes, type ReactElement, type ReactNode } from 'react'
 import { ResponsiveTable } from './ResponsiveTable'
 
 export function cn(...classes: Array<string | false | null | undefined>) {
@@ -112,9 +112,14 @@ export function Button({
   )
 }
 
-export function SectionCard({ children, className }: { children: ReactNode; className?: string }) {
+export function SectionCard({
+  children,
+  className,
+  ...props
+}: { children: ReactNode; className?: string } & HTMLAttributes<HTMLElement>) {
   return (
     <section
+      {...props}
       className={cn(
         'section-card min-w-0 max-w-full rounded-[10px] border border-[var(--sl-border)] bg-[var(--sl-bg-elevated)] shadow-[var(--sl-shadow-xs)]',
         className,

@@ -150,6 +150,32 @@ describe('AdminFinesPage', () => {
     await waitFor(() => expect(api.receipt).toHaveBeenCalledWith(8,true))
     expect(await screen.findByText(`Payment record ${reference.receiptNumber}`)).toBeTruthy()
   })
+
+  it('reverses a cash receipt through an in-modal form without window.prompt', async () => {
+    const reference = { receiptId: 8, receiptNumber: 'OR-20260904-000008', verificationCode: '428FC7C836DCC645', status: 'Issued' }
+    const listWithReceipt = { ...fineList, items: [{ ...fineList.items[0], paid: 28, balance: 0, status: 'Paid', paymentAllowed: false, receipts: [reference] }] }
+    const detail = {
+      receiptId: 8, receiptNumber: reference.receiptNumber, verificationCode: reference.verificationCode, requestKey: 'cash-8',
+      student: { userId: 7, schoolId: '02000871654', name: 'Buentheo Nathaniel Noval' }, amountReceived: 28,
+      paymentMethod: 'Cash', receivedBy: 'Library Admin', receivedAt: '2026-09-04T14:37:00.000Z', status: 'Issued',
+      reversedBy: null, reversedAt: null, reversalReason: null, notes: null, allocations: [],
+    }
+    api.adminList.mockResolvedValue(listWithReceipt)
+    api.adminTerms.mockResolvedValue([])
+    api.receipt.mockResolvedValue(detail)
+    api.reverse.mockResolvedValue({ ...detail, status: 'Reversed' })
+    render(<AdminFinesPage />)
+
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(reference.receiptNumber) }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Reverse receipt' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm reversal' }))
+    expect(api.reverse).not.toHaveBeenCalled()
+    expect(screen.getByText(/at least 5 characters/i)).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText(/Reason for reversing this cash receipt/i), { target: { value: 'Cashier posted to wrong student' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm reversal' }))
+    await waitFor(() => expect(api.reverse).toHaveBeenCalledWith(8, 'Cashier posted to wrong student'))
+  })
 })
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })

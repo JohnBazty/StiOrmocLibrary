@@ -1,80 +1,833 @@
-import { UrgentCases } from './UrgentCases'
-import { ViolationsRecords } from './ViolationsRecords'
-import { ServiceChargesPanel } from '../payments/ServiceChargesPanel'
+import {
+  AlertTriangle,
+  Download,
+  FileText,
+  PhilippinePeso,
+  ReceiptText,
+  RefreshCw,
+  ShieldCheck,
+  X,
+} from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useConfirmSave } from '../../components/ConfirmSaveDialog'
+import { ResponsiveTable } from '../../components/ResponsiveTable'
+import {
+  Button,
+  FormField,
+  LumoDialog,
+  NoticeBanner,
+  PageHeader,
+  SectionCard,
+  StatCard,
+  StatusBadge,
+} from '../../components/ui'
+import { UnsavedGuard } from '../../components/UnsavedChanges'
 import { getCurrentIdentity } from '../auth/auth-storage'
 import { usePaymentUpdates } from '../payments/payment-updates'
-import { ResponsiveTable } from '../../components/ResponsiveTable'
-import { AlertTriangle, Download, FileText, PhilippinePeso, ReceiptText, RefreshCw, ShieldCheck, X } from 'lucide-react'
-import { useCallback,useEffect,useMemo,useRef,useState,type FormEvent,type ReactNode } from 'react'
-import { Button,PageHeader,SectionCard,StatCard,StatusBadge } from '../../components/ui'
-import { currentMonth,fineDate,fineMoney,today } from './fine-format'
+import { ServiceChargesPanel } from '../payments/ServiceChargesPanel'
+import { currentMonth, fineDate, fineMoney, today } from './fine-format'
 import { finesApi } from './fines-api'
-import type { FineFilters,FineList,FineObligation,FineReceipt,FineTerm } from './types'
-import { UnsavedGuard } from '../../components/UnsavedChanges'
-import { useConfirmSave } from '../../components/ConfirmSaveDialog'
+import type { FineFilters, FineList, FineObligation, FineReceipt, FineTerm } from './types'
+import { UrgentCases } from './UrgentCases'
+import { ViolationsRecords } from './ViolationsRecords'
 
-const field='h-11 w-full rounded-xl border border-[#0b5ea2]/20 bg-white px-3 text-sm text-[#0b5ea2] outline-none focus:ring-4 focus:ring-[#0b5ea2]/10'
-const initial:FineFilters={search:'',status:'all',type:'all',period:'all',page:1,limit:100}
-function requestKey(){return globalThis.crypto?.randomUUID?.()??`cash-${Date.now()}-${Math.random().toString(36).slice(2)}`}
+type FinesTab = 'fines' | 'urgent' | 'violations' | 'service-charges'
 
-export function AdminFinesPage(){
-  const [filters,setFilters]=useState<FineFilters>(initial);const [data,setData]=useState<FineList|null>(null);const [terms,setTerms]=useState<FineTerm[]>([])
-  const [error,setError]=useState('');const [notice,setNotice]=useState('');const [busy,setBusy]=useState(false)
-  const [formError,setFormError]=useState('');const [auditReason,setAuditReason]=useState('')
-  const [paying,setPaying]=useState<FineObligation|null>(null);const [adjusting,setAdjusting]=useState<FineObligation|null>(null);const [adjustmentType,setAdjustmentType]=useState<'Reduction'|'Waiver'|'Void'>('Reduction');const [receipt,setReceipt]=useState<FineReceipt|null>(null)
-  const loadSequence=useRef(0)
-  const paymentKey=useRef('')
-  const { ask, dialog: confirmSave } = useConfirmSave()
-  const appliedFilters=useRef(initial)
-  const load=useCallback(async(current=filters)=>{const sequence=++loadSequence.current;appliedFilters.current=current;try{const result=await finesApi.adminList(current);if(sequence!==loadSequence.current)return;setData(result);setError('');setPaying(value=>{const latest=result.items.find(row=>row.id===value?.id);return latest?(latest.paymentAllowed?latest:null):value});setAdjusting(value=>{const latest=result.items.find(row=>row.id===value?.id);return latest?(latest.paymentAllowed?latest:null):value})}catch(cause){if(sequence!==loadSequence.current)return;setError(cause instanceof Error?cause.message:'Fine records are unavailable.')}},[filters])
-  useEffect(()=>{void load(initial);void finesApi.adminTerms().then(setTerms).catch(()=>setTerms([]))},[]) // eslint-disable-line react-hooks/exhaustive-deps
-  usePaymentUpdates(()=>busy?undefined:load(appliedFilters.current))
-  const controls=useMemo(()=>{
-    if(filters.period==='all')return null
-    if(filters.period==='daily')return <input type="date" value={filters.date??today()} onChange={(event)=>setFilters({...filters,date:event.target.value})} className={field}/>
-    if(filters.period==='weekly')return <><input type="month" value={filters.month??currentMonth()} onChange={(event)=>setFilters({...filters,month:event.target.value})} className={field}/><select value={filters.week??1} onChange={(event)=>setFilters({...filters,week:Number(event.target.value)})} className={field}>{[1,2,3,4].map((week)=><option key={week} value={week}>Week {week}</option>)}</select></>
-    if(filters.period==='monthly')return <input type="month" value={filters.month??currentMonth()} onChange={(event)=>setFilters({...filters,month:event.target.value})} className={field}/>
-    if(filters.period==='semester')return <select value={filters.termId??''} onChange={(event)=>setFilters({...filters,termId:Number(event.target.value)})} className={field}><option value="">Select semester</option>{terms.map((term)=><option key={term.id} value={term.id}>{term.name} {term.academicYear}</option>)}</select>
-    return <><input type="date" value={filters.from??today()} onChange={(event)=>setFilters({...filters,from:event.target.value})} className={field}/><input type="date" value={filters.to??today()} onChange={(event)=>setFilters({...filters,to:event.target.value})} className={field}/></>
-  },[filters,terms])
-  function pay(event:FormEvent<HTMLFormElement>){event.preventDefault();if(!paying||busy)return;const values=Object.fromEntries(new FormData(event.currentTarget).entries());ask(`Record a cash payment of ${values.amount} for ${paying.userName}.`,()=>{void sendPayment(values)})}
-  async function sendPayment(values:Record<string,FormDataEntryValue>){if(!paying)return;setBusy(true);setFormError('');try{const created=await finesApi.pay({requestKey:paymentKey.current||(paymentKey.current=requestKey()),allocations:[{...(paying.fineId?{fineId:paying.fineId}:{lostBookReportId:paying.lostBookReportId!}),amount:Number(values.amount)}],notes:String(values.notes||'')||undefined});setReceipt(created);setPaying(null);setNotice(`Cash payment recorded under payment record ${created.receiptNumber}.`);await load()}catch(cause){setFormError(cause instanceof Error?cause.message:'The cash payment could not be recorded.')}finally{setBusy(false)}}
-  function adjust(event:FormEvent<HTMLFormElement>){
-    event.preventDefault();if(!adjusting?.fineId||busy)return
-    const values=Object.fromEntries(new FormData(event.currentTarget).entries())
-    ask(`${adjustmentType === 'Reduction' ? 'Record a partial payment' : `Record a ${adjustmentType.toLowerCase()}`} for ${adjusting.userName}.`,()=>{void sendAdjustment(values)})
-  }
-  async function sendAdjustment(values:Record<string,FormDataEntryValue>){
-    if(!adjusting?.fineId)return
-    setBusy(true);setFormError('')
-    try{
-      if(adjustmentType==='Reduction'){
-        const created=await finesApi.pay({requestKey:paymentKey.current||(paymentKey.current=requestKey()),allocations:[{fineId:adjusting.fineId,amount:Number(values.amount)}],notes:String(values.reason||'')||undefined})
-        setReceipt(created);setNotice(`Partial cash payment recorded under payment record ${created.receiptNumber}.`)
-      }else{
-        await finesApi.adjust(adjusting.fineId,{type:adjustmentType,reason:String(values.reason)})
-        setNotice(`${adjustmentType} recorded. No payment record was generated.`)
-      }
-      setAdjusting(null);setAuditReason('');setError('');await load()
-    }catch(cause){setFormError(cause instanceof Error?cause.message:'The fine could not be updated.')}finally{setBusy(false)}
-  }
-  async function reverse(){if(!receipt)return;const reason=window.prompt('Enter the reason for reversing this cash receipt:')?.trim();if(!reason)return;setBusy(true);try{setReceipt(await finesApi.reverse(receipt.receiptId,reason));setNotice('The payment record was reversed and remains visible for audit.');await load()}catch(cause){setError(cause instanceof Error?cause.message:'The receipt could not be reversed.')}finally{setBusy(false)}}
-  async function viewReceipt(receiptId:number){setBusy(true);setError('');try{setReceipt(await finesApi.receipt(receiptId,true))}catch(cause){setError(cause instanceof Error?cause.message:'The receipt could not be opened.')}finally{setBusy(false)}}
-  async function downloadReport(){setError('');try{await finesApi.downloadReport(filters)}catch(cause){setError(cause instanceof Error?`PDF export failed: ${cause.message}`:'The PDF export failed.')}}
-  return <>
-    <PageHeader eyebrow="Financial records" title="Fines management" action={<div className="flex flex-wrap gap-2"><a href="/librarian/payments" className="inline-flex min-h-11 items-center rounded-xl border px-4 text-sm font-semibold">Online payments</a><Button variant="secondary" onClick={()=>void load()}><RefreshCw size={16}/>Refresh</Button><Button onClick={()=>void downloadReport()}><Download size={16}/>Export filtered PDF</Button></div>}/>
-    <UrgentCases setup/>
-    <ViolationsRecords admin onSaved={()=>void load()}/>
-    {error?<div role="alert" className="mb-4 flex gap-2 rounded-xl bg-[#FFF200] p-4 font-bold text-[#0b5ea2]"><AlertTriangle size={18}/>{error}</div>:null}{notice?<div className="mb-4 rounded-xl border border-[#0b5ea2]/15 bg-[#0b5ea2]/5 p-4 font-semibold text-[#0b5ea2]">{notice}</div>:null}
-    <SectionCard className="mb-5 p-4"><div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6"><select value={filters.period} onChange={(event)=>setFilters({...filters,period:event.target.value as FineFilters['period']})} className={field}><option value="all">All records</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="semester">Per semester</option><option value="custom">Custom dates</option></select>{controls}<select value={filters.type} onChange={(event)=>setFilters({...filters,type:event.target.value})} className={field}><option value="all">All fine types</option><option>Overdue</option><option>Infraction</option><option>Lost Book</option></select><select value={filters.status} onChange={(event)=>setFilters({...filters,status:event.target.value})} className={field}><option value="all">All statuses</option>{['Accruing','Unpaid','Partially Paid','Paid','Waived','Voided'].map((status)=><option key={status}>{status}</option>)}</select><input aria-label="Search fines and receipts" value={filters.search} onChange={(event)=>setFilters({...filters,search:event.target.value})} placeholder="Name, ID, receipt, or verification code" className={field}/><Button onClick={()=>void load()}>Apply filters</Button></div></SectionCard>
-    <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><StatCard label="Assessed" value={fineMoney(data?.summary.assessed??0)} icon={PhilippinePeso}/><StatCard label="Outstanding" value={fineMoney(data?.summary.outstanding??0)} icon={AlertTriangle} tone="orange"/><StatCard label="Collected" value={fineMoney(data?.summary.collected??0)} icon={ReceiptText}/><StatCard label="Waived" value={fineMoney(data?.summary.waived??0)} icon={ShieldCheck}/><StatCard label="Accounts with balance" value={data?.summary.accountsWithBalance??0} icon={FileText}/></div>
-    <SectionCard className="overflow-hidden"><div className="border-b border-[#0b5ea2]/15 p-5"><h2 className="font-bold text-[#0b5ea2]">Fine audit table</h2><p className="mt-1 text-xs text-[#0b5ea2]/60">{data?.range.label??'Selected period'} · {data?.pagination.total??0} records</p></div><ResponsiveTable><table className="w-full min-w-[1450px] text-left text-sm"><thead className="bg-[#0b5ea2] text-white"><tr>{['Fine','User','Type','Book / incident','Reason','Assessed','Paid','Waived','Balance','Receipt / verification','Status','Date','Actions'].map((value)=><th key={value} className="px-4 py-3">{value}</th>)}</tr></thead><tbody>{data?.items.length?data.items.map((item)=><tr key={item.id} className="border-b border-[#0b5ea2]/10"><td className="px-4 py-4 font-mono text-xs">{item.id}</td><td className="px-4 py-4"><strong>{item.userName}</strong><p className="text-xs text-[#0b5ea2]/60">{item.schoolId}</p></td><td className="px-4 py-4">{item.type}</td><td className="max-w-48 px-4 py-4 font-semibold">{item.title}</td><td className="max-w-64 px-4 py-4 text-[#0b5ea2]/70">{item.reason}</td><td className="px-4 py-4 font-bold">{fineMoney(item.assessed)}</td><td className="px-4 py-4">{fineMoney(item.paid)}</td><td className="px-4 py-4">{fineMoney(item.adjusted)}</td><td className="px-4 py-4 font-bold">{fineMoney(item.balance)}</td><td className="min-w-56 px-4 py-4">{item.receipts.length?<div className="space-y-2">{item.receipts.map((reference)=><button key={reference.receiptId} type="button" disabled={busy} onClick={()=>void viewReceipt(reference.receiptId)} className="block w-full rounded-lg border border-[#0b5ea2]/15 p-2 text-left hover:bg-[#0b5ea2]/5"><span className="block font-mono text-xs font-bold">{reference.receiptNumber}</span><span className="block font-mono text-xs text-[#0b5ea2]/65">{reference.verificationCode}</span>{reference.status==='Reversed'?<span className="mt-1 block text-[10px] font-bold">REVERSED</span>:null}</button>)}</div>:<span aria-label="No receipt">—</span>}</td><td className="px-4 py-4"><StatusBadge status={item.status}/></td><td className="px-4 py-4 text-xs">{fineDate(item.occurredAt)}</td><td className="px-4 py-4"><div className="flex gap-2"><>{item.paymentAllowed?<Button onClick={()=>{paymentKey.current=requestKey();setFormError('');setPaying(item)}}>Cash payment</Button>:null}</>{item.fineId&&item.status!=='Accruing'&&!['Paid','Waived','Voided'].includes(item.status)?<Button variant="secondary" onClick={()=>{paymentKey.current=requestKey();setFormError('');setAuditReason('');setAdjustmentType('Reduction');setAdjusting(item)}}>Adjust</Button>:null}</div></td></tr>):<tr><td colSpan={13} className="p-12 text-center font-semibold">No fine records match these filters.</td></tr>}</tbody></table></ResponsiveTable></SectionCard>
-    {paying?<Modal title="Record cash payment" close={()=>setPaying(null)}><div className="mb-4 rounded-xl bg-[#0b5ea2]/5 p-4 text-sm"><strong>{paying.userName}</strong><p>{paying.title}</p><p className="mt-2 font-bold">Remaining balance: {fineMoney(paying.balance)}</p>{paying.type==='Lost Book'?<p className="mt-1 text-xs">Lost-book replacement charges must be paid in full.</p>:null}</div><UnsavedGuard className="contents" cleanOnSubmit><form onSubmit={pay} className="space-y-3">{formError?<p role="alert" className="rounded-xl bg-[#FFF200] p-3 text-sm font-semibold text-[#0b5ea2]">{formError}</p>:null}<input aria-label="Amount received" name="amount" type="number" min="0.01" max={paying.balance} step="0.01" defaultValue={paying.balance.toFixed(2)} readOnly={paying.type==='Lost Book'} className={field}/><textarea name="notes" placeholder="Counter notes (optional)" className={`${field} h-24 py-3`}/><Button type="submit" disabled={busy} className="w-full">Record cash payment</Button></form></UnsavedGuard></Modal>:null}
-    {adjusting?<Modal title="Document fine adjustment" close={()=>setAdjusting(null)}><div className="mb-4 rounded-xl bg-[#0b5ea2]/5 p-4 text-sm">{adjustmentType==='Reduction'?<><strong>Partial cash payment</strong><p className="mt-1 text-[#0b5ea2]/70">The amount entered is the cash paid now. The unpaid amount remains as the student’s balance, and a payment record will be generated.</p></>:<><strong>No cash payment</strong><p className="mt-1 text-[#0b5ea2]/70">A waiver or void changes the fine without receiving cash, so it will not generate a payment record.</p></>}</div><UnsavedGuard className="contents" cleanOnSubmit><form onSubmit={adjust} className="space-y-3">{formError?<p role="alert" className="rounded-xl bg-[#FFF200] p-3 text-sm font-semibold text-[#0b5ea2]">{formError}</p>:null}<label htmlFor="fine-adjustment-type" className="block text-sm font-bold">Adjustment type</label><select id="fine-adjustment-type" name="type" value={adjustmentType} onChange={(event)=>setAdjustmentType(event.target.value as 'Reduction'|'Waiver'|'Void')} className={field}><option value="Reduction">Reduction (partial payment)</option><option>Waiver</option><option>Void</option></select>{adjustmentType==='Reduction'?<><label htmlFor="fine-reduction-payment" className="block text-sm font-bold">Cash amount paid</label><input id="fine-reduction-payment" name="amount" type="number" min="0.01" max={adjusting.balance} step="0.01" required placeholder={`Maximum ${fineMoney(adjusting.balance)}`} className={field}/><p className="text-xs text-[#0b5ea2]/65">To pay half, enter {fineMoney(adjusting.balance/2)}.</p></>:null}<label htmlFor="fine-adjustment-reason" className="block text-sm font-bold">{adjustmentType==='Reduction'?'Payment notes':'Mandatory audit reason'}</label><textarea id="fine-adjustment-reason" name="reason" value={auditReason} onChange={(event)=>setAuditReason(event.target.value)} required={adjustmentType!=='Reduction'} minLength={adjustmentType==='Reduction'?undefined:10} placeholder={adjustmentType==='Reduction'?'Counter notes (optional)':'Explain why this adjustment is authorized'} className={`${field} h-28 py-3`}/><Button type="submit" disabled={busy} className="w-full">{adjustmentType==='Reduction'?'Record payment':`Record ${adjustmentType.toLowerCase()}`}</Button></form></UnsavedGuard></Modal>:null}
-    {confirmSave}
-    {receipt?<Modal title={`Payment record ${receipt.receiptNumber}`} close={()=>setReceipt(null)}><div className="space-y-3 text-sm text-[#0b5ea2]"><div className="rounded-xl bg-[#0b5ea2]/5 p-4"><div className="flex justify-between"><strong>{receipt.student.name}</strong><StatusBadge status={receipt.status}/></div><p>{receipt.student.schoolId}</p><p className="mt-3 text-xl font-bold">{fineMoney(receipt.totalReceived??receipt.amountReceived)}</p>{receipt.confirmationSource==='Xendit'?<p className="text-sm">Applied {fineMoney(receipt.amountReceived)} · Fee {fineMoney((receipt.transactionFeeCentavos??0)/100)}</p>:null}<p className="text-xs">{receipt.paymentMethod} · {receipt.confirmationSource==='Xendit'?'Verified by':'Received by'} {receipt.receivedBy} · {fineDate(receipt.receivedAt)}</p><div className="mt-4 grid gap-1 rounded-lg border border-[#0b5ea2]/15 bg-white p-3"><span className="text-xs font-bold">Receipt number</span><span className="font-mono">{receipt.receiptNumber}</span><span className="mt-2 text-xs font-bold">Verification code</span><span className="font-mono">{receipt.verificationCode}</span></div></div>{receipt.allocations.map((item,index)=><div key={index} className="rounded-xl border border-[#0b5ea2]/15 p-3"><strong>{item.title}</strong><p>Paid {fineMoney(item.paid)} · Remaining {fineMoney(item.balanceAfter)}</p></div>)}<div className="flex flex-wrap gap-2"><Button onClick={()=>void finesApi.downloadReceipt(receipt.receiptId,receipt.receiptNumber,true).catch((cause)=>setError(cause instanceof Error?cause.message:'Receipt download failed.'))}><Download size={16}/>Download payment PDF</Button>{receipt.status==='Issued'&&receipt.confirmationSource!=='Xendit'?<Button variant="secondary" disabled={busy} onClick={()=>void reverse()}>Reverse receipt</Button>:null}</div></div></Modal>:null}
-    <ServiceChargesPanel admin canManage={getCurrentIdentity()?.role==='Librarian'}/>
-  </>
+const initial: FineFilters = { search: '', status: 'all', type: 'all', period: 'all', page: 1, limit: 100 }
+
+function requestKey() {
+  return globalThis.crypto?.randomUUID?.() ?? `cash-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
-function Modal({title,close,children}:{title:string;close:()=>void;children:ReactNode}){return <div className="fixed inset-0 z-50 overflow-y-auto bg-[#0b5ea2]/75 p-4"><div className="mx-auto my-8 max-w-2xl rounded-2xl bg-white shadow-2xl"><header className="flex items-center justify-between border-b border-[#0b5ea2]/15 p-5"><h2 className="font-display text-xl font-bold text-[#0b5ea2]">{title}</h2><button aria-label="Close" onClick={close} className="p-2 text-[#0b5ea2]"><X/></button></header><div className="p-5">{children}</div></div></div>}
+export function AdminFinesPage() {
+  const [activeTab, setActiveTab] = useState<FinesTab>('fines')
+  const [filters, setFilters] = useState<FineFilters>(initial)
+  const [data, setData] = useState<FineList | null>(null)
+  const [terms, setTerms] = useState<FineTerm[]>([])
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [formError, setFormError] = useState('')
+  const [auditReason, setAuditReason] = useState('')
+  const [paying, setPaying] = useState<FineObligation | null>(null)
+  const [adjusting, setAdjusting] = useState<FineObligation | null>(null)
+  const [adjustmentType, setAdjustmentType] = useState<'Reduction' | 'Waiver' | 'Void'>('Reduction')
+  const [receipt, setReceipt] = useState<FineReceipt | null>(null)
+  const [reversingReceipt, setReversingReceipt] = useState(false)
+  const [reversalReason, setReversalReason] = useState('')
+  const [reversalError, setReversalError] = useState('')
+
+  const loadSequence = useRef(0)
+  const paymentKey = useRef('')
+  const { ask, dialog: confirmSave } = useConfirmSave()
+  const appliedFilters = useRef(initial)
+
+  const invalidDateRange =
+    filters.period === 'custom' &&
+    Boolean(filters.from && filters.to && filters.from > filters.to)
+
+  const hasActiveFilters =
+    filters.period !== 'all' ||
+    filters.type !== 'all' ||
+    filters.status !== 'all' ||
+    Boolean(filters.search.trim())
+
+  const load = useCallback(
+    async (current = filters) => {
+      if (current.period === 'custom' && current.from && current.to && current.from > current.to) {
+        setError('Start date cannot be after end date.')
+        return
+      }
+      const sequence = ++loadSequence.current
+      appliedFilters.current = current
+      try {
+        const result = await finesApi.adminList(current)
+        if (sequence !== loadSequence.current) return
+        setData(result)
+        setError('')
+        setPaying(value => {
+          const latest = result.items.find(row => row.id === value?.id)
+          return latest ? (latest.paymentAllowed ? latest : null) : value
+        })
+        setAdjusting(value => {
+          const latest = result.items.find(row => row.id === value?.id)
+          return latest ? (latest.paymentAllowed ? latest : null) : value
+        })
+      } catch (cause) {
+        if (sequence !== loadSequence.current) return
+        setError(cause instanceof Error ? cause.message : 'Fine records are unavailable.')
+      }
+    },
+    [filters],
+  )
+
+  useEffect(() => {
+    void load(initial)
+    void finesApi
+      .adminTerms()
+      .then(setTerms)
+      .catch(() => setTerms([]))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  usePaymentUpdates(() => (busy ? undefined : load(appliedFilters.current)))
+
+  const controls = useMemo(() => {
+    if (filters.period === 'all') return null
+    if (filters.period === 'daily') {
+      return (
+        <input
+          type="date"
+          aria-label="Daily filter date"
+          value={filters.date ?? today()}
+          onChange={event => setFilters({ ...filters, date: event.target.value })}
+          className="sl-input"
+        />
+      )
+    }
+    if (filters.period === 'weekly') {
+      return (
+        <>
+          <input
+            type="month"
+            aria-label="Weekly filter month"
+            value={filters.month ?? currentMonth()}
+            onChange={event => setFilters({ ...filters, month: event.target.value })}
+            className="sl-input"
+          />
+          <select
+            aria-label="Week in month"
+            value={filters.week ?? 1}
+            onChange={event => setFilters({ ...filters, week: Number(event.target.value) })}
+            className="sl-input"
+          >
+            {[1, 2, 3, 4].map(week => (
+              <option key={week} value={week}>
+                Week {week}
+              </option>
+            ))}
+          </select>
+        </>
+      )
+    }
+    if (filters.period === 'monthly') {
+      return (
+        <input
+          type="month"
+          aria-label="Monthly filter month"
+          value={filters.month ?? currentMonth()}
+          onChange={event => setFilters({ ...filters, month: event.target.value })}
+          className="sl-input"
+        />
+      )
+    }
+    if (filters.period === 'semester') {
+      return (
+        <select
+          aria-label="Semester"
+          value={filters.termId ?? ''}
+          onChange={event =>
+            setFilters({
+              ...filters,
+              termId: event.target.value ? Number(event.target.value) : undefined,
+            })
+          }
+          className="sl-input"
+        >
+          <option value="">Select semester</option>
+          {terms.map(term => (
+            <option key={term.id} value={term.id}>
+              {term.name} {term.academicYear}
+            </option>
+          ))}
+        </select>
+      )
+    }
+    return (
+      <>
+        <input
+          type="date"
+          aria-label="Start date"
+          value={filters.from ?? today()}
+          onChange={event => setFilters({ ...filters, from: event.target.value })}
+          className="sl-input"
+        />
+        <input
+          type="date"
+          aria-label="End date"
+          value={filters.to ?? today()}
+          onChange={event => setFilters({ ...filters, to: event.target.value })}
+          className="sl-input"
+        />
+      </>
+    )
+  }, [filters, terms])
+
+  function clearFilters() {
+    setFilters(initial)
+    void load(initial)
+  }
+
+  function pay(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!paying || busy) return
+    const values = Object.fromEntries(new FormData(event.currentTarget).entries())
+    ask(`Record a cash payment of ${values.amount} for ${paying.userName}.`, () => {
+      void sendPayment(values)
+    })
+  }
+
+  async function sendPayment(values: Record<string, FormDataEntryValue>) {
+    if (!paying) return
+    setBusy(true)
+    setFormError('')
+    try {
+      const created = await finesApi.pay({
+        requestKey: paymentKey.current || (paymentKey.current = requestKey()),
+        allocations: [
+          {
+            ...(paying.fineId ? { fineId: paying.fineId } : { lostBookReportId: paying.lostBookReportId! }),
+            amount: Number(values.amount),
+          },
+        ],
+        notes: String(values.notes || '') || undefined,
+      })
+      setReceipt(created)
+      setPaying(null)
+      setNotice(`Cash payment recorded under payment record ${created.receiptNumber}.`)
+      await load()
+    } catch (cause) {
+      setFormError(cause instanceof Error ? cause.message : 'The cash payment could not be recorded.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function adjust(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!adjusting?.fineId || busy) return
+    const values = Object.fromEntries(new FormData(event.currentTarget).entries())
+    ask(
+      `${adjustmentType === 'Reduction' ? 'Record a partial payment' : `Record a ${adjustmentType.toLowerCase()}`} for ${adjusting.userName}.`,
+      () => {
+        void sendAdjustment(values)
+      },
+    )
+  }
+
+  async function sendAdjustment(values: Record<string, FormDataEntryValue>) {
+    if (!adjusting?.fineId) return
+    setBusy(true)
+    setFormError('')
+    try {
+      if (adjustmentType === 'Reduction') {
+        const created = await finesApi.pay({
+          requestKey: paymentKey.current || (paymentKey.current = requestKey()),
+          allocations: [{ fineId: adjusting.fineId, amount: Number(values.amount) }],
+          notes: String(values.reason || '') || undefined,
+        })
+        setReceipt(created)
+        setNotice(`Partial cash payment recorded under payment record ${created.receiptNumber}.`)
+      } else {
+        await finesApi.adjust(adjusting.fineId, { type: adjustmentType, reason: String(values.reason) })
+        setNotice(`${adjustmentType} recorded. No payment record was generated.`)
+      }
+      setAdjusting(null)
+      setAuditReason('')
+      setError('')
+      await load()
+    } catch (cause) {
+      setFormError(cause instanceof Error ? cause.message : 'The fine could not be updated.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function submitReversal(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!receipt || busy) return
+    const reason = reversalReason.trim()
+    if (reason.length < 5) {
+      setReversalError('Enter at least 5 characters explaining why this receipt is being reversed.')
+      return
+    }
+    setBusy(true)
+    setReversalError('')
+    try {
+      setReceipt(await finesApi.reverse(receipt.receiptId, reason))
+      setReversingReceipt(false)
+      setReversalReason('')
+      setNotice('The payment record was reversed and remains visible for audit.')
+      await load()
+    } catch (cause) {
+      setReversalError(cause instanceof Error ? cause.message : 'The receipt could not be reversed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function viewReceipt(receiptId: number) {
+    setBusy(true)
+    setError('')
+    try {
+      setReceipt(await finesApi.receipt(receiptId, true))
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The receipt could not be opened.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function downloadReport() {
+    setError('')
+    try {
+      await finesApi.downloadReport(filters)
+    } catch (cause) {
+      setError(cause instanceof Error ? `PDF export failed: ${cause.message}` : 'The PDF export failed.')
+    }
+  }
+
+  const tabs: Array<[FinesTab, string]> = [
+    ['fines', 'Fines & charges'],
+    ['urgent', 'Urgent alerts'],
+    ['violations', 'Violations'],
+    ['service-charges', 'Service charges'],
+  ]
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Financial records"
+        title="Fines management"
+        description="Track overdue fines, replacement charges, and infractions; record counter cash payments or authorized adjustments."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <a
+              href="/librarian/payments"
+              className="inline-flex min-h-[38px] items-center rounded-[6px] border border-[var(--sl-border-strong)] bg-[var(--sl-bg-elevated)] px-3.5 text-sm font-semibold text-[var(--sl-text-header)] shadow-[var(--sl-shadow-xs)] hover:bg-[var(--sl-bg-subtle)]"
+            >
+              Online payments
+            </a>
+            <Button variant="secondary" onClick={() => void load()}>
+              <RefreshCw size={16} aria-hidden="true" /> Refresh
+            </Button>
+            <Button onClick={() => void downloadReport()}>
+              <Download size={16} aria-hidden="true" /> Export filtered PDF
+            </Button>
+          </div>
+        }
+      />
+
+      <nav aria-label="Fines management views" className="mb-5 flex flex-wrap gap-1 border-b border-[var(--sl-border)]">
+        {tabs.map(([key, label]) => {
+          const active = activeTab === key
+          return (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={active}
+              onClick={() => setActiveTab(key)}
+              className={`-mb-px inline-flex min-h-10 items-center border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${
+                active
+                  ? 'border-[#0b5ea2] text-[#0b5ea2] dark:border-[#93c5fd] dark:text-[#93c5fd]'
+                  : 'border-transparent text-[var(--sl-text-secondary)] hover:border-[var(--sl-border-strong)] hover:text-[var(--sl-text-header)]'
+              }`}
+            >
+              {label}
+            </button>
+          )
+        })}
+      </nav>
+
+      {error ? <NoticeBanner tone="error">{error}</NoticeBanner> : null}
+      {notice ? <NoticeBanner tone="success">{notice}</NoticeBanner> : null}
+
+      {activeTab === 'urgent' ? <UrgentCases setup /> : null}
+      {activeTab === 'violations' ? <ViolationsRecords admin onSaved={() => void load()} /> : null}
+      {activeTab === 'service-charges' ? (
+        <ServiceChargesPanel admin canManage={getCurrentIdentity()?.role === 'Librarian'} />
+      ) : null}
+
+      {activeTab === 'fines' ? (
+        <>
+          <SectionCard className="mb-5 p-4">
+            <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+              <select
+                aria-label="Filter period"
+                value={filters.period}
+                onChange={event => setFilters({ ...filters, period: event.target.value as FineFilters['period'] })}
+                className="sl-input"
+              >
+                <option value="all">All records</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="semester">Per semester</option>
+                <option value="custom">Custom dates</option>
+              </select>
+              {controls}
+              <select
+                aria-label="Fine type"
+                value={filters.type}
+                onChange={event => setFilters({ ...filters, type: event.target.value })}
+                className="sl-input"
+              >
+                <option value="all">All fine types</option>
+                <option>Overdue</option>
+                <option>Infraction</option>
+                <option>Lost Book</option>
+              </select>
+              <select
+                aria-label="Fine status"
+                value={filters.status}
+                onChange={event => setFilters({ ...filters, status: event.target.value })}
+                className="sl-input"
+              >
+                <option value="all">All statuses</option>
+                {['Accruing', 'Unpaid', 'Partially Paid', 'Paid', 'Waived', 'Voided'].map(status => (
+                  <option key={status}>{status}</option>
+                ))}
+              </select>
+              <input
+                aria-label="Search fines and receipts"
+                value={filters.search}
+                onChange={event => setFilters({ ...filters, search: event.target.value })}
+                placeholder="Name, ID, receipt, or verification code"
+                className="sl-input"
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button disabled={invalidDateRange} onClick={() => void load()}>
+                  Apply filters
+                </Button>
+                {hasActiveFilters ? (
+                  <Button variant="ghost" size="sm" onClick={clearFilters}>
+                    <X size={14} aria-hidden="true" /> Clear
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+            {invalidDateRange ? (
+              <p role="alert" className="field-error mt-2">
+                Start date cannot be after end date.
+              </p>
+            ) : null}
+          </SectionCard>
+
+          <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <StatCard label="Assessed" value={fineMoney(data?.summary.assessed ?? 0)} icon={PhilippinePeso} />
+            <StatCard label="Outstanding" value={fineMoney(data?.summary.outstanding ?? 0)} icon={AlertTriangle} tone="warning" />
+            <StatCard label="Collected" value={fineMoney(data?.summary.collected ?? 0)} icon={ReceiptText} tone="success" />
+            <StatCard label="Waived" value={fineMoney(data?.summary.waived ?? 0)} icon={ShieldCheck} />
+            <StatCard label="Accounts with balance" value={data?.summary.accountsWithBalance ?? 0} icon={FileText} />
+          </div>
+
+          <SectionCard className="overflow-hidden">
+            <div className="border-b border-[var(--sl-border)] px-5 py-4">
+              <h2 className="font-display text-base font-semibold text-[var(--sl-text-header)]">Fine audit table</h2>
+              <p className="mt-0.5 text-xs text-[var(--sl-text-secondary)]">
+                {data?.range.label ?? 'Selected period'} · {data?.pagination.total ?? 0} records
+              </p>
+            </div>
+            <ResponsiveTable label="Fine audit table">
+              <table className="w-full min-w-[1320px] text-left text-sm">
+                <thead className="border-b border-[var(--sl-border)] bg-[var(--sl-bg-subtle)]">
+                  <tr>
+                    {[
+                      'Borrower',
+                      'Type',
+                      'Book / incident',
+                      'Reason',
+                      'Assessed',
+                      'Paid',
+                      'Waived',
+                      'Balance',
+                      'Receipt / verification',
+                      'Status',
+                      'Date',
+                      'Actions',
+                    ].map(value => (
+                      <th key={value} scope="col" className="px-4 py-2.5">
+                        {value}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--sl-border)]">
+                  {data?.items.length ? (
+                    data.items.map(item => (
+                      <tr key={item.id} className="align-top">
+                        <td className="px-4 py-3.5">
+                          <p className="font-semibold text-[var(--sl-text-header)]">{item.userName}</p>
+                          <p className="mt-0.5 text-xs text-[var(--sl-text-muted)]">{item.schoolId}</p>
+                        </td>
+                        <td className="px-4 py-3.5 text-xs font-medium text-[var(--sl-text-secondary)]">{item.type}</td>
+                        <td className="max-w-48 px-4 py-3.5 font-semibold text-[var(--sl-text-header)]">{item.title}</td>
+                        <td className="max-w-64 px-4 py-3.5 text-xs text-[var(--sl-text-secondary)]">{item.reason}</td>
+                        <td className="px-4 py-3.5 font-semibold tabular-nums text-[var(--sl-text-header)]">
+                          {fineMoney(item.assessed)}
+                        </td>
+                        <td className="px-4 py-3.5 tabular-nums">{fineMoney(item.paid)}</td>
+                        <td className="px-4 py-3.5 tabular-nums">{fineMoney(item.adjusted)}</td>
+                        <td className="px-4 py-3.5 font-bold tabular-nums text-[var(--sl-text-header)]">
+                          {fineMoney(item.balance)}
+                        </td>
+                        <td className="min-w-52 px-4 py-3.5">
+                          {item.receipts.length ? (
+                            <div className="space-y-1.5">
+                              {item.receipts.map(reference => (
+                                <button
+                                  key={reference.receiptId}
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void viewReceipt(reference.receiptId)}
+                                  className="block w-full rounded-[6px] border border-[var(--sl-border)] bg-[var(--sl-bg-subtle)] p-2 text-left transition-colors hover:bg-[var(--sl-bg-hover)]"
+                                >
+                                  <span className="block font-mono text-xs font-semibold text-[var(--sl-text-header)]">
+                                    {reference.receiptNumber}
+                                  </span>
+                                  <span className="block font-mono text-xs text-[var(--sl-text-muted)]">
+                                    {reference.verificationCode}
+                                  </span>
+                                  {reference.status === 'Reversed' ? (
+                                    <span className="mt-1 block text-[10px] font-bold text-[var(--sl-error-text)]">
+                                      REVERSED
+                                    </span>
+                                  ) : null}
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <span aria-label="No receipt" className="text-[var(--sl-text-muted)]">
+                              —
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <StatusBadge status={item.status} />
+                        </td>
+                        <td className="px-4 py-3.5 text-xs tabular-nums text-[var(--sl-text-secondary)]">
+                          {fineDate(item.occurredAt)}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <div className="flex flex-wrap gap-1.5">
+                            {item.paymentAllowed ? (
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  paymentKey.current = requestKey()
+                                  setFormError('')
+                                  setPaying(item)
+                                }}
+                              >
+                                Cash payment
+                              </Button>
+                            ) : null}
+                            {item.fineId && item.status !== 'Accruing' && !['Paid', 'Waived', 'Voided'].includes(item.status) ? (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => {
+                                  paymentKey.current = requestKey()
+                                  setFormError('')
+                                  setAuditReason('')
+                                  setAdjustmentType('Reduction')
+                                  setAdjusting(item)
+                                }}
+                              >
+                                Adjust
+                              </Button>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={12} className="p-10 text-center">
+                        <p className="font-semibold text-[var(--sl-text-header)]">No fine records match these filters.</p>
+                        {hasActiveFilters ? (
+                          <div className="mt-3">
+                            <Button variant="secondary" size="sm" onClick={clearFilters}>
+                              Clear filters
+                            </Button>
+                          </div>
+                        ) : null}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </ResponsiveTable>
+          </SectionCard>
+        </>
+      ) : null}
+
+      {paying ? (
+        <LumoDialog title="Record cash payment" busy={busy} onClose={() => setPaying(null)}>
+          <div className="mb-4 rounded-[8px] border border-[var(--sl-border)] bg-[var(--sl-bg-subtle)] p-4 text-sm">
+            <strong className="text-[var(--sl-text-header)]">{paying.userName}</strong>
+            <p className="text-[var(--sl-text-secondary)]">{paying.title}</p>
+            <p className="mt-2 font-bold tabular-nums text-[var(--sl-text-header)]">
+              Remaining balance: {fineMoney(paying.balance)}
+            </p>
+            {paying.type === 'Lost Book' ? (
+              <p className="mt-1 text-xs text-[var(--sl-text-muted)]">
+                Lost-book replacement charges must be paid in full.
+              </p>
+            ) : null}
+          </div>
+          <UnsavedGuard className="contents" cleanOnSubmit>
+            <form onSubmit={pay} className="space-y-3">
+              {formError ? <NoticeBanner tone="error">{formError}</NoticeBanner> : null}
+              <input
+                aria-label="Amount received"
+                name="amount"
+                type="number"
+                min="0.01"
+                max={paying.balance}
+                step="0.01"
+                defaultValue={paying.balance.toFixed(2)}
+                readOnly={paying.type === 'Lost Book'}
+                className="sl-input"
+              />
+              <textarea
+                name="notes"
+                placeholder="Counter notes (optional)"
+                className="sl-input h-24 py-2.5"
+              />
+              <Button type="submit" disabled={busy} className="w-full">
+                Record cash payment
+              </Button>
+            </form>
+          </UnsavedGuard>
+        </LumoDialog>
+      ) : null}
+
+      {adjusting ? (
+        <LumoDialog title="Document fine adjustment" busy={busy} onClose={() => setAdjusting(null)}>
+          <div className="mb-4 rounded-[8px] border border-[var(--sl-border)] bg-[var(--sl-bg-subtle)] p-4 text-sm">
+            {adjustmentType === 'Reduction' ? (
+              <>
+                <strong className="text-[var(--sl-text-header)]">Partial cash payment</strong>
+                <p className="mt-1 text-xs text-[var(--sl-text-secondary)]">
+                  The amount entered is the cash paid now. The unpaid amount remains as the student’s balance, and a payment record will be generated.
+                </p>
+              </>
+            ) : (
+              <>
+                <strong className="text-[var(--sl-text-header)]">No cash payment</strong>
+                <p className="mt-1 text-xs text-[var(--sl-text-secondary)]">
+                  A waiver or void changes the fine without receiving cash, so it will not generate a payment record.
+                </p>
+              </>
+            )}
+          </div>
+          <UnsavedGuard className="contents" cleanOnSubmit>
+            <form onSubmit={adjust} className="space-y-3">
+              {formError ? <NoticeBanner tone="error">{formError}</NoticeBanner> : null}
+              <label htmlFor="fine-adjustment-type" className="block text-xs font-semibold text-[var(--sl-text-secondary)]">
+                Adjustment type
+              </label>
+              <select
+                id="fine-adjustment-type"
+                name="type"
+                value={adjustmentType}
+                onChange={event => setAdjustmentType(event.target.value as 'Reduction' | 'Waiver' | 'Void')}
+                className="sl-input"
+              >
+                <option value="Reduction">Reduction (partial payment)</option>
+                <option>Waiver</option>
+                <option>Void</option>
+              </select>
+              {adjustmentType === 'Reduction' ? (
+                <>
+                  <label htmlFor="fine-reduction-payment" className="block text-xs font-semibold text-[var(--sl-text-secondary)]">
+                    Cash amount paid
+                  </label>
+                  <input
+                    id="fine-reduction-payment"
+                    name="amount"
+                    type="number"
+                    min="0.01"
+                    max={adjusting.balance}
+                    step="0.01"
+                    required
+                    placeholder={`Maximum ${fineMoney(adjusting.balance)}`}
+                    className="sl-input"
+                  />
+                  <p className="text-xs text-[var(--sl-text-muted)]">
+                    To pay half, enter {fineMoney(adjusting.balance / 2)}.
+                  </p>
+                </>
+              ) : null}
+              <label htmlFor="fine-adjustment-reason" className="block text-xs font-semibold text-[var(--sl-text-secondary)]">
+                {adjustmentType === 'Reduction' ? 'Payment notes' : 'Mandatory audit reason'}
+              </label>
+              <textarea
+                id="fine-adjustment-reason"
+                name="reason"
+                value={auditReason}
+                onChange={event => setAuditReason(event.target.value)}
+                required={adjustmentType !== 'Reduction'}
+                minLength={adjustmentType === 'Reduction' ? undefined : 10}
+                placeholder={
+                  adjustmentType === 'Reduction'
+                    ? 'Counter notes (optional)'
+                    : 'Explain why this adjustment is authorized'
+                }
+                className="sl-input h-28 py-2.5"
+              />
+              <Button type="submit" disabled={busy} className="w-full">
+                {adjustmentType === 'Reduction' ? 'Record payment' : `Record ${adjustmentType.toLowerCase()}`}
+              </Button>
+            </form>
+          </UnsavedGuard>
+        </LumoDialog>
+      ) : null}
+
+      {confirmSave}
+
+      {receipt ? (
+        <LumoDialog
+          title={`Payment record ${receipt.receiptNumber}`}
+          busy={busy}
+          onClose={() => {
+            setReceipt(null)
+            setReversingReceipt(false)
+            setReversalReason('')
+            setReversalError('')
+          }}
+        >
+          <div className="space-y-3 text-sm">
+            <div className="rounded-[8px] border border-[var(--sl-border)] bg-[var(--sl-bg-subtle)] p-4">
+              <div className="flex justify-between">
+                <strong className="text-[var(--sl-text-header)]">{receipt.student.name}</strong>
+                <StatusBadge status={receipt.status} />
+              </div>
+              <p className="text-xs text-[var(--sl-text-muted)]">{receipt.student.schoolId}</p>
+              <p className="mt-3 text-xl font-bold tabular-nums text-[var(--sl-text-header)]">
+                {fineMoney(receipt.totalReceived ?? receipt.amountReceived)}
+              </p>
+              {receipt.confirmationSource === 'Xendit' ? (
+                <p className="text-xs text-[var(--sl-text-secondary)]">
+                  Applied {fineMoney(receipt.amountReceived)} · Fee {fineMoney((receipt.transactionFeeCentavos ?? 0) / 100)}
+                </p>
+              ) : null}
+              <p className="mt-1 text-xs text-[var(--sl-text-secondary)]">
+                {receipt.paymentMethod} · {receipt.confirmationSource === 'Xendit' ? 'Verified by' : 'Received by'}{' '}
+                {receipt.receivedBy} · {fineDate(receipt.receivedAt)}
+              </p>
+              <div className="mt-4 grid gap-1 rounded-[6px] border border-[var(--sl-border)] bg-[var(--sl-bg-elevated)] p-3">
+                <span className="text-xs font-semibold text-[var(--sl-text-muted)]">Receipt number</span>
+                <span className="font-mono text-xs font-semibold text-[var(--sl-text-header)]">{receipt.receiptNumber}</span>
+                <span className="mt-2 text-xs font-semibold text-[var(--sl-text-muted)]">Verification code</span>
+                <span className="font-mono text-xs text-[var(--sl-text-header)]">{receipt.verificationCode}</span>
+              </div>
+            </div>
+
+            {receipt.allocations.map((item, index) => (
+              <div key={index} className="rounded-[8px] border border-[var(--sl-border)] p-3">
+                <strong className="text-[var(--sl-text-header)]">{item.title}</strong>
+                <p className="mt-0.5 text-xs tabular-nums text-[var(--sl-text-secondary)]">
+                  Paid {fineMoney(item.paid)} · Remaining {fineMoney(item.balanceAfter)}
+                </p>
+              </div>
+            ))}
+
+            {reversingReceipt ? (
+              <form onSubmit={submitReversal} className="space-y-3 rounded-[8px] border border-[var(--sl-error-border)] bg-[var(--sl-error-soft)] p-3.5">
+                {reversalError ? <NoticeBanner tone="error">{reversalError}</NoticeBanner> : null}
+                <FormField id="receipt-reversal-reason" label="Reason for reversing this cash receipt" required>
+                  <textarea
+                    id="receipt-reversal-reason"
+                    rows={2}
+                    value={reversalReason}
+                    onChange={e => {
+                      setReversalReason(e.target.value)
+                      if (reversalError) setReversalError('')
+                    }}
+                    placeholder="Explain why this receipt is being reversed (at least 5 characters)"
+                    className="sl-input"
+                  />
+                </FormField>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => {
+                      setReversingReceipt(false)
+                      setReversalReason('')
+                      setReversalError('')
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" variant="danger" size="sm" disabled={busy}>
+                    {busy ? 'Reversing…' : 'Confirm reversal'}
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={() =>
+                    void finesApi
+                      .downloadReceipt(receipt.receiptId, receipt.receiptNumber, true)
+                      .catch(cause => setError(cause instanceof Error ? cause.message : 'Receipt download failed.'))
+                  }
+                >
+                  <Download size={16} aria-hidden="true" /> Download payment PDF
+                </Button>
+                {receipt.status === 'Issued' && receipt.confirmationSource !== 'Xendit' ? (
+                  <Button variant="secondary" disabled={busy} onClick={() => setReversingReceipt(true)}>
+                    Reverse receipt
+                  </Button>
+                ) : null}
+              </div>
+            )}
+          </div>
+        </LumoDialog>
+      ) : null}
+    </>
+  )
+}
