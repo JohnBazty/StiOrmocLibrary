@@ -1,21 +1,14 @@
 ---
-status: testing
+status: partial
 phase: 02-user-notification-gaps
 source: [02-VERIFICATION.md]
 started: 2026-11-19T00:00:00Z
-updated: 2026-11-19T00:00:00Z
+updated: 2026-11-19T02:37:12.622Z
 ---
 
 ## Current Test
 
-number: 1
-name: Concurrent identical printing saves send one set of notices
-expected: |
-  On a real Postgres (not production), with at least one user holding an open print request,
-  two librarians save the same "paused" printing state at the same moment
-  (two simultaneous PATCH /printing/service-status calls). Exactly one set of
-  "Printing paused" notices is written; the second save sees no real switch and sends none.
-awaiting: user response
+[testing paused — 2 items outstanding]
 
 ## Tests
 
