@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createNoticeTestDatabase } from '../notifications/user-notices.test.helper.ts'
-import { createPrintingService } from './printing.service.ts'
+import { createPrintingService, notifyPrintingServiceChange } from './printing.service.ts'
 import type { PrintingRepository } from './printing.repository.ts'
 
 const DDL = `
@@ -73,4 +73,63 @@ test('no notice names the acting librarian or another user (P2)', async () => {
   for (const row of await notices(pg)) {
     for (const name of ['Libby', 'Ana', 'Ben', 'Cy ', 'Dee']) assert.ok(!String(row.message_body).includes(name) && !String(row.message_title).includes(name))
   }
+})
+
+test('pause, resume, pause in quick succession is three separate events (E7)', async () => {
+  const { pg, service } = await fixture()
+  await service.setServiceStatus(actor, { accepting_requests: false, unavailable_reason: 'Out of paper' })
+  await service.setServiceStatus(actor, { accepting_requests: true })
+  await service.setServiceStatus(actor, { accepting_requests: false, unavailable_reason: 'Printer jam' })
+  const rows = await notices(pg)
+  for (const userId of [11, 12]) {
+    const own = rows.filter(row => Number(row.user_id) === userId)
+    assert.deepEqual(own.map(row => row.message_title), ['Printing paused', 'Printing resumed', 'Printing paused'])
+    assert.equal(new Set(own.map(row => row.dedupe_key)).size, 3)
+  }
+})
+
+test('saving the state it already has sends nothing but still stores a new reason (E8)', async () => {
+  const { pg, service } = await fixture()
+  await service.setServiceStatus(actor, { accepting_requests: true })
+  assert.equal((await notices(pg)).length, 0)
+  await service.setServiceStatus(actor, { accepting_requests: false, unavailable_reason: 'Out of paper' })
+  await service.setServiceStatus(actor, { accepting_requests: false, unavailable_reason: 'Printer jam' })
+  assert.equal((await notices(pg)).length, 2)
+  assert.deepEqual(await setting(pg), { accepting_requests: 0, unavailable_reason: 'Printer jam' })
+})
+
+test('with no open requests a switch still saves and writes no notices (E9)', async () => {
+  const { pg, service } = await fixture(`UPDATE print_requests SET job_status='Completed' WHERE job_status NOT IN ('Completed','Cancelled');`)
+  await service.setServiceStatus(actor, { accepting_requests: false, unavailable_reason: 'Out of paper' })
+  assert.equal(Number((await setting(pg)).accepting_requests), 0)
+  await service.setServiceStatus(actor, { accepting_requests: true })
+  assert.equal(Number((await setting(pg)).accepting_requests), 1)
+  assert.equal((await notices(pg)).length, 0)
+})
+
+test('a pause without a reason has no reason text (D-04)', async () => {
+  const { pg, pool } = await fixture()
+  const connection = await pool.getConnection()
+  await notifyPrintingServiceChange(connection, false, null)
+  await notifyPrintingServiceChange(connection, false, '   ')
+  const rows = await notices(pg)
+  assert.equal(rows.length, 4)
+  for (const row of rows) assert.equal(row.message_body, 'Printing is paused. Your open requests are kept.')
+})
+
+test('a failed notice rolls the settings change back (E11) and the lock read comes before the upsert (E8 backstop)', async () => {
+  const { pg, pool } = await fixture()
+  const real = await pool.getConnection(), sql: string[] = []
+  const connection = { ...real, execute: async (text: string, values?: unknown[]) => {
+    sql.push(text)
+    if (text.includes('INSERT INTO notifications')) throw new Error('notice insert failed')
+    return real.execute(text, values)
+  } }
+  const failing = createPrintingService({ ...pool, getConnection: async () => connection } as typeof pool, repository)
+  await assert.rejects(failing.setServiceStatus(actor, { accepting_requests: false, unavailable_reason: 'Out of paper' }), /notice insert failed/)
+  assert.deepEqual(await setting(pg), { accepting_requests: 1, unavailable_reason: null })
+  assert.equal((await notices(pg)).length, 0)
+  const lock = sql.findIndex(text => text.includes('SELECT accepting_requests FROM printing_service_settings WHERE settings_id=1 FOR UPDATE'))
+  const upsert = sql.findIndex(text => text.includes('INSERT INTO printing_service_settings'))
+  assert.ok(lock >= 0 && upsert > lock)
 })
