@@ -1,3 +1,5 @@
+import {ownershipRouter} from './ownership-transfer.routes.ts'
+import {facultyDepartmentsService} from './faculty-departments.ts'
 import { Router, type NextFunction, type Request, type Response } from 'express'
 import { requireLibraryPermission } from '../auth/jwt-auth.middleware.ts'
 import { parseActiveUserFilters, parseUserFilters, usersRepository } from './users.repository.ts'
@@ -8,6 +10,7 @@ const handle = (fn: (request: Request, response: Response) => Promise<void>) =>
 const actor = (response: Response) => response.locals.authenticatedUser?.accountId
 
 export const usersRouter = Router()
+usersRouter.use('/ownership',ownershipRouter)
 usersRouter.get('/summary', handle(async (_request, response) => { response.json({ success: true, data: await usersRepository.summary() }) }))
 usersRouter.get('/programs', handle(async (request, response) => {
   const { status } = parseUserFilters(request.query)
@@ -25,11 +28,20 @@ usersRouter.post('/staff', requireLibraryPermission('accounts.manage'), handle(a
   const data = await createStaffAccount(actor(response), request.body)
   response.set('Cache-Control', 'private, no-store').status(201).json({ success: true, data })
 }))
+usersRouter.get('/:accountId/department', requireLibraryPermission('library.manage'), handle(async(request,response)=>{response.set('Cache-Control','private, no-store').json({success:true,data:await facultyDepartmentsService.read(actor(response),request.params.accountId)})}))
+usersRouter.post('/:accountId/department', requireLibraryPermission('library.manage'), handle(async(request,response)=>{response.set('Cache-Control','private, no-store').json({success:true,data:await facultyDepartmentsService.save(actor(response),request.params.accountId,request.body??{})})}))
 usersRouter.get('/:accountId', handle(async (request, response) => {
   response.json({ success: true, data: await usersRepository.detail(request.params.accountId) })
 }))
 usersRouter.post('/:accountId/status', requireLibraryPermission('accounts.manage'), handle(async (request, response) => {
   response.json({ success: true, data: await usersRepository.changeStatus(request.params.accountId, actor(response), request.body ?? {}) })
+}))
+usersRouter.post('/:accountId/unlock', requireLibraryPermission('accounts.manage'), handle(async (request, response) => {
+  response.json({ success: true, data: await usersRepository.unlockSignIn(request.params.accountId, actor(response), request.body ?? {}) })
+}))
+usersRouter.post('/:accountId/temporary-password', requireLibraryPermission('accounts.manage'), handle(async (request, response) => {
+  // Shown once: never cached.
+  response.set('Cache-Control', 'no-store').json({ success: true, data: await usersRepository.setTemporaryPassword(request.params.accountId, actor(response), request.body ?? {}) })
 }))
 export const adminUsersV1Router = usersRouter
 

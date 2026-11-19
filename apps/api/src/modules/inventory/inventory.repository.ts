@@ -30,6 +30,7 @@ function copyDto(row: RowDataPacket) {
     shelf_column: Number(row.shelf_column ?? 1),
     shelf_row: Number(row.shelf_row ?? 1),
     call_number: row.call_number ? String(row.call_number) : null,
+    dewey_code: row.dewey_code ? String(row.dewey_code) : null,
     condition_status: String(row.condition_status ?? ''),
     availability_status: String(row.availability_status ?? ''),
     last_verified_at: row.last_scanned_at ?? null,
@@ -72,6 +73,7 @@ export async function listInventoryCopies(database: Pool, filters: InventoryList
              (SELECT ${authorsAgg('a')}
                 FROM authors a WHERE a.title_id = t.title_id) AS authors,
              c.category_name, pc.accession_number, pc.barcode, pc.shelf_location, pc.shelf_column, pc.shelf_row, t.call_number,
+             (SELECT code FROM dewey_classifications d WHERE d.classification_id=pc.dewey_classification_id) AS dewey_code,
              pc.condition_status, pc.availability_status, pc.last_scanned_at, pc.row_version
         FROM physical_copies pc
         JOIN titles t ON t.title_id = pc.title_id
@@ -117,7 +119,7 @@ export async function findActiveReservation(connection: PoolConnection, physical
   const [rows] = await connection.execute<RowDataPacket[]>(`
     SELECT reservation_id, reservation_status, pickup_deadline
       FROM reservations
-     WHERE accession_id = ? AND reservation_status IN ('pending', 'approved', 'ready_for_pickup')
+     WHERE assigned_physical_copy_id = ? AND reservation_status IN ('pending', 'approved', 'ready_for_pickup')
      ORDER BY reservation_id DESC LIMIT 1 FOR UPDATE`, [physicalCopyId])
   return rows[0] ?? null
 }
@@ -132,15 +134,6 @@ export async function synchronizeLegacyAvailability(
     'UPDATE materials SET availability_status = ?, updated_at = NOW() WHERE material_id = ?',
     [availabilityStatus, materialId],
   )
-}
-
-export async function releaseLostCopyReservations(connection: PoolConnection, physicalCopyId: number) {
-  const [result] = await connection.execute(`
-    UPDATE reservations
-       SET accession_id = NULL, reservation_status = 'pending', pickup_deadline = NULL, updated_at = NOW()
-     WHERE accession_id = ?
-       AND reservation_status IN ('pending', 'approved', 'ready_for_pickup')`, [physicalCopyId])
-  return Number((result as { affectedRows?: number }).affectedRows ?? 0)
 }
 
 export async function recordInventoryAudit(

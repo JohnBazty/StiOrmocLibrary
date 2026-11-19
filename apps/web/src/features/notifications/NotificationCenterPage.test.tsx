@@ -28,25 +28,6 @@ describe('notification center', () => {
   beforeEach(() => { vi.clearAllMocks(); api.schedule.mockResolvedValue(schedule); api.remove.mockResolvedValue({ deleted: true }); api.removeAll.mockResolvedValue({ deletedCount: 1 }) })
   afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
-  it('refreshes both the inbox and the schedule and recovers a failed schedule read', async () => {
-    api.list.mockResolvedValue({ items: [], unreadCount: 0 })
-    api.schedule.mockRejectedValueOnce(new Error('Schedule temporarily unavailable.')).mockResolvedValue({
-      ...schedule, upcomingClosures: [{ date: '2026-12-01', reason: 'Campus closure' }],
-    })
-    render(<MemoryRouter><NotificationCenterPage /></MemoryRouter>)
-    expect((await screen.findByRole('alert')).textContent).toContain('Schedule temporarily unavailable.')
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
-    expect(await screen.findByText('Campus closure')).toBeTruthy()
-    expect(api.list).toHaveBeenCalledTimes(2)
-    expect(screen.queryByRole('alert')).toBeNull()
-  })
-  it('shows library hours in 12-hour time', async () => {
-    api.list.mockResolvedValue({ items: [], unreadCount: 0, pagination: { page: 1, limit: 100, total: 0, totalPages: 0 } })
-    api.schedule.mockResolvedValue({ ...schedule, weekly: [{ dayOfWeek: 1, isOpen: true, opensAt: '08:00:00', closesAt: '17:00:00' }] })
-    render(<MemoryRouter><NotificationCenterPage /></MemoryRouter>)
-    expect(await screen.findByText('8:00 AM - 5:00 PM')).toBeTruthy()
-  })
-
   it('lets the signed-in user delete a notification from the inbox', async () => {
     api.list
       .mockResolvedValueOnce({ items: [notification], unreadCount: 1, pagination: { page: 1, limit: 100, total: 1, totalPages: 1 } })

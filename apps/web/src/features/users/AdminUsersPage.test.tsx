@@ -1,15 +1,17 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AdminUsersPage } from './AdminUsersPage'
 import { usersApi } from './users-api'
 
 vi.mock('../auth/auth-storage', () => ({
   getCurrentIdentity: () => ({ role: 'Librarian' }),
+  getCsrfToken: () => 'fixture-token',
 }))
 vi.mock('./users-api', () => ({
   usersApi: { directory: vi.fn(), programs: vi.fn(), summary: vi.fn(), detail: vi.fn(), createStaff: vi.fn() },
 }))
-afterEach(cleanup)
+beforeEach(()=>vi.stubGlobal('fetch',vi.fn(async()=>Response.json({data:{activeUsers:1,cleared:1,notCleared:0,unknown:0,generatedAt:'2026-11-15T00:00:00Z'}}))))
+afterEach(()=>{cleanup();vi.unstubAllGlobals()})
 
 it('shows roster-only students without account actions when Not registered is selected', async () => {
   vi.mocked(usersApi.summary).mockResolvedValue({
@@ -41,6 +43,7 @@ it('creates Staff accounts from official school details without asking Admin to 
   ]) fireEvent.change(screen.getByLabelText(label), { target: { value } })
   expect(screen.queryByLabelText('Password')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: 'Create Staff account' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
   expect(await screen.findByText(/Staff account STAFF-QA created/)).toBeTruthy()
   expect(usersApi.createStaff).toHaveBeenCalledWith({
     first_name: 'Test', last_name: 'Staff', school_id: 'STAFF-QA', school_email: 'staff-qa@ormoc.sti.edu.ph',

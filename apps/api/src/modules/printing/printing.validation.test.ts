@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { HttpError } from '../../core/http-error.ts'
-import { parseFinanceFilters,parseNewInkStock,parsePrintRequest,parseRestock,parseServiceStatus,parseStatusUpdate,parseStockMovement } from './printing.validation.ts'
+import { parseQueueFilters,parseFinanceFilters,parseNewInkStock,parsePrintRequest,parseRestock,parseServiceStatus,parseStatusUpdate,parseStockMovement } from './printing.validation.ts'
 
 test('print request validation calculates sheets without accepting a client price',()=>{const value=parsePrintRequest({number_of_copies:'3',page_count:'7',print_type:'Monochrome',paper_size:'A4'});assert.equal(value.totalSheets,21);assert.equal('calculated_cost' in value,false)})
 test('60 and 100 copies remain quotable while 101 is rejected clearly',()=>{for(const copies of [60,100])assert.equal(parsePrintRequest({number_of_copies:String(copies),page_count:'7',print_type:'Monochrome',paper_size:'A4'}).totalSheets,7*copies);assert.throws(()=>parsePrintRequest({number_of_copies:'101',page_count:'7',print_type:'Monochrome',paper_size:'A4'}),(error:unknown)=>error instanceof HttpError&&error.status===422)})
@@ -11,3 +11,10 @@ test('printing can be paused only with a reason and resumed without printer stat
 test('restocking requires whole quantities and a positive unit cost',()=>{assert.deepEqual(parseRestock({quantity:3,unit_cost:125.5},'reams'),{quantity:3,unitCost:125.5,totalExpense:376.5});assert.throws(()=>parseRestock({quantity:1,unit_cost:0},'bottles'),(error:unknown)=>error instanceof HttpError&&error.code==='STOCK_UNIT_COST_INVALID');assert.throws(()=>parseRestock({quantity:1.5,unit_cost:100},'reams'),(error:unknown)=>error instanceof HttpError&&error.code==='STOCK_QUANTITY_INVALID')})
 test('new ink requires bottles and a positive cost per bottle',()=>{assert.equal(parseNewInkStock({cartridge_type:'Dye ink',color_variation:'Black',available_bottles:2,cost_per_bottle:150}).cost,150);assert.throws(()=>parseNewInkStock({cartridge_type:'Dye ink',color_variation:'Black',available_bottles:2,cost_per_bottle:0}),(error:unknown)=>error instanceof HttpError&&error.code==='INK_COST_INVALID')})
 test('finance filters calculate daily, selected week-of-month, and monthly ranges',()=>{assert.deepEqual(parseFinanceFilters({period:'daily',date:'2026-08-28'}),{period:'daily',date:'2026-08-28',month:'2026-08',week:null,from:'2026-08-28',to:'2026-08-28',label:'2026-08-28'});const weekly=parseFinanceFilters({period:'weekly',date:'2026-08-01',month:'2026-08',week:'4'});assert.equal(weekly.from,'2026-08-22');assert.equal(weekly.to,'2026-08-28');assert.equal(weekly.week,4);const monthly=parseFinanceFilters({period:'monthly',date:'2026-02-10',month:'2026-02'});assert.equal(monthly.from,'2026-02-01');assert.equal(monthly.to,'2026-02-28');assert.throws(()=>parseFinanceFilters({period:'weekly',date:'2026-02-01',month:'2026-02',week:5}),(error:unknown)=>error instanceof HttpError&&error.code==='PRINT_FINANCE_WEEK_INVALID')})
+
+
+test('queue scopes reject unknown values and retain partial payments', () => {
+  assert.throws(() => parseQueueFilters({scope:'unfinished'}), (error: unknown) => error instanceof HttpError && error.code === 'PRINT_SCOPE_INVALID')
+  assert.equal(parseQueueFilters({scope:'history', payment_status:'Partially Paid'}).scope, 'history')
+  assert.equal(parseQueueFilters({}).scope, '')
+})

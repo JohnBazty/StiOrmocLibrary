@@ -9,6 +9,7 @@ function shelfLocationsAgg(expr: string, alias: string) {
 export type CatalogScope = 'all' | 'books' | 'research'
 
 export type CatalogSearchFilters = {
+  deweyStatus?: 'assigned' | 'unassigned'
   query: string | null
   scope: CatalogScope
   categoryId: number | null
@@ -57,9 +58,12 @@ export function parseCatalogSearchFilters(query: Record<string, unknown>): Catal
   }
 
   const page = optionalPositiveInteger(query.page, 'page') ?? 1
+  const deweyStatus = firstQueryValue(query.deweyStatus).trim()
+  if (deweyStatus && !['assigned','unassigned'].includes(deweyStatus)) throw new HttpError(422,'CATALOG_FILTER_VALIDATION_FAILED','Choose assigned or unassigned Dewey numbers.')
   const requestedLimit = optionalPositiveInteger(query.limit, 'limit') ?? 25
 
   return {
+    ...(deweyStatus ? { deweyStatus: deweyStatus as 'assigned'|'unassigned' } : {}),
     query: firstQueryValue(query.q ?? query.query).trim().slice(0, 255) || null,
     scope: scopeValue as CatalogScope,
     categoryId: optionalPositiveInteger(query.categoryId, 'categoryId'),
@@ -73,6 +77,7 @@ export function parseCatalogSearchFilters(query: Record<string, unknown>): Catal
 
 export function buildCatalogSearchQuery(filters: CatalogSearchFilters) {
   const where = ["t.lifecycle_status = 'Active'"]
+  if (filters.deweyStatus) where.push(`t.record_type='Book' AND EXISTS (SELECT 1 FROM physical_copies ddc WHERE ddc.title_id=t.title_id AND ddc.lifecycle_status='Active' AND ddc.dewey_classification_id IS ${filters.deweyStatus==='assigned'?'NOT ':''}NULL)`)
   const parameters: Array<string | number> = []
 
   if (filters.scope === 'books') where.push("t.record_type = 'Book'")

@@ -12,6 +12,7 @@ function physicalTransaction(options: { history?: boolean; condition?: string } 
   const statements: string[] = []
   const connection = {
     async execute(sql: string) {
+      if (sql.includes('pg_advisory_xact_lock')) return [[]]
       statements.push(sql)
       if (sql.includes('FROM borrow_transactions')) return [options.history ? [{ transaction_id: 9 }] : []]
       if (sql.includes('FROM reservations')) return [[]]
@@ -73,6 +74,7 @@ function thesisDatabase(options: { auditHistory?: boolean; activeReservation?: b
     async beginTransaction() {}, async commit() { state.commits += 1 },
     async rollback() { state.rollbacks += 1 }, release() {},
     async execute(sql: string) {
+      if (sql.includes('pg_advisory_xact_lock')) return [[]]
       state.statements.push(sql)
       if (sql.includes('FROM research_inventory WHERE research_inventory_id')) return [[thesis]]
       if (sql.includes('FROM materials WHERE')) return [[{ material_id: 88, availability_status: 'Available' }]]

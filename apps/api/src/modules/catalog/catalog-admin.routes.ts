@@ -2,7 +2,7 @@ import { Router, type NextFunction, type Request, type Response } from 'express'
 import { requireJwtRoles } from '../auth/jwt-auth.middleware.ts'
 import { catalogController } from './catalog.controller.ts'
 import { bookArchive } from './book-archive.ts'
-import { bookQuotationController, quotationUpload } from './book-quotation.ts'
+import { bookQuotationController } from './book-quotation.ts'
 import { parseRegisterQuery, readRegister, registerCsv } from './book-register.ts'
 import type { Pool } from '../../config/db.js'
 import { db } from '../../config/db.js'
@@ -28,7 +28,7 @@ export function createCatalogAdminRouter(controller: Controller = catalogControl
   })
   router.patch('/titles/:titleId/category', requireJwtRoles('Librarian'), controller.changeTitleCategory)
   router.get('/titles/:titleId/quotations', requireJwtRoles('Librarian'), bookQuotationController.list)
-  router.post('/titles/:titleId/quotations', requireJwtRoles('Librarian'), quotationUpload, bookQuotationController.upload)
+  router.post('/titles/:titleId/quotations', requireJwtRoles('Librarian'), bookQuotationController.create)
   router.get('/titles/:titleId/quotations/:quotationId/file', requireJwtRoles('Librarian'), bookQuotationController.download)
   return router
 }

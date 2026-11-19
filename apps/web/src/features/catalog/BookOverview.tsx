@@ -1,7 +1,6 @@
-import { useLiveQuery } from '../../hooks/useLiveQuery'
 import { ViewLocationButton } from '../floor-plan/ViewLocationButton'
 import { Check, Clipboard, MapPin, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { AuthRole } from '../auth/auth-storage'
 import { fetchBookOverview } from './book-catalog-api'
 import { validateBookCartAddition } from './book-cart'
@@ -9,8 +8,12 @@ import { buildApaBookReference } from './book-citation'
 import type { BookCatalogItem } from './book-catalog-types'
 import { BookCoverThumbnail } from './BookCoverThumbnail'
 import { CatalogDetailsPanel } from './CatalogDetailsPanel'
+import { BookAvailabilityInfo } from './BookAvailabilityInfo'
+import { ConfirmBookActionDialog } from './ConfirmBookActionDialog'
+import { ScheduleBorrowingForm } from '../reservations/ScheduleBorrowingForm'
 
 type Props = {
+  scheduleOnOpen?: boolean
   titleId: number
   role: AuthRole
   activeBookCount: number
@@ -31,12 +34,33 @@ function Metadata({ label, value }: { label: string; value: string | number | nu
   return <div className="rounded-xl border border-[#0b5ea2]/10 bg-[#FFFFFF] p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-[#0b5ea2]/55">{label}</dt><dd className="mt-1 text-sm font-semibold text-[#0b5ea2]">{value || 'Not recorded'}</dd></div>
 }
 
-export function BookOverview({ titleId, role, activeBookCount, bookLimit, selectedBookCount, alreadySelected, alreadyReserved = false, onAddToCart, onClose, onReserve, onRequest, requestDisabled = false, requestError, requestNotice }: Props) {
-  const query = useLiveQuery(`book-overview:${titleId}`, signal => fetchBookOverview(titleId, signal))
-  const book = query.data ?? null
+export function BookOverview({ scheduleOnOpen = false, titleId, role, activeBookCount, bookLimit, selectedBookCount, alreadySelected, alreadyReserved = false, onAddToCart, onClose, onReserve, onRequest, requestDisabled = false, requestError, requestNotice }: Props) {
+  const [book, setBook] = useState<BookCatalogItem | null>(null)
   const [error, setError] = useState('')
   const [citationVisible, setCitationVisible] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [pending, setPending] = useState<'borrow' | 'reserve' | null>(null)
+  const [scheduling,setScheduling]=useState(false)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setBook(null)
+    setScheduling(scheduleOnOpen)
+    setError('')
+    let running = false
+    const load = async () => {
+      if (running) return
+      running = true
+      try { const result = await fetchBookOverview(titleId, controller.signal); if (!controller.signal.aborted) { setBook(result); setError('') } }
+      catch (reason) { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Unable to refresh this book.') }
+      finally { running = false }
+    }
+    void load()
+    const refresh = () => { if (!document.hidden) void load() }
+    const timer = window.setInterval(refresh, 30_000)
+    window.addEventListener('focus', refresh); document.addEventListener('visibilitychange', refresh)
+    return () => { controller.abort(); clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh) }
+  }, [titleId, scheduleOnOpen])
 
   const citation = useMemo(() => book ? buildApaBookReference(book) : '', [book])
   const addToCart = () => {
@@ -57,6 +81,7 @@ export function BookOverview({ titleId, role, activeBookCount, bookLimit, select
   }
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex justify-end bg-[#0b5ea2]/45" role="dialog" aria-modal="true" aria-labelledby="book-overview-title">
       <button className="absolute inset-0" aria-label="Close book overview" onClick={onClose} />
       <aside className="relative z-10 h-full w-full max-w-2xl overflow-y-auto bg-[#FFFFFF] shadow-2xl">
@@ -68,10 +93,10 @@ export function BookOverview({ titleId, role, activeBookCount, bookLimit, select
         <div className="p-5 sm:p-7">
           {requestError && <p role="alert" className="mb-4 rounded-xl bg-[#b42318] p-3 text-sm font-semibold text-white">{requestError}</p>}
           {requestNotice && <p role="status" className="mb-4 rounded-xl bg-[#0b5ea2] p-3 text-sm font-semibold text-white">{requestNotice}</p>}
-          {query.error && <p role="alert" className="mb-4 rounded-xl bg-red-700 p-3 text-sm text-white">{query.error.message} Updates will retry automatically.</p>}
           {error ? <div role="alert" className="mb-4 rounded-xl border border-[#0b5ea2] bg-[#FFF200] p-3 text-sm font-semibold text-[#0b5ea2]">{error}</div> : null}
           {!book && !error ? <div className="py-20 text-center text-sm font-semibold text-[#0b5ea2]">Loading book details…</div> : null}
           {book ? <>
+            {scheduleOnOpen && scheduling ? <><p className="font-bold text-[#0b5ea2]">{book.title}</p><ScheduleBorrowingForm key={titleId} titleId={titleId} title={book.title} role={role} onClose={()=>setScheduling(false)}/></> : null}
             <section className="rounded-2xl border border-[#0b5ea2]/15 bg-[#FFFFFF] p-5 sm:p-7">
               <div className="flex justify-center">
                 <BookCoverThumbnail
@@ -98,10 +123,13 @@ export function BookOverview({ titleId, role, activeBookCount, bookLimit, select
               <Metadata label="Available stock" value={`${book.availableCopiesCount} of ${book.totalCopiesCount} copies`} />
             </dl>
 
+            <BookAvailabilityInfo available={book.availableCopiesCount} total={book.totalCopiesCount} borrowed={book.borrowedCopiesCount} reserved={book.reservedCopiesCount} />
+
             <CatalogDetailsPanel titleId={book.titleId}/>
+            {['Student','Faculty'].includes(role)&&book.totalCopiesCount>0 ? scheduling? scheduleOnOpen ? null : <ScheduleBorrowingForm key={titleId} titleId={titleId} title={book.title} role={role} onClose={()=>setScheduling(false)}/>:<button type="button" className="mt-5 min-h-11 rounded-xl border border-[#0b5ea2]/25 px-4 text-sm font-bold text-[#0b5ea2]" onClick={()=>setScheduling(true)}>Schedule borrowing</button>:null}
             <section className="mt-5 rounded-2xl border border-[#0b5ea2]/10 p-4" aria-label="Individual book copies">
               <h3 className="font-bold text-[#0b5ea2]">Individual copies</h3>
-              <div className="mt-3 space-y-2">{book.copies?.length ? book.copies.map(copy => <div key={copy.copyId} className="grid gap-1 rounded-xl border border-[#0b5ea2]/15 p-3 text-xs text-[#0b5ea2] sm:grid-cols-2"><strong>{copy.accessionNumber}</strong><span className="font-mono">{copy.barcode}</span><span>Availability: {copy.availability}</span><span>Condition: {copy.condition}</span><span className="sm:col-span-2">Shelf: {copy.shelf}</span></div>) : <p className="text-sm text-[#0b5ea2]/60">No active copies are recorded.</p>}</div>
+              <div className="mt-3 space-y-2">{book.copies?.length ? book.copies.map(copy => <div key={copy.copyId} className="grid gap-1 rounded-xl border border-[#0b5ea2]/15 p-3 text-xs text-[#0b5ea2] sm:grid-cols-2"><strong>{copy.accessionNumber}</strong><span className="font-mono">{copy.barcode}</span><span>Availability: {copy.availability}</span><span>Condition: {copy.condition}</span><span className="sm:col-span-2">Shelf: {copy.shelf}</span><span className="sm:col-span-2">Dewey: {copy.deweyCode??'Not assigned'} {copy.deweyDescription}</span></div>) : <p className="text-sm text-[#0b5ea2]/60">No active copies are recorded.</p>}</div>
             </section>
 
             <div className="mt-5 rounded-2xl border border-[#0b5ea2]/10 p-4">
@@ -112,12 +140,14 @@ export function BookOverview({ titleId, role, activeBookCount, bookLimit, select
             <div className="mt-5 flex flex-col gap-3 border-t border-[#0b5ea2]/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2 text-xs font-semibold text-[#0b5ea2]/65"><MapPin size={15} />{book.shelfLocation ?? book.callNumber ?? 'Shelf not recorded'}</div>
               {['Student','Faculty'].includes(role) && onRequest && book.totalCopiesCount>0 ? <button onClick={()=>onRequest(book)} disabled={alreadySelected||requestDisabled} className="h-11 rounded-xl bg-[#0b5ea2] px-5 text-sm font-bold text-white disabled:opacity-50">{alreadySelected?'Requested / selected':requestDisabled?'Please wait…':book.availableCopiesCount>0?'Borrow book':'Reserve book'}</button> : null}
-              {!onRequest && ['Student', 'Faculty'].includes(role) && book.availableCopiesCount > 0 ? <button onClick={addToCart} disabled={alreadySelected || requestDisabled} className="h-11 rounded-xl bg-[#0b5ea2] px-5 text-sm font-bold text-[#FFFFFF] disabled:opacity-50">{alreadySelected ? 'In borrow cart' : 'Borrow book'}</button> : null}
-              {!onRequest && ['Student', 'Faculty'].includes(role) && book.totalCopiesCount > 0 && book.availableCopiesCount === 0 && onReserve ? <button onClick={() => onReserve(book)} disabled={requestDisabled || alreadyReserved} className="h-11 rounded-xl bg-[#FFF200] px-5 text-sm font-bold text-[#0b5ea2] disabled:opacity-50">{alreadyReserved ? 'Reserved' : requestDisabled ? 'Please wait…' : 'Reserve book'}</button> : null}
+              {!onRequest && ['Student', 'Faculty'].includes(role) && book.availableCopiesCount > 0 ? <button onClick={() => setPending('borrow')} disabled={alreadySelected || requestDisabled} className="h-11 rounded-xl bg-[#0b5ea2] px-5 text-sm font-bold text-[#FFFFFF] disabled:opacity-50">{alreadySelected ? 'In borrow cart' : 'Borrow book'}</button> : null}
+              {!onRequest && ['Student', 'Faculty'].includes(role) && book.totalCopiesCount > 0 && book.availableCopiesCount === 0 && onReserve ? <button onClick={() => setPending('reserve')} disabled={requestDisabled || alreadyReserved} className="h-11 rounded-xl bg-[#FFF200] px-5 text-sm font-bold text-[#0b5ea2] disabled:opacity-50">{alreadyReserved ? 'Reserved' : requestDisabled ? 'Please wait…' : 'Reserve book'}</button> : null}
             </div>
           </> : null}
         </div>
       </aside>
     </div>
+    {pending && book ? <ConfirmBookActionDialog kind={pending} title={book.title} onCancel={() => setPending(null)} onConfirm={() => { const choice = pending; setPending(null); if (choice === 'borrow') addToCart(); else onReserve?.(book) }} /> : null}
+    </>
   )
 }

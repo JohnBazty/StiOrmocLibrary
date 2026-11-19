@@ -54,10 +54,11 @@ export async function storePrintDocument(file?: Express.Multer.File) {
 
 export async function removePrintDocument(storedPath: string) {
   if (storedPath.startsWith(storagePrefix)) {
-    if (storage) await storage.remove([storedPath.slice(storagePrefix.length)])
+    if(!/^[a-f0-9-]{36}\.(pdf|docx)$/.test(storedPath.slice(storagePrefix.length))||!storage)throw new HttpError(503,'PRINT_STORAGE_UNAVAILABLE','Document cleanup is unavailable. It will be retried.');
+    if (storage) { const deletionStorage=createClient(env.supabase.url,env.supabase.secretKey,{auth:{persistSession:false,autoRefreshToken:false},global:{fetch:(input,init)=>fetch(input,{...init,signal:AbortSignal.timeout(4000)})}}).storage.from(bucket);const {error}=await deletionStorage.remove([storedPath.slice(storagePrefix.length)]); if(error)throw new HttpError(503,'PRINT_STORAGE_UNAVAILABLE','Document cleanup could not finish. It will be retried.') }
     return
   }
-  if (path.dirname(path.resolve(storedPath)) !== uploadDirectory) return
+  if (path.dirname(path.resolve(storedPath)) !== uploadDirectory) throw new HttpError(422,'PRINT_STORAGE_PATH_INVALID','This document needs a storage review before expiry.')
   await rm(storedPath, { force: true })
 }
 

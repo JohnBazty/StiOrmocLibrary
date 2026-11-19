@@ -1,22 +1,26 @@
 import { Router } from 'express'
 import { categoryController, type createCategoryController } from './category.controller.ts'
 import { requireCategoryManager } from './category.rbac.ts'
-import { floorPlanRepository } from '../../floor-plan/floor-plan.repository.ts'
-import { shelfLabel } from '../../floor-plan/floor-plan.validation.ts'
-import { catalogOptions, saveFoundation } from '../catalog-enhancements.service.ts'
+import { listManagedShelves, saveManagedShelf } from '../shelf-capacity.service.ts'
 
 type CategoryController = ReturnType<typeof createCategoryController>
 
 export function createCategoryRouter(controller: CategoryController = categoryController) {
   const router = Router()
   router.get('/', controller.list)
-  router.get('/shelves', requireCategoryManager, async (_request, response, next) => {
-    try { const data=(await catalogOptions(true)).locations as Array<{id:number;name:string;columnCount:number;rowCount:number}>;response.json({ success: true, data: data?data.map(l=>({id:Number(l.id),label:l.name,columnCount:Number(l.columnCount),rowCount:Number(l.rowCount)})):await floorPlanRepository.shelfDirectory() }) } catch (error) { next(error) }
+  router.get('/shelves', requireCategoryManager, async (request, response, next) => {
+    try { response.json({ success: true, data: await listManagedShelves(undefined, request.query.includeArchived === 'true') }) } catch (error) { next(error) }
   })
   router.post('/shelves', requireCategoryManager, async (request, response, next) => {
     try {
       const actor = Number(response.locals.authenticatedUser?.accountId ?? response.locals.authenticatedUser?.id)
-      {await saveFoundation('locations',null,{name:shelfLabel(request.body?.label)},actor);response.status(201).json({success:true,data:{created:true}});return}
+      response.status(201).json({ success: true, data: await saveManagedShelf(null, request.body, actor) })
+    } catch (error) { next(error) }
+  })
+  router.put('/shelves/:shelfId', requireCategoryManager, async (request, response, next) => {
+    try {
+      const actor = Number(response.locals.authenticatedUser?.accountId ?? response.locals.authenticatedUser?.id)
+      response.json({ success: true, data: await saveManagedShelf(request.params.shelfId, request.body, actor) })
     } catch (error) { next(error) }
   })
   router.post('/', requireCategoryManager, controller.create)

@@ -4,17 +4,21 @@ import type { Pool } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { createCatalogService } from './catalog.service.ts'
 
-function fakePool() {
+function fakePool(options: { archivedIsbn?: boolean } = {}) {
   const state = { began: 0, committed: 0, rolledBack: 0, released: 0, statements: [] as string[] }
   const connection = {
     async beginTransaction() { state.began += 1 },
     async commit() { state.committed += 1 },
     async rollback() { state.rolledBack += 1 },
     release() { state.released += 1 },
-    async execute(sql: string) {
+    async execute(sql: string, parameters: unknown[] = []) {
+      if (sql.includes('pg_advisory_xact_lock')) return [[]]
+      if (sql.includes('SELECT * FROM catalog_locations')) return [[{ location_id: 1, name: String(parameters[0]), column_count: 3, row_count: 5, default_capacity: 100, lifecycle_status: 'Active' }]]
+      if (sql.includes('FROM catalog_location_capacities')) return [[]]
+      if (sql.includes(') AS used')) return [[{ used: 0 }]]
       state.statements.push(sql)
       if (sql.includes('SELECT physical_copy_id')) return [[]]
-      if (sql.includes('SELECT title_id') && sql.includes('FROM titles')) return [[]]
+      if (sql.includes('SELECT title_id') && sql.includes('FROM titles')) return [options.archivedIsbn ? [{ title_id: 8, lifecycle_status: 'Archived' }] : []]
       if (sql.includes('SELECT research_record_id')) return [[]]
       if (sql.includes('SELECT research_inventory_id')) return [[]]
       if (sql.includes('FROM catalog_locations')) return [[{ location_id: 1 }]]
@@ -76,4 +80,13 @@ test('returns the module 422 error before opening a transaction when mandatory f
     return true
   })
   assert.equal(connectionRequested, false)
+})
+
+
+test('normal book entry refuses an archived ISBN before creating active hidden copies', async () => {
+  const { state, database } = fakePool({ archivedIsbn: true })
+  await assert.rejects(createCatalogService(database).createBookEntry({ title: 'Clean Code', author: 'Robert C. Martin', isbn: '9780132350884', barcode: 'BC-NEW', accessionNumber: 'ACC-NEW', shelfLocation: 'Shelf A' }), { code: 'CATALOG_TITLE_ARCHIVED' })
+  assert.equal(state.statements.some(sql => /INSERT INTO (titles|physical_copies|materials)/.test(sql)), false)
+  assert.equal(state.rolledBack, 1)
+  assert.equal(state.committed, 0)
 })

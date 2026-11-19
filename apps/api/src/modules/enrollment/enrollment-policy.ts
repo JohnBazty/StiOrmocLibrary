@@ -3,11 +3,13 @@ import { HttpError } from '../../core/http-error.ts'
 
 type Query = Pick<PoolConnection, 'execute'> | Pick<Pool, 'execute'>
 export const enrollmentEnabled = () => process.env.ENROLLMENT_ROSTER_ENABLED === 'true'
-export const currentRosterSql = `SELECT DISTINCT ON (r.school_id) r.*, b.semester_id
+export type RosterRole = 'Student' | 'Faculty'
+export const rosterSql = (role: RosterRole) => `SELECT DISTINCT ON (r.school_id) r.*, b.semester_id, b.uploaded_by AS roster_uploaded_by
   FROM enrollment_roster_students r JOIN enrollment_roster_imports b ON b.roster_id=r.roster_id
-  WHERE b.semester_id=? AND b.roster_id >= COALESCE(
-    (SELECT MAX(roster_id) FROM enrollment_roster_imports WHERE semester_id=b.semester_id AND complete),0)
+  WHERE b.semester_id=? AND b.roster_role='${role}' AND b.roster_id >= COALESCE(
+    (SELECT MAX(roster_id) FROM enrollment_roster_imports WHERE semester_id=b.semester_id AND roster_role=b.roster_role AND complete),0)
   ORDER BY r.school_id,b.roster_id DESC`
+export const currentRosterSql = rosterSql('Student')
 
 export async function lockEnrollment(q: Query, write = false) {
   const [rows] = await q.execute<RowDataPacket[]>(`SELECT started FROM enrollment_lifecycle WHERE id=1 ${write ? 'FOR UPDATE' : 'FOR SHARE'}`)
@@ -28,20 +30,20 @@ export async function activeEnrollmentSemester(q: Query) {
   return rows[0] ?? null
 }
 
-export async function rosterStudent(q: Query, semesterId: number, schoolId: string) {
-  const [rows] = await q.execute<RowDataPacket[]>(`SELECT * FROM (${currentRosterSql}) roster WHERE school_id=?`, [semesterId, schoolId])
+export async function rosterStudent(q: Query, semesterId: number, schoolId: string, role: RosterRole = 'Student') {
+  const [rows] = await q.execute<RowDataPacket[]>(`SELECT * FROM (${rosterSql(role)}) roster WHERE school_id=?`, [semesterId, schoolId])
   return rows[0] ?? null
 }
 
 export async function enrollmentDecision(q: Query, schoolId: string, role: string) {
-  if (role !== 'Student') return { allowed: true, label: 'Student enrollment check does not apply' }
+  if (role !== 'Student' && role !== 'Faculty') return { allowed: true, label: 'Student enrollment check does not apply' }
   if (!await rosterRegistrationRequired(q)) return { allowed: true, label: 'Enrollment not verified' }
   const term = await activeEnrollmentSemester(q)
-  if (!term) return { allowed: false, label: 'New student borrowing is paused until the next semester starts.' }
-  const match = await rosterStudent(q, Number(term.semester_id), schoolId)
+  if (!term) return { allowed: false, label: 'New borrowing is paused until the next semester starts.' }
+  const match = await rosterStudent(q, Number(term.semester_id), schoolId, role)
   return match
     ? { allowed: true, label: `Enrolled · ${term.academic_year}, ${term.term_name}` }
-    : { allowed: false, label: 'This Student ID is not listed in the current semester roster.' }
+    : { allowed: false, label: `This ${role} ID is not listed in the current semester roster.` }
 }
 
 export async function linkSemesterMember(q: Query, semesterId: number, accountId: number, schoolId: string, name: string) {
@@ -63,16 +65,16 @@ export async function restorationEvidence(q: Query, accountId: number, schoolId:
   if (!enrollmentEnabled() || !email) return null
   const term = await activeEnrollmentSemester(q)
   if (!term) return null
-  const [rows] = await q.execute<RowDataPacket[]>(`SELECT m.semester_id
+  const [rows] = await q.execute<RowDataPacket[]>(`SELECT m.semester_id,a.role
     FROM enrollment_semester_members m JOIN enrollment_semesters s USING(semester_id)
     JOIN accounts a USING(account_id) JOIN users u ON u.user_id=a.user_id
-    WHERE m.account_id=? AND a.role='Student' AND a.school_id=? AND LOWER(u.email)=LOWER(?)
+    WHERE m.account_id=? AND a.role IN ('Student','Faculty') AND a.school_id=? AND LOWER(u.email)=LOWER(?)
       AND a.account_status='Deactivated' AND u.account_status='Deactivated'
       AND m.closed_auth_version=a.auth_version AND s.ended_at IS NOT NULL
       AND s.ended_at<=?::timestamptz
     ORDER BY s.ended_at DESC LIMIT 1`, [accountId, schoolId, email, term.started_at])
   if (!rows.length) return null
-  const match = await rosterStudent(q, Number(term.semester_id), schoolId)
+  const match = await rosterStudent(q, Number(term.semester_id), schoolId, rows[0].role)
   return match?.school_email?.toLowerCase() === email.toLowerCase()
     ? { semesterId: Number(term.semester_id), name: String(match.student_name) } : null
 }

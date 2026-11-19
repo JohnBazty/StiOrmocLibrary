@@ -5,7 +5,12 @@ import request from 'supertest'
 import { HttpError } from '../../core/http-error.ts'
 import { requireJwtRoles } from '../auth/jwt-auth.middleware.ts'
 import { createCirculationController } from './circulation.controller.ts'
-import { createAdminCirculationRouter, createCirculationRequestRouter } from './circulation.routes.ts'
+import {
+  createAdminCirculationRouter,
+  createCirculationRequestRouter,
+  createUserCirculationRouter,
+  RENEWAL_SUBMIT_LIMIT,
+} from './circulation.routes.ts'
 
 function withHttpErrorHandler(app: express.Express) {
   app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
@@ -27,6 +32,54 @@ test('Student role cannot load or mutate administrative circulation routes', asy
   const preflight = await request(app).post('/api/v1/admin/borrowing/preflight').send({ barcode: 'BOOK-1', school_id: 'STI-7', flow: 'walk_in' })
   assert.equal(preflight.status, 403); assert.equal(preflight.body.code, 'JWT_ROLE_FORBIDDEN')
 })
+
+test('Student token cannot call staff renewal and the renewal service is not invoked', async () => {
+  let staffRenewalCalls = 0
+  const service = {
+    staffRenewal: async () => {
+      staffRenewalCalls += 1
+      return { status: 'Approved' }
+    },
+  }
+  const app = express()
+  app.use(express.json())
+  app.use((_request, response, next) => {
+    response.locals.authenticatedUser = { id: 7, accountId: 7, schoolId: 'STI-7', role: 'Student' }
+    next()
+  })
+  app.use('/api/v1/admin', requireJwtRoles('Admin'), createAdminCirculationRouter(createCirculationController(service as never)))
+  const response = await request(app)
+    .post('/api/v1/admin/borrowing/31/renewals')
+    .send({ requestKey: 'student-staff-renewal', staffNote: 'Should not reach the service.' })
+  assert.equal(response.status, 403)
+  assert.equal(response.body.code, 'JWT_ROLE_FORBIDDEN')
+  assert.equal(staffRenewalCalls, 0)
+})
+
+test('borrower renewal submits are rate limited per account, not per shared campus IP', async () => {
+  let calls = 0
+  const service = { submitRenewal: async () => { calls += 1; return { status: 'Rejected', decisionSummary: 'Blocked.' } } }
+  const app = express()
+  app.use(express.json())
+  app.use((request, response, next) => {
+    const accountId = Number(request.header('x-test-account'))
+    response.locals.authenticatedUser = { id: accountId, accountId, role: 'Student' }
+    next()
+  })
+  app.use('/api/v1/borrowing', createUserCirculationRouter(createCirculationController(service as never)))
+  withHttpErrorHandler(app)
+  for (let attempt = 0; attempt < RENEWAL_SUBMIT_LIMIT; attempt += 1) {
+    const allowed = await request(app).post('/api/v1/borrowing/31/renewals').set('x-test-account', '7').send({ requestKey: `k-${attempt}` })
+    assert.equal(allowed.status, 200)
+  }
+  const limited = await request(app).post('/api/v1/borrowing/31/renewals').set('x-test-account', '7').send({ requestKey: 'k-over' })
+  assert.equal(limited.status, 429)
+  assert.equal(limited.body.code, 'RENEWAL_RATE_LIMITED')
+  const otherAccount = await request(app).post('/api/v1/borrowing/32/renewals').set('x-test-account', '8').send({ requestKey: 'k-other' })
+  assert.equal(otherAccount.status, 200)
+  assert.equal(calls, RENEWAL_SUBMIT_LIMIT + 1)
+})
+
 
 test('Librarian can run preflight and blocked decisions return success with structured data', async () => {
   const service = {
@@ -78,4 +131,36 @@ test('unified circulation cancellation route forwards the authenticated actor', 
   assert.equal(response.status, 200)
   assert.equal(response.body.data.copyAvailability, 'Available')
   assert.deepEqual(received, { actor: { accountId: 3, role: 'Librarian' }, id: '12' })
+})
+
+test('damage case routes reach the case service for desk staff and are refused for students', async () => {
+  const calls: string[] = []
+  const caseService = {
+    listCases: async () => { calls.push('list'); return { items: [] } },
+    getCaseDetail: async (id: string) => { calls.push(`detail:${id}`); return {} },
+    addNote: async (_a: unknown, id: string) => { calls.push(`note:${id}`); return {} },
+    recordDisposition: async (accountId: unknown, id: string, body: { disposition: string }) => { calls.push(`disposition:${accountId}:${id}:${body.disposition}`); return {} },
+    closeCase: async (_a: unknown, id: string, _b: unknown, status: string) => { calls.push(`${status}:${id}`); return {} },
+    reopenCase: async (_a: unknown, id: string) => { calls.push(`reopen:${id}`); return {} },
+  }
+  const service = {}
+  function appFor(role: string) {
+    const app = express(); app.use(express.json())
+    app.use((_request, response, next) => { response.locals.authenticatedUser = { accountId: 3, role }; next() })
+    app.use('/api/v1/admin', requireJwtRoles('Librarian', 'Staff'), createAdminCirculationRouter(createCirculationController(service as never, caseService as never)))
+    withHttpErrorHandler(app)
+    return app
+  }
+  const staff = appFor('Staff')
+  assert.equal((await request(staff).get('/api/v1/admin/circulation/cases')).status, 200)
+  assert.equal((await request(staff).get('/api/v1/admin/circulation/cases/4')).status, 200)
+  assert.equal((await request(staff).post('/api/v1/admin/circulation/cases/4/notes').send({ notes: 'n' })).status, 200)
+  assert.equal((await request(staff).post('/api/v1/admin/circulation/cases/4/dispositions').send({ disposition: 'lost' })).status, 200)
+  assert.equal((await request(staff).post('/api/v1/admin/circulation/cases/4/resolve').send({ reason: 'r' })).status, 200)
+  assert.equal((await request(staff).post('/api/v1/admin/circulation/cases/4/dismiss').send({ reason: 'r' })).status, 200)
+  assert.equal((await request(staff).post('/api/v1/admin/circulation/cases/4/reopen').send({ reason: 'r' })).status, 200)
+  assert.deepEqual(calls, ['list', 'detail:4', 'note:4', 'disposition:3:4:lost', 'Resolved:4', 'Dismissed:4', 'reopen:4'])
+  const student = await request(appFor('Student')).post('/api/v1/admin/circulation/cases/4/dispositions').send({ disposition: 'lost' })
+  assert.equal(student.status, 403)
+  assert.equal(calls.length, 7)
 })

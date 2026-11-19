@@ -1,10 +1,11 @@
+import { lockShelfCapacity } from '../shelf-capacity.service.ts'
 import type { Pool } from '../../../config/db.js'
 import { db } from '../../../config/db.js'
 import { HttpError } from '../../../core/http-error.ts'
 import {
-  findCategoryByName, findManagedShelfByLabel, insertCategory, listCategoriesWithCounts, lockActiveCategoryAssets,
+  findCategoryByName, insertCategory, listCategoriesWithCounts, lockActiveCategoryAssets,
   lockCategory, lockManagedShelfByLabel, lockReassignmentCategories, reassignAndDeleteCategory,
-  recordCategoryShelfEvent, synchronizeCategoryShelf, updateCategoryRow,
+  recordCategoryShelfEvent, updateCategoryRow,
 } from './category.repository.ts'
 import { parseCategoryId, validateCategoryPayload } from './category.validation.ts'
 
@@ -44,17 +45,22 @@ export function createCategoryService(database: Pool = db) {
     async create(body: unknown) {
       const validation = validateCategoryPayload(body)
       if (!validation.isValid) throw validationError(validation.errors)
-      if (await findCategoryByName(database, validation.data.categoryName)) throw duplicateError(validation.data.categoryName)
-      const shelf = await findManagedShelfByLabel(database, validation.data.shelfLocation)
-      if (!shelf) throw shelfError()
-      validateShelfPosition(shelf, validation.data.shelfColumn, validation.data.shelfRow)
+      const connection = await database.getConnection()
       try {
-        const categoryId = await insertCategory(database, validation.data)
+        await connection.beginTransaction()
+        await lockShelfCapacity(connection)
+        if (await findCategoryByName(connection, validation.data.categoryName)) throw duplicateError(validation.data.categoryName)
+        const shelf = await lockManagedShelfByLabel(connection, validation.data.shelfLocation)
+        if (!shelf) throw shelfError()
+        validateShelfPosition(shelf, validation.data.shelfColumn, validation.data.shelfRow)
+        const categoryId = await insertCategory(connection, validation.data)
+        await connection.commit()
         return { categoryId, ...validation.data }
       } catch (error) {
+        await connection.rollback()
         if (isDuplicateKey(error)) throw duplicateError(validation.data.categoryName)
         throw error
-      }
+      } finally { connection.release() }
     },
 
     async update(categoryIdValue: unknown, body: unknown, actorAccountId: number | null = null) {
@@ -66,6 +72,7 @@ export function createCategoryService(database: Pool = db) {
       const connection = await database.getConnection()
       try {
         await connection.beginTransaction()
+        await lockShelfCapacity(connection)
         const previous = await lockCategory(connection, categoryId)
         if (!previous) throw new HttpError(404, 'CATEGORY_NOT_FOUND', 'The requested category does not exist.')
         if (await findCategoryByName(connection, validation.data.categoryName, categoryId)) throw duplicateError(validation.data.categoryName)
@@ -73,17 +80,15 @@ export function createCategoryService(database: Pool = db) {
         if (!shelf) throw shelfError()
         validateShelfPosition(shelf, validation.data.shelfColumn, validation.data.shelfRow)
         await updateCategoryRow(connection, categoryId, validation.data)
-        const synchronized = await synchronizeCategoryShelf(connection, categoryId, validation.data.shelfLocation, validation.data.shelfColumn, validation.data.shelfRow)
-        await recordCategoryShelfEvent(connection, actorAccountId, 'Category shelf synced', {
+        await recordCategoryShelfEvent(connection, actorAccountId, 'Category default location changed', {
           categoryId, categoryName: validation.data.categoryName,
           previousCategoryShelf: previous.shelf_location,
           shelfLocation: validation.data.shelfLocation,
           shelfColumn: validation.data.shelfColumn,
           shelfRow: validation.data.shelfRow,
-          ...synchronized,
         })
         await connection.commit()
-        return { categoryId, ...validation.data, ...synchronized }
+        return { categoryId, ...validation.data }
       } catch (error) {
         await connection.rollback()
         if (isDuplicateKey(error)) throw duplicateError(validation.data.categoryName)
@@ -98,6 +103,7 @@ export function createCategoryService(database: Pool = db) {
       const connection = await database.getConnection()
       try {
         await connection.beginTransaction()
+        await lockShelfCapacity(connection)
         const category = await lockCategory(connection, categoryId)
         if (!category) throw new HttpError(404, 'CATEGORY_NOT_FOUND', 'The requested category does not exist.')
         const counts = await lockActiveCategoryAssets(connection, categoryId)
@@ -132,6 +138,7 @@ export function createCategoryService(database: Pool = db) {
       const connection = await database.getConnection()
       try {
         await connection.beginTransaction()
+        await lockShelfCapacity(connection)
         const categories = await lockReassignmentCategories(connection, oldId.value as number, targetId.value as number)
         if (!categories.some((category) => Number(category.category_id) === oldId.value)) throw new HttpError(404, 'CATEGORY_NOT_FOUND', 'The old category does not exist.')
         const targetCategory = categories.find((category) => Number(category.category_id) === targetId.value)
@@ -140,13 +147,12 @@ export function createCategoryService(database: Pool = db) {
         if (!shelf) throw shelfError()
         validateShelfPosition(shelf, Number(targetCategory.shelf_column), Number(targetCategory.shelf_row))
         const result = await reassignAndDeleteCategory(connection, oldId.value as number, targetId.value as number)
-        const synchronized = await synchronizeCategoryShelf(connection, targetId.value as number, String(targetCategory.shelf_location), Number(targetCategory.shelf_column), Number(targetCategory.shelf_row))
-        await recordCategoryShelfEvent(connection, actorAccountId, 'Category reassigned and shelf synced', {
+        await recordCategoryShelfEvent(connection, actorAccountId, 'Category reassigned', {
           oldCategoryId: oldId.value, targetCategoryId: targetId.value,
-          shelfLocation: targetCategory.shelf_location, ...result, ...synchronized,
+          shelfLocation: targetCategory.shelf_location, ...result,
         })
         await connection.commit()
-        return { oldCategoryId: oldId.value, targetCategoryId: targetId.value, deletedOldCategory: true, ...result, ...synchronized }
+        return { oldCategoryId: oldId.value, targetCategoryId: targetId.value, deletedOldCategory: true, ...result }
       } catch (error) {
         await connection.rollback()
         throw error

@@ -13,8 +13,8 @@ function handle(handler: (request: Request, response: Response) => Promise<unkno
 function safeFilename(value: string) { return value.replace(/[^A-Za-z0-9_-]/g, '-') }
 
 export const finesController = {
-  list: handle(async (request,response)=>response.json({success:true,data:await finesService.list(parseFineFilters(request.query as Record<string,unknown>))})),
-  mine: handle(async (request,response)=>response.json({success:true,data:await finesService.mine(actor(response),parseFineFilters(request.query as Record<string,unknown>))})),
+  list: handle(async (request,response)=>response.set('Cache-Control','private, no-store').json({success:true,data:await finesService.listForStaff(actor(response),parseFineFilters(request.query as Record<string,unknown>))})),
+  mine: handle(async (request,response)=>response.set('Cache-Control','private, no-store').json({success:true,data:await finesService.mine(actor(response),parseFineFilters(request.query as Record<string,unknown>))})),
   terms: handle(async (_request,response)=>response.json({success:true,data:await finesService.terms()})),
   receipts: handle(async (_request,response)=>response.json({success:true,data:await finesService.receiptsForUser(actor(response))})),
   receipt: handle(async (request,response)=>response.json({success:true,data:await finesService.receipt(receiptId(request.params.receiptId),actor(response))})),
@@ -23,7 +23,7 @@ export const finesController = {
   adjustment: handle(async (request,response)=>response.json({success:true,data:await finesService.adjust(actor(response),fineId(request.params.fineId),request.body)})),
   reverseReceipt: handle(async (request,response)=>response.json({success:true,data:await finesService.reverseReceipt(actor(response),receiptId(request.params.receiptId),request.body)})),
   reportPdf: handle(async (request,response)=>{
-    const filters=parseFineFilters(request.query as Record<string,unknown>); const result=await finesService.report(filters)
+    const filters=parseFineFilters(request.query as Record<string,unknown>); const result=await finesService.report(filters,actor(response))
     const totals=result.items.reduce((value,item)=>({assessed:value.assessed+item.assessed,collected:value.collected+item.paid,outstanding:value.outstanding+item.balance,waived:value.waived+item.adjusted}),{assessed:0,collected:0,outstanding:0,waived:0})
     const report=createFineAuditPdf(result.items,{label:result.range.label,generatedBy:actor(response).schoolId??'Authorized staff',...totals})
     response.status(200).set({'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="smartlib-fines-${safeFilename(result.range.from)}-${safeFilename(result.range.to)}.pdf"`,'Cache-Control':'private, no-store'})

@@ -1,0 +1,70 @@
+import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react'
+import {afterEach,beforeEach,expect,it,vi} from 'vitest'
+import {CirculationQuickAction} from './CirculationQuickAction'
+import {deskCirculationApi} from './desk-circulation-api'
+vi.mock('./DeskScanInput',()=>({DeskScanInput:({value,onChange,onScan,disabled}:{value:string;onChange:(v:string)=>void;onScan:(v:string)=>void;disabled:boolean})=><label>User QR<input disabled={disabled} value={value} onChange={e=>onChange(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')onScan(value)}}/></label>}))
+vi.mock('./CirculationDesk',()=>({CirculationDesk:()=> <p>Shared checkout review</p>}))
+vi.mock('./CirculationReturnDialog',()=>({CirculationReturnDialog:({expectedLoan}:{expectedLoan:{id:number}})=><p>Return review for loan {expectedLoan.id}</p>}))
+vi.mock('./desk-circulation-api',()=>({deskCirculationApi:{quickBorrower:vi.fn(),quickManualBorrower:vi.fn()}}))
+beforeEach(()=>{vi.resetAllMocks();HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','')};HTMLDialogElement.prototype.close=function(){this.removeAttribute('open')}})
+afterEach(cleanup)
+const borrower={user:{userId:1,name:'Synthetic Borrower',schoolId:'SYN-1',role:'Student',program:null,photoUrl:null},blockers:[],eligible:true,enrollment:'Enrolled',activeLoans:2,limit:2,hasAttendance:true,requests:[{reservationId:9,title:'Requested book',statusLabel:'Awaiting handover',barcode:'COPY-1',shelfLocation:'Shelf A',pickupDeadline:null}]}
+it('first QR shows requested books; second completed scan shows active loans without returning anything',async()=>{
+ vi.mocked(deskCirculationApi.quickBorrower).mockImplementation(async(_qr,mode)=>({borrower,loans:{page:1,more:false,rows:mode==='Return'?[{id:42,kind:'TakeHome',title:'Loan one',barcode:'COPY-2',borrowedAt:'2026-11-17T08:00:00+08:00',dueAt:'2026-11-18T08:59:00+08:00',status:'Overdue',cover:null}]:[]}}))
+ render(<CirculationQuickAction onClose={()=>{}}/>)
+ const input=await screen.findByLabelText('User QR')
+ fireEvent.change(input,{target:{value:'synthetic-qr'}});fireEvent.keyDown(input,{key:'Enter'})
+ expect(await screen.findByText('Requested book')).toBeTruthy()
+ expect(await screen.findByText('Shared checkout review')).toBeTruthy()
+ fireEvent.change(input,{target:{value:'synthetic-qr'}});fireEvent.keyDown(input,{key:'Enter'})
+ expect(await screen.findByText('Loan one')).toBeTruthy()
+ expect(screen.queryByText('Return review for loan 42')).toBeNull()
+ fireEvent.click(screen.getByRole('button',{name:'Return this copy'}))
+ expect(await screen.findByText('Return review for loan 42')).toBeTruthy()
+ expect(deskCirculationApi.quickBorrower).toHaveBeenNthCalledWith(2,'synthetic-qr','Return',1)
+})
+it('duplicate events while lookup is pending create one request',async()=>{
+ let resolve:(v:unknown)=>void=()=>{}
+ vi.mocked(deskCirculationApi.quickBorrower).mockImplementation(()=>new Promise(r=>{resolve=r}) as never)
+ render(<CirculationQuickAction onClose={()=>{}}/>)
+ const input=await screen.findByLabelText('User QR');fireEvent.change(input,{target:{value:'synthetic-qr'}})
+ fireEvent.keyDown(input,{key:'Enter'});fireEvent.keyDown(input,{key:'Enter'})
+ expect(deskCirculationApi.quickBorrower).toHaveBeenCalledTimes(1)
+ resolve({borrower,loans:{rows:[],page:1,more:false}})
+ await waitFor(()=>expect(screen.getByText('Requested book')).toBeTruthy())
+})
+it('a different user clears previous choices and subsequent scans in Return only refresh',async()=>{
+ vi.mocked(deskCirculationApi.quickBorrower).mockImplementation(async(qr,mode)=>({borrower:{...borrower,user:{...borrower.user,userId:qr==='second-user'?2:1,name:qr==='second-user'?'Second Borrower':'Synthetic Borrower'},requests:qr==='second-user'?[]:borrower.requests},loans:{page:1,more:false,rows:[]}}))
+ render(<CirculationQuickAction onClose={()=>{}}/>)
+ const input=await screen.findByLabelText('User QR')
+ for(let i=0;i<3;i++){fireEvent.change(input,{target:{value:'first-user'}});fireEvent.keyDown(input,{key:'Enter'});await waitFor(()=>expect((input as HTMLInputElement).disabled).toBe(false))}
+ expect(deskCirculationApi.quickBorrower).toHaveBeenNthCalledWith(3,'first-user','Return',1)
+ fireEvent.change(input,{target:{value:'second-user'}});fireEvent.keyDown(input,{key:'Enter'})
+ expect(await screen.findByText('Second Borrower')).toBeTruthy()
+ expect(screen.queryByText('Requested book')).toBeNull()
+ expect(deskCirculationApi.quickBorrower).toHaveBeenLastCalledWith('second-user','Borrow',1)
+})
+
+it('School ID fallback preserves leading zeros and offers requested books and selected active returns without a QR',async()=>{
+ vi.mocked(deskCirculationApi.quickManualBorrower).mockImplementation(async(_id,mode)=>({borrower,loans:{page:1,more:false,rows:mode==='Return'?[{id:42,kind:'TakeHome',title:'Manual active loan',barcode:'COPY-2',borrowedAt:'2026-11-17T08:00:00+08:00',dueAt:'2026-11-18T08:59:00+08:00',status:'Borrowed',cover:null}]:[]}}))
+ render(<CirculationQuickAction onClose={()=>{}}/>)
+ fireEvent.click(screen.getByRole('button',{name:'Enter School ID manually'}))
+ fireEvent.change(screen.getByLabelText('School ID'),{target:{value:'00012345'}})
+ fireEvent.click(screen.getByRole('button',{name:'Find borrower'}))
+ expect(await screen.findByText('Requested book')).toBeTruthy()
+ expect(deskCirculationApi.quickManualBorrower).toHaveBeenCalledWith('00012345','Borrow',1)
+ fireEvent.click(screen.getByRole('button',{name:/^Return$/}))
+ expect(await screen.findByText('Manual active loan')).toBeTruthy()
+ fireEvent.click(screen.getByRole('button',{name:'Return this copy'}))
+ expect(await screen.findByText('Return review for loan 42')).toBeTruthy()
+ expect(deskCirculationApi.quickBorrower).not.toHaveBeenCalled()
+})
+it('invalid School ID lookup clears the previous borrower and displays the server explanation',async()=>{
+ vi.mocked(deskCirculationApi.quickManualBorrower).mockRejectedValue(new Error('No active library account matches this School ID.'))
+ render(<CirculationQuickAction onClose={()=>{}}/>)
+ fireEvent.click(screen.getByRole('button',{name:'Enter School ID manually'}))
+ fireEvent.change(screen.getByLabelText('School ID'),{target:{value:'UNKNOWN'}})
+ fireEvent.click(screen.getByRole('button',{name:'Find borrower'}))
+ expect((await screen.findByRole('alert')).textContent).toContain('No active library account matches this School ID.')
+ expect(screen.queryByText('Shared checkout review')).toBeNull()
+})

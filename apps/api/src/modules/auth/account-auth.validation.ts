@@ -100,8 +100,8 @@ export function validateRoleLogin(body: unknown) {
   const errors: FieldErrors = {}
 
   if (!portal) errors.portal = 'Choose a valid sign-in page.'
-  if (!schoolId) errors.school_id = 'School ID is required.'
-  else if (!SCHOOL_ID_PATTERN.test(schoolId)) errors.school_id = 'Enter a valid school ID.'
+  if (!schoolId) errors.school_id = 'ID is required.'
+  else if (!SCHOOL_ID_PATTERN.test(schoolId) && !(portal==='staff'&&schoolId.length<=191&&SCHOOL_EMAIL_PATTERN.test(schoolId))) errors.school_id = portal==='staff'?'Enter a valid School ID or Ormoc school email.':'Enter a valid ID.'
   if (!password) errors.password = 'Password is required.'
   else if (password.length > 72) errors.password = 'Password must not exceed 72 characters.'
 

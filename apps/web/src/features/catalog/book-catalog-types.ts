@@ -18,9 +18,11 @@ export type BookCatalogItem = {
   currentConditionStatus?: string | null
   totalCopiesCount: number
   availableCopiesCount: number
+  borrowedCopiesCount?: number
+  reservedCopiesCount?: number
   reservableMaterialId: number | null
   previewBarcode: string | null
-  copies?: Array<{ copyId: number; accessionNumber: string; barcode: string; availability: string; condition: string; shelf: string }>
+  copies?: Array<{ copyId: number; accessionNumber: string; barcode: string; availability: string; condition: string; shelf: string; deweyCode?:string|null;deweyDescription?:string|null }>
 }
 
 export type CatalogCopyAsset = {

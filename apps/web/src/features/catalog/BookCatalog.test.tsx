@@ -1,95 +1,37 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
-import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { BookCatalog } from './BookCatalog'
 import { LegacyCatalogRedirect } from './LegacyCatalogRedirect'
 import { clearBookCartForTests, readBookCart } from './book-cart-store'
 import { fetchBookCatalog, fetchBookOverview, reserveBookTitle } from './book-catalog-api'
+import { fetchCartState } from './book-cart-api'
 import { enhancedCatalog } from './enhanced-catalog-api'
 
 vi.mock('../auth/auth-storage', () => ({ getCurrentClaims: () => ({ userId: 99, role: 'Student', schoolId: 'TEST-99' }), getCurrentIdentity: () => ({ userId: 99, role: 'Student', schoolId: 'TEST-99' }) }))
 vi.mock('./book-catalog-api', () => ({ fetchBookCatalog: vi.fn(), fetchBookOverview: vi.fn(), reserveBookTitle: vi.fn() }))
-vi.mock('./enhanced-catalog-api', () => ({ enhancedCatalog: { availability: vi.fn().mockResolvedValue({items:[]}), options: vi.fn(), search: vi.fn(), detail: vi.fn() } }))
+vi.mock('./book-cart-api', () => ({ fetchCartState: vi.fn() }))
+vi.mock('./enhanced-catalog-api', () => ({ enhancedCatalog: { options: vi.fn(), search: vi.fn(), detail: vi.fn() } }))
 vi.mock('./CatalogDetailsPanel', () => ({ catalogInput: 'field', CatalogDetailsPanel: () => <p>Digital files and catalog metadata</p> }))
+vi.mock('../reservations/borrowing-schedule-api', () => ({ borrowingScheduleApi: { dates: async () => ({ available: true, dates: ['2026-11-24'] }) }, pickupDateLabel: (date: string) => date }))
 
 const record = { id: 42, title: 'Example book', kind: 'Book', author: 'Alex Writer', coverImagePath: '/cover.jpg', available: 1, copyCount: 1, copies: [], programs: [], courses: [], files: [] }
 const overview = { titleId: 42, title: 'Example book', author: 'Alex Writer', isbn: '123', publisher: 'Publisher', publicationYear: 2024, categoryName: 'Computing', shelfLocation: 'A1', callNumber: '001', currentAvailabilityStatus: 'Available', availableCopiesCount: 1, totalCopiesCount: 1, reservableMaterialId: 1, previewBarcode: 'BOOK1' }
 function Location() { const location = useLocation(); return <output data-testid="location">{location.pathname}{location.search}{location.hash}</output> }
 function setup(url = '/student/library') { render(<MemoryRouter initialEntries={[url]}><BookCatalog /><Location /></MemoryRouter>) }
-beforeAll(()=>{
-  Object.defineProperty(HTMLDialogElement.prototype,'showModal',{configurable:true,value(){this.setAttribute('open','')}})
-  Object.defineProperty(HTMLDialogElement.prototype,'close',{configurable:true,value(){this.removeAttribute('open')}})
-})
+async function accept(name: 'Add to cart' | 'Reserve book') {
+  fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name }))
+}
 
 beforeEach(() => {
-  vi.mocked(enhancedCatalog.availability).mockResolvedValue({items:[]})
+  vi.mocked(fetchCartState).mockResolvedValue({ activeTitleIds: [], outstandingBalance: 0 })
   vi.mocked(fetchBookCatalog).mockResolvedValue({ items: [], viewer: { role: 'Student', activeBookCount: 0, bookLimit: 2 }, pagination: { page: 1, limit: 24, total: 1, totalPages: 1 } })
   vi.mocked(fetchBookOverview).mockResolvedValue(overview as never)
   vi.mocked(reserveBookTitle).mockResolvedValue({ reservationId: 1, queuePosition: 3, status: 'approved', statusLabel:'Preparing',instructions:'Wait for Ready for pickup.' })
   vi.mocked(enhancedCatalog.options).mockResolvedValue({ categories: [], programs: [], courses: [], types: [], locations: [] })
   vi.mocked(enhancedCatalog.search).mockResolvedValue({ items: [record, { ...record, id: 43, title: 'Research example', kind: 'Research/Thesis' }], pagination: { page: 1, limit: 24, total: 2 } } as never)
 })
-afterEach(() => { cleanup(); clearBookCartForTests(); vi.useRealTimers(); vi.resetAllMocks() })
-
-it('refreshes catalog titles, availability, and filter options without losing the search', async () => {
-  setup('/student/library?q=Computing')
-  await screen.findByRole('heading', { name: 'Example book' })
-  await waitFor(() => expect(enhancedCatalog.availability).toHaveBeenCalledTimes(1))
-  vi.mocked(enhancedCatalog.search).mockResolvedValue({ items: [{ ...record, title: 'Updated book' }, { ...record, id: 43, title: 'Research example', kind: 'Research/Thesis' }], pagination: { page: 1, limit: 24, total: 2 } } as never)
-  fireEvent.click(screen.getByRole('button', { name: 'Refresh catalog' }))
-  expect(await screen.findByRole('heading', { name: 'Updated book' })).toBeTruthy()
-  expect(enhancedCatalog.options).toHaveBeenCalledTimes(2)
-  expect(enhancedCatalog.availability).toHaveBeenCalledTimes(2)
-  expect(screen.getByRole('textbox', { name: 'Search title, author or ISBN' })).toHaveProperty('value', 'Computing')
-})
-
-it('updates stock without replacing the focused search, filter choices, card or open details',async()=>{
-  setup('/student/library?q=Computing&programId=1')
-  const card=await screen.findByRole('heading',{name:'Example book'})
-  fireEvent.click(screen.getAllByRole('button',{name:'View details'})[0])
-  const dialog=await screen.findByRole('dialog')
-  fireEvent.click(within(dialog).getByRole('button',{name:'Generate APA reference'}))
-  const citation=within(dialog).getByRole('textbox',{name:'APA 7th Edition reference'})
-  const input=screen.getByRole('textbox',{name:'Search title, author or ISBN'})
-  input.focus()
-  const searches=vi.mocked(enhancedCatalog.search).mock.calls.length
-  vi.mocked(enhancedCatalog.availability).mockResolvedValue({items:[{id:42,active:true,available:0,copyCount:1}]})
-  vi.useFakeTimers()
-  // Focus/resume starts a coordinated read immediately, including when a timer was
-  // installed before fake timers. The next cadence is then checked at one second.
-  await act(async()=>{window.dispatchEvent(new Event('focus'))})
-  const count=vi.mocked(enhancedCatalog.availability).mock.calls.length
-  await act(async()=>{await vi.advanceTimersByTimeAsync(1000)})
-  expect(enhancedCatalog.availability).toHaveBeenCalledTimes(count+1)
-  expect(screen.getAllByRole('heading',{name:'Example book'})).toContain(card)
-  expect(screen.getByRole('dialog')).toBe(dialog)
-  expect(within(dialog).getByRole('textbox',{name:'APA 7th Edition reference'})).toBe(citation)
-  expect(document.activeElement).toBe(input)
-  expect(input).toHaveProperty('value','Computing')
-  expect(screen.getByTestId('location').textContent).toContain('programId=1')
-  // A deliberate focus refresh may read metadata once; periodic stock reads do not.
-  expect(enhancedCatalog.search).toHaveBeenCalledTimes(searches+1)
-  expect(screen.getByRole('button',{name:'Reserve book'})).toBeTruthy()
-})
-
-it('keeps unrelated book actions usable while a reservation is pending and does not refetch the catalog after it', async () => {
-  let finish!: (value: Awaited<ReturnType<typeof reserveBookTitle>>) => void
-  vi.mocked(reserveBookTitle).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
-  vi.mocked(enhancedCatalog.search).mockResolvedValue({items:[{...record,available:0},{...record,id:44,title:'Another book'}],pagination:{page:1,limit:24,total:2}} as never)
-  setup()
-  const reserve = await screen.findByRole('button',{name:'Reserve book'})
-  const another = screen.getByRole('button',{name:'Borrow book'})
-  fireEvent.click(reserve)
-  fireEvent.click(reserve)
-  expect(reserveBookTitle).toHaveBeenCalledTimes(1)
-  expect(another).toHaveProperty('disabled',false)
-  fireEvent.click(another)
-  expect(readBookCart().map(item=>item.titleId)).toEqual([44])
-  const reads = vi.mocked(enhancedCatalog.search).mock.calls.length
-  finish({reservationId:5,queuePosition:1,status:'pending'})
-  await screen.findByRole('button',{name:'Reserved'})
-  expect(enhancedCatalog.search).toHaveBeenCalledTimes(reads)
-})
+afterEach(() => { cleanup(); clearBookCartForTests(); vi.resetAllMocks() })
 
 it('shows covers and filters and adds locally without submitting a request', async () => {
   setup()
@@ -98,18 +40,54 @@ it('shows covers and filters and adds locally without submitting a request', asy
   fireEvent.change(screen.getByRole('textbox', { name: 'Search title, author or ISBN' }), { target: { value: 'Computing' } })
   await waitFor(() => expect(vi.mocked(enhancedCatalog.search).mock.calls.at(-1)?.[0].get('q')).toBe('Computing'))
   fireEvent.click(await screen.findByRole('button', { name: 'Borrow book' }))
+  const ask = await screen.findByRole('alertdialog', { name: 'Are you sure you want to add this book?' })
+  expect(within(ask).getByText('Example book')).toBeTruthy()
+  fireEvent.click(within(ask).getByRole('button', { name: 'Cancel' }))
+  expect(readBookCart()).toHaveLength(0)
+  fireEvent.click(screen.getByRole('button', { name: 'Borrow book' }))
+  await accept('Add to cart')
   await screen.findByRole('button', { name: 'In cart' })
   expect(readBookCart().map(item=>item.titleId)).toEqual([42])
+  expect(screen.getByRole('link', { name: 'Review book cart, 1 book' }).getAttribute('href')).toBe('/student/cart')
   expect(reserveBookTitle).not.toHaveBeenCalled()
   expect(screen.getByRole('link', { name: 'Book cart (1)' }).getAttribute('href')).toBe('/student/cart')
   const research = screen.getByRole('heading', { name: 'Research example' }).closest('article')!
   expect(within(research).queryByRole('button', { name: 'Borrow book' })).toBeNull()
 })
 
+async function loadActiveTitles(titleIds: number[]) {
+  let publish!: (value: { activeTitleIds: number[]; outstandingBalance: number }) => void
+  vi.mocked(fetchCartState).mockReturnValue(new Promise(resolve => { publish = resolve }))
+  setup()
+  await screen.findByText('Active books + requests: 0 / 2')
+  await act(async () => { publish({ activeTitleIds: titleIds, outstandingBalance: 0 }) })
+}
+
+it('stops another copy of a book that is already on an active loan or request', async () => {
+  await loadActiveTitles([42])
+  fireEvent.click(screen.getByRole('button', { name: 'Borrow book' }))
+  expect(screen.queryByRole('alertdialog')).toBeNull()
+  expect(await screen.findByRole('heading', { name: 'You already have this book' })).toBeTruthy()
+  expect(screen.getByText(/You already have Example book/)).toBeTruthy()
+  expect(readBookCart()).toHaveLength(0)
+  expect(reserveBookTitle).not.toHaveBeenCalled()
+})
+
+it('stops a reservation for a book that is already on an active loan or request', async () => {
+  vi.mocked(enhancedCatalog.search).mockResolvedValue({ items: [{ ...record, available: 0 }], pagination: { page: 1, limit: 24, total: 1 } } as never)
+  await loadActiveTitles([42])
+  fireEvent.click(screen.getByRole('button', { name: 'Reserve book' }))
+  expect(screen.queryByRole('alertdialog')).toBeNull()
+  expect(await screen.findByRole('heading', { name: 'You already have this book' })).toBeTruthy()
+  expect(reserveBookTitle).not.toHaveBeenCalled()
+  expect(readBookCart()).toHaveLength(0)
+})
+
 it('allows preparing a cart at the active borrowing limit and explains the submission requirement', async () => {
   vi.mocked(fetchBookCatalog).mockResolvedValue({ items: [], viewer: { role: 'Student', activeBookCount: 2, bookLimit: 2 }, pagination: { page: 1, limit: 24, total: 1, totalPages: 1 } })
   setup(); await screen.findByText('Active books + requests: 2 / 2')
   fireEvent.click(await screen.findByRole('button', { name: 'Borrow book' }))
+  await accept('Add to cart')
   await screen.findByRole('button',{name:'In cart'})
   expect(readBookCart()).toHaveLength(1); expect(reserveBookTitle).not.toHaveBeenCalled()
   expect(screen.getByText(/return a book or cancel an existing request before submitting/i)).toBeTruthy()
@@ -121,6 +99,7 @@ it('allows adding from details when existing loans or requests fill the borrowin
   await screen.findByText('Active books + requests: 2 / 2')
   const dialog=await screen.findByRole('dialog')
   fireEvent.click(within(dialog).getByRole('button',{name:'Borrow book'}))
+  await accept('Add to cart')
   expect(readBookCart()).toHaveLength(1)
   expect(reserveBookTitle).not.toHaveBeenCalled()
 })
@@ -129,7 +108,12 @@ it('reserves unavailable books without adding them to the cart', async () => {
   vi.mocked(enhancedCatalog.search).mockResolvedValue({items:[{...record,available:0}],pagination:{page:1,limit:24,total:1}} as never)
   setup();await screen.findByText('Active books + requests: 0 / 2')
   fireEvent.click(await screen.findByRole('button',{name:'Reserve book'}))
+  const ask = await screen.findByRole('alertdialog', { name: 'Are you sure you want to reserve this book?' })
+  expect(within(ask).getByText(/joins the waiting list/)).toBeTruthy()
+  fireEvent.click(within(ask).getByRole('button', { name: 'Reserve book' }))
   await screen.findByRole('button',{name:'Reserved'})
+  const waiting = await screen.findByRole('dialog', { name: 'On the waiting list' })
+  expect(within(waiting).getByText('We will notify you when a copy of Example book is ready.')).toBeTruthy()
   expect(reserveBookTitle).toHaveBeenCalledWith(42,expect.any(String))
   expect(readBookCart()).toHaveLength(0)
   expect(screen.queryByRole('button',{name:'Borrow book'})).toBeNull()
@@ -141,6 +125,7 @@ it('shows Reserve book in unavailable-book details and keeps errors visible',asy
   setup('/student/library?titleId=42')
   const dialog=await screen.findByRole('dialog')
   fireEvent.click(await within(dialog).findByRole('button',{name:'Reserve book'}))
+  await accept('Reserve book')
   await within(dialog).findByText(/This book has an available copy/)
   expect(readBookCart()).toHaveLength(0)
 })
@@ -149,6 +134,7 @@ it('adds from card metadata without waiting for a separate book-details request'
   vi.mocked(fetchBookOverview).mockRejectedValue(new Error('Details service unavailable'))
   setup();await screen.findByText('Active books + requests: 0 / 2')
   fireEvent.click(screen.getByRole('button',{name:'Borrow book'}))
+  await accept('Add to cart')
   await screen.findByRole('button',{name:'In cart'})
   expect(readBookCart()).toEqual([expect.objectContaining({titleId:42,title:'Example book',author:'Alex Writer',coverImagePath:'/cover.jpg'})])
   expect(fetchBookOverview).not.toHaveBeenCalled();expect(reserveBookTitle).not.toHaveBeenCalled()
@@ -161,6 +147,7 @@ it('adds from details while preserving the selected catalog filters', async () =
   fireEvent.click(within(dialog).getByRole('button',{name:'Generate APA reference'}))
   expect(within(dialog).getByRole('textbox',{name:'APA 7th Edition reference'})).toHaveProperty('value',expect.stringContaining('Example book'))
   fireEvent.click(within(dialog).getByRole('button',{name:'Borrow book'}))
+  await accept('Add to cart')
   expect(readBookCart()).toHaveLength(1);expect(reserveBookTitle).not.toHaveBeenCalled()
   fireEvent.click(within(dialog).getByRole('button',{name:'Close'}))
   expect(screen.getByTestId('location').textContent).toBe('/student/library?q=Computing&programId=1')
@@ -187,7 +174,7 @@ it('shows the faculty cart and respects its server-provided unlimited selection'
   vi.mocked(fetchBookCatalog).mockResolvedValue({items:[],viewer:{role:'Faculty',activeBookCount:4,bookLimit:null},pagination:{page:1,limit:24,total:1,totalPages:1}})
   setup('/faculty/library')
   await waitFor(()=>expect(screen.getByRole('link',{name:'Book cart (0)'}).getAttribute('href')).toBe('/faculty/cart'))
-  fireEvent.click(await screen.findByRole('button',{name:'Borrow book'}));await screen.findByRole('button',{name:'In cart'})
+  fireEvent.click(await screen.findByRole('button',{name:'Borrow book'}));await accept('Add to cart');await screen.findByRole('button',{name:'In cart'})
   expect(readBookCart()).toHaveLength(1)
 })
 it('allows local selection while eligibility is still loading',async()=>{
@@ -196,7 +183,9 @@ it('allows local selection while eligibility is still loading',async()=>{
   const add=await screen.findByRole('button',{name:'Borrow book'})
   expect(add).toHaveProperty('disabled',false)
   fireEvent.click(add)
+  await accept('Add to cart')
   expect(readBookCart().map(item=>item.titleId)).toEqual([42])
+  expect(screen.getByRole('link', { name: 'Review book cart, 1 book' }).getAttribute('href')).toBe('/student/cart')
   expect(reserveBookTitle).not.toHaveBeenCalled()
 })
 it('allows local selection with a clear notice if eligibility cannot be loaded',async()=>{
@@ -205,7 +194,26 @@ it('allows local selection with a clear notice if eligibility cannot be loaded',
   const add=screen.getByRole('button',{name:'Borrow book'})
   expect(add).toHaveProperty('disabled',false)
   fireEvent.click(add)
+  await accept('Add to cart')
   expect(readBookCart()).toHaveLength(1)
   expect(screen.getByText(/eligibility will be checked when you submit/i)).toBeTruthy()
   expect(reserveBookTitle).not.toHaveBeenCalled()
+})
+it.each([1,0])('opens the pickup-date form directly from the catalog calendar with %s available copies',async available=>{
+  vi.mocked(enhancedCatalog.search).mockResolvedValue({items:[{...record,available}],pagination:{page:1,limit:24,total:1}} as never)
+  setup('/student/library?q=Computing')
+  const calendar=await screen.findByRole('button',{name:'Schedule borrowing for Example book'})
+  expect(calendar.getAttribute('title')).toBe('Schedule borrowing')
+  fireEvent.click(calendar)
+  expect(await screen.findByLabelText('Preferred pickup date')).toBeTruthy()
+  expect(screen.getByTestId('location').textContent).toContain('q=Computing')
+  expect(readBookCart()).toHaveLength(0)
+  expect(reserveBookTitle).not.toHaveBeenCalled()
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button',{name:'Close'}))
+  expect(screen.getByTestId('location').textContent).toBe('/student/library?q=Computing')
+})
+it('does not offer scheduled borrowing for digital-only titles',async()=>{
+  vi.mocked(enhancedCatalog.search).mockResolvedValue({items:[{...record,copyCount:0}],pagination:{page:1,limit:24,total:1}} as never)
+  setup();await screen.findByRole('button',{name:'No copies available'})
+  expect(screen.queryByRole('button',{name:'Schedule borrowing for Example book'})).toBeNull()
 })

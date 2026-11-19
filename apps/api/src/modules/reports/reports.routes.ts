@@ -28,7 +28,7 @@ export function createReportsRouter(dependencies: ExportDependencies = { rows: i
       const actor = response.locals.authenticatedUser ?? request.session?.user
       const accountId = await resolveReportAccount(actor, response.locals.authenticationType === 'session')
       const data = await liveReportsService.read(accountId, parseReportFilters(request.query))
-      response.set('Cache-Control','private, no-store').json({success:true,data:{...data,rows:data.rows.slice((data.filters.page-1)*20,data.filters.page*20)}})
+      response.set('Cache-Control','private, no-store').json({success:true,data:{...data,rows:data.rows.slice(0,20)}})
     } catch (e) { next(e) }
   })
 
@@ -41,7 +41,7 @@ export function createReportsRouter(dependencies: ExportDependencies = { rows: i
       'Cache-Control': 'private, no-store',
       'X-SmartLib-CSV-Integrity': 'HMAC-SHA256; version=v1',
     })
-    dependencies.csv(dependencies.rows(filters),filters).on('error', next).pipe(response)
+    dependencies.csv(dependencies.rows(filters)).on('error', next).pipe(response)
   } catch (error) { next(error) }
   })
 
@@ -53,7 +53,7 @@ export function createReportsRouter(dependencies: ExportDependencies = { rows: i
       'Content-Disposition': 'attachment; filename="sti-library-inventory.pdf"',
       'Cache-Control': 'private, no-store',
     })
-    dependencies.pdf(dependencies.rows(filters),filters).on('error', next).pipe(response)
+    dependencies.pdf(dependencies.rows(filters)).on('error', next).pipe(response)
   } catch (error) { next(error) }
   })
   return router

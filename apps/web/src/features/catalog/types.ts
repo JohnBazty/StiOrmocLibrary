@@ -20,6 +20,7 @@ export type CatalogItem = {
 }
 
 export type PhysicalCopy = {
+  deweyCode?:string|null
   physicalCopyId: number
   title: string
   barcode: string
@@ -102,6 +103,9 @@ export type TitleLookupResult = {
 }
 
 export type CatalogFilters = {
+  page?: number
+  limit?: number
+  deweyStatus?: '' | 'assigned' | 'unassigned'
   q: string
   scope: 'all' | 'books' | 'research'
   categoryId: string

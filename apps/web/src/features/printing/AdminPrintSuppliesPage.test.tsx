@@ -1,65 +1,235 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { afterEach, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AdminPrintSuppliesPage } from './AdminPrintSuppliesPage'
 
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals() })
+const api=vi.hoisted(()=>({supplies:vi.fn(),revenueSummary:vi.fn(),revenueEntries:vi.fn(),expenseSummary:vi.fn(),restockHistory:vi.fn(),stockUsage:vi.fn(),restock:vi.fn(),createInk:vi.fn(),useInkBottle:vi.fn(),openPaperReam:vi.fn(),revenueReport:vi.fn(),stockExpenseReport:vi.fn(),supplyReport:vi.fn(),paperSizes:vi.fn(),savePaperSize:vi.fn(),deletePaperSize:vi.fn(),deleteInk:vi.fn(),inkColorTypes:vi.fn(),saveInkColorType:vi.fn()}))
+vi.mock('./printing-api',()=>({printingApi:api}))
 
-function setup() {
-  vi.useFakeTimers()
-  let paid = false, fail = false
-  const fetch = vi.fn(async (input: RequestInfo | URL) => {
-    const url = String(input)
-    if (url.includes('/revenue?')) {
-      if (fail) return Response.json({ message: 'Unavailable' }, { status: 503 })
-      const entries = paid ? [
-        {request_id:'P-1',received_at:'2026-11-18T04:00:00Z',full_name:'Cash payer',file_name:'cash.pdf',payment_method:'Cash',amount_paid:20},
-        {request_id:'P-2',received_at:'2026-11-18T05:00:00Z',full_name:'Online payer',file_name:'online.pdf',payment_method:'GCASH',amount_paid:30},
-      ] : []
-      return Response.json({data:{summary:{label:'Selected month',paid_requests:entries.length,total_sheets:5,total_copies:2,total_revenue:paid?50:0},entries}})
-    }
-    if (url.endsWith('/supplies')) return Response.json({data:{ink:[],paper:[],summary:{}}})
-    if (url.includes('/expenses/summary')) return Response.json({data:{}})
-    return Response.json({data:[]})
+const supplyData={ink:[{ink_id:1,cartridge_type:'Dye ink',color_variation:'Black',available_bottles:2,low_stock_threshold_bottles:1,cost_per_bottle:100,is_low:0}],paper:[{paper_stock_id:1,paper_size_dimension:'A4',configuration_version:1,monochrome_price:2,colored_price:5,sheets_per_ream:500,brands:[{paper_brand_stock_id:1,brand:'Brand One',unopened_reams:2,average_expense_cost:100}],unopened_reams:2,remaining_reams:2,low_stock_threshold_reams:2,average_expense_cost:100,is_low:1}],summary:{low_ink_items:0,low_paper_items:1,monthly_expense:0}}
+const revenue={period:'monthly',label:'2026-08',from:'2026-08-01',to:'2026-08-31',paid_requests:2,total_sheets:20,total_copies:4,total_revenue:100}
+const expenses={period:'monthly',label:'2026-08',from:'2026-08-01',to:'2026-08-31',restock_entries:2,ink_expenses:20,paper_expenses:30,total_expenses:50}
+
+function mockReads(){api.inkColorTypes.mockResolvedValue([{ink_color_type_id:1,cartridge_type:'Pigment',color_variation:'Light Cyan'}]);api.supplies.mockResolvedValue(supplyData);api.revenueSummary.mockResolvedValue(revenue);api.revenueEntries.mockResolvedValue([]);api.expenseSummary.mockResolvedValue(expenses);api.restockHistory.mockResolvedValue([]);api.stockUsage.mockResolvedValue([])}
+beforeEach(()=>{
+  Object.defineProperty(HTMLDialogElement.prototype,'showModal',{configurable:true,value:function(){this.setAttribute('open','')}})
+  Object.defineProperty(HTMLDialogElement.prototype,'close',{configurable:true,value:function(){this.removeAttribute('open')}})
+})
+
+describe('AdminPrintSuppliesPage',()=>{
+  it('uses a simple paper restock form with required per-ream cost',async()=>{
+    mockReads();api.restock.mockResolvedValue({data:{}})
+    render(<AdminPrintSuppliesPage/>)
+    fireEvent.click((await screen.findAllByRole('button',{name:'Restock'}))[1])
+    expect(screen.getByLabelText('Reams to add')).toBeTruthy()
+    expect(screen.getByLabelText('Cost per ream')).toBeTruthy()
+    expect(screen.queryByLabelText('Movement')).toBeNull()
+    expect(screen.queryByLabelText('Notes')).toBeNull()
+    fireEvent.change(screen.getByLabelText('Reams to add'),{target:{value:'3'}})
+    fireEvent.change(screen.getByLabelText('Paper brand'),{target:{value:'Brand Two'}})
+    fireEvent.change(screen.getByLabelText('Cost per ream'),{target:{value:'125'}})
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button',{name:'Add paper stock'}))
+    await waitFor(()=>expect(api.restock).toHaveBeenCalledWith('paper',1,expect.objectContaining({quantity:3,unit_cost:125,client_request_id:expect.any(String)})))
+    await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull())
+    expect(api.expenseSummary).toHaveBeenCalledTimes(2)
   })
-  vi.stubGlobal('fetch', fetch)
+
+  it('separates revenue and expenses without net result presentation',async()=>{
+    mockReads()
+    render(<AdminPrintSuppliesPage/>)
+    expect(await screen.findByText('Printing revenue')).toBeTruthy()
+    expect(screen.getAllByText('₱100.00').length).toBeGreaterThan(0)
+    expect(screen.queryByText(/Net gain|Net loss|Net impact/i)).toBeNull()
+    expect(screen.getByRole('button',{name:/Export revenue/i})).toBeTruthy()
+    expect(screen.getByRole('button',{name:/Export stock expenses/i})).toBeTruthy()
+  })
+
+  it('confirms one whole bottle usage through the dedicated action',async()=>{
+    mockReads();api.useInkBottle.mockResolvedValue({})
+    render(<AdminPrintSuppliesPage/>)
+    fireEvent.click(await screen.findByRole('button',{name:'Use one bottle'}))
+    fireEvent.click(screen.getByRole('button',{name:'Confirm usage'}))
+    await waitFor(()=>expect(api.useInkBottle).toHaveBeenCalledWith(1))
+  })
+
+  it('downloads current stock separately from period expense reports',async()=>{
+    mockReads();api.supplyReport.mockResolvedValue(undefined)
+    render(<AdminPrintSuppliesPage/>)
+    fireEvent.click(await screen.findByRole('button',{name:'Export current stock PDF'}))
+    await waitFor(()=>expect(api.supplyReport).toHaveBeenCalledTimes(1))
+    expect(api.stockExpenseReport).not.toHaveBeenCalled()
+  })
+  it('selects paper size when adding stock and reuses the same request key after an error',async()=>{
+    mockReads();api.restock.mockRejectedValueOnce(new Error('Connection unavailable.')).mockResolvedValue({data:{already_recorded:true}})
+    render(<AdminPrintSuppliesPage/>)
+    await screen.findByText('A4 bond paper')
+    fireEvent.click(screen.getByRole('button',{name:'Add paper stock'}))
+    const dialog=screen.getByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText('Paper size'),{target:{value:'1'}})
+    fireEvent.change(screen.getByLabelText('Reams to add'),{target:{value:'2'}})
+    fireEvent.change(screen.getByLabelText('Paper brand'),{target:{value:'Brand Two'}})
+    fireEvent.change(screen.getByLabelText('Cost per ream'),{target:{value:'150'}})
+    expect(within(dialog).getByText('₱300.00')).toBeTruthy()
+    fireEvent.click(within(dialog).getByRole('button',{name:'Add paper stock'}))
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    fireEvent.click(within(dialog).getByRole('button',{name:'Add paper stock'}))
+    await waitFor(()=>expect(api.restock).toHaveBeenCalledTimes(2))
+    expect(api.restock.mock.calls[0]).toEqual(api.restock.mock.calls[1])
+    await screen.findByText('This paper stock entry was already recorded. Stock totals refreshed.')
+  })
+  it('keeps the size dialog dedicated to names and dimensions',async()=>{
+    mockReads();api.paperSizes.mockResolvedValue([]);api.savePaperSize.mockResolvedValue({paper_stock_id:2,paper_size_dimension:'A3'})
+    render(<AdminPrintSuppliesPage/>)
+    fireEvent.click(await screen.findByRole('button',{name:'Add new paper size'}))
+    fireEvent.change(screen.getByLabelText('Size name'),{target:{value:'A3'}})
+    expect(screen.queryByLabelText('Monochrome price')).toBeNull()
+    expect(screen.queryByLabelText('Initial reams')).toBeNull()
+    fireEvent.click(screen.getByRole('button',{name:'Save paper size'}))
+    await waitFor(()=>expect(api.savePaperSize).toHaveBeenCalledWith(null,{name:'A3',width:'',height:''}))
+    await screen.findByText('A3 paper size saved. Use Add paper stock for stock and prices.')
+    expect(api.supplies).toHaveBeenCalledTimes(2)
+  })
+  it('moves stock alerts and printing prices into stock entry and preserves a failed draft',async()=>{
+    mockReads();api.restock.mockRejectedValue(new Error('This paper size changed. Refresh the list.'))
+    render(<AdminPrintSuppliesPage/>)
+    fireEvent.click((await screen.findAllByRole('button',{name:'Restock'}))[1])
+    fireEvent.change(screen.getByLabelText('Monochrome price'),{target:{value:'3.50'}})
+    fireEvent.change(screen.getByLabelText('Paper brand'),{target:{value:'Brand Two'}})
+    fireEvent.change(screen.getByLabelText('Cost per ream'),{target:{value:'100'}})
+    fireEvent.click(screen.getByLabelText('Available for new print requests'))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button',{name:'Add paper stock'}))
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    expect((screen.getByLabelText('Monochrome price') as HTMLInputElement).value).toBe('3.50')
+    expect(api.restock).toHaveBeenCalledWith('paper',1,expect.objectContaining({brand:'Brand Two',settings:expect.objectContaining({configuration_version:1,is_active:false,monochrome_price:'3.50'})}))
+  })
+  it('adds stock using saved color types, brand and alert and keeps its draft after a failure',async()=>{
+    mockReads();api.createInk.mockRejectedValueOnce(new Error('Connection unavailable.')).mockResolvedValue({data:{}})
+    render(<AdminPrintSuppliesPage/>)
+    fireEvent.click(await screen.findByRole('button',{name:'Add ink stock'}))
+    const dialog=screen.getByRole('dialog')
+    await screen.findByRole('option',{name:'Pigment'})
+    fireEvent.change(screen.getByLabelText('Brand name'),{target:{value:'Brand Two'}})
+    fireEvent.change(screen.getByLabelText('Ink type'),{target:{value:'Pigment'}})
+    fireEvent.change(screen.getByLabelText('Color'),{target:{value:'Light Cyan'}})
+    fireEvent.change(screen.getByLabelText('Number of bottles'),{target:{value:'4'}})
+    fireEvent.change(screen.getByLabelText('Cost per bottle'),{target:{value:'120'}})
+    fireEvent.change(screen.getByLabelText('Low-stock alert at (bottles)'),{target:{value:'3'}})
+    fireEvent.click(within(dialog).getByRole('button',{name:'Add ink stock'}))
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    expect((screen.getByLabelText('Color') as HTMLSelectElement).value).toBe('Light Cyan')
+    fireEvent.click(within(dialog).getByRole('button',{name:'Add ink stock'}))
+    await waitFor(()=>expect(api.createInk).toHaveBeenCalledTimes(2))
+    expect(api.createInk.mock.calls[0]).toEqual(api.createInk.mock.calls[1])
+    expect(api.createInk).toHaveBeenCalledWith(expect.objectContaining({brand:'Brand Two',color_variation:'Light Cyan',low_stock_threshold_bottles:3,available_bottles:4,cost_per_bottle:120}))
+    await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull())
+  })
+  it('saves only ink type and color, then offers the new choice in Add ink stock',async()=>{
+    mockReads();api.saveInkColorType.mockRejectedValueOnce(new Error('Connection unavailable.')).mockResolvedValue({ink_color_type_id:1,cartridge_type:'Pigment',color_variation:'Light Cyan',already_saved:false})
+    render(<AdminPrintSuppliesPage/>)
+    fireEvent.click(await screen.findByRole('button',{name:'Add new color type'}))
+    const dialog=screen.getByRole('dialog')
+    expect(within(dialog).queryByLabelText('Brand name')).toBeNull()
+    expect(within(dialog).queryByLabelText('Number of bottles')).toBeNull()
+    expect(within(dialog).queryByLabelText('Cost per bottle')).toBeNull()
+    expect(within(dialog).queryByLabelText('Low-stock alert at (bottles)')).toBeNull()
+    fireEvent.change(screen.getByLabelText('Ink type'),{target:{value:'Pigment'}})
+    fireEvent.change(screen.getByLabelText('Color'),{target:{value:'Light Cyan'}})
+    fireEvent.click(screen.getByRole('button',{name:'Save color type'}))
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    expect((screen.getByLabelText('Color') as HTMLInputElement).value).toBe('Light Cyan')
+    fireEvent.click(screen.getByRole('button',{name:'Save color type'}))
+    await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull())
+    expect(api.saveInkColorType).toHaveBeenLastCalledWith({cartridge_type:'Pigment',color_variation:'Light Cyan'})
+    expect(api.createInk).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button',{name:'Add ink stock'}))
+    await screen.findByRole('option',{name:'Pigment'})
+    fireEvent.change(screen.getByLabelText('Ink type'),{target:{value:'Pigment'}})
+    expect(screen.getByRole('option',{name:'Light Cyan'})).toBeTruthy()
+  })
+  it('blocks deleting stocked ink and refreshes after confirming deletion of empty ink',async()=>{
+    mockReads();render(<AdminPrintSuppliesPage/>)
+    expect((await screen.findByRole('button',{name:'Delete Dye ink Black'})).hasAttribute('disabled')).toBe(true)
+    cleanup()
+    api.supplies.mockResolvedValue({...supplyData,ink:[{...supplyData.ink[0],brand:'Brand One',available_bottles:0}]});api.deleteInk.mockResolvedValue({data:{}})
+    render(<AdminPrintSuppliesPage/>)
+    fireEvent.click(await screen.findByRole('button',{name:'Delete Brand One Dye ink Black'}))
+    expect(api.deleteInk).not.toHaveBeenCalled()
+    api.supplies.mockResolvedValue({...supplyData,ink:[]})
+    fireEvent.click(screen.getByRole('button',{name:'Delete ink item'}))
+    await waitFor(()=>expect(api.deleteInk).toHaveBeenCalledWith(1))
+    await screen.findByText('No ink bottle records.')
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+  it('blocks stocked size deletion and retains the dialog when server detects changed stock',async()=>{
+    mockReads()
+    api.supplies.mockResolvedValue({...supplyData,paper:[supplyData.paper[0],{...supplyData.paper[0],paper_stock_id:2,paper_size_dimension:'B5',unopened_reams:0,remaining_reams:0}]})
+    api.deletePaperSize.mockRejectedValue(new Error('This paper size still has stock.'))
+    render(<AdminPrintSuppliesPage/>)
+    await screen.findByText('B5 bond paper')
+    fireEvent.click(screen.getByLabelText('More actions for A4 paper'))
+    expect(screen.getByRole('button',{name:'Delete A4 paper'}).hasAttribute('disabled')).toBe(true)
+    fireEvent.click(screen.getByLabelText('More actions for B5 paper'))
+    fireEvent.click(screen.getByRole('button',{name:'Delete B5 paper'}))
+    expect(api.deletePaperSize).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button',{name:'Delete paper item'}))
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent','This paper size still has stock.')
+    expect(screen.getByRole('dialog')).toBeTruthy()
+  })
+  it('opens only the selected paper brand and retains the other brand stock',async()=>{
+    mockReads();api.openPaperReam.mockResolvedValue({data:{}})
+    api.supplies.mockResolvedValue({...supplyData,paper:[{...supplyData.paper[0],brands:[...supplyData.paper[0].brands,{paper_brand_stock_id:2,brand:'Brand Two',unopened_reams:3,average_expense_cost:200}]}]})
+    render(<AdminPrintSuppliesPage/>)
+    fireEvent.click((await screen.findAllByRole('button',{name:'Open one ream'}))[1])
+    fireEvent.click(screen.getByRole('button',{name:'Confirm usage'}))
+    await waitFor(()=>expect(api.openPaperReam).toHaveBeenCalledWith(1,2))
+  })
+  it('fills the supplied A3+ preset and supports a separately named user-defined size',async()=>{
+    mockReads();api.paperSizes.mockResolvedValue([])
+    render(<AdminPrintSuppliesPage/>)
+    fireEvent.click(await screen.findByRole('button',{name:'Add new paper size'}))
+    expect(screen.getByRole('option',{name:'User-defined'})).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Paper size preset'),{target:{value:'A3+'}})
+    expect((screen.getByLabelText('Size name') as HTMLInputElement).value).toBe('A3+')
+    expect((screen.getByLabelText('Width (mm)') as HTMLInputElement).value).toBe('329')
+    expect((screen.getByLabelText('Height (mm)') as HTMLInputElement).value).toBe('483')
+    fireEvent.change(screen.getByLabelText('Paper size preset'),{target:{value:'Letter'}})
+    expect((screen.getByLabelText('Width (mm)') as HTMLInputElement).value).toBe('215.9')
+    expect((screen.getByLabelText('Height (mm)') as HTMLInputElement).value).toBe('279.4')
+    fireEvent.change(screen.getByLabelText('Paper size preset'),{target:{value:'custom'}})
+    expect((screen.getByLabelText('Size name') as HTMLInputElement).value).toBe('')
+    expect((screen.getByLabelText('Width (mm)') as HTMLInputElement).value).toBe('')
+  })
+})
+
+afterEach(()=>{cleanup();vi.clearAllMocks()})
+
+it('deletes zero-stock bond paper only after confirmation using its current version',async()=>{
+ mockReads();api.deletePaperSize.mockResolvedValue({});api.supplies.mockResolvedValue({...supplyData,paper:[{...supplyData.paper[0],unopened_reams:0,remaining_reams:0,configuration_version:7,brands:[]}]})
+ render(<AdminPrintSuppliesPage/>);const button=await screen.findByRole('button',{name:'Delete A4 paper'});expect((button as HTMLButtonElement).disabled).toBe(false);fireEvent.click(button)
+ expect(api.deletePaperSize).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('button',{name:'Delete paper item'}));await waitFor(()=>expect(api.deletePaperSize).toHaveBeenCalledWith(1,7));await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull())
+})
+it.each([{unopened_reams:2,remaining_reams:2},{unopened_reams:0,remaining_reams:1}])('keeps paper Delete disabled while either balance has stock',async balances=>{
+ mockReads();api.supplies.mockResolvedValue({...supplyData,paper:[{...supplyData.paper[0],...balances}]});render(<AdminPrintSuppliesPage/>);expect((await screen.findByRole('button',{name:'Delete A4 paper'}) as HTMLButtonElement).disabled).toBe(true);expect(api.deletePaperSize).not.toHaveBeenCalled()
+})
+it('keeps the paper confirmation open and shows a concurrent restock rejection',async()=>{
+ mockReads();api.supplies.mockResolvedValue({...supplyData,paper:[{...supplyData.paper[0],unopened_reams:0,remaining_reams:0,brands:[]}]});api.deletePaperSize.mockRejectedValue(Error('Stock was added. Refresh before deleting.'))
+ render(<AdminPrintSuppliesPage/>);fireEvent.click(await screen.findByRole('button',{name:'Delete A4 paper'}));fireEvent.click(screen.getByRole('button',{name:'Delete paper item'}));expect(await screen.findByText('Stock was added. Refresh before deleting.')).toBeTruthy();expect(screen.getByRole('dialog')).toBeTruthy()
+})
+
+it('refreshes confirmed printing revenue after payment changes and when returning to the page',async()=>{
+ mockReads();render(<AdminPrintSuppliesPage/>);await screen.findByText('Printing revenue');await waitFor(()=>expect(api.revenueSummary).toHaveBeenCalledTimes(1));api.revenueSummary.mockResolvedValue({...revenue,total_revenue:350})
+ window.dispatchEvent(new Event('library-payments-updated'));await waitFor(()=>expect(api.revenueSummary).toHaveBeenCalledTimes(2));expect(await screen.findByText('₱350.00')).toBeTruthy();window.dispatchEvent(new Event('focus'));await waitFor(()=>expect(api.revenueSummary).toHaveBeenCalledTimes(3))
+})
+
+it('keeps supply type management and deletion behind contextual menus', async () => {
+  mockReads()
   render(<AdminPrintSuppliesPage />)
-  return { fetch, pay:()=>{paid=true}, fail:()=>{fail=true}, recover:()=>{fail=false} }
-}
-
-it('refreshes cash and online details and total together without manual refresh', async () => {
-  const fixture = setup()
-  await act(async () => {})
-  expect(screen.getByText('No paid printing requests for this period.')).toBeTruthy()
-  fixture.pay()
-  await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
-  expect(screen.getByText('₱50.00')).toBeTruthy()
-  expect(screen.getByText('cash.pdf')).toBeTruthy()
-  expect(screen.getByText('online.pdf')).toBeTruthy()
-  expect(screen.getByText('GCASH')).toBeTruthy()
-  expect(screen.queryByText('Loading revenue…')).toBeNull()
-  expect(fixture.fetch.mock.calls.filter(([url])=>String(url).includes('/revenue?'))).toHaveLength(2)
-})
-
-it('preserves confirmed rows on a refresh failure and recovers with Refresh', async () => {
-  const fixture = setup()
-  await act(async () => {})
-  fixture.pay()
-  await act(async () => { window.dispatchEvent(new Event('printing-updated')) })
-  fixture.fail()
-  await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
-  expect(within(screen.getByRole('alert')).getByText(/Showing the last successful update/)).toBeTruthy()
-  expect(screen.getByText('online.pdf')).toBeTruthy()
-  expect(screen.getByText('₱50.00')).toBeTruthy()
-  fixture.recover()
-  await act(async () => { fireEvent.click(screen.getByRole('button',{name:'Refresh'})) })
-  expect(screen.queryByRole('alert')).toBeNull()
-})
-
-it('does not claim no payments when the initial revenue read fails', async () => {
-  const fixture = setup()
-  fixture.fail()
-  await act(async () => {})
-  expect(screen.getByRole('alert')).toBeTruthy()
-  expect(screen.getByText('Revenue could not be loaded. Use Refresh to try again.')).toBeTruthy()
-  expect(screen.queryByText('No paid printing requests for this period.')).toBeNull()
+  await screen.findByRole('heading',{name:'Ink bottles'})
+  const management = screen.getByText('Manage supply types',{exact:true}).closest('details')!
+  expect(management.open).toBe(false)
+  fireEvent.click(screen.getByText('Manage supply types',{exact:true}))
+  expect(screen.getByRole('button',{name:'Add new color type'})).toBeTruthy()
+  expect(screen.getByLabelText('More actions for A4 paper').closest('details')?.open).toBe(false)
+  fireEvent.click(screen.getByLabelText('More actions for A4 paper'))
+  expect(screen.getByLabelText('More actions for A4 paper').closest('details')?.open).toBe(true)
+  expect(screen.getByRole('button',{name:'Delete A4 paper'})).toBeTruthy()
 })

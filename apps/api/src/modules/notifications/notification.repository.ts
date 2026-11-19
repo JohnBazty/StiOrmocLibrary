@@ -6,12 +6,12 @@ import type { AnnouncementInput } from './notification.validation.ts'
 
 export type NotificationActor = { accountId?: number; role?: string }
 
-async function linkedUserId(executor: Pool | PoolConnection, accountId: number) {
+async function linkedUserId(executor: Pool | PoolConnection, accountId: number, allowUnlinked = false) {
   const [rows] = await executor.execute<RowDataPacket[]>(
     'SELECT user_id FROM accounts WHERE account_id = ? AND user_id IS NOT NULL LIMIT 1', [accountId],
   )
   const userId = rows[0]?.user_id ? Number(rows[0].user_id) : null
-  if (!userId) throw new HttpError(422, 'NOTIFICATION_PROFILE_NOT_LINKED', 'This login account is not linked to a library profile.')
+  if (!userId && !allowUnlinked) throw new HttpError(422, 'NOTIFICATION_PROFILE_NOT_LINKED', 'This login account is not linked to a library profile.')
   return userId
 }
 
@@ -40,7 +40,8 @@ export function createNotificationRepository(database: Pool = db) {
 
   return {
     async list(actor: NotificationActor, query: Record<string, unknown>) {
-      const userId = await linkedUserId(database, actorAccountId(actor))
+      // Technical Admin accounts may have no library profile; NULL matches no recipient.
+      const userId = await linkedUserId(database, actorAccountId(actor), actor.role === 'Admin')
       const page = Math.max(1, Math.trunc(Number(query.page) || 1))
       const limit = Math.min(100, Math.max(1, Math.trunc(Number(query.limit) || 25)))
       const offset = (page - 1) * limit
@@ -52,9 +53,8 @@ export function createNotificationRepository(database: Pool = db) {
           `SELECT n.notification_id, n.message_title, n.message_body, n.trigger_type,
                   n.source_type, n.source_id, n.action_path, n.priority, n.is_read,
                   n.notification_timestamp, n.read_at, n.expires_at
-                  , CASE WHEN n.source_type='Library Operations' THEN n.notification_timestamp AT TIME ZONE 'UTC' END AS operation_created_at
              FROM notifications n
-            WHERE n.user_id = ?${unreadSql}
+            WHERE n.user_id = ?${unreadSql} AND (COALESCE(n.source_type,'')<>'Announcement' OR EXISTS(SELECT 1 FROM announcements visible_announcement WHERE visible_announcement.announcement_id=n.source_id AND visible_announcement.announcement_status='Published' AND visible_announcement.archived_at IS NULL AND (visible_announcement.expires_at IS NULL OR visible_announcement.expires_at>NOW())))
               AND n.deleted_at IS NULL
               AND (n.scheduled_for IS NULL OR n.scheduled_for <= NOW())
               AND (n.expires_at IS NULL OR n.expires_at > NOW())
@@ -64,8 +64,8 @@ export function createNotificationRepository(database: Pool = db) {
         database.execute<RowDataPacket[]>(
           `SELECT COUNT(*) AS total,
                   SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) AS unread
-             FROM notifications
-            WHERE user_id = ? AND deleted_at IS NULL AND (scheduled_for IS NULL OR scheduled_for <= NOW())
+             FROM notifications n
+            WHERE user_id = ? AND (COALESCE(n.source_type,'')<>'Announcement' OR EXISTS(SELECT 1 FROM announcements visible_announcement WHERE visible_announcement.announcement_id=n.source_id AND visible_announcement.announcement_status='Published' AND visible_announcement.archived_at IS NULL AND (visible_announcement.expires_at IS NULL OR visible_announcement.expires_at>NOW()))) AND deleted_at IS NULL AND (scheduled_for IS NULL OR scheduled_for <= NOW())
               AND (expires_at IS NULL OR expires_at > NOW())${countUnreadSql}`, [userId],
         ),
       ])
@@ -75,7 +75,7 @@ export function createNotificationRepository(database: Pool = db) {
           notificationId: Number(row.notification_id), title: String(row.message_title), body: String(row.message_body),
           type: String(row.trigger_type), sourceType: row.source_type ? String(row.source_type) : null,
           sourceId: row.source_id ? Number(row.source_id) : null, actionPath: row.action_path ? String(row.action_path) : null,
-          priority: String(row.priority ?? 'Normal'), isRead: Boolean(row.is_read), createdAt: row.operation_created_at ?? row.notification_timestamp,
+          priority: String(row.priority ?? 'Normal'), isRead: Boolean(row.is_read), createdAt: row.notification_timestamp,
           readAt: row.read_at, expiresAt: row.expires_at,
         })),
         unreadCount: Number(counts[0]?.unread ?? 0),

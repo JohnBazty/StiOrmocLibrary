@@ -1,13 +1,15 @@
-import { useLiveQuery } from '../../hooks/useLiveQuery'
+import { usePaymentUpdates } from '../payments/payment-updates'
 import { ViewLocationButton } from '../floor-plan/ViewLocationButton'
 import { BookOpen, CheckCircle2, Eye, MapPin, Trash2, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { PageHeader, SectionCard } from '../../components/ui'
 import { BookCartApiError, fetchCartState, submitBorrowRequest, type BorrowRequestReceipt } from './book-cart-api'
-import { useBookCart } from './book-cart-store'
+import { readBookCart, useBookCart } from './book-cart-store'
 import { BookDetailDrawer } from './BookDetailDrawer'
 import { BookCoverThumbnail } from './BookCoverThumbnail'
 import { fetchBookOverview } from './book-catalog-api'
+import { TitleAlreadyActiveDialog } from './TitleAlreadyActiveDialog'
+import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 
 export function BookCart() {
   const requestKey=useRef('')
@@ -15,6 +17,12 @@ export function BookCart() {
   const saving=useRef(false)
   const { items, updateItem, removeItem, removeItems, clear } = useBookCart()
   const [syncNotice,setSyncNotice]=useState('')
+  const { ask, dialog: confirmSave } = useConfirmSave()
+  const [heldTitles,setHeldTitles]=useState<string[]>([])
+  const [outstanding,setOutstanding]=useState<number|null>(null)
+  const [syncError,setSyncError]=useState('')
+  const cartFlight=useRef<Promise<void>|null>(null)
+  const mounted=useRef(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [receipt, setReceipt] = useState<BorrowRequestReceipt | null>(null)
@@ -22,14 +30,30 @@ export function BookCart() {
   const hydratedTitleIds = useRef(new Set<number>())
   const hasItems=items.length>0
 
-  const cartState=useLiveQuery('book-cart-state',()=>fetchCartState(),{enabled:hasItems&&!submitting})
-  useEffect(()=>{
-    if(!cartState.data||saving.current)return
-    if(removeItems(cartState.data.activeTitleIds)>0){
-      setSyncNotice('Removed books already requested or checked out. You can find them in My books or Borrowing history.')
-      setDetailTitleId(null)
-    }
-  },[cartState.data,removeItems])
+  const refreshCart=useCallback(()=>{
+    if(!hasItems||saving.current)return Promise.resolve()
+    if(cartFlight.current)return cartFlight.current
+    cartFlight.current=(async()=>{
+      try{
+        const state=await fetchCartState()
+        if(!mounted.current||saving.current)return
+        setOutstanding(state.outstandingBalance ?? 0)
+        setSyncError('')
+        const removed=readBookCart().filter(item=>state.activeTitleIds.includes(item.titleId))
+        if(removeItems(state.activeTitleIds)>0){
+          setHeldTitles(removed.map(item=>item.title))
+          setSyncNotice('')
+          setDetailTitleId(null)
+        }
+      }catch(reason){
+        /* Keep local selections when the authoritative check is unavailable. */
+        if(mounted.current)setSyncError(reason instanceof Error ? reason.message : 'Your current library balance could not be checked.')
+      }finally{cartFlight.current=null}
+    })()
+    return cartFlight.current
+  },[hasItems,removeItems])
+  useEffect(()=>{mounted.current=true;void refreshCart();return()=>{mounted.current=false}},[refreshCart])
+  usePaymentUpdates(refreshCart,15000)
 
   useEffect(() => {
     for (const item of items) {
@@ -65,18 +89,28 @@ export function BookCart() {
       clear()
       setReceipt(result)
     } catch (reason) {
-      setError(reason instanceof BookCartApiError && reason.code === 'STUDENT_BORROW_LIMIT_REACHED'
-        ? `${reason.message} Return a book or cancel an existing request, then try again. Your cart has been kept.`
-        : reason instanceof Error ? reason.message : 'The borrow request could not be submitted.')
+      const blockers=reason instanceof BookCartApiError && reason.code==='CIRCULATION_ELIGIBILITY_BLOCKED'
+        ? (reason.details as {blockers?:unknown})?.blockers : null
+      if(Array.isArray(blockers)&&blockers.every(value=>typeof value==='string')){
+        // The authoritative standing banner owns balance warnings. Keep other holds.
+        setError(blockers.filter(value=>!value.startsWith('Settle the outstanding library balance of ')).join(' '))
+      }else if(reason instanceof BookCartApiError && reason.code === 'STUDENT_BORROW_LIMIT_REACHED') {
+        const specific = reason.message.startsWith('You have ')
+        setError(specific ? `${reason.message} Your cart has been kept.` : `${reason.message} Return a book or cancel an existing request, then try again. Your cart has been kept.`)
+      }else setError(reason instanceof Error ? reason.message : 'The borrow request could not be submitted.')
     } finally {
-      saving.current=false; setSubmitting(false)
+      saving.current=false; setSubmitting(false); void refreshCart()
     }
   }
 
   return <>
+    {confirmSave}
     <PageHeader eyebrow="My library" title="Book cart" description="Review available books before sending them to the library desk. Your loan starts at staff handover." />
     <p className="mb-5 text-sm opacity-70">Send your cart to the desk, then bring the selected books to staff. Staff review and confirm the handover.</p>
+    {heldTitles.length>0&&<TitleAlreadyActiveDialog titles={heldTitles} onClose={()=>setHeldTitles([])}/>}
     {syncNotice&&<p role="status" className="mb-4 rounded-xl border border-[#0b5ea2]/15 p-3 text-sm">{syncNotice}</p>}
+    {syncError ? <div role="alert" className="mb-4 rounded-xl border p-4 text-sm">{syncError} <button type="button" className="min-h-11 underline" onClick={()=>void refreshCart()}>Refresh balance</button></div> : null}
+    {outstanding!==null&&outstanding>0&&hasItems ? <div role="alert" className="mb-4 rounded-xl border p-4 text-sm font-semibold">Settle the outstanding library balance of ₱{outstanding.toFixed(2)} before borrowing. <a className="underline" href="../fines">View fines</a></div> : null}
     {error ? <div role="alert" className="mb-4 rounded-xl border border-[#0b5ea2] bg-[#FFF200] px-4 py-3 text-sm font-semibold text-[#0b5ea2]">{error}</div> : null}
     <SectionCard className="overflow-hidden">
       <div className="border-b border-[#0b5ea2]/15 px-5 py-4"><h2 className="font-display text-lg font-bold text-[#0b5ea2]">Review your selected books</h2></div>
@@ -85,7 +119,7 @@ export function BookCart() {
         <div className="min-w-0"><h3 className="font-display font-bold text-[#0b5ea2]">{item.title}</h3><p className="mt-1 text-sm text-[#0b5ea2]/70">{item.author}</p><div className="mt-2 flex flex-wrap gap-3 text-xs text-[#0b5ea2]/65"><span>ISBN: {item.isbn ?? 'Not recorded'}</span><span className="inline-flex items-center gap-1 font-semibold"><MapPin size={13} />{item.shelfLocation ?? item.callNumber ?? 'Shelf pending'}</span></div></div>
         <div className="flex flex-wrap items-center gap-2"><ViewLocationButton titleId={item.titleId} availableOnly/><button type="button" onClick={() => setDetailTitleId(item.titleId)} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#0b5ea2] px-3 text-xs font-bold text-[#FFFFFF]"><Eye size={16} /> View details</button><button type="button" aria-label={`Remove ${item.title}`} disabled={submitting} onClick={() => removeItem(item.titleId)} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] text-[#0b5ea2] transition hover:bg-[#FFF200]"><Trash2 size={17} /></button></div>
       </article>)}</div> : <div className="px-5 py-16 text-center"><BookOpen className="mx-auto text-[#0b5ea2]" size={30} /><h2 className="mt-3 font-display text-lg font-bold text-[#0b5ea2]">Your cart is empty</h2></div>}
-      <div className="flex justify-end border-t border-[#0b5ea2]/15 bg-[#FFFFFF] px-5 py-4"><button type="button" disabled={!items.length || submitting} onClick={() => void submit()} className="h-11 rounded-xl bg-[#0b5ea2] px-6 text-sm font-bold text-[#FFFFFF] transition disabled:cursor-not-allowed disabled:bg-[#0b5ea2]/25 disabled:text-[#FFFFFF]">{submitting ? 'Submitting…' : 'Check Out'}</button></div>
+      <div className="flex justify-end border-t border-[#0b5ea2]/15 bg-[#FFFFFF] px-5 py-4"><button type="button" disabled={!items.length || submitting || (outstanding!==null && outstanding>0)} onClick={() => ask(`Send ${items.length} ${items.length === 1 ? 'book' : 'books'} to the library desk. The loan starts when staff hand over the copy.`, () => { void submit() })} className="h-11 rounded-xl bg-[#0b5ea2] px-6 text-sm font-bold text-[#FFFFFF] transition disabled:cursor-not-allowed disabled:bg-[#0b5ea2]/25 disabled:text-[#FFFFFF]">{submitting ? 'Submitting…' : 'Check Out'}</button></div>
     </SectionCard>
 
     {receipt ? <div role="dialog" aria-modal="true" aria-labelledby="borrow-confirmation-title" className="fixed inset-0 z-[100] flex items-center justify-center bg-[#0b5ea2]/55 p-4 backdrop-blur-sm">

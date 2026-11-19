@@ -1,5 +1,5 @@
 import type { AdminBookAsset, BulkBookResult, RegisterRow, TitleLookupResult, CatalogFilters, CatalogItem, Category, CategoryAssignmentResult, IsbnMetadata, PhysicalCopy } from './types'
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 
 export class ApiError extends Error {
   constructor(message: string, public code: string, public details?: { errors?: Record<string, string> }) { super(message) }
@@ -7,11 +7,11 @@ export class ApiError extends Error {
 
 let csrfToken: string | null = null
 
-async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
+export async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const method = options.method?.toUpperCase() ?? 'GET'
   const headers = new Headers(options.headers)
-  const accessToken = getAccessToken()
-  if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
+  const accessToken = getCsrfToken()
+  if (accessToken) headers.set('X-CSRF-Token', accessToken)
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
     if (!accessToken && !csrfToken) {
       const response = await fetch('/api/auth/csrf', { credentials: 'include' })
@@ -33,34 +33,32 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 
 export function filterQuery(filters: CatalogFilters) {
   const query = new URLSearchParams()
+  if (filters.page) query.set('page', String(filters.page))
+  if (filters.limit) query.set('limit', String(filters.limit))
   if (filters.q) query.set('q', filters.q)
   if (filters.scope !== 'all') query.set('scope', filters.scope)
   if (filters.categoryId) query.set('categoryId', filters.categoryId)
   if (filters.author) query.set('author', filters.author)
   if (filters.publicationYear) query.set('publicationYear', filters.publicationYear)
   if (filters.availability) query.set('availability', filters.availability)
+  if (filters.deweyStatus) query.set('deweyStatus', filters.deweyStatus)
   return query.toString()
 }
 
 export const catalogApi = {
-  async quotations(titleId: number) { return request<Array<{ quotationId: number; titleId: number; filename: string; quotedAmount: number; uploadedAt: string; current: boolean }>>(`/api/v1/admin/catalog/titles/${titleId}/quotations`) },
-  async uploadQuotation(titleId: number, file: File, amount: number) {
-    const body = new FormData(); body.set('quotation', file); body.set('quoted_amount', String(amount))
-    const headers = new Headers({ Accept: 'application/json' }); const token = getAccessToken(); if (token) headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(`/api/v1/admin/catalog/titles/${titleId}/quotations`, { method: 'POST', body, headers, credentials: 'include' })
-    const payload = await response.json() as { success?: boolean; message?: string }
-    if (!response.ok || !payload.success) throw new ApiError(payload.message ?? 'Quotation upload failed.', 'QUOTATION_UPLOAD_FAILED')
+  async quotations(titleId: number) { return request<Array<{ quotationId: number; titleId: number; filename: string|null; hasFile:boolean; quotedAmount: number; uploadedAt: string; current: boolean }>>(`/api/v1/admin/catalog/titles/${titleId}/quotations`) },
+  async saveQuotation(titleId:number,amount:number) {
+    return request(`/api/v1/admin/catalog/titles/${titleId}/quotations`,{method:'POST',body:JSON.stringify({quoted_amount:amount})})
   },
   async downloadQuotation(titleId: number, quotationId: number, filename: string) {
-    const headers = new Headers(); const token = getAccessToken(); if (token) headers.set('Authorization', `Bearer ${token}`)
+    const headers = new Headers(); const token = getCsrfToken(); if (token) headers.set('X-CSRF-Token', token)
     const response = await fetch(`/api/v1/admin/catalog/titles/${titleId}/quotations/${quotationId}/file`, { headers, credentials: 'include' })
     if (!response.ok) throw new ApiError('The quotation could not be downloaded.', 'QUOTATION_DOWNLOAD_FAILED')
     const url = URL.createObjectURL(await response.blob()); const link = document.createElement('a'); link.href = url; link.download = filename; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
   },
   bookRegister: (params: URLSearchParams) => request<{ rows: RegisterRow[]; total: number; page: number; limit: number }>(`/api/v1/admin/catalog/register?${params}`),
   async downloadBookRegister(params: URLSearchParams) {
-    const accessToken = getAccessToken()
-    const response = await fetch(`/api/v1/admin/catalog/register.csv?${params}`, { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}, credentials: 'include' })
+    const response = await fetch(`/api/v1/admin/catalog/register.csv?${params}`, { credentials: 'include' })
     if (!response.ok || !(response.headers.get('content-type') ?? '').includes('text/csv')) {
       const payload = (response.headers.get('content-type') ?? '').includes('application/json') ? await response.json() as { message?: string } : null
       throw new ApiError(payload?.message ?? 'The book register could not be exported.', 'EXPORT_FAILED')
@@ -76,7 +74,7 @@ export const catalogApi = {
   archivedBookDetail: (titleId: number) => request<{ titleId: number; title: string; isbn: string | null; authors: string | null; reason: string | null; archivedAt: string | null; archivedBy: string | null; copies: Array<{ copyId: number; accession: string; barcode: string; shelf: string; condition: string; archivedAt: string; reason: string; borrowingCount: number }>; borrowings: Array<{ transactionId: number; accession: string; borrowerId: string; status: string; borrowedAt: string | null; returnedAt: string | null }>; auditEvents: Array<{ eventId: number; accession: string; eventType: string; reason: string | null; staffLabel: string; createdAt: string }> }>(`/api/v1/admin/catalog/archive/${titleId}`),
   archiveBook: (titleId: number, reason: string) => request(`/api/catalog/books/${titleId}/archive`, { method: 'POST', body: JSON.stringify({ reason }) }),
   async search(filters: CatalogFilters) {
-    return request<{ items: CatalogItem[]; pagination: { total: number } }>(`/api/catalog/search?${filterQuery(filters)}`)
+    return request<{ items: CatalogItem[]; pagination: { total: number; page?: number; limit?: number; pages?: number } }>(`/api/catalog/search?${filterQuery(filters)}`)
   },
   categories: () => request<Category[]>('/api/categories'),
   copies: () => request<PhysicalCopy[]>('/api/catalog/admin/copies?limit=150'),
@@ -90,9 +88,8 @@ export const catalogApi = {
   searchSubjects: (q: string) => request<{ subjects: Array<{ name: string; workCount: number }> }>(`/api/v1/admin/books/subject-lookup?${new URLSearchParams({ q })}`),
   searchTitles: (title: string, author: string) => request<TitleLookupResult>(`/api/v1/admin/books/title-lookup?${new URLSearchParams({ title, author })}`),
   /** The lookup's cover for this ISBN as a file the add-book form can attach, or null when there is none. */
-  async fetchCover(isbn: string): Promise<File | null> {
-    const accessToken = getAccessToken()
-    const response = await fetch(`/api/v1/admin/books/isbn/${encodeURIComponent(isbn)}/cover`, { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}, credentials: 'include' })
+  async fetchCover(isbn: string, signal?:AbortSignal): Promise<File | null> {
+    const response = await fetch(`/api/v1/admin/books/isbn/${encodeURIComponent(isbn)}/cover`, { credentials: 'include',signal })
     const type = (response.headers.get('content-type') ?? '').split(';')[0]
     if (!response.ok || !['image/jpeg', 'image/png', 'image/webp'].includes(type)) return null
     return new File([await response.blob()], `cover-${isbn}.${type === 'image/jpeg' ? 'jpg' : type.slice(6)}`, { type })
@@ -101,9 +98,9 @@ export const catalogApi = {
   asset: (physicalCopyId: number, signal?: AbortSignal) => request<AdminBookAsset>(`/api/v1/admin/books/assets/${physicalCopyId}`, { signal }),
   researchAsset: (researchInventoryId: number, signal?: AbortSignal) => request<AdminBookAsset>(`/api/v1/admin/research/assets/${researchInventoryId}`, { signal }),
   async downloadAssetPng(assetId: number, kind: 'barcode' | 'qr', assetType: 'book' | 'research' = 'book') {
-    const accessToken = getAccessToken()
+    const accessToken = getCsrfToken()
     const headers = new Headers({ Accept: 'image/png' })
-    if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
+    if (accessToken) headers.set('X-CSRF-Token', accessToken)
     const response = await fetch(`/api/v1/admin/${assetType === 'research' ? 'research' : 'books'}/assets/${assetId}/${kind}.png`, { headers, credentials: 'include' })
     if (!response.ok) {
       const isJson = (response.headers.get('content-type') ?? '').includes('application/json')
@@ -123,9 +120,9 @@ export const catalogApi = {
     method: 'POST', body: JSON.stringify({ value, mode: 'auto' }),
   }),
   async downloadInventory(format: 'csv' | 'pdf', filters: CatalogFilters) {
-    const accessToken = getAccessToken()
+    const accessToken = getCsrfToken()
     const headers = new Headers({ Accept: format === 'csv' ? 'text/csv' : 'application/pdf' })
-    if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
+    if (accessToken) headers.set('X-CSRF-Token', accessToken)
     const query = filterQuery(filters)
     const response = await fetch(`/api/reports/catalog/inventory.${format}${query ? `?${query}` : ''}`, {
       headers, credentials: 'include',

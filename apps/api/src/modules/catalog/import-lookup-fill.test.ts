@@ -26,49 +26,36 @@ async function database(rows: Array<{ data: Record<string, unknown>; status?: st
 const isbnBook = { isbn: '9780132350884', title: 'Clean Code', author: 'Robert C. Martin', publisher: 'Prentice Hall', publicationYear: 2008, subjects: [], source: 'google_books' as const }
 
 test('fills only empty fields from the ISBN lookup and records each filled value with its source', async () => {
-  const { pg, pool, data } = await database([{ data: { isbn: '9780132350884', title: 'Clean code (school copy)', author: '', publisher: '' } }])
+  const { pg, pool, data } = await database([{ data: { isbn: '9780132350884', title: 'Clean Code', author: '', publisher: '' } }])
   const lookups: string[] = []
   const fill = createImportLookupFill(pool, { lookup: async (isbn: unknown) => { lookups.push(String(isbn)); return isbnBook }, searchTitles: async () => { throw new Error('not used') } })
   const result = await fill(1)
   assert.deepEqual(result, { filled: 1, notFound: 0, remaining: 0, unavailable: false })
   assert.deepEqual(lookups, ['9780132350884'])
   const [row] = await data()
-  assert.equal(row.data_json.title, 'Clean code (school copy)', 'a value from the spreadsheet is never replaced')
+  assert.equal(row.data_json.title, 'Clean Code', 'a value from the spreadsheet is never replaced')
   assert.equal(row.data_json.author, 'Robert C. Martin')
-  assert.equal(row.data_json.publisher, 'Prentice Hall')
-  assert.equal(row.data_json.publicationYear, '2008')
+  assert.equal(row.data_json.publisher, '')
+  assert.equal(row.data_json.publicationYear, '')
   assert.deepEqual(row.data_json.lookupFilled, {
     author: { value: 'Robert C. Martin', source: 'google_books' },
-    publisher: { value: 'Prentice Hall', source: 'google_books' },
-    publicationYear: { value: '2008', source: 'google_books' },
   })
   assert.equal(row.data_json.lookupTried, true)
   assert.equal(row.row_version, 2)
   await pg.close()
 })
 
-test('a row without an ISBN takes a title result only when the title and the author surname match', async () => {
-  const { pg, pool, data } = await database([
-    { data: { title: 'Clean Code', author: 'Robert C. Martin', isbn: '' } },
-    { data: { title: 'Clean Code', author: 'Jane Doe', isbn: '' } },
-    { data: { title: 'Cooking Basics', author: 'Ann Cook', isbn: '' } },
-  ])
-  const candidate = { title: 'Clean Code: A Handbook of Agile Software Craftsmanship', author: 'Robert C. Martin', publisher: 'Prentice Hall', publicationYear: 2008, isbn: '9780132350884', subjects: [], inCatalog: false }
-  const fill = createImportLookupFill(pool, { lookup: async () => { throw new Error('not used') }, searchTitles: async () => ({ source: 'google_books', localMatches: [], candidates: [candidate] }) })
-  assert.deepEqual(await fill(1), { filled: 1, notFound: 2, remaining: 0, unavailable: false })
-  const [matched, wrongAuthor, other] = await data()
-  assert.equal(matched.data_json.isbn, '9780132350884')
-  assert.equal(matched.data_json.publisher, 'Prentice Hall')
-  assert.deepEqual(Object.keys(matched.data_json.lookupFilled as object).sort(), ['isbn', 'publicationYear', 'publisher'])
-  assert.equal(wrongAuthor.data_json.isbn, '')
-  assert.equal(wrongAuthor.data_json.lookupTried, true, 'a row with no match is not looked up again')
-  assert.equal(other.data_json.lookupFilled, undefined)
-  await pg.close()
+test('title-only rows never guess an edition or fill optional ISBNs; manual candidate review is required',async()=>{
+ const {pg,pool,data}=await database([{data:{title:'Clean Code',author:''}},{data:{title:'Clean Code',author:'Robert C. Martin'}}])
+ const fill=createImportLookupFill(pool,{lookup:async()=>{throw Error('must not look up')},searchTitles:async()=>{throw Error('must not select a title automatically')}})
+ assert.deepEqual(await fill(1),{filled:0,notFound:1,remaining:0,unavailable:false})
+ for(const row of await data()){assert.equal(row.data_json.isbn,'');assert.equal(row.data_json.publisher,'');assert.equal(row.data_json.author,row.import_row_id===1?'':'Robert C. Martin')}
+ await pg.close()
 })
 
 test('takes 50 rows a run, skips complete, tried, reviewed and other-batch rows, and stops when the providers are down', async () => {
   const rows = [
-    ...Array.from({ length: FILL_BATCH_SIZE + 3 }, () => ({ data: { isbn: '9780132350884', title: 'T', author: 'A' } })),
+    ...Array.from({ length: FILL_BATCH_SIZE + 3 }, () => ({ data: { isbn: '9780132350884', title: 'Clean Code', author: '' } })),
     { data: { isbn: '9780132350884', title: 'T', author: 'A', publisher: 'P', publicationYear: '2000' } },
     { data: { isbn: '9780132350884', lookupTried: true } },
     { data: { isbn: '9780132350884' }, status: 'Ready' },
@@ -91,7 +78,7 @@ test('takes 50 rows a run, skips complete, tried, reviewed and other-batch rows,
 })
 
 test('a row edited while its lookup was running keeps the edit', async () => {
-  const { pg, pool, data } = await database([{ data: { isbn: '9780132350884', title: 'T', author: 'A' } }])
+  const { pg, pool, data } = await database([{ data: { isbn: '9780132350884', title: 'Clean Code', author: '' } }])
   const fill = createImportLookupFill(pool, { lookup: async () => { await pg.exec("UPDATE catalog_import_rows SET data_json = data_json || '{\"publisher\":\"Mine\"}', row_version = row_version + 1"); return isbnBook }, searchTitles: async () => ({ source: null, localMatches: [], candidates: [] }) })
   assert.deepEqual(await fill(1), { filled: 0, notFound: 0, remaining: 1, unavailable: false })
   assert.equal((await data())[0].data_json.publisher, 'Mine')
@@ -111,18 +98,20 @@ test('a row with lookup-filled values needs the checked tick, and keeps who chec
   assert.deepEqual(lookupReviewFacts({}, 'new', undefined, 5, now), {})
 })
 
-test('a title-only match stores a normalized ISBN, needs one clear result without an author, and a run stops at the deadline', async () => {
-  const dashed = { title: 'Algebra', author: 'Ann Cook', publisher: 'P', publicationYear: 2001, isbn: '978-0-13-235088-4', subjects: [], inCatalog: false }
-  const { pg, pool, data } = await database([{ data: { title: 'Algebra', author: 'Ann Cook' } }, { data: { title: 'Algebra', author: '' } }])
-  const fill = createImportLookupFill(pool, { lookup: async () => { throw new Error('not used') }, searchTitles: async () => ({ source: 'open_library', localMatches: [], candidates: [dashed, { ...dashed, author: 'Bo Lee', isbn: '9780306406157' }] }) })
-  assert.deepEqual(await fill(1), { filled: 1, notFound: 1, remaining: 0, unavailable: false })
-  const [withAuthor, noAuthor] = await data()
-  assert.equal(withAuthor.data_json.isbn, '9780132350884')
-  assert.equal(noAuthor.data_json.isbn, '', 'two books share the title and no author tells them apart')
-
+test('required lookup stops at the deadline without consuming the next row', async () => {
   const slow = await database([{ data: { isbn: '9780132350884' } }, { data: { isbn: '9780132350884' } }])
   let now = 0
   const timed = createImportLookupFill(slow.pool, { lookup: async () => { now += FILL_DEADLINE_MS + 1; return isbnBook }, searchTitles: async () => ({ source: null, localMatches: [], candidates: [] }) }, () => now)
   assert.deepEqual(await timed(1), { filled: 1, notFound: 0, remaining: 1, unavailable: false })
-  await pg.close(); await slow.pg.close()
+  await slow.pg.close()
+})
+
+test('required-field lookup rejects a provider answer with another ISBN and strips provider markup',async()=>{
+ const {lookupBlanks,REQUIRED_IMPORT_LOOKUP_FIELDS}=await import('./import-lookup-fill.ts')
+ const draft={isbn:isbnBook.isbn,title:'',author:'',publisher:'',publicationYear:''}
+ const lookup={lookup:async()=>({...isbnBook,isbn:'9780306406157'}),searchTitles:async()=>({source:null,candidates:[]})}
+ assert.deepEqual(await lookupBlanks(draft,lookup,REQUIRED_IMPORT_LOOKUP_FIELDS,true),{additions:{},record:{}})
+ const safe=await lookupBlanks(draft,{...lookup,lookup:async()=>({...isbnBook,title:'<b>Clean Code</b>'})},REQUIRED_IMPORT_LOOKUP_FIELDS,true)
+ assert.deepEqual(safe.additions,{title:'Clean Code',author:'Robert C. Martin'})
+ assert.deepEqual(await lookupBlanks({...draft,title:'A different book'}, {...lookup,lookup:async()=>isbnBook},REQUIRED_IMPORT_LOOKUP_FIELDS,true),{additions:{},record:{}})
 })

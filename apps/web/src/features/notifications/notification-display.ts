@@ -20,6 +20,7 @@ export function notificationRoute(path: string | null) {
   if (!path) return null
   const role = getCurrentIdentity()?.role
   if (role === 'Faculty') return path.replace('/student/', '/faculty/')
+  if (role === 'Admin' && path === '/student/notifications') return '/admin/notifications'
   if (role === 'Librarian' || role === 'Staff') {
     const prefix = role === 'Librarian' ? '/librarian' : '/staff'
     if (path === '/student/notifications') return `${prefix}/notifications`

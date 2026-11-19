@@ -3,7 +3,7 @@ import type { BulkBookInput } from './bulk-book.validation.ts'
 
 export async function lockBookTitleByIsbn(connection: PoolConnection, isbn: string) {
   const [rows] = await connection.execute<RowDataPacket[]>(
-    `SELECT t.title_id, t.title, t.category_id,
+    `SELECT t.title_id, t.title, t.category_id, t.lifecycle_status,
             (SELECT a.author_name FROM authors a
               WHERE a.title_id = t.title_id
               ORDER BY a.author_order, a.author_id LIMIT 1) AS author_name
@@ -17,6 +17,7 @@ export async function lockBookTitleByIsbn(connection: PoolConnection, isbn: stri
     title: String(rows[0].title),
     author: String(rows[0].author_name ?? ''),
     categoryId: Number(rows[0].category_id),
+    lifecycleStatus: String(rows[0].lifecycle_status),
   }
 }
 
@@ -29,10 +30,10 @@ export async function ensureBookLocationExists(connection: PoolConnection, shelf
 
 export async function lockCategoryShelf(connection: PoolConnection, categoryId: number) {
   const [rows] = await connection.execute<RowDataPacket[]>(
-    `SELECT c.category_id, c.shelf_location, c.shelf_column, c.shelf_row, s.id AS shelf_id,
+    `SELECT c.category_id, c.shelf_location, c.shelf_column, c.shelf_row, s.location_id AS shelf_id,
             s.column_count, s.row_count
        FROM categories c
-       LEFT JOIN floor_plan_shelves s ON s.label = c.shelf_location
+       LEFT JOIN catalog_locations s ON s.name = c.shelf_location AND s.lifecycle_status = 'Active'
       WHERE c.category_id = ? LIMIT 1 FOR UPDATE OF c`,
     [categoryId],
   )

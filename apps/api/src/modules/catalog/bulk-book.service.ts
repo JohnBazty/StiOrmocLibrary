@@ -1,3 +1,4 @@
+import { assertShelfCapacity, lockShelfCapacity } from './shelf-capacity.service.ts'
 import type { Pool } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
@@ -5,6 +6,7 @@ import { renderBookLabel } from './book-label.renderer.ts'
 import { createBulkBookTitle, ensureBookLocationExists, insertGeneratedBookCopy, lockBookTitleByIsbn, lockCategoryShelf, reserveBarcodeSequence, updateBookCover } from './bulk-book.repository.ts'
 import { validateBulkBookInput } from './bulk-book.validation.ts'
 import { removeStoredCover, storeCoverImage } from './cover-image.storage.ts'
+import { assignDeweyCopies, deweyService } from './dewey.service.ts'
 
 const BRANCH_PREFIX = 'STIORMOC'
 
@@ -18,19 +20,28 @@ function identity(value: string) {
 
 export function createBulkBookService(database: Pool = db, clock: () => Date = () => new Date(), labelRenderer = renderBookLabel) {
   return {
-    async addBulk(body: unknown) {
+    async addBulk(body: unknown, actorAccountId: number | null = null) {
       const validated = validateBulkBookInput(body)
+      const dewey = await deweyService.prepare((body as Record<string, unknown>)?.dewey, validated.isbn)
       const connection = await database.getConnection()
       let storedCoverPath: string | null = null
       try {
         await connection.beginTransaction()
+        await lockShelfCapacity(connection)
         const category = await lockCategoryShelf(connection, validated.categoryId)
         if (!category) throw new HttpError(422, 'CATEGORY_NOT_FOUND', 'The selected category does not exist.', { category_id: validated.categoryId })
         {
           if (!await ensureBookLocationExists(connection,validated.shelfLocation)) throw new HttpError(422,'BOOK_LOCATION_NOT_MANAGED','Choose an active location from Maintenance.')
         }
-        const input = { ...validated, shelfLocation: validated.shelfLocation, shelfColumn: category.shelfColumn, shelfRow: category.shelfRow }
+        const sameShelf = validated.shelfLocation === category.shelfLocation
+        const placement = await assertShelfCapacity(connection, {
+          ...validated,
+          shelfColumn: validated.shelfColumn ?? (sameShelf ? category.shelfColumn : 1),
+          shelfRow: validated.shelfRow ?? (sameShelf ? category.shelfRow : 1),
+        }, validated.numberOfCopies)
+        const input = { ...validated, ...placement }
         const existingTitle = await lockBookTitleByIsbn(connection, input.isbn)
+        if (existingTitle?.lifecycleStatus === 'Archived') throw new HttpError(409, 'CATALOG_TITLE_ARCHIVED', 'Restore this archived book title before adding more copies.')
         if (existingTitle && (
           identity(existingTitle.title) !== identity(input.title)
           || identity(existingTitle.author) !== identity(input.author)
@@ -61,6 +72,7 @@ export function createBulkBookService(database: Pool = db, clock: () => Date = (
             qrCodeData: rendered.qrCodeData, barcodeImageData: rendered.barcodeImageData,
           })
         }
+        await assignDeweyCopies(connection, dewey, copies.map(copy => ({ id: copy.physicalCopyId, version: 0 })), actorAccountId)
         await connection.commit()
         return { titleId, createdTitle, numberOfCopies: copies.length, copies }
       } catch (error) {

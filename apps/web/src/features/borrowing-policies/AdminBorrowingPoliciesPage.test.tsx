@@ -6,6 +6,23 @@ import { borrowingPoliciesApi } from './borrowing-policies-api'
 vi.mock('./borrowing-policies-api', () => ({ borrowingPoliciesApi: { list: vi.fn(), publish: vi.fn() } }))
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
+it('does not claim policies are missing while the first request is still loading', () => {
+  vi.mocked(borrowingPoliciesApi.list).mockReturnValue(new Promise(() => {}))
+  render(<AdminBorrowingPoliciesPage />)
+  expect(screen.getByRole('status').textContent).toContain('Loading borrowing policies')
+  expect(screen.queryByText('No active policy is configured.')).toBeNull()
+  expect(screen.queryByText('No policy versions yet.')).toBeNull()
+  expect((screen.getByRole('button', { name: 'Create new version' }) as HTMLButtonElement).disabled).toBe(true)
+})
+
+it('shows a failed first read without presenting an empty policy history', async () => {
+  vi.mocked(borrowingPoliciesApi.list).mockRejectedValue(new Error('Policies could not be loaded.'))
+  render(<AdminBorrowingPoliciesPage />)
+  expect((await screen.findByRole('alert')).textContent).toContain('Policies could not be loaded.')
+  expect(screen.queryByText('No policy versions yet.')).toBeNull()
+  expect((screen.getByRole('button', { name: 'Create new version' }) as HTMLButtonElement).disabled).toBe(true)
+})
+
 const active = {
   versionId: 1, displayName: 'Policy v1', status: 'active' as const, effectiveOn: '2026-10-01', studentMaxActiveBooks: 2,
   facultyMaxActiveBooks: null, borrowingDays: 1, dueTimeCutoff: '08:59:00', dueCutoffLabel: '8:59 AM', maxRenewals: 1,

@@ -1,6 +1,6 @@
 import { normalizeIsbn } from './catalog.validation.ts'
 
-export type ImportCorrection = { field: string; before: string; after: string; reason: 'spaces' | 'isbn' | 'number' | 'category' | 'shelf' | 'placeholder' }
+export type ImportCorrection = { field: string; before: string; after: string; reason: 'spaces' | 'isbn' | 'number' | 'category' | 'shelf' | 'placeholder' | 'invalid_optional' }
 /** Whole-cell words spreadsheets use for "unknown"; they are blanks, so the book lookup may fill them. */
 const PLACEHOLDER = /^(not verified|not located online|n\/a|none|-|—|–)$/i
 export type ImportReference = { id: number; name: string; status: string }

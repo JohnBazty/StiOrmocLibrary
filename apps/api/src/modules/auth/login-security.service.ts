@@ -14,19 +14,27 @@ import {
 } from './login-device-policy.ts'
 
 export { LOGIN_IDLE_MS } from './login-device-policy.ts'
+// S3 (2026-11-11): 5 wrong passwords within 15 minutes pause sign-in for 15 minutes.
+export const ACCOUNT_LOCK_THRESHOLD = 5
+export const ACCOUNT_LOCK_MS = 15 * 60_000
+const LOCK_MINUTES = ACCOUNT_LOCK_MS / 60_000
 const UUID = /^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i
 const hash = (value: string) => createHmac('sha256', env.jwt.secret).update(`login:${value}`).digest('hex')
-const failCode = () => new HttpError(422, 'LOGIN_CODE_INVALID', 'The code is incorrect, expired or already used. Start login again if needed.')
+/** The login_attempt_windows key for one account; Admin unlock clears the same row. */
+export const accountLockIdentifier = (accountId: number) => hash(`account:${accountId}`)
+/** A separate attempt budget for the signed-in current-password check. */
+export const passwordChangeLockIdentifier = (accountId: number) => hash(`password-change:${accountId}`)
+const failCode =() => new HttpError(422, 'LOGIN_CODE_INVALID', 'The code is incorrect, expired or already used. Start login again if needed.')
 const pausedCode = () => new HttpError(429, 'LOGIN_CODE_PAUSED', 'Three incorrect codes were entered. Wait 10 minutes before starting login again.')
 const semesterEnded = () => new HttpError(403, 'SEMESTER_ACCESS_ENDED', 'Your semester has ended. You can sign in again once your enrollment is listed for the next semester.')
-export type VerifiedLogin = { accountId: number; userId: number | null; schoolId: string; role: JwtRole; authVersion: number; fullName: string | null; email: string }
+export type VerifiedLogin = { accountId: number; userId: number | null; schoolId: string; role: JwtRole; authVersion: number; fullName: string | null; email: string; mustChangePassword?: boolean }
 type DeviceOptions = { browserToken?: string; remember?: boolean; replacedSessionId?: string }
 type BrowserIdentity = { accountId: number; authVersion: number; sessionId?: string }
 const deviceExpired = () => new HttpError(401, 'DEVICE_EXPIRED', 'This device’s sign-in has ended. Sign in again to continue.')
 const switchExpired = () => new HttpError(409, 'DEVICE_SWITCH_EXPIRED', 'This sign-in changed or timed out. Sign in again to continue.')
 const verifiedAccount = (account: RowDataPacket, authVersion = Number(account.auth_version)): VerifiedLogin => ({
   accountId: Number(account.account_id), userId: account.user_id, schoolId: account.school_id, role: account.role,
-  authVersion, email: account.email, fullName: account.full_name,
+  authVersion, email: account.email, fullName: account.full_name, mustChangePassword: account.must_change_password === true,
 })
 
 export function createLoginSecurityService(database: Pool = db,
@@ -43,22 +51,23 @@ export function createLoginSecurityService(database: Pool = db,
     const expiresIn = device ? deviceAccessLifetime(lastActivity, deadline, now()) : env.jwt.expiresInSeconds
     if (expiresIn < 1) throw deviceExpired()
     const token = signSessionToken({ ...user, authVersion: version, sessionId, ...(device ? { deviceSession: true, rememberedUntil: deadline, idleUntil: lastActivity + LOGIN_IDLE_MS } : {}) }, expiresIn)
-    return { token, tokenType: 'Bearer', expiresIn, redirect: dashboardForJwtRole(verified.role), user }
+    return { token, tokenType: 'Bearer', expiresIn, redirect: dashboardForJwtRole(verified.role), user, mustChangePassword: verified.mustChangePassword === true }
   }
 
   async function complete(c: PoolConnection, verified: VerifiedLogin, restorationSemesterId: number | null = null, options: DeviceOptions = {}) {
     const [accounts] = await c.execute<RowDataPacket[]>('SELECT a.*,u.account_status AS linked_status,u.email,u.full_name FROM accounts a LEFT JOIN users u ON u.user_id=a.user_id WHERE a.account_id=? FOR UPDATE OF a', [verified.accountId])
     const account = accounts[0]
     if (!account || Number(account.auth_version) !== verified.authVersion || account.role !== verified.role || account.school_id !== verified.schoolId) throw new HttpError(401, 'LOGIN_CHANGED', 'Account access changed. Start login again.')
+    verified = { ...verified, mustChangePassword: account.must_change_password === true }
     const device = devicesEnabled()
     const remember = device && options.remember === true && ['Student', 'Faculty'].includes(verified.role)
     if (account.account_status !== 'Active' || (account.linked_status && account.linked_status !== 'Active')) {
-      const restore=account.role==='Student' && await restorationEvidence(c,verified.accountId,verified.schoolId,String(account.email??''))
+      const restore=(account.role==='Student'||account.role==='Faculty') && await restorationEvidence(c,verified.accountId,verified.schoolId,String(account.email??''))
       if (!restore || restore.semesterId !== restorationSemesterId) throw new HttpError(401, 'LOGIN_CHANGED', 'Account access changed. Start login again.')
       await c.execute("UPDATE accounts SET account_status='Active',updated_at=NOW() WHERE account_id=?",[verified.accountId])
       await c.execute("UPDATE users SET account_status='Active',updated_at=NOW() WHERE user_id=?",[account.user_id])
       await linkSemesterMember(c,restore.semesterId,verified.accountId,verified.schoolId,restore.name)
-    } else if (verified.role==='Student' && await semesterAccessEnded(c,verified.accountId)) throw semesterEnded()
+    } else if ((verified.role==='Student'||verified.role==='Faculty') && await semesterAccessEnded(c,verified.accountId)) throw semesterEnded()
     if (device) {
       const [sessions] = await c.execute<RowDataPacket[]>(
         `SELECT session_id,device_token_hash FROM library_login_sessions
@@ -122,8 +131,8 @@ export function createLoginSecurityService(database: Pool = db,
     async login(body: any, browserToken?: string) {
       const suppliedId = String(body?.school_id ?? body?.email ?? '').trim().slice(0, 254)
       // The same account has one attempt budget across its school-ID and legacy email aliases.
-      const [aliases] = await database.execute<RowDataPacket[]>('SELECT a.account_id FROM accounts a LEFT JOIN users u ON u.user_id=a.user_id WHERE a.school_id=? OR LOWER(u.email)=? LIMIT 1', [suppliedId.toUpperCase(), suppliedId.toLowerCase()])
-      const identifier = hash(aliases[0] ? `account:${aliases[0].account_id}` : `identifier:${suppliedId.toUpperCase()}`)
+      const [aliases] = await database.execute<RowDataPacket[]>('SELECT a.account_id FROM accounts a LEFT JOIN users u ON u.user_id=a.user_id WHERE a.school_id=? OR LOWER(u.email)=? ORDER BY (a.school_id=?) DESC, a.account_id LIMIT 1', [suppliedId.toUpperCase(), suppliedId.toLowerCase(), suppliedId.toUpperCase()])
+      const identifier = aliases[0] ? accountLockIdentifier(Number(aliases[0].account_id)) : hash(`identifier:${suppliedId.toUpperCase()}`)
       // Serialize attempts across instances. Only incorrect credentials increment the counter.
       const credentialCheck = await verifyCredentials(body).then(value => ({ value, error: null as unknown })).catch(error => ({ value: null, error }))
       const result = await tx(async c => {
@@ -135,7 +144,7 @@ export function createLoginSecurityService(database: Pool = db,
           return { error: new HttpError(429, 'LOGIN_PAUSED', `Sign-in is paused. Try again in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`) }
         }
         let count = Number(row.failed_count)
-        if (row.locked_until || timestamp - new Date(row.window_started_at).getTime() >= LOGIN_IDLE_MS) {
+        if (row.locked_until || timestamp - new Date(row.window_started_at).getTime() >= ACCOUNT_LOCK_MS) {
           count = 0
           await c.execute('UPDATE login_attempt_windows SET failed_count=0,locked_until=NULL,window_started_at=? WHERE identifier_hash=?', [new Date(timestamp), identifier])
         }
@@ -144,17 +153,18 @@ export function createLoginSecurityService(database: Pool = db,
         catch (error) {
           if (!(error instanceof HttpError) || error.code !== 'INVALID_CREDENTIALS') throw error
           count++
-          await c.execute('UPDATE login_attempt_windows SET failed_count=?,locked_until=? WHERE identifier_hash=?', [count, count >= 8 ? new Date(timestamp + LOGIN_IDLE_MS) : null, identifier])
-          const remaining = Math.max(0, 8 - count)
-          return { error: new HttpError(count >= 8 ? 429 : 401, count >= 8 ? 'LOGIN_PAUSED' : 'INVALID_CREDENTIALS', count >= 8 ? 'Too many wrong attempts. Try again in 10 minutes.' : 'Wrong credentials.' + (remaining <= 3 ? ` ${remaining} attempts remaining.` : '')) }
+          const lock = count >= ACCOUNT_LOCK_THRESHOLD
+          await c.execute('UPDATE login_attempt_windows SET failed_count=?,locked_until=? WHERE identifier_hash=?', [count, lock ? new Date(timestamp + ACCOUNT_LOCK_MS) : null, identifier])
+          const remaining = Math.max(0, ACCOUNT_LOCK_THRESHOLD - count)
+          return { error: new HttpError(lock ? 429 : 401, lock ? 'LOGIN_PAUSED' : 'INVALID_CREDENTIALS', lock ? `Too many wrong attempts. Try again in ${LOCK_MINUTES} minutes.` : 'Incorrect Username and/or password' + (remaining <= 3 ? `. ${remaining} attempts remaining.` : '')) }
         }
         await c.execute('UPDATE login_attempt_windows SET failed_count=0,locked_until=NULL WHERE identifier_hash=?', [identifier])
         if (!['Student', 'Faculty'].includes(verified.role)) return { data: await complete(c, verified, null, { browserToken }) }
         if (!isInstitutionalEmail(verified.email)) throw new HttpError(422, 'LOGIN_EMAIL_MISSING', 'Your school email is not linked. Contact the librarian.')
-        if (verified.role==='Student' && enrollmentEnabled()) await lockEnrollment(c)
+        if ((verified.role==='Student'||verified.role==='Faculty') && enrollmentEnabled()) await lockEnrollment(c)
         const [lockedAccount] = await c.execute<RowDataPacket[]>('SELECT auth_version FROM accounts WHERE account_id=? FOR UPDATE', [verified.accountId])
         if (Number(lockedAccount[0]?.auth_version) !== verified.authVersion) throw new HttpError(401, 'LOGIN_CHANGED', 'Account access changed. Start login again.')
-        const ended = verified.role === 'Student' && await semesterAccessEnded(c, verified.accountId)
+        const ended = (verified.role === 'Student' || verified.role === 'Faculty') && await semesterAccessEnded(c, verified.accountId)
         const restoration = ended ? await restorationEvidence(c, verified.accountId, verified.schoolId, verified.email) : null
         if (ended && !restoration) throw semesterEnded()
         const [recent] = await c.execute<RowDataPacket[]>('SELECT sent_at,failed_count,expires_at FROM login_otp_challenges WHERE account_id=? ORDER BY sent_at DESC LIMIT 1', [verified.accountId])
@@ -222,7 +232,7 @@ export function createLoginSecurityService(database: Pool = db,
         const deadline = session.remembered_until == null ? undefined : new Date(session.remembered_until).getTime()
         let lastActivity = new Date(session.last_activity_at).getTime()
         if (account.account_status !== 'Active' || (account.linked_status && account.linked_status !== 'Active')
-          || (account.role === 'Student' && await semesterAccessEnded(c, Number(account.account_id)))
+          || ((account.role === 'Student' || account.role === 'Faculty') && await semesterAccessEnded(c, Number(account.account_id)))
           || (deadline != null && (!['Student', 'Faculty'].includes(account.role) || timestamp >= deadline))) throw deviceExpired()
         if (deadline != null) {
           await c.execute(`UPDATE library_login_sessions SET last_activity_at=? WHERE session_id=? AND ${DEVICE_DEADLINE_SQL}`, [new Date(timestamp), session.session_id])
@@ -259,8 +269,8 @@ export function createLoginSecurityService(database: Pool = db,
         const [rows] = await c.execute<RowDataPacket[]>('SELECT * FROM login_otp_challenges WHERE challenge_id=? FOR UPDATE', [challengeId])
         const row = rows[0], account = accounts[0]
         if (!row || row.consumed_at || row.failed_count >= 3 || row.resend_count >= 3 || !account || Number(account.auth_version) !== Number(row.auth_version)) throw failCode()
-        if (account.account_status !== 'Active' || (account.linked_status && account.linked_status !== 'Active') || (account.role==='Student' && await semesterAccessEnded(c,Number(reference[0].account_id)))) {
-          const restoration = account.role === 'Student' && await restorationEvidence(c, Number(reference[0].account_id), account.school_id, String(account.email ?? ''))
+        if (account.account_status !== 'Active' || (account.linked_status && account.linked_status !== 'Active') || ((account.role==='Student'||account.role==='Faculty') && await semesterAccessEnded(c,Number(reference[0].account_id)))) {
+          const restoration = (account.role === 'Student' || account.role === 'Faculty') && await restorationEvidence(c, Number(reference[0].account_id), account.school_id, String(account.email ?? ''))
           if (!restoration || restoration.semesterId !== Number(row.restoration_semester_id)) throw failCode()
         }
         if (now() - new Date(row.sent_at).getTime() < 60_000) throw new HttpError(429, 'LOGIN_CODE_WAIT', 'Wait one minute before requesting another code.')

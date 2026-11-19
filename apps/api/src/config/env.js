@@ -1,6 +1,7 @@
 import dotenv from 'dotenv'
 import { randomBytes } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
+import { readXenditSandboxConfig } from './xendit-sandbox.ts'
 
 // Resolve from this module so npm workspace and repository-root commands load
 // the same API environment file consistently.
@@ -15,6 +16,9 @@ const configuredSecret = process.env.SESSION_SECRET?.trim()
 const configuredJwtSecret = process.env.JWT_SECRET?.trim()
 const configuredReportIntegritySecret = process.env.REPORT_INTEGRITY_SECRET?.trim()
 const configuredAttendanceQrSecret = process.env.ATTENDANCE_QR_SECRET?.trim()
+
+// Shared constants for authentication service layer
+export const DUMMY_BCRYPT_HASH = '$2b$12$k1Pc4Uvw2o.7wwBZ1hQwHu5vTfEfRPRgRhhcaawYWpPJez0o7gaCq'
 
 if (isProduction && (!configuredSecret || configuredSecret.length < 32)) {
   throw new Error('SESSION_SECRET must contain at least 32 characters in production.')
@@ -68,6 +72,7 @@ function resolveDatabaseUrl() {
 const databaseUrl = resolveDatabaseUrl()
 
 export const env = Object.freeze({
+  xendit: readXenditSandboxConfig(process.env),
   isProduction,
   inventoryPreviewEnabled: !isProduction && process.env.INVENTORY_PREVIEW_ENABLED === 'true',
   port: Number(process.env.PORT ?? 4000),

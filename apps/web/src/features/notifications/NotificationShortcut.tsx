@@ -2,7 +2,7 @@ import { Bell, Check, List } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from '../../hooks/useLiveQuery'
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 import { notificationApi } from './notification-api'
 import { formatNotificationDate, notificationIcon, notificationRoute, notificationsUpdated } from './notification-display'
 import type { NotificationItem } from './types'
@@ -16,7 +16,7 @@ export function NotificationShortcut({ path }: { path: string }) {
   const panelId = useId()
   const navigate = useNavigate()
   const location = useLocation()
-  const enabled = Boolean(getAccessToken())
+  const enabled = Boolean(getCsrfToken())
   const badge = useLiveQuery(`notification-unread:${path}`, async signal => (await notificationApi.list(signal, 1)).unreadCount, { enabled, events: [notificationsUpdated] })
   const preview = useLiveQuery(`notification-preview:${path}`, signal => notificationApi.list(signal, 5), { enabled: enabled && open, events: [notificationsUpdated] })
   const unreadCount = badge.data ?? 0
@@ -46,6 +46,17 @@ export function NotificationShortcut({ path }: { path: string }) {
     } finally { setBusy(false) }
   }
 
+  async function markAllRead() {
+    if (busy || !unreadCount) return
+    setBusy(true); setActionError('')
+    try {
+      await notificationApi.markAllRead()
+      window.dispatchEvent(new Event(notificationsUpdated))
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not mark notifications as read. Try again.')
+    } finally { setBusy(false) }
+  }
+
   return <div ref={container} className="sm:relative" onBlur={event => {
     if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) setOpen(false)
   }} onKeyDown={event => {
@@ -59,6 +70,9 @@ export function NotificationShortcut({ path }: { path: string }) {
     {open && <section id={panelId} aria-label="Recent notifications" className="absolute inset-x-3 top-full z-40 mt-2 overflow-hidden rounded-2xl border border-[#0b5ea2]/15 bg-white text-[#0b5ea2] shadow-xl sm:left-auto sm:right-0 sm:w-96 dark:border-white/15 dark:bg-[#001a4d] dark:text-white">
       <div className="flex items-center justify-between border-b border-current/10 px-4 py-3">
         <h2 className="font-display font-bold">Notifications</h2><span className="text-xs tabular-nums opacity-70">{unreadCount} unread</span>
+      </div>
+      <div className="border-b border-current/10 px-4">
+        <button type="button" disabled={busy || !unreadCount} onClick={() => void markAllRead()} className="flex min-h-11 items-center gap-2 text-sm font-semibold disabled:opacity-50"><Check size={17} aria-hidden="true" />{busy ? 'Updating…' : 'Mark all as read'}</button>
       </div>
       {actionError && <p role="alert" className="px-4 py-2 text-sm text-red-700 dark:text-red-200">{actionError}</p>}
       {preview.error ? <div className="px-4 py-3 text-sm"><p role="alert">Unable to load notifications.</p><button type="button" className="min-h-11 font-bold underline" onClick={() => void preview.refresh()}>Try again</button></div>

@@ -1,6 +1,7 @@
 import { HttpError } from '../../core/http-error.ts'
 
 export type ResearchCatalogFilters = {
+  groupId?: number | null
   query: string | null
   title: string | null
   authors: string | null
@@ -38,6 +39,7 @@ export function parseResearchCatalogFilters(query: Record<string, unknown>): Res
     throw new HttpError(422, 'RESEARCH_CATALOG_FILTER_INVALID', 'publication_year is outside the supported range.')
   }
   return {
+    groupId: positiveInteger(query.groupId, 'groupId'),
     query: text(query.q ?? query.query),
     title: text(query.title),
     authors: text(query.authors ?? query.author),

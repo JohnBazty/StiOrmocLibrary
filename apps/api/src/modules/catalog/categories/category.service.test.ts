@@ -5,6 +5,13 @@ import { HttpError } from '../../../core/http-error.ts'
 import { createCategoryService } from './category.service.ts'
 import { findCategoryByName, updateCategoryRow } from './category.repository.ts'
 
+function transactional(database: Pool): Pool {
+  return { ...database, getConnection: async () => ({
+    execute: async (sql: string, values: unknown[]) => sql.includes('pg_advisory_xact_lock') ? [[]] : database.execute(sql, values),
+    beginTransaction: async () => {}, commit: async () => {}, rollback: async () => {}, release: () => {},
+  }) } as unknown as Pool
+}
+
 test('category name lookup does not send an untyped nullable parameter', async () => {
   const calls: Array<{ sql: string; values: unknown[] }> = []
   const database = { async execute(sql: string, values: unknown[]) { calls.push({ sql, values }); return [[]] } } as unknown as Pool
@@ -19,13 +26,14 @@ test('creates a unique category with prepared values', async () => {
   const calls: Array<{ sql: string; values: unknown[] }> = []
   const database = {
     async execute(sql: string, values: unknown[]) {
+      if (sql.includes('pg_advisory_xact_lock')) return [[]]
       calls.push({ sql, values })
       if (sql.includes('SELECT category_id')) return [[]]
       if (sql.includes('FROM catalog_locations')) return [[{ id: 4, label: 'Shelf A-1' }]]
       return [{ insertId: 14, affectedRows: 1 }]
     },
   } as unknown as Pool
-  const result = await createCategoryService(database).create({ categoryName: 'Programming', description: ' Software and code ', shelfLocation: 'Shelf A-1' })
+  const result = await createCategoryService(transactional(database)).create({ categoryName: 'Programming', description: ' Software and code ', shelfLocation: 'Shelf A-1' })
   assert.equal(result.categoryId, 14)
   assert.equal(result.description, 'Software and code')
   assert.deepEqual(calls[2].values, ['Programming', 'Software and code', 'Shelf A-1', 1, 1])
@@ -43,12 +51,13 @@ test('editing a category saves its description on the same canonical row', async
 test('rejects a category shelf that is not managed in Category Management', async () => {
   const database = {
     async execute(sql: string) {
+      if (sql.includes('pg_advisory_xact_lock')) return [[]]
       if (sql.includes('FROM categories')) return [[]]
       if (sql.includes('FROM catalog_locations')) return [[]]
       throw new Error(`Unexpected statement: ${sql}`)
     },
   } as unknown as Pool
-  await assert.rejects(createCategoryService(database).create({ categoryName: 'Programming', shelfLocation: 'Typed shelf' }), (error: unknown) => {
+  await assert.rejects(createCategoryService(transactional(database)).create({ categoryName: 'Programming', shelfLocation: 'Typed shelf' }), (error: unknown) => {
     assert.ok(error instanceof HttpError)
     assert.equal(error.code, 'CATEGORY_SHELF_NOT_MANAGED')
     assert.deepEqual(error.details, { errors: { shelfLocation: 'Select one of the managed shelves in Category Management.' } })
@@ -58,7 +67,7 @@ test('rejects a category shelf that is not managed in Category Management', asyn
 
 test('halts a duplicate category with the required 422 error', async () => {
   const database = { execute: async () => [[{ category_id: 2, category_name: 'Programming' }]] } as unknown as Pool
-  await assert.rejects(createCategoryService(database).create({ categoryName: ' Programming ', shelfLocation: 'Aisle 3' }), (error: unknown) => {
+  await assert.rejects(createCategoryService(transactional(database)).create({ categoryName: ' Programming ', shelfLocation: 'Aisle 3' }), (error: unknown) => {
     assert.ok(error instanceof HttpError)
     assert.equal(error.status, 422)
     assert.equal(error.code, 'CATEGORY_NAME_ALREADY_EXISTS')
@@ -69,12 +78,13 @@ test('halts a duplicate category with the required 422 error', async () => {
 test('translates a PostgreSQL duplicate category into a clear validation error', async () => {
   const database = {
     async execute(sql: string) {
+      if (sql.includes('pg_advisory_xact_lock')) return [[]]
       if (sql.includes('FROM categories')) return [[]]
       if (sql.includes('FROM catalog_locations')) return [[{ id: 1, label: 'Shelf A-1', column_count: 2, row_count: 2 }]]
       throw Object.assign(new Error('duplicate key'), { code: '23505' })
     },
   } as unknown as Pool
-  await assert.rejects(createCategoryService(database).create({ categoryName: 'Programming', shelfLocation: 'Shelf A-1' }), (error: unknown) => {
+  await assert.rejects(createCategoryService(transactional(database)).create({ categoryName: 'Programming', shelfLocation: 'Shelf A-1' }), (error: unknown) => {
     assert.ok(error instanceof HttpError)
     assert.equal(error.code, 'CATEGORY_NAME_ALREADY_EXISTS')
     return true
@@ -89,6 +99,7 @@ test('rolls back and preserves data when deleting a category with active materia
     async rollback() { state.rolledBack += 1 },
     release() { state.released += 1 },
     async execute(sql: string) {
+      if (sql.includes('pg_advisory_xact_lock')) return [[]]
       state.statements.push(sql)
       if (sql.includes('FROM categories WHERE category_id')) return [[{ category_id: 7, category_name: 'Database', shelf_location: 'Shelf B-1' }]]
       if (sql.includes('SELECT pc.physical_copy_id')) return [[{ physical_copy_id: 81 }]]
@@ -117,6 +128,7 @@ test('retained historical references prevent deletion and return a useful error'
   const connection = {
     async beginTransaction() {}, async commit() { committed = true }, async rollback() { rolledBack = true }, release() {},
     async execute(sql: string) {
+      if (sql.includes('pg_advisory_xact_lock')) return [[]]
       if (sql.startsWith('DELETE FROM categories')) throw Object.assign(new Error('Referenced by archived title'), { code: '23503' })
       if (sql.includes('FROM categories WHERE category_id')) return [[{ category_id: 7, category_name: 'History' }]]
       return [[]]
@@ -137,6 +149,7 @@ test('reassigns title and legacy identifiers before deleting the old category in
   const connection = {
     async beginTransaction() {}, async commit() { state.committed += 1 }, async rollback() { state.rolledBack += 1 }, release() {},
     async execute(sql: string) {
+      if (sql.includes('pg_advisory_xact_lock')) return [[]]
       state.statements.push(sql)
       if (sql.includes('WHERE category_id IN')) return [[{ category_id: 3, shelf_location: 'Old shelf' }, { category_id: 9, shelf_location: 'Shelf 1A' }]]
       if (sql.includes('FROM catalog_locations')) return [[{ id: 1, label: 'Shelf 1A' }]]
@@ -158,11 +171,12 @@ test('reassigns title and legacy identifiers before deleting the old category in
   assert.ok(state.statements.findIndex((sql) => sql.includes('UPDATE titles')) < state.statements.findIndex((sql) => sql.includes('DELETE FROM categories')))
 })
 
-test('saving a category synchronizes every active book and research copy to its managed shelf', async () => {
+test('saving a category default preserves every existing copy location', async () => {
   const state = { committed: 0, rolledBack: 0, statements: [] as string[] }
   const connection = {
     async beginTransaction() {}, async commit() { state.committed += 1 }, async rollback() { state.rolledBack += 1 }, release() {},
     async execute(sql: string) {
+      if (sql.includes('pg_advisory_xact_lock')) return [[]]
       state.statements.push(sql)
       if (sql.includes('FROM categories WHERE category_id')) return [[{ category_id: 7, category_name: 'Action', shelf_location: 'F-A' }]]
       if (sql.includes('category_name = ?')) return [[]]
@@ -175,14 +189,11 @@ test('saving a category synchronizes every active book and research copy to its 
     },
   }
   const result = await createCategoryService({ getConnection: async () => connection } as unknown as Pool).update(7, { categoryName: 'Action', shelfLocation: 'SHELF 1A' }, 1)
-  assert.equal(result.bookCopies, 2)
-  assert.equal(result.movedBookCopies, 1)
-  assert.equal(result.researchCopies, 1)
-  assert.equal(result.movedResearchCopies, 1)
+  assert.equal(result.shelfLocation, 'SHELF 1A')
   assert.equal(state.committed, 1)
   assert.equal(state.rolledBack, 0)
-  assert.ok(state.statements.some((sql) => sql.includes('UPDATE physical_copies')))
-  assert.ok(state.statements.some((sql) => sql.includes('UPDATE research_inventory')))
+  assert.equal(state.statements.some((sql) => sql.includes('UPDATE physical_copies')), false)
+  assert.equal(state.statements.some((sql) => sql.includes('UPDATE research_inventory')), false)
   assert.ok(state.statements.some((sql) => sql.includes('description = ?')))
   assert.ok(state.statements.some((sql) => sql.includes('INSERT INTO floor_plan_events')))
 })

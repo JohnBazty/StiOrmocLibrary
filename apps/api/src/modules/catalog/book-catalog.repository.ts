@@ -52,6 +52,8 @@ const SELECT_FIELDS = `SELECT
     COALESCE(c.category_name, 'Uncategorized') AS category_name,
     COALESCE(stock.available_shelf_location, stock.any_shelf_location, t.call_number) AS shelf_location,
     COALESCE(stock.total_copies_count, 0) AS total_copies_count,
+    COALESCE(stock.borrowed_copies_count, 0) AS borrowed_copies_count,
+    COALESCE(stock.reserved_copies_count, 0) AS reserved_copies_count,
     ${'COALESCE(stock.available_copies_count, 0)'} AS available_copies_count,
     stock.reservable_material_id,
     stock.preview_barcode,
@@ -150,6 +152,8 @@ function mapBook(row: RowDataPacket) {
     currentConditionStatus: row.current_condition_status ? String(row.current_condition_status) : null,
     totalCopiesCount: Number(row.total_copies_count ?? 0),
     availableCopiesCount: Number(row.available_copies_count ?? 0),
+    borrowedCopiesCount: Number(row.borrowed_copies_count ?? 0),
+    reservedCopiesCount: Number(row.reserved_copies_count ?? 0),
     reservableMaterialId: row.reservable_material_id === null ? null : Number(row.reservable_material_id),
     previewBarcode: row.preview_barcode ? String(row.preview_barcode) : null,
   }
@@ -209,11 +213,13 @@ export async function queryBookOverview(database: Pool, titleId: number) {
 
 export async function queryBookCopyDetails(database: Pool, titleId: number) {
   const [rows] = await database.execute<RowDataPacket[]>(
-    `SELECT physical_copy_id, accession_number, barcode, availability_status, condition_status, shelf_location
+    `SELECT physical_copy_id, accession_number, barcode, availability_status, condition_status, shelf_location,
+       (SELECT code FROM dewey_classifications d WHERE d.classification_id=physical_copies.dewey_classification_id) AS dewey_code,
+       (SELECT description FROM dewey_classifications d WHERE d.classification_id=physical_copies.dewey_classification_id) AS dewey_description
        FROM physical_copies WHERE title_id=? AND lifecycle_status='Active'
        ORDER BY physical_copy_id ASC`, [titleId])
   return rows.map(row => ({ copyId: Number(row.physical_copy_id), accessionNumber: String(row.accession_number),
-    barcode: String(row.barcode), availability: String(row.availability_status), condition: String(row.condition_status),
+    barcode: String(row.barcode), availability: String(row.availability_status), condition: String(row.condition_status), deweyCode:row.dewey_code??null,deweyDescription:row.dewey_description??null,
     shelf: String(row.shelf_location) }))
 }
 

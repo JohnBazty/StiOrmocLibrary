@@ -23,6 +23,16 @@ function payload(publicId: string, secret: string) {
   return `${prefix}.${publicId}.${secret}`
 }
 
+/** Reconstruct an existing pass without issuing or restoring a revoked credential. */
+export function existingAttendancePayload(row: RowDataPacket): string | null {
+  if (row.credential_status !== 'Active') return null
+  const secret = credentialSecret(String(row.public_id), Number(row.user_id), Number(row.credential_version))
+  const stored = row.secret_hash as Buffer | undefined
+  const supplied = digest(secret)
+  return stored && stored.length === supplied.length && timingSafeEqual(stored, supplied)
+    ? payload(String(row.public_id), secret) : null
+}
+
 export function purposeAttendanceQr(base: string, purpose: AttendancePurpose, now = new Date()) {
   if (!attendancePurposes.includes(purpose)) throw new HttpError(422,'ATTENDANCE_PURPOSE_REQUIRED','Choose a valid visit purpose.')
   const parsed = parseAttendanceQr(base)
@@ -104,7 +114,7 @@ async function reuseOrRotate(executor: Executor, userId: number, row: RowDataPac
   }
 }
 
-export async function validateAttendanceCredential(executor: Executor, value: unknown, lock = false, now = new Date()) {
+export async function validateAttendanceCredential(executor: Executor, value: unknown, lock = false, now = new Date(), allowInactiveReturn = false) {
   const parsed = parseAttendanceQr(value, now)
   const [rows] = await executor.execute<RowDataPacket[]>(
     `SELECT c.credential_id,c.user_id,c.secret_hash,c.credential_status,c.issued_at,${`to_char(c.last_used_at,'YYYY-MM-DD"T"HH24:MI:SS.MS')`} AS last_used_at,
@@ -120,7 +130,7 @@ export async function validateAttendanceCredential(executor: Executor, value: un
     throw new HttpError(422, 'ATTENDANCE_QR_INVALID', 'This attendance QR code is invalid or no longer recognized.')
   }
   if (row.credential_status !== 'Active') throw new HttpError(422, 'ATTENDANCE_QR_REVOKED', 'This attendance QR code has been revoked.')
-  if (row.account_status !== 'Active') throw new HttpError(403, 'ATTENDANCE_ACCOUNT_INACTIVE', 'This library account is not active.')
+  if (row.account_status !== 'Active' && !allowInactiveReturn) throw new HttpError(403, 'ATTENDANCE_ACCOUNT_INACTIVE', 'This library account is not active.')
   return {
     credentialId: Number(row.credential_id), userId: Number(row.user_id), publicId: parsed.publicId,
     schoolId: String(row.school_id), name: String(row.full_name), role: String(row.user_role),

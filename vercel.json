@@ -3,21 +3,31 @@
   "git": {
     "deploymentEnabled": {
       "codex/phase2-phase6-updates": false,
-      "codex/job-runner-manila": false
+      "codex/job-runner-manila": false,
+      "codex/payment-updates": false
     }
   },
   "framework": "vite",
-  "regions": ["icn1"],
+  "regions": [
+    "icn1"
+  ],
   "buildCommand": "npm run build",
   "outputDirectory": "apps/web/dist",
   "functions": {
     "api/index.mjs": {
-      "includeFiles": "{apps/api/assets/fonts/**,node_modules/@sparticuz/chromium/bin/**,node_modules/docx-preview/dist/docx-preview.js,node_modules/jszip/dist/jszip.min.js}",
-      "maxDuration": 60
+      "includeFiles": "{apps/api/{assets/fonts/**,dist/modules/printing/printing-page.worker.js},node_modules/{@sparticuz/chromium/bin/**,docx-preview/dist/*.js,jszip/dist/jszip.min.js,pdfjs-dist/**,@napi-rs/canvas*/**}}",
+      "maxDuration": 60,
+      "excludeFiles": "{node_modules/pdfjs-dist/{build,web,types,legacy/web}/**,node_modules/pdfjs-dist/**/*.map}"
     }
   },
   "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/index?__api_route=:path*" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/:__api_route*",
+      "destination": "/api/index?__api_route=:__api_route*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ]
 }

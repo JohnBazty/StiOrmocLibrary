@@ -36,6 +36,16 @@ export function calculateOperatingDueDate(
   return due
 }
 
+/** Extend from the current due instant by N operating days (renewal path). */
+export function extendOperatingDueDate(
+  currentDueAt: Date,
+  extensionDays: number,
+  cutoff: string | { hour: number; minute: number } = { hour: 8, minute: 59 },
+  closedDates: ReadonlySet<string> = new Set(),
+) {
+  return calculateOperatingDueDate(currentDueAt, extensionDays, cutoff, closedDates)
+}
+
 /** Legacy helper: one operating day at 08:59. Prefer calculateOperatingDueDate with policy values. */
 export function nextOperatingDueDate(borrowedAt: Date, closedDates: ReadonlySet<string> = new Set()) {
   return calculateOperatingDueDate(borrowedAt, 1, { hour: 8, minute: 59 }, closedDates)

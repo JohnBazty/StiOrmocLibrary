@@ -3,20 +3,20 @@ import { AuthMessage } from './AuthMessage'
 import { rosterRegistrationRequest } from './auth-api'
 
 type Props = {
+  role?: 'Student'|'Faculty'
   fieldClass: string
   busy: boolean
   onBusy: (busy: boolean) => void
   onComplete: (schoolId: string) => void
 }
 
-export function RosterRegistrationForm({ fieldClass, busy, onBusy, onComplete }: Props) {
+export function RosterRegistrationForm({ fieldClass, busy, onBusy, onComplete, role='Student' }: Props) {
   const [schoolId, setSchoolId] = useState('')
   const [challengeId, setChallengeId] = useState('')
   const [code, setCode] = useState('')
   const [grant, setGrant] = useState('')
   const [password, setPassword] = useState('')
   const [confirmation, setConfirmation] = useState('')
-  const [showPasswords, setShowPasswords] = useState(false)
   const [retryAt, setRetryAt] = useState(0)
   const [canResend, setCanResend] = useState(false)
   const [error, setError] = useState('')
@@ -30,7 +30,7 @@ export function RosterRegistrationForm({ fieldClass, busy, onBusy, onComplete }:
   }, [retryAt])
 
   async function requestCode() {
-    const result = await rosterRegistrationRequest<{ challengeId: string }>('/begin', { school_id: normalizedId })
+    const result = await rosterRegistrationRequest<{ challengeId: string }>('/begin', { school_id: normalizedId }, undefined, role)
     setChallengeId(result.challengeId)
     setCode('')
     setCanResend(false)
@@ -51,7 +51,7 @@ export function RosterRegistrationForm({ fieldClass, busy, onBusy, onComplete }:
     void run(async () => {
       if (!challengeId) return requestCode()
       if (!grant) {
-        const result = await rosterRegistrationRequest<{ grant: string }>('/verify', { challenge_id: challengeId, code })
+        const result = await rosterRegistrationRequest<{ grant: string }>('/verify', { challenge_id: challengeId, code }, undefined, role)
         setGrant(result.grant)
         setCode('')
         return
@@ -62,7 +62,7 @@ export function RosterRegistrationForm({ fieldClass, busy, onBusy, onComplete }:
       }
       const result = await rosterRegistrationRequest<{ schoolId: string }>('/complete', {
         challenge_id: challengeId, grant, password, confirm_password: confirmation,
-      })
+      }, undefined, role)
       onComplete(result.schoolId)
     })
   }
@@ -73,43 +73,37 @@ export function RosterRegistrationForm({ fieldClass, busy, onBusy, onComplete }:
     setCode('')
     setPassword('')
     setConfirmation('')
-    setShowPasswords(false)
     setError('')
   }
 
   return <form className="mt-5 space-y-4" onSubmit={submit}>
     {error && <AuthMessage error>{error}</AuthMessage>}
     {!challengeId ? <>
-      <p className="text-sm">Enter the Student ID on your school record. We use the school email on the enrollment roster.</p>
-      <label className="block space-y-2 text-sm font-bold">Student ID
+      <p className="text-sm">Enter the {role} ID on your school record. We use the school email on the enrollment roster.</p>
+      <label className="block space-y-2 text-sm font-bold">{role} ID
         <input required maxLength={50} autoComplete="username" className={fieldClass} value={schoolId} disabled={busy}
           onChange={event => setSchoolId(event.target.value)} />
       </label>
     </> : !grant ? <>
-      <p role="status" className="text-sm">A code can only be sent if you are on the current roster and have a school email and no existing account. Check your inbox and junk folder. If you still need help, contact the library.</p>
+      <p role="status" className="text-sm">If your ID is eligible, a code was sent to your school email. Check your inbox and spam folder. If you already have an account, sign in instead.</p>
       <label className="block space-y-2 text-sm font-bold">Email verification code
         <input required autoFocus inputMode="numeric" maxLength={6} autoComplete="one-time-code" className={fieldClass}
           value={code} disabled={busy} onChange={event => setCode(event.target.value.replace(/\D/g, ''))} />
       </label>
     </> : <>
-      <p role="status" className="text-sm">School email verified. Set a password to activate your account.</p>
+      <p role="status" className="text-sm">School email verified. Set a password to finish creating your account.</p>
       <label className="block space-y-2 text-sm font-bold">Password
-        <input required autoFocus type={showPasswords ? 'text' : 'password'} minLength={8} maxLength={72} autoComplete="new-password"
+        <input required autoFocus type="password" minLength={8} maxLength={72} autoComplete="new-password"
           className={fieldClass} value={password} disabled={busy} onChange={event => setPassword(event.target.value)} />
       </label>
       <label className="block space-y-2 text-sm font-bold">Confirm password
-        <input required type={showPasswords ? 'text' : 'password'} minLength={8} maxLength={72} autoComplete="new-password"
+        <input required type="password" minLength={8} maxLength={72} autoComplete="new-password"
           className={fieldClass} value={confirmation} disabled={busy} onChange={event => setConfirmation(event.target.value)} />
-      </label>
-      <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm font-semibold">
-        <input type="checkbox" checked={showPasswords} onChange={event => setShowPasswords(event.target.checked)}
-          className="h-4 w-4 accent-[#0b5ea2]" />
-        Show passwords
       </label>
     </>}
     <button className="min-h-12 w-full rounded-xl bg-[#FFF200] px-4 font-bold text-[#0b5ea2] disabled:opacity-55"
       disabled={busy || (!challengeId ? !validId : !grant && code.length !== 6)}>
-      {busy ? 'Please wait…' : !challengeId ? 'Send email code' : !grant ? 'Verify email code' : 'Activate account'}
+      {busy ? 'Please wait…' : !challengeId ? 'Send email code' : !grant ? 'Verify email code' : 'Create account'}
     </button>
     {challengeId && <div className="flex flex-wrap gap-3 text-sm">
       {!grant && <button type="button" disabled={busy || !canResend} onClick={() => void run(requestCode)}

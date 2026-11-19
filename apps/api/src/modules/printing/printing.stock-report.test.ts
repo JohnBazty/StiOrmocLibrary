@@ -5,23 +5,17 @@ import { PrintingRepository } from './printing.repository.ts'
 
 test('current-stock export uses the same unopened quantities and low-stock flags as the supplies page', async () => {
   const pool = { async execute(sql: string) {
-    if (sql.includes('FROM october17_supply_snapshot')) return [[
-      { supply_type: 'Ink bottle', available: 2, threshold: 2, unit: 'bottles', status: 'Low stock' },
-      { supply_type: 'Bond paper', available: 7, threshold: 3, unit: 'reams', status: 'In stock' },
-    ]]
     if (sql.includes('FROM ink_repository i')) return [[{ ink_id: 4, cartridge_type: 'Dye', color_variation: 'Black', available_bottles: 2, low_stock_threshold_bottles: 2, is_low: 1 }]]
-    if (sql.includes('FROM bond_paper_stocks ORDER BY')) return [[{ paper_stock_id: 6, paper_size_dimension: 'A4', unopened_reams: 7, low_stock_threshold_reams: 3, is_low: 0 }]]
+    if (sql.includes('FROM bond_paper_stocks WHERE deleted_at IS NULL ORDER BY')) return [[{ paper_stock_id: 6, paper_size_dimension: 'A4', unopened_reams: 7, low_stock_threshold_reams: 3, is_low: 0 }]]
     return [[{ low_ink_items: 1, low_paper_items: 0, monthly_expense: 0 }]]
   } } as unknown as Pool
   const repository = new PrintingRepository(pool)
   const visible = await repository.supplies()
   const exported = []
   for await (const row of repository.supplyReportRows()) exported.push(row)
-  assert.equal(exported[0].available, visible.ink[0].available_bottles)
-  assert.equal(exported[0].threshold, visible.ink[0].low_stock_threshold_bottles)
+  assert.equal(exported[0].available, `${visible.ink[0].available_bottles} unopened bottles`)
+  assert.equal(exported[0].threshold, `${visible.ink[0].low_stock_threshold_bottles} bottles`)
   assert.equal(exported[0].status, 'Low stock')
-  assert.equal(exported[0].unit, 'bottles')
-  assert.equal(exported[1].unit, 'reams')
-  assert.equal(exported[1].available, visible.paper[0].unopened_reams)
+  assert.equal(exported[1].available, `${visible.paper[0].unopened_reams} unopened reams`)
   assert.equal(exported[1].status, 'In stock')
 })

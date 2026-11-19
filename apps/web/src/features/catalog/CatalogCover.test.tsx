@@ -5,6 +5,16 @@ import { BookCoverThumbnail } from './BookCoverThumbnail'
 
 afterEach(cleanup)
 
+it('keeps the styled research cover when an uploaded image is unavailable',()=>{
+ render(<CatalogCover title="Coastal Study" src="/missing.png" author="Sample Author" research={{department:'BSTM',publicationYear:2026}}/>)
+ fireEvent.error(screen.getByRole('img'))
+ const jacket=screen.getByRole('img',{name:'Coastal Study research cover'})
+ expect(jacket.textContent).toContain('BSTM')
+ expect(jacket.textContent).toContain('Coastal Study')
+ expect(jacket.textContent).toContain('2026')
+ expect(screen.queryByRole('img',{name:/title initials cover/})).toBeNull()
+})
+
 it.each(['catalog', 'thumbnail'])('%s shows title initials for missing or unreadable covers and recovers for a different cover', kind => {
   const cover = (title: string, src?: string) => kind === 'catalog' ? <CatalogCover title={title} src={src} /> : <BookCoverThumbnail title={title} coverImagePath={src} />
   const { rerender } = render(cover('Harry Potter'))

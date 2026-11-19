@@ -3,6 +3,19 @@ import test from 'node:test'
 import type { Pool } from '../../config/db.js'
 import { createJobHandlers, isJobName, JOB_NAMES } from './job-runner.jobs.ts'
 
+test('payment recovery is a bounded job in the chosen runner and failures contain no provider data', async () => {
+  const database = {} as Pool
+  const handlers = createJobHandlers(database, () => new Date(), async () => ({ processed: 2, pending: 1 }))
+  assert.equal(JOB_NAMES.filter(name => name === 'payment-recovery').length, 1)
+  assert.deepEqual(await handlers['payment-recovery']({ cursor: null }), { result: { processed: 2, pending: 1 } })
+  const failing = createJobHandlers(database, () => new Date(), async () => { throw new Error('Private provider response') })
+  await assert.rejects(failing['payment-recovery']({ cursor: null }), error => {
+    assert.equal((error as Error & { code: string }).code, 'PAYMENT_RECOVERY_FAILED')
+    assert.doesNotMatch((error as Error).message, /Private provider/)
+    return true
+  })
+})
+
 test('only allowlisted job names are accepted', () => {
   assert.equal(isJobName('circulation-overdue'), true)
   for (const name of ['all', 'constructor', '__proto__', 'CIRCULATION-OVERDUE', '']) assert.equal(isJobName(name), false, name)
@@ -16,9 +29,9 @@ test('every job name has a handler that calls its service on the given database'
   for (const name of JOB_NAMES) {
     const outcome = await handlers[name]({ cursor: null }).then((value) => value, (error: unknown) => error)
     if (outcome === marker) continue
-    // Enrollment is switched off in tests, so it answers without the database.
-    assert.equal(name, 'enrollment-close', `${name} did not use the database`)
-    assert.deepEqual(outcome, { result: { closed: false } })
+    // Enrollment and online payments are switched off in tests.
+    assert.ok(['enrollment-close', 'payment-recovery'].includes(name), `${name} did not use the database`)
+    assert.deepEqual(outcome, name === 'enrollment-close' ? { result: { closed: false } } : { result: { skipped: true } })
   }
 })
 

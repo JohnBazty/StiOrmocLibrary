@@ -3,7 +3,9 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { StudentClearancePage } from './StudentClearancePage'
 
 const api = vi.hoisted(() => ({ mine: vi.fn() }))
+const payments = vi.hoisted(() => ({ sync: vi.fn().mockResolvedValue({checked:0,failed:0}) }))
 vi.mock('./clearance-api', () => ({ clearanceApi: api }))
+vi.mock('../payments/payments-api',()=>({paymentsApi:payments}))
 
 const base = {
   status: 'Cleared', reason: 'No library obligations', checkedAt: '2026-09-25T10:00:00+08:00',
@@ -44,7 +46,7 @@ afterEach(() => { cleanup(); vi.clearAllMocks() })
 it('keeps requirements visible without a scheduled deadline and avoids a blocked warning', async () => {
   api.mine.mockResolvedValue({...base,status:'Not Cleared',schedule:{termId:1,deadlineAt:null,version:0}})
   render(<StudentClearancePage />)
-  expect(await screen.findByText('No schedule yet for clearance day.')).toBeTruthy()
+  expect(await screen.findByText('No clearance schedule has been set for your group.')).toBeTruthy()
   expect(screen.getByText('Requirements to complete')).toBeTruthy()
   expect(screen.queryByText('Your clearance is currently blocked.')).toBeNull()
 })
@@ -67,4 +69,39 @@ it('shows an authorized approval without claiming outstanding requirements are c
   expect(screen.getByText('Approved by override')).toBeTruthy()
   expect(screen.queryByText('Your clearance is currently blocked.')).toBeNull()
   expect(screen.queryByText('Requirements complete')).toBeNull()
+})
+it('refreshes verified payments before replacing unpaid clearance with completed requirements',async()=>{
+  api.mine.mockResolvedValueOnce({...base,status:'Not Cleared',computedStatus:'Not Cleared',reason:'PHP 190.00 unpaid overdue fines',summary:{...base.summary,unpaidOverdueFines:190,totalOutstanding:190},fines:[{fineId:1,title:'Returned book',amount:190,basis:'Daily',overdueUnits:19,rate:10}]}).mockResolvedValue({...base,computedStatus:'Cleared'})
+  render(<StudentClearancePage/>)
+  expect(await screen.findByText('Overdue fine · Returned book')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button',{name:'Refresh'}))
+  expect(await screen.findByText('Requirements complete')).toBeTruthy()
+  expect(screen.queryByText('Overdue fine · Returned book')).toBeNull()
+  expect(screen.getByText('No unpaid charges.')).toBeTruthy()
+  expect(payments.sync).toHaveBeenCalledTimes(2)
+  expect(payments.sync.mock.invocationCallOrder[0]).toBeLessThan(api.mine.mock.invocationCallOrder[0])
+})
+
+it('lists an unpaid book-price charge under outstanding charges', async () => {
+  api.mine.mockResolvedValue({
+    ...base, status: 'Not Cleared', reason: 'PHP 450.00 unpaid lost-book replacement charges',
+    summary: { ...base.summary, unpaidReplacementCharges: 450, totalOutstanding: 450 },
+    lostBooks: [{ lostBookReportId: 3, transactionId: 900, titleId: 10, title: 'Clean Code', status: 'Confirmed', chargeResolution: 'Book Price',
+      resolutionReason: null, quotationId: null, quotedAmount: null, replacementCharge: 450, paymentStatus: 'Unpaid', reportedAt: '2026-11-12T09:00:00', verifiedAt: '2026-11-12T09:00:00' }],
+  })
+  render(<StudentClearancePage />)
+  expect(await screen.findByText(/Lost-book replacement · Clean Code/)).toBeTruthy()
+  expect(screen.queryByText('No unpaid charges.')).toBeNull()
+})
+
+it('shows multiple applicable periods in Manila time and keeps requirements independent of the schedule', async () => {
+  api.mine.mockResolvedValue({ ...base, schedule: { termId: 1, group: 'BSIT', deadlineAt: '2099-12-03T09:00:00Z', version: 0, windows: [
+    { id: 1, group: 'BSIT', startsAt: '2099-12-01T00:00:00Z', endsAt: '2099-12-03T09:00:00Z', version: 1, status: 'Upcoming' },
+    { id: 2, group: 'BSIT', startsAt: '2099-12-10T00:00:00Z', endsAt: '2099-12-12T09:00:00Z', version: 1, status: 'Upcoming' },
+  ] } })
+  render(<StudentClearancePage />)
+  expect(await screen.findByRole('region', { name: 'Your clearance schedule' })).toBeTruthy()
+  expect(screen.getAllByText('Upcoming')).toHaveLength(2)
+  expect(screen.getByText(/BSIT · Philippine time/)).toBeTruthy()
+  expect(screen.getByText('You have no library obligations.')).toBeTruthy()
 })

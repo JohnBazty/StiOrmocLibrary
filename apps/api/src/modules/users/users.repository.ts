@@ -1,8 +1,11 @@
-import type { Pool, RowDataPacket } from '../../config/db.js'
+import { randomInt } from 'node:crypto'
+import bcrypt from 'bcrypt'
+import type { Pool, PoolConnection, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { requireLibraryActor } from '../../core/library-permissions.ts'
 import { currentRosterSql, enrollmentEnabled } from '../enrollment/enrollment-policy.ts'
+import { accountLockIdentifier } from '../auth/login-security.service.ts'
 
 const statuses = ['Active', 'Deactivated', 'Archived'] as const
 type Status = typeof statuses[number]
@@ -21,13 +24,6 @@ function reason(value: unknown) {
   if (result.length < 3 || result.length > 500) throw new HttpError(422, 'USER_REASON_REQUIRED', 'Give a reason between 3 and 500 characters.')
   return result
 }
-function profile(body: Record<string, unknown>) {
-  const firstName = String(body.first_name ?? '').trim(), lastName = String(body.last_name ?? '').trim()
-  const program = String(body.program_strand ?? '').trim(), year = String(body.year_grade_level ?? '').trim()
-  if (!firstName || firstName.length > 100 || !lastName || lastName.length > 100) throw new HttpError(422, 'USER_NAME_INVALID', 'Enter first and last names up to 100 characters each.')
-  if (program.length > 150 || year.length > 100) throw new HttpError(422, 'USER_ACADEMIC_DETAILS_INVALID', 'Program and year or grade level are too long.')
-  return { firstName, lastName, program, year }
-}
 export function parseUserFilters(q: Record<string, unknown>): UserFilters {
   const status = String(q.status ?? '').trim()
   if (status && status !== 'Inactive' && status !== notRegistered && !statuses.includes(status as Status)) throw new HttpError(422, 'USER_STATUS_INVALID', 'Choose a valid account status.')
@@ -37,11 +33,67 @@ export function parseUserFilters(q: Record<string, unknown>): UserFilters {
     page: Number.isFinite(page) ? Math.max(1, Math.min(100000, Math.trunc(page))) : 1,
     limit: Number.isFinite(limit) ? Math.max(1, Math.min(100, Math.trunc(limit))) : 25 }
 }
+const TEMPORARY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
+const temporaryPassword = () => Array.from({ length: 16 }, () => TEMPORARY_ALPHABET[randomInt(TEMPORARY_ALPHABET.length)]).join('')
 export const parseActiveUserFilters = (q: Record<string, unknown>) => parseUserFilters({ ...q, status: 'Active' })
 
 export class UsersRepository {
   private readonly pool: Pool
-  constructor(pool: Pool = db) { this.pool = pool }
+  private readonly hasher: Pick<typeof bcrypt, 'hash'>
+  constructor(pool: Pool = db, hasher: Pick<typeof bcrypt, 'hash'> = bcrypt) { this.pool = pool; this.hasher = hasher }
+  /**
+   * Admin sign-in actions. Never the actor's own account. A Librarian may act only on Student, Faculty and Staff
+   * accounts; an Admin also on Librarians, and may unlock (never reset) another Admin.
+   */
+  private async signInTarget<T>(value: unknown, actorValue: unknown, body: Record<string, unknown>, allowAdminTarget: boolean,
+    work: (connection: PoolConnection, account: RowDataPacket, actor: number, auditReason: string, lock: RowDataPacket) => Promise<T>) {
+    const accountId = id(value), actor = id(actorValue), auditReason = reason(body.reason)
+    const connection = await this.pool.getConnection()
+    try {
+      await connection.beginTransaction()
+      const actorRole = await requireLibraryActor(connection, actor, 'accounts.manage')
+      // Same lock order as sign-in: the attempt row first, then the account (avoids a deadlock with login()).
+      const identifier = accountLockIdentifier(accountId)
+      await connection.execute('INSERT INTO login_attempt_windows(identifier_hash) VALUES (?) ON CONFLICT DO NOTHING', [identifier])
+      const [locks] = await connection.execute<RowDataPacket[]>('SELECT locked_until FROM login_attempt_windows WHERE identifier_hash=? FOR UPDATE', [identifier])
+      const [accounts] = await connection.execute<RowDataPacket[]>('SELECT account_id,user_id,role,account_status FROM accounts WHERE account_id=? FOR UPDATE', [accountId])
+      const account = accounts[0]
+      if (!account) throw new HttpError(404, 'USER_NOT_FOUND', 'Account not found.')
+      const allowed = accountId !== actor && (['Student', 'Faculty', 'Staff'].includes(account.role)
+        || (actorRole === 'Admin' && (account.role === 'Librarian' || (account.role === 'Admin' && allowAdminTarget))))
+      if (!allowed) throw new HttpError(403, 'USER_STATUS_PROTECTED', 'This account cannot be changed from User Management.')
+      if(account.role==='Librarian'&&!allowAdminTarget){const [owners]=await connection.execute<RowDataPacket[]>('SELECT owner_account_id FROM library_ownership WHERE owner_account_id=?',[accountId]);if(owners[0])throw new HttpError(403,'USER_STATUS_PROTECTED','The administrator owner changes their password through account security or Forgot password.')}
+      const result = await work(connection, account, actor, auditReason, locks[0] ?? {})
+      await connection.commit()
+      return result
+    } catch (error) { await connection.rollback(); throw error }
+    finally { connection.release() }
+  }
+  private audit(connection: PoolConnection, account: RowDataPacket, actor: number, action: string, auditReason: string) {
+    return connection.execute(`INSERT INTO account_management_events(account_id,actor_account_id,action_code,previous_status,new_status,reason)
+      VALUES (?,?,?,?,?,?)`, [account.account_id, actor, action, account.account_status, account.account_status, auditReason])
+  }
+  async unlockSignIn(value: unknown, actorValue: unknown, body: Record<string, unknown>) {
+    return this.signInTarget(value, actorValue, body, true, async (connection, account, actor, auditReason, lock) => {
+      // App clock, as login() uses.
+      if (!lock.locked_until || new Date(lock.locked_until).getTime() <= Date.now()) throw new HttpError(409, 'USER_NOT_LOCKED', 'This account is not locked.')
+      await connection.execute('DELETE FROM login_attempt_windows WHERE identifier_hash=?', [accountLockIdentifier(Number(account.account_id))])
+      await this.audit(connection, account, actor, 'SignInUnlocked', auditReason)
+      return { id: Number(account.account_id), unlocked: true }
+    })
+  }
+  /** For accounts that cannot use the email reset. The password is returned once and never stored in plain text. */
+  async setTemporaryPassword(value: unknown, actorValue: unknown, body: Record<string, unknown>) {
+    const password = temporaryPassword(), hash = await this.hasher.hash(password, 12)
+    return this.signInTarget(value, actorValue, body, false, async (connection, account, actor, auditReason) => {
+      await connection.execute('UPDATE accounts SET password_hash=?,must_change_password=TRUE,auth_version=auth_version+1,updated_at=NOW() WHERE account_id=?', [hash, account.account_id])
+      if (account.user_id) await connection.execute('UPDATE users SET password_hash=?,auth_version=auth_version+1,updated_at=NOW() WHERE user_id=?', [hash, account.user_id])
+      await connection.execute('UPDATE library_login_sessions SET revoked_at=NOW() WHERE account_id=? AND revoked_at IS NULL', [account.account_id])
+      await connection.execute('DELETE FROM login_attempt_windows WHERE identifier_hash=?', [accountLockIdentifier(Number(account.account_id))])
+      await this.audit(connection, account, actor, 'TemporaryPasswordSet', auditReason)
+      return { id: Number(account.account_id), temporary_password: password }
+    })
+  }
   private base() { return 'FROM accounts a LEFT JOIN users u ON u.user_id=a.user_id LEFT JOIN student_profiles sp ON sp.account_id=a.account_id LEFT JOIN clearance_statuses cs ON cs.user_id=u.user_id' }
   private where(f: UserFilters) {
     const clauses = ['1=1'], values: Array<string | number> = []
@@ -171,44 +223,8 @@ export class UsersRepository {
     records.profile_pictures = avatarHistory
     return { ...rows[0], events, records }
   }
-  async editProfile(value: unknown, actorValue: unknown, body: Record<string, unknown>) {
-    const accountId = id(value), actor = id(actorValue), input = profile(body)
-    if (accountId !== actor) throw new HttpError(403, 'USER_PROFILE_OWNER_REQUIRED', 'Only the account owner can edit this profile.')
-    const connection = await this.pool.getConnection()
-    try {
-      await connection.beginTransaction()
-      const [accounts] = await connection.execute<RowDataPacket[]>('SELECT account_id,user_id,role,account_status FROM accounts WHERE account_id=? FOR UPDATE', [accountId])
-      const account = accounts[0]
-      if (!account) throw new HttpError(404, 'USER_NOT_FOUND', 'Account not found.')
-      if (account.account_status !== 'Active') throw new HttpError(403, 'USER_ACCOUNT_INACTIVE', 'This account cannot edit its profile.')
-      if (!account.user_id) throw new HttpError(409, 'USER_PROFILE_NOT_LINKED', 'This account needs its operational profile linked before editing.')
-      const [users] = await connection.execute<RowDataPacket[]>('SELECT full_name,email,course_or_strand FROM users WHERE user_id=? FOR UPDATE', [account.user_id])
-      if (!users[0]) throw new HttpError(409, 'USER_PROFILE_NOT_LINKED', 'This account needs its operational profile linked before editing.')
-      if (body.email !== undefined && String(body.email).trim().toLowerCase() !== String(users[0].email ?? '').toLowerCase()) throw new HttpError(422, 'USER_EMAIL_FIXED', 'School email cannot be changed.')
-      const [profiles] = account.role === 'Student'
-        ? await connection.execute<RowDataPacket[]>('SELECT first_name,last_name,program_strand,year_grade_level FROM student_profiles WHERE account_id=? FOR UPDATE', [accountId])
-        : [[] as RowDataPacket[]]
-      if (account.role === 'Student' && (!input.program || !input.year)) throw new HttpError(422, 'USER_ACADEMIC_DETAILS_INVALID', 'Enter a program and year or grade level.')
-      const parts = String(users[0].full_name ?? '').trim().split(/\s+/)
-      const old = { first_name: profiles[0]?.first_name ?? parts[0] ?? '', last_name: profiles[0]?.last_name ?? parts.slice(1).join(' '), program_strand: profiles[0]?.program_strand ?? users[0]?.course_or_strand ?? '', year_grade_level: profiles[0]?.year_grade_level ?? '' }
-      const next = { first_name: input.firstName, last_name: input.lastName, program_strand: account.role === 'Student' ? input.program : old.program_strand, year_grade_level: account.role === 'Student' ? input.year : old.year_grade_level }
-      const changedFields = (Object.keys(next) as Array<keyof typeof next>).filter(key => String(old[key]) !== String(next[key]))
-      if (!changedFields.length) throw new HttpError(422, 'USER_NO_CHANGES', 'Change at least one profile field before saving.')
-      if (account.role === 'Student') await connection.execute('UPDATE users SET full_name=?,course_or_strand=?,updated_at=NOW() WHERE user_id=?', [`${input.firstName} ${input.lastName}`, input.program, account.user_id])
-      else await connection.execute('UPDATE users SET full_name=?,updated_at=NOW() WHERE user_id=?', [`${input.firstName} ${input.lastName}`, account.user_id])
-      if (account.role === 'Student') {
-        if (profiles[0]) await connection.execute('UPDATE student_profiles SET first_name=?,last_name=?,program_strand=?,year_grade_level=?,updated_at=NOW() WHERE account_id=?', [input.firstName, input.lastName, input.program, input.year, accountId])
-        else await connection.execute('INSERT INTO student_profiles(account_id,first_name,last_name,program_strand,year_grade_level) VALUES (?,?,?,?,?)', [accountId, input.firstName, input.lastName, input.program, input.year])
-      }
-      await connection.execute(`INSERT INTO account_management_events(account_id,actor_account_id,action_code,previous_status,new_status,changed_fields,reason)
-        VALUES (?,?,'ProfileEdited',?,?,?,?)`, [accountId, actor, account.account_status, account.account_status, changedFields.join(','), 'Updated by account owner'])
-      await connection.commit()
-      return { id: accountId, changed_fields: changedFields }
-    } catch (error) {
-      await connection.rollback()
-      if (['23505', 'ER_DUP_ENTRY'].includes((error as { code?: string })?.code ?? '')) throw new HttpError(422, 'USER_EMAIL_IN_USE', 'This email address is already used by another account.')
-      throw error
-    } finally { connection.release() }
+  async editProfile(_value: unknown, _actorValue: unknown, _body: Record<string, unknown>) {
+    throw new HttpError(403, 'USER_PROFILE_READ_ONLY', 'Profile details are view-only. Contact library staff for corrections.')
   }
   async changeStatus(value: unknown, actorValue: unknown, body: Record<string, unknown>) {
     const accountId = id(value), actor = id(actorValue), next = String(body.status ?? '') as Status
@@ -221,6 +237,7 @@ export class UsersRepository {
       const account = accounts[0]
       if (!account) throw new HttpError(404, 'USER_NOT_FOUND', 'Account not found.')
       if (account.role === 'Admin' || accountId === actor) throw new HttpError(403, 'USER_STATUS_PROTECTED', 'This account cannot be deactivated from User Management.')
+      if(account.role==='Librarian'){const [owners]=await connection.execute<RowDataPacket[]>('SELECT owner_account_id FROM library_ownership WHERE owner_account_id=?',[accountId]);if(owners[0])throw new HttpError(403,'USER_STATUS_PROTECTED','Transfer ownership before deactivating the administrator owner.')}
       if (!account.user_id) throw new HttpError(409, 'USER_PROFILE_NOT_LINKED', 'This account needs its operational profile linked before changing its status.')
       if (account.account_status === next) throw new HttpError(409, 'USER_STATUS_UNCHANGED', `This account is already ${next.toLowerCase()}.`)
       await connection.execute('UPDATE accounts SET account_status=?,auth_version=auth_version+1,updated_at=NOW() WHERE account_id=?', [next, accountId])

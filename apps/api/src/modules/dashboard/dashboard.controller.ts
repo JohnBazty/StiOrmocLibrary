@@ -2,6 +2,7 @@ import { clearanceScheduleService } from '../clearance/clearance-schedule.servic
 import type { NextFunction, Request, Response } from 'express'
 import { createBrandedTablePdf } from '../reports/branded-table-pdf.ts'
 import { dashboardRepository } from './dashboard.repository.ts'
+import { deskDashboardService } from './desk-dashboard.service.ts'
 
 function actor(request: Request, response: Response) {
   const jwt = response.locals.authenticatedUser as { accountId?: number; id?: number; role?: string } | undefined
@@ -28,6 +29,17 @@ async function* summaryRows(data: Awaited<ReturnType<typeof dashboardRepository.
 }
 
 export const dashboardController = {
+  deskOverview: handle(async (request,response)=>{response.set('Cache-Control','private, no-store').json({success:true,data:await deskDashboardService.overview(actor(request,response),request.query)})}),
+  deskTasks: handle(async (request,response)=>{response.set('Cache-Control','private, no-store').json({success:true,data:await deskDashboardService.tasks(actor(request,response),request.query)})}),
+  deskSearch: handle(async (request,response)=>{response.set('Cache-Control','private, no-store').json({success:true,data:await deskDashboardService.search(actor(request,response),request.query)})}),
+  reminderPreview: handle(async (request,response)=>{response.set('Cache-Control','private, no-store').json({success:true,data:await deskDashboardService.reminderPreview(actor(request,response),request.query)})}),
+  queueReminders: handle(async (request,response)=>{response.set('Cache-Control','private, no-store').json({success:true,data:await deskDashboardService.queueReminders(actor(request,response),request.body)})}),
+  deskExport: handle(async (request,response)=>{
+    const rows=await deskDashboardService.exportCsv(actor(request,response),request.query)
+    response.set({'Cache-Control':'private, no-store','Content-Type':'text/csv; charset=utf-8','Content-Disposition':'attachment; filename="library-desk-tasks.csv"'})
+    for await(const line of rows){if(response.destroyed)break;if(!response.write(line))await new Promise<void>(resolve=>{const done=()=>{response.off('drain',done);response.off('close',done);resolve()};response.once('drain',done);response.once('close',done)})}
+    response.end()
+  }),
   admin: handle(async (request, response) => {
     const data = await dashboardRepository.admin(actor(request, response))
     response.set('Cache-Control', 'private, no-store').json({ success: true, message: 'Dashboard loaded.', data })

@@ -1,3 +1,4 @@
+import { lockShelfCapacity } from './shelf-capacity.service.ts'
 import type { Pool } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
@@ -57,6 +58,7 @@ export function createCatalogManagementService(database: Pool = db) {
     const connection = await database.getConnection()
     try {
       await connection.beginTransaction()
+      await lockShelfCapacity(connection)
       const result = await operation(connection)
       await connection.commit()
       return result
@@ -80,6 +82,7 @@ export function createCatalogManagementService(database: Pool = db) {
         if (!title || title.lifecycle_status !== 'Active') {
           throw new HttpError(404, 'CATALOG_TITLE_NOT_FOUND', 'The active catalog title no longer exists.')
         }
+        if (title.record_type === 'Research/Thesis') throw new HttpError(422, 'RESEARCH_ACADEMIC_GROUP_REQUIRED', 'Use Research groups in Library setup to classify research by program or strand and year.')
         if (Number(title.row_version) !== input.expectedRowVersion) {
           throw new HttpError(409, 'CATALOG_TITLE_CHANGED', 'This title changed after the table was loaded. Reload the catalog and try again.')
         }

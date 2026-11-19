@@ -1,3 +1,5 @@
+import { paymentAssuranceRouters, serviceChargeRouters } from './modules/payments/payment-assurance.integration.ts'
+import { createAttendanceConfirmationRouters } from './modules/attendance/attendance-confirmation.routes.ts'
 import cors from 'cors'
 import express from 'express'
 import session from 'express-session'
@@ -15,9 +17,10 @@ import { dashboardForRole, ROLES, STAFF_ROLES, USER_ROLES, webDashboardForRole }
 import { requireAuth, requireCsrfForStateChanges, requireRoles, sessionCookie } from './modules/auth/auth.middleware.js'
 import { authRouter, logoutRouter } from './modules/auth/auth.routes.js'
 import { jwtAuthRouter, jwtProtectedRouter } from './modules/auth/jwt-auth.routes.ts'
-import { enrollmentRouter } from './modules/enrollment/enrollment.routes.ts'
+import { enrollmentRouter, facultyEnrollmentRouter } from './modules/enrollment/enrollment.routes.ts'
 import { authenticateJwt, ensureActiveJwtAccount, requireJwtRoles, requireLibraryPermission } from './modules/auth/jwt-auth.middleware.ts'
 import { inventoryPreviewRouter } from './modules/inventory/inventory-preview.routes.ts'
+import { stocktakeRouter } from './modules/inventory/stocktake.routes.ts'
 import { thesisInventoryV1AdminRouter } from './modules/inventory/thesis-inventory.routes.ts'
 import { bookCatalogRouter } from './modules/catalog/book-catalog.routes.ts'
 import { researchCatalogRouter } from './modules/catalog/research-catalog.routes.ts'
@@ -26,16 +29,16 @@ import { researchAssetRouter } from './modules/catalog/research-asset.routes.ts'
 import { adminCirculationRouter, borrowCartRouter, circulationRequestRouter, userCirculationRouter } from './modules/circulation/circulation.routes.ts'
 import { deskCirculationRouter,userInLibraryRouter } from './modules/circulation/desk-circulation.routes.ts'
 import { adminReservationsV1Router, userReservationsV1Router } from './modules/reservations/reservations.routes.ts'
+import { createBorrowingScheduleRouter, createAdminBorrowingScheduleRouter } from './modules/reservations/borrowing-schedule.routes.ts'
 import { adminAttendanceV1Router, userAttendanceV1Router } from './modules/attendance/attendance.routes.ts'
 import { adminUsersV1Router, selfProfileRouter } from './modules/users/users.routes.ts'
 import { adminPrintingV1Router, userPrintingV1Router } from './modules/printing/printing.routes.ts'
 import { adminClearanceV1Router, userClearanceV1Router } from './modules/clearance/clearance.routes.ts'
 import { adminAnnouncementsV1Router, userNotificationsV1Router } from './modules/notifications/notifications.routes.ts'
+import { libraryScheduleRouter } from './modules/notifications/library-schedule.routes.ts'
 import { adminFinesV1Router, userFinesV1Router } from './modules/fines/fines.routes.ts'
-import { finePolicyRouter } from './modules/fines/fine-policy.routes.ts'
 import { adminDashboardV1Router, userDashboardV1Router } from './modules/dashboard/dashboard.routes.ts'
 import { liveReportsRouter, workspaceTasksRouter } from './modules/reports/live-reports.routes.ts'
-import { maintenanceRouter } from './modules/inventory/maintenance.routes.ts'
 import { floorPlanRouter } from './modules/floor-plan/floor-plan.routes.ts'
 import { catalogAdminRouter } from './modules/catalog/catalog-admin.routes.ts'
 import { jobRunner } from './modules/job-runner/index.ts'
@@ -46,8 +49,13 @@ import { clearanceService } from './modules/clearance/clearance.service.ts'
 import { profileAvatarRouter } from './modules/users/profile-avatar.routes.ts'
 import { adminNotificationsRouter } from './modules/users/admin-notifications.routes.ts'
 import { borrowingPolicyRouter } from './modules/circulation/borrowing-policy.routes.ts'
+import { finePolicyRouter } from './modules/fines/fine-policy.routes.ts'
 import { publicCatalogRouter, catalogMaintenanceRouter } from './modules/catalog/catalog-enhancements.routes.ts'
+import { deweyRouter } from './modules/catalog/dewey.routes.ts'
 import { collectionReviewRouter } from './modules/catalog/collection-review.routes.ts'
+import { paymentRouters, paymentWebhookRouter } from './modules/payments/payments.routes.ts'
+import { sanitizeStackTrace } from './utils/error-sanitizer.ts'
+import { reservationSettingsRouter } from './modules/reservations/reservation-settings.routes.ts'
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
 const publicDirectory = path.resolve(currentDirectory, '../public')
@@ -71,6 +79,7 @@ export function createApp() {
     },
   }))
   app.use(cors({ origin: env.webOrigin, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }))
+  app.use('/api/payments/xendit/webhook', paymentWebhookRouter)
   // D1: Supabase Cron only; before body parsing, the session, JWT and CSRF middleware, authorized by X-Job-Runner-Secret alone.
   app.use('/api/internal/jobs', createInternalJobRouter(jobRunner, () => env.jobRunner.secret))
   app.use(express.json({ limit: '3mb' }))
@@ -102,12 +111,25 @@ export function createApp() {
   app.use('/api/auth', authRouter)
   app.use('/api/v1/auth', jwtAuthRouter)
   app.use('/api/public/catalog', publicCatalogRouter)
-  app.use('/api/v1', authenticateJwt, ensureActiveJwtAccount)
+  app.use('/api/v1', authenticateJwt, ensureActiveJwtAccount, requireCsrfForStateChanges)
+  app.use('/api/v1/admin/stocktake', requireLibraryPermission('library.manage'), stocktakeRouter)
+  const attendanceConfirmations = createAttendanceConfirmationRouters()
+  app.use('/api/v1/admin/attendance/confirmations', attendanceConfirmations.scanner)
+  app.use('/api/v1/attendance/confirmations', attendanceConfirmations.user)
+  app.use('/api/v1/user/payments', paymentAssuranceRouters.user)
+  app.use('/api/v1/admin/payments', paymentAssuranceRouters.admin)
+  app.use('/api/v1/user/service-charges', serviceChargeRouters.user)
+  app.use('/api/v1/admin/service-charges', serviceChargeRouters.admin)
+  app.use('/api/v1/user/payments', paymentRouters.user)
+  app.use('/api/v1/admin/payments', paymentRouters.admin)
   app.use('/api/v1/admin/enrollment', enrollmentRouter)
+  app.use('/api/v1/admin/faculty-enrollment', facultyEnrollmentRouter)
   app.use('/api/v1/admin/borrowing-policies', requireLibraryPermission('library.manage'), borrowingPolicyRouter)
-  app.use('/api/v1/admin/fine-policies', authenticateJwt, requireLibraryPermission('library.manage'), finePolicyRouter)
+  app.use('/api/v1/admin/fine-policies', requireLibraryPermission('library.manage'), finePolicyRouter)
   app.use('/api/v1/admin/maintenance', requireLibraryPermission('library.manage'), catalogMaintenanceRouter)
+  app.use('/api/v1/admin/dewey', requireLibraryPermission('library.manage'), deweyRouter)
   app.use('/api/v1/admin/collection-review', requireLibraryPermission('library.manage'), collectionReviewRouter)
+  app.use('/api/v1/admin/reservation-settings', requireLibraryPermission('library.manage'), reservationSettingsRouter)
   app.use('/api/v1/profile/avatar', profileAvatarRouter)
   app.use('/api/v1/profile', selfProfileRouter)
   app.get('/api/v1/admin/account-dashboard', requireLibraryPermission('accounts.manage'), async (_request, response, next) => {
@@ -129,12 +151,14 @@ export function createApp() {
   app.use('/api/v1/admin/invoices', authenticateJwt, requireLibraryPermission('library.manage'), archivedInvoiceRouter)
   app.use('/api/v1/invoices', authenticateJwt, requireJwtRoles('Student', 'Faculty'), archivedInvoiceRouter)
   app.use('/api/v1/reservations', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userReservationsV1Router)
+  app.use('/api/v1/borrowing-schedules', requireJwtRoles('Student', 'Faculty'), createBorrowingScheduleRouter())
   app.use('/api/v1/borrowing', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userCirculationRouter)
   app.use('/api/v1/borrowing', requireJwtRoles('Student','Faculty'),userInLibraryRouter)
   app.use('/api/v1/admin/circulation-desk',requireLibraryPermission('desk.operate'),deskCirculationRouter)
   app.use('/api/v1/borrow', authenticateJwt, requireJwtRoles('Student', 'Faculty'), borrowCartRouter)
   app.use('/api/v1/circulation', authenticateJwt, requireJwtRoles('Student', 'Faculty', 'Librarian', 'Staff'), circulationRequestRouter)
   app.use('/api/v1/admin/reservations', authenticateJwt, requireLibraryPermission('desk.operate'), adminReservationsV1Router)
+  app.use('/api/v1/admin/borrowing-schedules', createAdminBorrowingScheduleRouter())
   app.use('/api/v1/admin/attendance', authenticateJwt, requireLibraryPermission('desk.operate'), adminAttendanceV1Router)
   app.use('/api/v1/attendance', authenticateJwt, requireJwtRoles('Librarian', 'Student', 'Faculty'), userAttendanceV1Router)
   app.use('/api/v1/admin/users', authenticateJwt, requireLibraryPermission('accounts.manage'), adminUsersV1Router)
@@ -142,11 +166,11 @@ export function createApp() {
   app.use('/api/v1/printing', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userPrintingV1Router)
   app.use('/api/v1/clearance', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userClearanceV1Router)
   app.use('/api/v1/fines', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userFinesV1Router)
-  app.use('/api/v1/notifications', authenticateJwt, requireJwtRoles('Student', 'Faculty', 'Librarian', 'Staff'), userNotificationsV1Router)
+  app.use('/api/v1/notifications', authenticateJwt, requireJwtRoles('Student', 'Faculty', 'Librarian', 'Staff', 'Admin'), userNotificationsV1Router)
+  app.use('/api/v1/library-schedule', authenticateJwt, requireJwtRoles('Student', 'Faculty', 'Librarian', 'Staff', 'Admin'), libraryScheduleRouter)
   app.use('/api/v1/dashboard', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userDashboardV1Router)
   app.use('/api/v1/workspace/tasks', authenticateJwt, workspaceTasksRouter)
   app.use('/api/v1/admin/reports', authenticateJwt, liveReportsRouter)
-  app.use('/api/v1/admin/operations-maintenance', authenticateJwt, maintenanceRouter)
   app.use('/api/v1/admin/printing', authenticateJwt, requireLibraryPermission('desk.operate'), adminPrintingV1Router)
   app.use('/api/v1/admin/clearance', authenticateJwt, requireJwtRoles('Admin', 'Librarian'), adminClearanceV1Router)
   app.use('/api/v1/admin/fines', authenticateJwt, requireLibraryPermission('library.manage'), adminFinesV1Router)
@@ -204,7 +228,9 @@ export function createApp() {
       })
     }
     if (isDatabaseUnavailable(error)) {
-      console.error('[Database] Connection unavailable; request failed.')
+      // FIX: Use sanitized error message
+      const sanitized = sanitizeStackTrace(error)
+      console.error(`[Database] Connection unavailable; request failed.\n${sanitized}`)
       return response.status(503).json({
         success: false,
         code: 'DATABASE_UNAVAILABLE',
@@ -218,7 +244,9 @@ export function createApp() {
         message: 'This module is unavailable until the required database migrations are applied.',
       })
     }
-    console.error(error)
+    // FIX: Sanitize error before logging to prevent sensitive data leakage
+    const sanitized = sanitizeStackTrace(error)
+    console.error(`[Server] Uncaught error:\n${sanitized}`)
     return response.status(500).json({ success: false, message: 'An unexpected server error occurred.' })
   })
 

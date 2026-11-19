@@ -1,3 +1,5 @@
+import {BulkImportCovers} from './BulkImportCovers'
+import {BulkImportCorrection} from './BulkImportCorrection'
 import { AlertCircle, CheckCircle2, Download, FileSpreadsheet } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { SelectedFilePreview } from '../../components/SelectedFilePreview'
@@ -8,7 +10,9 @@ import { ImportCleanupSummary } from './ImportCleanupSummary'
 import { catalogInput } from './CatalogDetailsPanel'
 import { enhancedCatalog, type Batch, type Mapping, type Options, type Sheet } from './enhanced-catalog-api'
 import { HoldingsImportRow } from './HoldingsImportRow'
-import { applyImportDefaults, blankImportCsv, importFileReady, importRowLabel, importSummary, rowsToFill, unrecognizedImportHeadings } from './holdings-import-helpers'
+import { selectedCompartment } from '../shelves/ShelfPlacementFields'
+import { managedShelfFromOption, type PlacementValue } from '../shelves/types'
+import { applyImportDefaults, blankImportCsv, importFileReady, importPlacement, importRowLabel, importSummary, unrecognizedImportHeadings } from './holdings-import-helpers'
 
 export function HoldingsImportPage() {
   const [options, setOptions] = useState<Options | null>(null)
@@ -18,6 +22,7 @@ export function HoldingsImportPage() {
   const [batch, setBatch] = useState<Batch | null>(null)
   const [batches, setBatches] = useState<Awaited<ReturnType<typeof enhancedCatalog.batches>>>([])
   const [busy, setBusy] = useState(false)
+  const [automationWorking,setAutomationWorking]=useState(false),[dirtyRows,setDirtyRows]=useState<Set<number>>(()=>new Set())
   const [reviewing, setReviewing] = useState(false)
   const [error, setError] = useState('')
   const [historyError, setHistoryError] = useState('')
@@ -27,10 +32,23 @@ export function HoldingsImportPage() {
   const [editing, setEditing] = useState<number | null>(null)
   const [category, setCategory] = useState('')
   const [shelf, setShelf] = useState('')
+  const finalReview=useRef<HTMLDivElement>(null)
   const running = useRef(false)
   const rowWorking = useRef(false)
   const summary = batch ? importSummary(batch) : null
-  const locked = busy || reviewing
+  const shelfDemands = new Map<string, { placement: PlacementValue; quantity: number }>()
+  for (const row of summary?.ready ?? []) {
+    if (!options || !(!row.decision || ['new','add'].includes(row.decision))) continue
+    const placement = importPlacement(row, options), key = `${placement.shelfLocation}:${placement.shelfColumn}:${placement.shelfRow}`
+    const previous = shelfDemands.get(key)
+    shelfDemands.set(key, { placement, quantity: (previous?.quantity ?? 0) + Number(row.data.copies) })
+  }
+  const shelfChecks = [...shelfDemands.values()].map(demand => {
+    const cell = selectedCompartment((options?.locations ?? []).map(managedShelfFromOption), demand.placement)
+    return { ...demand, remaining: cell?.remaining ?? null, fits: cell?.capacity != null && cell.remaining != null && cell.remaining >= demand.quantity }
+  })
+  const shelfShortage = shelfChecks.some(item => !item.fits)
+  const locked = busy || reviewing || automationWorking
   useEffect(() => {
     let active = true
     Promise.allSettled([enhancedCatalog.options(true), enhancedCatalog.batches()]).then(([settings, previous]) => {
@@ -51,22 +69,11 @@ export function HoldingsImportPage() {
     catch { setHistoryError('Saved book lists could not be loaded. Your current book list is kept; refresh to try again.') }
   }
   async function act(work: () => Promise<void>) {
-    if (running.current || rowWorking.current) return
+    if (running.current || rowWorking.current || automationWorking) return
     running.current = true; setBusy(true); setError(''); setNotice('')
     try { await work() }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'The upload could not be completed. Please try again.') }
     finally { running.current = false; setBusy(false) }
-  }
-  async function fillFromLookup() {
-    if (!batch) return
-    const batchId = batch.id
-    await act(async () => {
-      const result = await enhancedCatalog.fillFromLookup(batchId)
-      await reload(batchId)
-      if (result.unavailable) throw new Error(`The book lookup is unavailable right now. ${result.filled} ${result.filled === 1 ? 'book was' : 'books were'} filled before it stopped; try again later. Nothing was lost.`)
-      setFilter('attention'); setPage(1)
-      setNotice(`${result.filled} ${result.filled === 1 ? 'book' : 'books'} filled from the book lookup, ${result.notFound} not found.${result.remaining ? ` ${result.remaining} still to fill.` : ''} Check each filled book and tick the box before saving it.`)
-    })
   }
   async function reload(batchId = batch?.id) {
     if (batchId) setBatch(await enhancedCatalog.batch(Number(batchId)))
@@ -103,13 +110,13 @@ export function HoldingsImportPage() {
     await act(() => openReview(file, selectedMappings))
   }
   async function addBooks() {
-    if (!batch || !summary || !summary.ready.length) return
+    if (!batch || !summary || !summary.ready.length || shelfShortage) return
     const batchId = batch.id
     await act(async () => {
       // Only unambiguous valid new books share the user's final review. Other choices remain explicit.
       let reviewed = 0
       for (let start = 0; start < summary.together.length; start += 4) {
-        const results = await Promise.allSettled(summary.together.slice(start, start + 4).map(row => enhancedCatalog.review({ ...row, decision: 'new' })))
+        const results = await Promise.allSettled(summary.together.slice(start, start + 4).map(row => { const placement = importPlacement(row, options!); return enhancedCatalog.review({ ...row, data: { ...row.data, locationId: placement.locationId, shelfColumn: placement.shelfColumn, shelfRow: placement.shelfRow }, decision: 'new' }) }))
         const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected')
         reviewed += results.filter(result => result.status === 'fulfilled').length
         setNotice(`Checking books: ${reviewed} of ${summary.together.length} ready.`)
@@ -158,7 +165,7 @@ export function HoldingsImportPage() {
 
   const sourcePreview = file ? <details className="rounded-xl border border-slate-200 p-3 dark:border-white/15"><summary className="cursor-pointer break-all text-sm font-semibold">View file preview: {file.name}</summary><div className="mt-3"><SelectedFilePreview file={file} disabled={locked} onRemove={() => { setFile(null); setSheets([]); setMapping([]); setBatch(null); setEditing(null); setError(''); setNotice('') }} /></div></details> : null
   const resetFile = () => { setBatch(null); setSheets([]); setMapping([]); setFile(null); setEditing(null); setError(''); setNotice(''); setPage(1) }
-  const rowEditor = (row: Batch['rows'][number], expanded = false) => options && batch ? <HoldingsImportRow key={row.id} row={row} options={options} batch={batch} disabled={locked} expanded={expanded} onClearError={() => { setError(''); setNotice('') }} onWorking={working => { rowWorking.current = working; setReviewing(working) }} onSaved={async () => { await reload(); setEditing(null); setNotice('Your choice was saved. Check the updated totals below before adding books.') }} /> : null
+  const rowEditor = (row: Batch['rows'][number], expanded = false) => options && batch ? <HoldingsImportRow key={row.id} row={row} options={options} batch={batch} disabled={locked} expanded={expanded} onClearError={() => { setError(''); setNotice('') }} onWorking={working => { rowWorking.current = working; setReviewing(working) }} onDirtyChange={dirty=>setDirtyRows(current=>{if(current.has(row.id)===dirty)return current;const next=new Set(current);if(dirty)next.add(row.id);else next.delete(row.id);return next})} onSaved={async () => { await reload(); setEditing(null); setNotice('Your choice was saved. Check the updated totals below before adding books.') }} /> : null
 
   return <div className="min-w-0 space-y-5 text-slate-900 dark:text-slate-100">
     <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-balance text-2xl font-bold">Add books from Excel or CSV</h2><p className="mt-2 max-w-2xl text-pretty text-sm text-slate-600 dark:text-slate-300">Choose your list, check the books and copy total, then add them together.</p></div><Button variant="secondary" onClick={downloadTemplate}><Download size={16} /> Download template</Button></div>
@@ -184,7 +191,9 @@ export function HoldingsImportPage() {
         {summary.missing > 0 ? <p className="text-sm">{summary.missing} of these copies will be marked missing, not available for borrowing.</p> : null}
         {summary.added.length && !finished ? <p className="text-sm text-green-800 dark:text-green-300">{summary.added.length} book entries were already added and will not be added again.</p> : null}
         {summary.skipped.length ? <p className="text-sm text-slate-600 dark:text-slate-300">{summary.skipped.length} book entries left out.</p> : null}
-        {!finished && rowsToFill(batch).length ? <div className="space-y-2 rounded-xl border border-[#003399]/20 p-4 dark:border-white/15"><p className="text-sm">{rowsToFill(batch).length} {rowsToFill(batch).length === 1 ? 'book has' : 'books have'} blank details (title, author, ISBN, publisher or year) the book lookup may fill. You check every filled value before the book is saved.</p><Button disabled={locked} onClick={() => void fillFromLookup()}>{busy ? 'Looking up books…' : `Fill missing details from book lookup${rowsToFill(batch).length > 50 ? ' (next 50)' : ''}`}</Button></div> : null}
+        {!finished&&<BulkImportCorrection key={batch.id} batch={batch} options={options} disabled={busy||reviewing||automationWorking||dirtyRows.size>0} onWorking={setAutomationWorking} onReviewReady={()=>finalReview.current?.scrollIntoView({behavior:'smooth',block:'start'})} onDone={async()=>{await reload(batch.id);setFilter('attention');setPage(1)}}/>}
+        <BulkImportCovers key={`covers-${batch.id}`} batch={batch} disabled={busy||reviewing||automationWorking||dirtyRows.size>0} onWorking={setAutomationWorking} onDone={async()=>{await reload(batch.id)}}/>
+        <a className="inline-flex min-h-11 items-center text-sm font-semibold underline" href={`/librarian/maintenance?section=covers&batch=${batch.id}`}>Continue cover lookup later in Book covers</a>
         {sourcePreview}
       </SectionCard>
       {summary.attention.length ? <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100"><AlertCircle aria-hidden size={20} className="mt-0.5 shrink-0"/><div><h3 className="font-semibold">{summary.attention.length} {summary.attention.length === 1 ? 'book needs' : 'books need'} your help</h3><p className="mt-1 text-sm">Check missing details or possible duplicates. These books will stay out until you choose what to do.</p></div></div> : null}
@@ -192,7 +201,8 @@ export function HoldingsImportPage() {
       {filter === 'all' ? <SectionCard className="overflow-hidden"><ResponsiveTable label="Books from your file"><table className="w-full min-w-[680px] text-left text-sm"><thead className="border-b border-slate-200 bg-slate-50 text-slate-600 dark:border-white/15 dark:bg-white/5 dark:text-slate-300"><tr>{['Book', 'Author', 'Copies', 'Category / shelf', 'Review'].map(label => <th key={label} className="px-4 py-3 font-semibold">{label}</th>)}</tr></thead><tbody>{displayed.slice((currentPage - 1) * 20, currentPage * 20).map(row => <tr key={row.id} className="border-b border-slate-100 dark:border-white/10"><td className="px-4 py-3 font-semibold">{row.data.title || 'Title missing'}</td><td className="px-4 py-3">{row.data.author || 'Author missing'}</td><td className="px-4 py-3 tabular-nums">{['link', 'reuse', 'skip'].includes(row.decision ?? '') ? '0 to add' : row.data.copies || 'Not given'}</td><td className="px-4 py-3"><p>{options.categories.find(item => Number(item.id) === Number(row.data.categoryId))?.name || 'Category needed'}</p><p className="text-xs text-slate-500 dark:text-slate-400">{row.data.location || 'Shelf needed'}</p></td><td className="px-4 py-3"><p className="mb-1 text-xs font-semibold">{importRowLabel(row)}</p><Button variant="secondary" disabled={locked} onClick={() => setEditing(row.id)}>{summary.attention.some(item => item.id === row.id) ? 'Answer question' : row.status === 'Imported' ? 'View saved book' : 'Edit details'}</Button></td></tr>)}</tbody></table></ResponsiveTable></SectionCard> : <div className="space-y-3">{displayed.slice((currentPage - 1) * 20, currentPage * 20).map(row => rowEditor(row, displayed.length === 1))}{!displayed.length ? <p className="rounded-xl bg-green-50 p-4 text-sm text-green-900 dark:bg-green-950/30 dark:text-green-100">No questions left. View all books and check the totals before adding.</p> : null}</div>}
       {editing !== null && filter === 'all' ? <section className="space-y-3"><div className="flex items-center justify-between gap-3"><h3 className="font-semibold">Review this book</h3><Button variant="secondary" disabled={locked} onClick={() => setEditing(null)}>Close book details</Button></div>{batch.rows.filter(row => row.id === editing).map(row => rowEditor(row, true))}</section> : null}
       {pages > 1 ? <div className="flex flex-wrap items-center gap-3"><Button variant="secondary" disabled={locked || currentPage === 1} onClick={() => setPage(currentPage - 1)}>Previous books</Button><span className="text-sm">Page {currentPage} of {pages}</span><Button variant="secondary" disabled={locked || currentPage === pages} onClick={() => setPage(currentPage + 1)}>Next books</Button></div> : null}
-      <SectionCard className="space-y-4 p-5 sm:p-6">{finished ? <><CheckCircle2 aria-hidden size={28} className="text-green-700 dark:text-green-300"/><h3 className="text-xl font-bold">This upload is finished</h3><p className="text-sm">{summary.added.length} book entries completed; {summary.skipped.length} left out. Completed books will not be added again.</p><Button disabled={locked} onClick={resetFile}>Add another file</Button></> : <><h3 className="text-xl font-bold">Ready to add these books?</h3><p className="text-sm">Check the list above. <strong>{summary.ready.length} book {summary.ready.length === 1 ? 'entry' : 'entries'}</strong> will be saved, adding <strong>{summary.copies} physical copies</strong>.</p>{summary.attention.length ? <p className="text-sm text-amber-900 dark:text-amber-200">Only ready books will be added. The {summary.attention.length} {summary.attention.length === 1 ? 'book with an unanswered question' : 'books with unanswered questions'} will stay in this saved list for later.</p> : null}{summary.failedReady ? <p className="auth-error rounded-xl p-3 text-sm">Books with save errors will stay in this saved list. Other ready books can still be added.</p> : null}<Button disabled={locked || !summary.ready.length} onClick={() => void addBooks()}>{busy ? 'Saving your books…' : summary.copies ? `Add ${summary.copies} ${summary.copies === 1 ? 'copy' : 'copies'}` : 'Save reviewed choices'}</Button><p className="text-xs text-slate-500 dark:text-slate-400">Nothing is added to the library until you press this button.</p></>}</SectionCard>
+      {!finished && shelfChecks.length ? <SectionCard className="space-y-3 p-5"><h3 className="font-bold">Shelf space check</h3><p className="text-sm">All copies in each entry go into one compartment. Open Edit details to choose another space or reduce a quantity.</p>{shelfChecks.map(item => <p key={`${item.placement.shelfLocation}-${item.placement.shelfColumn}-${item.placement.shelfRow}`} className={`rounded-xl p-3 text-sm ${item.fits ? 'bg-green-50 text-green-900 dark:bg-green-950/30 dark:text-green-200' : 'bg-amber-50 text-amber-950 dark:bg-amber-950/30 dark:text-amber-100'}`}>{item.placement.shelfLocation}, Column {item.placement.shelfColumn}, Row {item.placement.shelfRow}: {item.quantity} copies to add · {item.remaining === null ? 'Capacity not configured — set up this shelf first.' : `${Math.max(0,item.remaining)} spaces remaining${item.fits ? '' : ' — choose another compartment or reduce the quantity.'}`}</p>)}</SectionCard> : null}
+      <div ref={finalReview}><SectionCard className="space-y-4 p-5 sm:p-6">{finished ? <><CheckCircle2 aria-hidden size={28} className="text-green-700 dark:text-green-300"/><h3 className="text-xl font-bold">This upload is finished</h3><p className="text-sm">{summary.added.length} book entries completed; {summary.skipped.length} left out. Completed books will not be added again.</p><Button disabled={locked} onClick={resetFile}>Add another file</Button></> : <><h3 className="text-xl font-bold">Ready to add these books?</h3><p className="text-sm">Check the list above. <strong>{summary.ready.length} book {summary.ready.length === 1 ? 'entry' : 'entries'}</strong> will be saved, adding <strong>{summary.copies} physical copies</strong>.</p>{summary.attention.length ? <p className="text-sm text-amber-900 dark:text-amber-200">Only ready books will be added. The {summary.attention.length} {summary.attention.length === 1 ? 'book with an unanswered question' : 'books with unanswered questions'} will stay in this saved list for later.</p> : null}{summary.failedReady ? <p className="auth-error rounded-xl p-3 text-sm">Books with save errors will stay in this saved list. Other ready books can still be added.</p> : null}<Button disabled={locked || !summary.ready.length || shelfShortage} onClick={() => void addBooks()}>{busy ? 'Saving your books…' : summary.copies ? `Add ${summary.copies} ${summary.copies === 1 ? 'copy' : 'copies'}` : 'Save reviewed choices'}</Button><p className="text-xs text-slate-500 dark:text-slate-400">Nothing is added to the library until you press this button. Keep this page open until adding finishes. If you leave, return to this saved list to continue; completed entries will not be added twice.</p></>}</SectionCard></div>
     </> : null}
     {batches.length ? <details className="rounded-2xl border border-slate-200 p-4 dark:border-white/15"><summary className="cursor-pointer text-sm font-semibold">Continue a saved book list</summary><p className="mt-2 text-xs text-slate-600 dark:text-slate-300">Your completed books are remembered, so continuing will not add them twice.</p><label className="mt-3 block text-sm">Choose your file<select className={catalogInput} value={batch?.id ?? ''} disabled={locked} onChange={event => { const chosen = Number(event.target.value); if (chosen) void act(async () => { const loaded = await enhancedCatalog.batch(chosen); setBatch(loaded); setFile(null); setSheets([]); setEditing(null); setPage(1); setFilter(importSummary(loaded).attention.length ? 'attention' : 'all') }) }}><option value="">Select a saved book list</option>{batches.map(previous => <option key={previous.id} value={previous.id}>{previous.filename} — {previous.imported} of {previous.total} book entries added</option>)}</select></label></details> : null}
   </div>

@@ -5,8 +5,9 @@ import { ImportCleanupSummary } from './ImportCleanupSummary'
 import { blankImportCsv, canReviewTogether, importFileReady, importRowLabel, importSummary, rowsToFill, suggestImportReferences } from './holdings-import-helpers'
 import type { Batch, ImportRow, Options, Sheet } from './enhanced-catalog-api'
 const api = vi.hoisted(() => ({ options: vi.fn(), inspect: vi.fn(), stage: vi.fn(), batch: vi.fn(), batches: vi.fn(), review: vi.fn(), commit: vi.fn(), fillFromLookup: vi.fn() }))
+vi.mock('./import-automation-api',()=>({importAutomationApi:{covers:vi.fn(async()=>({rows:[],total:2})),preview:vi.fn(async()=>({batchId:1,total:2,imported:0,revision:'test-revision',groups:[],invalidIsbns:0,invalidYears:0,latest:null}))}}))
 vi.mock('./enhanced-catalog-api', () => ({ enhancedCatalog: api }))
-const options: Options = { categories: [{ id: 1, name: 'Literature', status: 'Active', version: 1 }], locations: [{ id: 2, name: 'Shelf A', status: 'Active', version: 1 }], programs: [], courses: [], types: [] }
+const options: Options = { categories: [{ id: 1, name: 'Literature', status: 'Active', version: 1 }], locations: [{ id: 2, name: 'Shelf A', status: 'Active', version: 1, columnCount:1,rowCount:1,defaultCapacity:100,capacityConfigured:true,used:0,capacity:100,remaining:100,compartments:[{column:1,row:1,capacity:100,used:0,remaining:100,status:'Available'}] }], programs: [], courses: [], types: [] }
 const sheet: Sheet = { name: 'Books', rowCount: 3, headers: ['Title', 'Author', 'Copies'], mapping: { sheet: 'Books', headerRow: 1, columns: { title: 1, author: 2, copies: 3 } }, preview: [['Title', 'Author', 'Copies'], ['First Book', 'A Writer', '3'], ['Second Book', 'B Writer', '2']] }
 function row(id: number, patch: Partial<ImportRow> = {}): ImportRow {
  return { id, sheet: 'Books', sourceRow: id + 1, source: [], data: { title: id === 1 ? 'First Book' : 'Second Book', author: 'A Writer', isbn: '', edition: '', publisher: '', publicationYear: '', copyrightYear: '', pages: '', copies: id === 1 ? '3' : '2', missingCopies: '', accessions: '', barcodes: '', callNumber: '', categoryId: 1, location: 'Shelf A', programId: null, generateAccessions: false }, status: 'Review', decision: null, targetTitleId: null, reuseRowId: null, version: 1, overlaps: [], errors: [], error: null, matches: [], ...patch }
@@ -28,6 +29,15 @@ async function upload() {
 }
 
 describe('Simple book import', () => {
+ it('checks the combined copy count before allowing an upload to fill one compartment', async () => {
+  api.options.mockResolvedValue({...options,locations:[{...options.locations[0],defaultCapacity:5,capacity:5,used:3,remaining:2,compartments:[{column:1,row:1,capacity:5,used:3,remaining:2,status:'Available'}]}]})
+  await upload()
+  expect(screen.getByText(/Shelf A, Column 1, Row 1: 5 copies to add/)).toBeTruthy()
+  expect((screen.getByRole('button',{name:'Add 5 copies'}) as HTMLButtonElement).disabled).toBe(true)
+  expect(api.review).not.toHaveBeenCalled()
+  expect(api.commit).not.toHaveBeenCalled()
+ })
+
  it('shows before/after cleanup and remaining questions without approving or committing', async () => {
   const cleaned = row(1)
   cleaned.data.autoCorrections = [{ field: 'title', before: ' First   Book ', after: 'First Book', reason: 'spaces' }, { field: 'copies', before: '003.00', after: '3', reason: 'number' }]
@@ -57,11 +67,11 @@ describe('Simple book import', () => {
   api.batch.mockResolvedValue({ ...initial, rows: [uncertain] })
   await upload()
   expect((screen.getByLabelText('Category') as HTMLSelectElement).value).toBe('')
-  expect((screen.getByLabelText('Shelf') as HTMLSelectElement).value).toBe('')
+  expect((screen.getByLabelText(/^Shelf \*/) as HTMLSelectElement).value).toBe('')
   fireEvent.click(screen.getByRole('button', { name: 'Use Literature' }))
   fireEvent.click(screen.getByRole('button', { name: 'Use Shelf A' }))
   expect((screen.getByLabelText('Category') as HTMLSelectElement).value).toBe('1')
-  expect((screen.getByLabelText('Shelf') as HTMLSelectElement).value).toBe('Shelf A')
+  expect((screen.getByLabelText(/^Shelf \*/) as HTMLSelectElement).value).toBe('Shelf A')
   expect(api.review).not.toHaveBeenCalled(); expect(api.commit).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: 'Save this choice' }))
   await waitFor(() => expect(api.review).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ categoryId: 1, location: 'Shelf A' }) })))
@@ -221,7 +231,7 @@ describe('Simple book import', () => {
   expect(api.review).toHaveBeenCalledTimes(2)
   expect(api.commit).toHaveBeenCalledTimes(3)
  })
- it('shows a source-book name for a save error and leaves that book out until corrected', async () => {
+ it('shows a source-book name for a save error and requires correction before retry', async () => {
   const failed = { ...initial, rows: [row(1, { status: 'Ready', decision: 'new', error: 'An accession already exists.' }), finished.rows[1]] }
   api.batch.mockResolvedValueOnce(initial).mockResolvedValue(failed)
   api.commit.mockResolvedValue({ imported: 1, remaining: 1, errors: [{ rowId: 1, message: 'An accession already exists.' }] })
@@ -229,20 +239,6 @@ describe('Simple book import', () => {
   await screen.findByText(/First Book \(Books, line 2\): An accession already exists/)
   expect(screen.getByText('Books with save errors will stay in this saved list. Other ready books can still be added.')).toBeTruthy()
   expect((screen.getByRole('button', { name: 'Save reviewed choices' }) as HTMLButtonElement).disabled).toBe(true)
- })
- it('adds ready books while leaving saved errors out of the attempt', async () => {
-  const failed = row(2, { status: 'Ready', decision: 'new', error: 'An accession already exists.' })
-  api.batch.mockResolvedValueOnce({ ...initial, rows: [row(1), failed] }).mockResolvedValue({ ...initial, rows: [finished.rows[0], failed] })
-  api.commit.mockResolvedValue({ imported: 1, remaining: 0, errors: [] })
-  await upload()
-  const add = screen.getByRole('button', { name: 'Add 3 copies' }) as HTMLButtonElement
-  expect(add.disabled).toBe(false)
-  fireEvent.click(add)
-  await waitFor(() => expect(api.commit).toHaveBeenCalledTimes(1))
-  expect(api.review).toHaveBeenCalledTimes(1)
-  expect(api.review.mock.calls[0][0].id).toBe(1)
-  await screen.findByText(/1 book entry saved in this attempt/)
-  expect(screen.getByRole('button', { name: 'Questions (1)' })).toBeTruthy()
  })
  it('clears an old error after a successful correction', async () => {
   api.batch.mockResolvedValue({ ...initial, rows: [row(2, { errors: ['Author is required.'] })] })
@@ -313,7 +309,7 @@ describe('Fill missing details from the book lookup', () => {
  it('lets an ISBN column stand in for Title and Author, and counts rows the lookup may fill', () => {
   expect(importFileReady([{ sheet: 'Books', headerRow: 1, columns: { isbn: 1, copies: 2 }, categoryId: 1, location: 'Shelf A' }])).toBe(true)
   expect(importFileReady([{ sheet: 'Books', headerRow: 1, columns: { author: 1, copies: 2 }, categoryId: 1, location: 'Shelf A' }])).toBe(false)
-  expect(rowsToFill({ ...initial, rows: [row(1), filled(), row(2, { status: 'Ready' })] }).map(item => item.id)).toEqual([1])
+  expect(rowsToFill({ ...initial, rows: [row(1,{data:{...row(1).data,author:''}}), filled(), row(2, { status: 'Ready' })] }).map(item => item.id)).toEqual([1])
  })
 
  it('keeps a filled row out of the shared review until it is checked', () => {
@@ -323,14 +319,11 @@ describe('Fill missing details from the book lookup', () => {
   expect(canReviewTogether(checked)).toBe(true)
  })
 
- it('fills from the lookup on request and reports what happened', async () => {
-  api.fillFromLookup.mockResolvedValue({ filled: 1, notFound: 1, remaining: 0, unavailable: false })
+ it('offers whole-list correction instead of a next-50-row control',async()=>{
   await upload()
-  api.batch.mockResolvedValue({ ...initial, rows: [filled(), row(2, { data: { ...row(2).data, lookupTried: true } })] })
-  fireEvent.click(screen.getByRole('button', { name: /Fill missing details from book lookup/ }))
-  await waitFor(() => expect(api.fillFromLookup).toHaveBeenCalledWith(1))
-  expect(await screen.findByText(/1 book filled from the book lookup, 1 not found/)).toBeTruthy()
-  expect(screen.queryByRole('button', { name: /Fill missing details from book lookup/ })).toBeNull()
+  expect(screen.getByRole('button',{name:'Auto-correct all 2 pending books'})).toBeTruthy()
+  expect(screen.queryByRole('button',{name:/next 50/i})).toBeNull()
+  expect(api.fillFromLookup).not.toHaveBeenCalled()
  })
 
  it('a filled row shows its source and saves only after the checked tick', async () => {
@@ -365,4 +358,11 @@ describe('Unsaved book edits in the import', () => {
   await waitFor(() => expect(api.review).toHaveBeenCalledWith(expect.objectContaining({ decision: 'new', data: expect.objectContaining({ title: 'First Book, revised' }) })))
   link.remove()
  })
+})
+
+it('limits same-copy choices to matching earlier reviewed entries and shows the comparison',async()=>{
+ const previous=row(1,{status:'Ready',decision:'new'}),unrelated=row(2,{status:'Ready',decision:'new'}),current=row(3,{overlaps:[1],data:{...row(1).data}})
+ api.batch.mockResolvedValue({...initial,rows:[previous,unrelated,current]});await upload();fireEvent.change(screen.getByLabelText('What should happen to this book?'),{target:{value:'reuse'}})
+ const choices=screen.getByLabelText('Which earlier entry lists these copies?') as HTMLSelectElement
+ expect(Array.from(choices.options).map(option=>option.value)).toEqual(['','1']);expect(screen.getByRole('region',{name:'Compare matching book entries'})).toBeTruthy()
 })

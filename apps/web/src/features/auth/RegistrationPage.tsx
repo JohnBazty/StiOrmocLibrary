@@ -14,19 +14,20 @@ export function RegistrationPage({ popup = false }: { popup?: boolean }) {
   const location = useLocation()
   const loginLink = catalogAuthLink('/login', location.search)
   const [busy, setBusy] = useState(false)
+  const [role,setRole]=useState<'Student'|'Faculty'>('Student')
   const [mode, setMode] = useState<'loading' | 'open' | 'closed' | 'unavailable'>('loading')
   const [retry, setRetry] = useState(0)
   useAuthPopupBusy(busy)
 
   useEffect(() => {
     const controller = new AbortController()
-    rosterRegistrationRequest<{ enabled: boolean; open: boolean }>('', undefined, controller.signal)
+    rosterRegistrationRequest<{ enabled: boolean; open: boolean }>('', undefined, controller.signal,role)
       .then(result => {
         if (!controller.signal.aborted) setMode(result.enabled ? result.open ? 'open' : 'closed' : 'unavailable')
       })
       .catch(() => { if (!controller.signal.aborted) setMode('unavailable') })
     return () => controller.abort()
-  }, [retry])
+  }, [retry,role])
 
   return (
     <div className={popup ? 'public-auth-form' : 'min-h-screen bg-[#0b5ea2] px-4 py-8 sm:px-6 lg:py-12'}>
@@ -39,15 +40,15 @@ export function RegistrationPage({ popup = false }: { popup?: boolean }) {
         </section>}
 
         <section className={popup ? '' : 'p-6 sm:p-10'}>
-          {!popup && <p className="text-xs font-black uppercase tracking-[.18em] text-[#0b5ea2]/55">New account</p>}<h2 id={popup ? 'auth-form-heading' : undefined} className="mt-2 font-display text-3xl font-black tracking-tight text-[#0b5ea2]">Activate your library account</h2>
-          <p className="mt-2 text-sm leading-relaxed opacity-65">Students creating their first library account can verify their school email and set a password.</p>
-          {mode === 'open' && <p className="mt-3 text-sm"><strong>Returning student?</strong> Choose Sign In and use your existing password to get your login code.</p>}
-          {mode === 'open' && <RosterRegistrationForm fieldClass={fieldClass} busy={busy} onBusy={setBusy}
+          {!popup && <p className="text-xs font-black uppercase tracking-[.18em] text-[#0b5ea2]/55">New account</p>}<h2 id={popup ? 'auth-form-heading' : undefined} className="mt-2 font-display text-3xl font-black tracking-tight text-[#0b5ea2]">Account Registration</h2>
+          {popup && <p className="mt-2 text-sm leading-relaxed opacity-65">Join your campus library. Verify your school email to get started.</p>}
+          <label className="mt-4 block text-sm font-bold">Account type<select className={fieldClass} disabled={busy} value={role} onChange={e=>{setMode('loading');setRole(e.target.value as 'Student'|'Faculty')}}><option>Student</option><option>Faculty</option></select></label>
+          {mode === 'open' && <RosterRegistrationForm key={role} role={role} fieldClass={fieldClass} busy={busy} onBusy={setBusy}
             onComplete={schoolId => navigate(loginLink, { replace: true, state: { ...location.state, registrationSuccess: true, registrationSchoolId: schoolId } })} />}
-          {mode === 'loading' && <p className="mt-4 text-sm" role="status">Checking whether account activation is open…</p>}
-          {mode === 'closed' && <p className="mt-4 text-sm" role="status">Student account activation opens when the library starts the semester. If you already have an account, select Sign In.</p>}
-          {mode === 'unavailable' && <AuthMessage error>Account activation is temporarily unavailable. <button type="button" className="font-bold underline" onClick={() => { setMode('loading'); setRetry(value => value + 1) }}>Try again</button></AuthMessage>}
-          <p className="mt-5 text-sm">Staff accounts are set up by the library. New Faculty signup is currently unavailable.</p>
+          {mode === 'loading' && <p className="mt-4 text-sm" role="status">Checking whether {role} registration is open…</p>}
+          {mode === 'closed' && <p className="mt-4 text-sm" role="status">{role} registration opens when the library starts the semester. If you already have an account, sign in below.</p>}
+          {mode === 'unavailable' && <AuthMessage error>{role} registration is temporarily unavailable. <button type="button" className="font-bold underline" onClick={() => { setMode('loading'); setRetry(value => value + 1) }}>Try again</button></AuthMessage>}
+          <p className="mt-5 text-sm">Staff accounts are set up by the library. Student and Faculty registration use separate semester rosters.</p>
           {!popup && <p className="mt-6 text-center text-sm text-[#0b5ea2]/65">Already registered? <Link to={loginLink} state={location.state} onClick={event => { if (busy) event.preventDefault() }} className="font-black text-[#0b5ea2] underline decoration-[#FFF200] decoration-4 underline-offset-4">Sign In Here</Link></p>}
         </section>
       </div>

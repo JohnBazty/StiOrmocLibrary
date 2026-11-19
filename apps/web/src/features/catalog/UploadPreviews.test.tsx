@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { BookQuotationModal } from './BookQuotationModal'
@@ -27,7 +28,7 @@ it('lets staff review and remove a quotation without sending it', async () => {
 })
 it('previews a digital book while preserving permission confirmation and a failed file for retry', async () => {
   api.digital.mockRejectedValueOnce(new Error('Upload interrupted.'))
-  render(<CatalogDetailsPanel titleId={1} editable />)
+  render(<MemoryRouter><CatalogDetailsPanel titleId={1} editable /></MemoryRouter>)
   const input = await screen.findByLabelText('Digital book PDF')
   const file = new File(['%PDF'], 'digital-book.pdf', { type: 'application/pdf' })
   fireEvent.change(input, { target: { files: [file] } })
@@ -37,6 +38,7 @@ it('previews a digital book while preserving permission confirmation and a faile
   fireEvent.change(screen.getByLabelText('Permission basis'), { target: { value: 'Publisher permission' } })
   fireEvent.click(screen.getByLabelText('I confirm the school may distribute this file publicly.'))
   fireEvent.click(screen.getByRole('button', { name: 'Upload PDF' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
   await screen.findByText('Upload interrupted.')
   expect(screen.getByText('digital-book.pdf')).toBeTruthy()
   expect(api.digital).toHaveBeenCalledWith(1, file, 'Publisher permission')

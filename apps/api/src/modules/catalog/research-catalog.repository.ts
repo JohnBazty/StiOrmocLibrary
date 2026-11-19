@@ -24,7 +24,7 @@ const SELECT = `SELECT
     t.title_id, t.title, t.publication_year,
     credits.authors,
     rr.research_record_id, rr.research_code, rr.adviser_name,
-    rr.department_or_program, rr.abstract_text, rr.keywords_text,
+    COALESCE(CASE WHEN g.department='SHS' THEN 'Grade '||g.year_level||' · '||g.program WHEN g.department='College' THEN g.program||' · Year '||g.year_level END,rr.department_or_program) AS department_or_program, rr.abstract_text, rr.keywords_text,
     rr.viewing_status,
     inventory.research_inventory_id,
     COALESCE(inventory.shelf_location, c.shelf_location, 'Research Archive') AS shelf_location,
@@ -39,6 +39,7 @@ function contains(value: string) { return `%${value}%` }
 export function buildResearchCatalogQuery(filters: ResearchCatalogFilters) {
   const where = ["t.record_type = 'Research/Thesis'", "t.lifecycle_status = 'Active'", "rr.viewing_status <> 'Archived'"]
   const parameters: Array<string | number> = []
+  if (filters.groupId) { where.push('rr.research_group_id = ?'); parameters.push(filters.groupId) }
   if (filters.title) { where.push('t.title ILIKE ?'); parameters.push(contains(filters.title)) }
   if (filters.authors) {
     where.push('EXISTS (SELECT 1 FROM authors author_filter WHERE author_filter.title_id = t.title_id AND author_filter.normalized_name ILIKE ?)')
@@ -56,6 +57,7 @@ export function buildResearchCatalogQuery(filters: ResearchCatalogFilters) {
 
   const from = `FROM titles t
     JOIN research_records rr ON rr.title_id = t.title_id
+    LEFT JOIN research_academic_groups g ON g.research_group_id=rr.research_group_id
     ${AUTHOR_JOIN}
     LEFT JOIN categories c ON c.category_id = t.category_id
     ${INVENTORY_JOIN}`
@@ -107,7 +109,7 @@ export async function queryResearchOverview(database: Pool, titleId: number) {
          t.title_id, t.title, t.publication_year,
          credits.authors,
          rr.research_record_id, rr.research_code, rr.adviser_name,
-         rr.department_or_program, rr.abstract_text, rr.keywords_text,
+         COALESCE(CASE WHEN g.department='SHS' THEN 'Grade '||g.year_level||' · '||g.program WHEN g.department='College' THEN g.program||' · Year '||g.year_level END,rr.department_or_program) AS department_or_program, rr.abstract_text, rr.keywords_text,
          ri.research_inventory_id, ri.accession_number, ri.shelf_location,
          CASE
            WHEN ri.availability_status = 'available' AND rr.viewing_status = 'Available for Viewing' THEN 'Available'
@@ -117,6 +119,7 @@ export async function queryResearchOverview(database: Pool, titleId: number) {
        FROM research_inventory ri
        JOIN titles t ON t.title_id = ri.title_id
        JOIN research_records rr ON rr.title_id = t.title_id
+    LEFT JOIN research_academic_groups g ON g.research_group_id=rr.research_group_id
        JOIN (
          SELECT a.title_id,
            ${authorsAgg('a')} AS authors

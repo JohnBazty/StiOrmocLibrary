@@ -65,67 +65,15 @@ export async function findCategoryByName(database: Pool | PoolConnection, catego
 
 export async function findManagedShelfByLabel(database: Pool | PoolConnection, shelfLocation: string) {
   {
-    const [rows] = await database.execute<RowDataPacket[]>(`SELECT l.location_id AS id,l.name AS label,COALESCE(s.column_count,1) AS column_count,COALESCE(s.row_count,1) AS row_count FROM catalog_locations l LEFT JOIN floor_plan_shelves s ON s.label=l.name WHERE l.name=? AND l.lifecycle_status='Active' LIMIT 1`,[shelfLocation])
+    const [rows] = await database.execute<RowDataPacket[]>(`SELECT l.location_id AS id,l.name AS label,l.column_count,l.row_count FROM catalog_locations l WHERE l.name=? AND l.lifecycle_status='Active' LIMIT 1`,[shelfLocation])
     return rows[0]??null
   }
 }
 
 export async function lockManagedShelfByLabel(connection: PoolConnection, shelfLocation: string) {
   {
-    const [rows] = await connection.execute<RowDataPacket[]>(`SELECT l.location_id AS id,l.name AS label,COALESCE(s.column_count,1) AS column_count,COALESCE(s.row_count,1) AS row_count FROM catalog_locations l LEFT JOIN floor_plan_shelves s ON s.label=l.name WHERE l.name=? AND l.lifecycle_status='Active' LIMIT 1 FOR UPDATE OF l`,[shelfLocation])
+    const [rows] = await connection.execute<RowDataPacket[]>(`SELECT l.location_id AS id,l.name AS label,l.column_count,l.row_count FROM catalog_locations l WHERE l.name=? AND l.lifecycle_status='Active' LIMIT 1 FOR UPDATE OF l`,[shelfLocation])
     return rows[0]??null
-  }
-}
-
-export async function synchronizeCategoryShelf(connection: PoolConnection, categoryId: number, shelfLocation: string, shelfColumn = 1, shelfRow = 1) {
-  const [bookRows] = await connection.execute<RowDataPacket[]>(
-    `SELECT pc.physical_copy_id, pc.shelf_location
-       FROM titles t
-       JOIN physical_copies pc ON pc.title_id = t.title_id
-      WHERE t.category_id = ? AND t.record_type = 'Book'
-        AND t.lifecycle_status = 'Active' AND pc.lifecycle_status = 'Active'
-      ${forUpdate('pc')}`, [categoryId],
-  )
-  const [researchRows] = await connection.execute<RowDataPacket[]>(
-    `SELECT ri.research_inventory_id, ri.shelf_location
-       FROM titles t
-       JOIN research_inventory ri ON ri.title_id = t.title_id
-      WHERE t.category_id = ? AND t.record_type = 'Research/Thesis'
-        AND t.lifecycle_status = 'Active' AND ri.lifecycle_status = 'Active'
-      ${forUpdate('ri')}`, [categoryId],
-  )
-  await connection.execute(
-    `UPDATE physical_copies pc
-            SET shelf_location = ?, shelf_column = ?, shelf_row = ?, updated_at = NOW()
-           FROM titles t
-          WHERE t.title_id = pc.title_id AND t.category_id = ? AND t.record_type = 'Book'
-            AND t.lifecycle_status = 'Active' AND pc.lifecycle_status = 'Active'`,
-    [shelfLocation, shelfColumn, shelfRow, categoryId],
-  )
-  await connection.execute(
-    'UPDATE materials SET shelf_location = ?, updated_at = NOW() WHERE category_id = ?',
-    [shelfLocation, categoryId],
-  )
-  await connection.execute(
-    `UPDATE research_inventory ri
-            SET shelf_location = ?, shelf_column = ?, shelf_row = ?, updated_at = NOW(), row_version = ri.row_version + 1
-           FROM titles t
-          WHERE t.title_id = ri.title_id AND t.category_id = ? AND t.record_type = 'Research/Thesis'
-            AND t.lifecycle_status = 'Active' AND ri.lifecycle_status = 'Active'`,
-    [shelfLocation, shelfColumn, shelfRow, categoryId],
-  )
-  const distribution = (rows: RowDataPacket[]) => Object.entries(rows.reduce<Record<string, number>>((result, row) => {
-    const previous = String(row.shelf_location || 'Unassigned')
-    result[previous] = (result[previous] ?? 0) + 1
-    return result
-  }, {})).map(([shelf, count]) => ({ shelf, count }))
-  return {
-    bookCopies: bookRows.length,
-    movedBookCopies: bookRows.filter((row) => row.shelf_location !== shelfLocation).length,
-    researchCopies: researchRows.length,
-    movedResearchCopies: researchRows.filter((row) => row.shelf_location !== shelfLocation).length,
-    previousBookShelves: distribution(bookRows),
-    previousResearchShelves: distribution(researchRows),
   }
 }
 
@@ -137,7 +85,7 @@ export async function recordCategoryShelfEvent(connection: PoolConnection, actor
   )
 }
 
-export async function insertCategory(database: Pool, input: CategoryInput) {
+export async function insertCategory(database: Pool | PoolConnection, input: CategoryInput) {
   const [result] = await database.execute<ResultSetHeader>(
     `INSERT INTO categories (category_name, description, shelf_location, shelf_column, shelf_row, created_at)
      VALUES (?, ?, ?, ?, ?, NOW())`,

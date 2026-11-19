@@ -5,11 +5,15 @@ import { PDFDocument } from 'pdf-lib'
 import { PrintingRepository } from './printing.repository.ts'
 import { createPrintingService } from './printing.service.ts'
 
-function serviceFixture(selectedRow:Record<string,unknown>,acceptingRequests=1){
+function serviceFixture(selectedRow:Record<string,unknown>,acceptingRequests=1,localPayments?:Parameters<typeof createPrintingService>[2]){
   const calls:Array<{sql:string;values:unknown[]}>=[]
   const connection={
     beginTransaction:async()=>undefined,commit:async()=>undefined,rollback:async()=>undefined,release:()=>undefined,
     execute:async(sql:string,values:unknown[]=[] )=>{assert.equal((sql.match(/\?/g)??[]).length,values.length,`Prepared value count mismatch in ${sql}`);calls.push({sql,values});
+      if(sql.includes('a.role,a.account_status'))return [[{role:'Librarian',account_status:'Active',user_status:'Active'}]]
+      if(sql.includes('SELECT user_id FROM accounts'))return [[{user_id:5}]]
+      if(sql.includes('FROM print_deferred_approvals')||sql.includes('FROM print_cash_payments p'))return [[]]
+      if(sql.includes('AS paid FROM print_requests'))return [[{paid:selectedRow.payment_status==='Paid'?selectedRow.calculated_cost??0:0}]]
       if (sql.includes('FROM library_operating_schedule')) return [[{ is_open: true, opens_at: '00:00:00', closes_at: '23:59:59' }]]
       if (sql.includes('FROM attendance_operation_settings')) return [[{ configured: true, preclosing_minutes: 1 }]]
       if (/FROM library_(closed_days|operational_events|profile_settings)|FROM attendance_operation_settings|FROM attendance_logs/.test(sql)) return [[]]
@@ -17,8 +21,36 @@ function serviceFixture(selectedRow:Record<string,unknown>,acceptingRequests=1){
   }
   const pool={getConnection:async()=>connection} as unknown as Pool
   const repository={userBySchoolId:async()=>({user_id:5,account_status:'Active'}),serviceStatus:async()=>({accepting_requests:acceptingRequests}),pricing:async()=>[{print_type:'Monochrome',paper_size:'A4',price_per_page:3}]} as unknown as PrintingRepository
-  return{service:createPrintingService(pool,repository),calls}
+  return{service:createPrintingService(pool,repository,localPayments),calls}
 }
+
+test('verified online printing credit starts a job without recording cash or settling a school bill',async()=>{
+  let locked=false,checked=false
+  const localPayments={
+    async withPrintingLock<T>(run:()=>Promise<T>){locked=true;try{return await run()}finally{locked=false}},
+    async guard(){assert.equal(locked,true)},
+    async printingProjection(){assert.equal(locked,true);checked=true;return[{request_id:4,user_id:12,payment_status:'Paid',paid_centavos:5000,local_payment_id:'online-1',refund_pending:false,cancel_job:false}]},
+  }
+  const {service,calls}=serviceFixture({request_id:4,user_id:12,file_name:'qa.pdf',calculated_cost:50,job_status:'Pending',payment_status:'Unpaid'},1,localPayments)
+  assert.equal((await service.updateStatus({schoolId:'ADMIN-PORTAL-001'},4,{status:'Printing'})).job_status,'Printing')
+  assert.equal(checked,true)
+  assert.ok(calls.some(call=>call.sql.includes('INSERT INTO print_status_history')))
+  assert.ok(calls.every(call=>!call.sql.includes('INSERT INTO print_cash_payments')&&!call.sql.includes('INSERT INTO print_payment_receipts')&&!call.sql.includes("SET payment_status='Paid'")))
+})
+test('wrong-owner, insufficient credit and refunded online payments cannot start a print job',async()=>{
+  for(const view of [{user_id:99,paid_centavos:5000,payment_status:'Paid'},{user_id:12,paid_centavos:4999,payment_status:'Paid'},{user_id:12,paid_centavos:0,payment_status:'Refunded'}]){
+    const localPayments={withPrintingLock:<T>(run:()=>Promise<T>)=>run(),guard:async()=>{},printingProjection:async()=>[{request_id:4,local_payment_id:'qa',refund_pending:false,cancel_job:false,...view}]}
+    const {service,calls}=serviceFixture({request_id:4,user_id:12,calculated_cost:50,job_status:'Pending',payment_status:'Unpaid'},1,localPayments)
+    await assert.rejects(service.updateStatus({schoolId:'ADMIN-PORTAL-001'},4,{status:'Printing'}),{code:'PRINT_PAYMENT_REQUIRED'})
+    assert.ok(calls.every(call=>!call.sql.startsWith('UPDATE print_requests')))
+  }
+})
+test('a refund reservation blocks online-paid printing before the job changes',async()=>{
+  const localPayments={withPrintingLock:<T>(run:()=>Promise<T>)=>run(),guard:async()=>{throw Object.assign(new Error('Refund in progress'),{code:'REFUND_IN_PROGRESS'})},printingProjection:async()=>[]}
+  const {service,calls}=serviceFixture({request_id:4,user_id:12,calculated_cost:50,job_status:'Pending',payment_status:'Unpaid'},1,localPayments)
+  await assert.rejects(service.updateStatus({schoolId:'ADMIN-PORTAL-001'},4,{status:'Printing'}),{code:'REFUND_IN_PROGRESS'})
+  assert.ok(calls.every(call=>!call.sql.startsWith('UPDATE print_requests')))
+})
 
 test('new ink stores required unit cost and calculated expense with matching prepared values',async()=>{
   const{service,calls}=serviceFixture({})
@@ -51,7 +83,7 @@ test('using ink deducts exactly one bottle and stores balance snapshots',async()
 })
 
 test('opening paper deducts exactly one unopened ream',async()=>{
-  const{service,calls}=serviceFixture({unopened_reams:3})
+  const{service,calls}=serviceFixture({unopened_reams:3,paper_brand_stock_id:1,brand:'Brand One',monochrome_price:2,colored_price:5})
   const result=await service.openPaperReam({schoolId:'ADMIN-PORTAL-001'},1)
   assert.equal(result.unopened_reams,2)
   assert.ok(calls.some(call=>call.sql.includes("'OpenedReam'")&&call.values.includes(3)&&call.values.includes(2)))
@@ -76,7 +108,7 @@ test('a blocked print start sends no notification',async()=>{
 
 test('recording a printing payment creates a separate digital printing receipt',async()=>{
   const{service,calls}=serviceFixture({request_id:4,user_id:7,calculated_cost:'36.00',payment_status:'Unpaid',job_status:'Pending',file_name:'capstone.pdf',page_count:6,number_of_copies:2,total_sheets:12,print_type:'Monochrome',paper_size:'A4',student_name:'Student User',school_id:'0200000001',user_role:'Student'})
-  const result=await service.recordCash({schoolId:'ADMIN-PORTAL-001'},4,{amount_paid:36})
+  const result=await service.recordCash({accountId:1,schoolId:'ADMIN-PORTAL-001',role:'Librarian'},4,{amount_paid:36,request_key:'00000000-0000-4000-8000-000000000001'})
   assert.equal(result.receipt.receipt_number.startsWith('PR-'),true)
   assert.equal(result.receipt.amount_received,36)
   assert.ok(calls.some(call=>call.sql.includes('INSERT INTO print_payment_receipts')))

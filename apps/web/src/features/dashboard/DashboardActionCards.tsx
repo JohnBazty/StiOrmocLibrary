@@ -1,0 +1,11 @@
+import { Link } from 'react-router-dom'
+import { BookOpen, CalendarClock, Clock, Wrench } from 'lucide-react'
+import { Button } from '../../components/ui'
+import type { DeskOverview, DeskTaskFilters } from './desk-dashboard-api'
+
+export function DashboardActionCards({data,onSelect,onRemind,reminderBusy=false}:{data:DeskOverview|null;onSelect:(tab:DeskTaskFilters['tab'])=>void;onRemind:()=>void;reminderBusy?:boolean}){
+ const cards=[{label:'Books due today',value:data?.counts.dueToday,icon:Clock,tab:'due' as const},
+  {label:'Overdue books',value:data?.counts.overdue,icon:CalendarClock,tab:'overdue' as const},
+  {label:'Pending reservations',value:data?.counts.holds,icon:BookOpen,tab:'holds' as const}]
+ return <section aria-label="Daily action cards" className="mb-6"><div className="mb-3 flex flex-wrap justify-between gap-2"><h2 className="text-xl font-bold">Today's priorities</h2><span className="text-xs opacity-75">School-wide totals · Asia/Manila</span></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{cards.map(({label,value,icon:Icon,tab})=><div key={label} className="rounded-2xl border border-[#0b5ea2]/15 bg-white p-4 dark:border-white/15 dark:bg-white/5"><button onClick={()=>onSelect(tab)} className="block min-h-11 w-full text-left"><span className="flex items-center justify-between gap-3 text-sm font-semibold"><span>{label}</span><Icon size={21} aria-hidden="true"/></span><strong className="mt-3 block text-3xl tabular-nums">{value?.toLocaleString('en-PH')??'—'}</strong></button>{tab==='overdue'?<Button variant="secondary" className="mt-3 w-full" disabled={!value||reminderBusy} onClick={onRemind}>{reminderBusy?'Queuing emails…':'Send email reminders'}</Button>:<p className="mt-3 text-xs opacity-75">{tab==='due'?'Not yet overdue · View due list':'Copies needing shelf preparation'}</p>}</div>)}<Link to="/librarian/inventory?condition=For%20Repair" className="rounded-2xl border border-[#0b5ea2]/15 bg-white p-4 dark:border-white/15 dark:bg-white/5"><span className="flex items-center justify-between gap-3 text-sm font-semibold"><span>Books in repair</span><Wrench size={21} aria-hidden="true"/></span><strong className="mt-3 block text-3xl tabular-nums">{data?.counts.repair.toLocaleString('en-PH')??'—'}</strong><p className="mt-3 text-xs opacity-75">View copies marked For Repair</p></Link></div></section>
+}

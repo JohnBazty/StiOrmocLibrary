@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, expect, it, vi } from 'vitest'
 import { SessionActivity } from './SessionActivity'
 const auth = vi.hoisted(()=>({token:'token',save:vi.fn(),clear:vi.fn(),resume:vi.fn(),decode:vi.fn(),identity:vi.fn()}))
-vi.mock('./auth-storage',()=>({decodeAccessToken:auth.decode,getAccessToken:()=>auth.token,saveAccessToken:auth.save,clearAccessToken:auth.clear,setSessionIdentity:auth.identity}))
+vi.mock('./auth-storage',()=>({getStoredClaims:(allowExpired?:boolean)=>auth.decode(auth.token,allowExpired),getCsrfToken:()=>auth.token,parseAuthSession:(value:unknown)=>value,passwordChangeRequired:()=>false,saveAuthSession:auth.save,clearAuthSession:auth.clear,setSessionIdentity:auth.identity}))
 vi.mock('./auth-api',()=>({resumeDeviceSession:auth.resume}))
 const token=()=>`e30.${btoa(JSON.stringify({accountId:999001}))}.example`
 function page(){render(<MemoryRouter initialEntries={['/student/dashboard']}><Routes><Route path="/student/dashboard" element={<><SessionActivity/><h1>Private page</h1></>}/><Route path="/login" element={<h1>Login page</h1>}/></Routes></MemoryRouter>)}

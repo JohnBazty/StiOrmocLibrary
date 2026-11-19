@@ -7,16 +7,17 @@ import { validateXlsxArchive } from '../catalog/holdings-parser.ts'
 export type EnrollmentData = { schoolId:string; name:string; firstName:string; lastName:string; program:string; yearLevel:string; section:string; email:string; status:'Enrolled'|'Not Enrolled'|'' }
 export type EnrollmentImportRow = { sheet:string; row:number; data:EnrollmentData; errors:string[]; warnings:string[]; source?:string[] }
 export type EnrollmentFile = { fingerprint:string; rows:EnrollmentImportRow[]; errors:number; warnings:number; sheets:string[]; headings:Record<string,string[]> }
+export type EnrollmentRosterFile = { buffer: Buffer; originalname: string }
 const schoolIdPattern=/^[A-Z0-9][A-Z0-9._-]{2,49}$/
 const ormocEmail=/^[^\s@]+@ormoc\.sti\.edu\.ph$/i
 const stiEmail=/^[^\s@]+@(?:[a-z0-9-]+\.)*sti\.edu\.ph$/i
 const text=(value:unknown)=>String(value??'').normalize('NFKC').trim().replace(/\s+/g,' ')
 const header=(value:unknown)=>text(value).toLowerCase().replace(/[^a-z0-9]/g,'')
 const aliases:Record<string,string[]>= {
- schoolId:['studentid','schoolid','studentnumber','idnumber'],name:['fullname','studentname','name'],
+ schoolId:['facultyid','facultyidnumber','employeeid','facultycode','studentid','schoolid','studentnumber','idnumber'],name:['fullname','fullnamefirstnamemiddleinitiallastname','facultyname','studentname','name'],
  first:['firstname','givenname'],last:['lastname','surname'],middle:['middlename'],suffix:['suffix'],
- program:['program','programstrand','course','department'],yearLevel:['level','yearlevel','yeargradelevel','gradelevel'],
- section:['section','classsection'],email:['campusemailaddress','schoolemail','emailaddress','email'],
+ program:['program','programstrand','course','department','departmentprogram'],yearLevel:['level','yearlevel','yeargradelevel','gradelevel'],
+ section:['section','classsection'],email:['institutionalemailaddress','institutionalemail','campusemailaddress','schoolemail','emailaddress','email'],
  status:['enrollmentstatus','enrolmentstatus','status'],academicYear:['academicyear','schoolyear','sy'],term:['semester','term','termname'],
 }
 const bad=(message:string)=>new HttpError(422,'ENROLLMENT_FILE_INVALID',message)
@@ -33,8 +34,51 @@ export function normalizeRegistrarLevel(value:string) {
  return grade?`Grade ${grade[1]}`:year?`${year[1]}${['','st','nd','rd','th','th'][Number(year[1])]} Year`:raw
 }
 
+function validateStudent(
+  fields: { schoolId: string; name: string; firstName: string; lastName: string; program: string; yearLevel: string; section: string; email: string },
+  status: EnrollmentData['status'],
+  role: 'Student' | 'Faculty' = 'Student',
+) {
+  const data: EnrollmentData = {
+    ...fields, schoolId: fields.schoolId.toUpperCase(), yearLevel: normalizeRegistrarLevel(fields.yearLevel),
+    email: fields.email.toLowerCase(), status,
+  }
+  const errors: string[] = [], warnings: string[] = []
+  if (!schoolIdPattern.test(data.schoolId) || ['NA','NONE','NULL','NOTAVAILABLE','NOTAPPLICABLE'].includes(header(data.schoolId).toUpperCase())) errors.push('School ID is missing or invalid.')
+  if (!data.name || data.name.length > 150) errors.push(role === 'Faculty' ? 'A faculty name of at most 150 characters is required.' : 'A student name of at most 150 characters is required.')
+  if (data.firstName.length > 100 || data.lastName.length > 100) errors.push('First and last names must each be at most 100 characters.')
+  if (!data.program || data.program.length > 150) errors.push(role === 'Faculty' ? 'A department of at most 150 characters is required.' : 'A program or strand of at most 150 characters is required.')
+  if ((role !== 'Faculty' && !data.yearLevel) || data.yearLevel.length > 50) errors.push('A year or grade level of at most 50 characters is required.')
+  if (data.section.length > 100) errors.push('Section must have at most 100 characters.')
+  if (!data.email) warnings.push('Enrolled. An Ormoc school email is needed for registration.')
+  else if (data.email.length > 191 || !stiEmail.test(data.email)) errors.push('Use a valid school email, or leave an unavailable email blank.')
+  else if (!ormocEmail.test(data.email)) {
+    warnings.push('Enrolled. The email belongs to another STI campus. An Ormoc school email is needed for registration.')
+    data.email = ''
+  }
+  return { data, errors, warnings }
+}
+
+export function parseLateEnrollmentForm(input: Record<string, unknown>): EnrollmentFile {
+  const field = (key: string) => typeof input[key] === 'string' ? text(input[key]) : ''
+  const firstName = field('firstName'), lastName = field('lastName')
+  const { data, errors, warnings } = validateStudent({
+    schoolId: field('schoolId'), name: [firstName, lastName].filter(Boolean).join(' '),
+    firstName, lastName, program: field('program'), yearLevel: field('yearLevel'), section: '', email: field('email'),
+  }, 'Enrolled')
+  if (!firstName || !lastName) errors.push('Enter both the first name and last name from the registrar.')
+  if (input.email != null && typeof input.email !== 'string') errors.push('Enter the school email as text or leave it blank.')
+  const sheet = 'Student details'
+  return {
+    rows: [{ sheet, row: 1, data, errors, warnings, source: [data.schoolId, firstName, lastName, data.program, data.yearLevel, field('email')] }],
+    errors: Number(errors.length > 0), warnings: Number(warnings.length > 0), sheets: [sheet],
+    headings: { [sheet]: ['Student ID', 'First name', 'Last name', 'Program or strand', 'Year or grade level', 'School email'] },
+    fingerprint: createHash('sha256').update(JSON.stringify({ data, email: field('email') })).digest('hex'),
+  }
+}
+
 /** Read-only recognition. No enrollment or account is written here. */
-export async function parseEnrollmentFile(file:{buffer:Buffer;originalname:string},options:{listedEnrolled:boolean;academicYear:string;termName:string;columns?:Record<string,string>;includeSource?:boolean}) : Promise<EnrollmentFile> {
+export async function parseEnrollmentFile(file:EnrollmentRosterFile,options:{listedEnrolled:boolean;academicYear:string;termName:string;columns?:Record<string,string>;includeSource?:boolean;role?:'Student'|'Faculty'}) : Promise<EnrollmentFile> {
  if(!file.buffer.length||file.buffer.length>4*1024*1024)throw bad('Choose an XLSX workbook or UTF-8 CSV up to 4 MB.')
  const workbook=new ExcelJS.Workbook()
  try {
@@ -54,31 +98,21 @@ export async function parseEnrollmentFile(file:{buffer:Buffer;originalname:strin
    sheet.getRow(n).eachCell((c,i)=>{const h=header(cell(c.value).value);for(const [field,names] of Object.entries(aliases))if(names.includes(h)||options.columns?.[field]&&header(options.columns[field])===h)candidate[field]=i})
    if(candidate.schoolId&&(candidate.name||candidate.first&&candidate.last)){columns=candidate;headerRow=n;break}
   }
-  if(!headerRow)throw bad(`Sheet “${sheet.name}” needs Student ID and Name, or First Name and Last Name, column headings.`)
+  if(!headerRow)throw bad(`Sheet “${sheet.name}” needs ${options.role==='Faculty'?'Faculty':'Student'} ID and Name, or First Name and Last Name, column headings.`)
   sheets.push(sheet.name)
   if(options.includeSource) headings[sheet.name]=Array.from({length:sheet.columnCount},(_,i)=>cell(sheet.getRow(headerRow).getCell(i+1).value).value||`Column ${i+1}`)
   for(let n=headerRow+1;n<=sheet.rowCount;n++) {
    const source=sheet.getRow(n),values:Record<string,ReturnType<typeof cell>>={}
    for(const [field,index] of Object.entries(columns))values[field]=cell(source.getCell(index).value)
    if(!Object.values(values).some(v=>v.value||v.unsafe))continue
-   const get=(field:string)=>values[field]?.value??'',errors:string[]=[],warnings:string[]=[]
+   const get=(field:string)=>values[field]?.value??''
    const rawStatus=get('status'),status=rawStatus==='Enrolled'?'Enrolled':rawStatus==='Not Enrolled'?'Not Enrolled':!rawStatus&&options.listedEnrolled?'Enrolled':''
    const name=get('name')||[get('first'),get('middle'),get('last'),get('suffix')].filter(Boolean).join(' ')
    const words=name.split(' '),lastName=get('last')||words.pop()||'',firstName=get('first')||words.join(' ')||name
-   const data:EnrollmentData={schoolId:get('schoolId').toUpperCase(),name,firstName,lastName,program:get('program'),yearLevel:normalizeRegistrarLevel(get('yearLevel')),section:get('section'),email:get('email').toLowerCase(),status}
-   if(!schoolIdPattern.test(data.schoolId))errors.push('School ID is missing or invalid.')
+   const {data,errors,warnings}=validateStudent({
+    schoolId:get('schoolId'),name,firstName,lastName,program:get('program'),yearLevel:get('yearLevel'),section:get('section'),email:get('email'),
+   },status,options.role)
    if(values.schoolId?.numeric)errors.push('School ID is stored as a number. Restore its exact ID, including leading zeros, as text.')
-   if(!data.name||data.name.length>150)errors.push('A student name of at most 150 characters is required.')
-   if(data.firstName.length>100||data.lastName.length>100)errors.push('First and last names must each be at most 100 characters.')
-   if(!data.program||data.program.length>150)errors.push('A program or strand of at most 150 characters is required.')
-   if(!data.yearLevel||data.yearLevel.length>50)errors.push('A year or grade level of at most 50 characters is required.')
-   if(data.section.length>100)errors.push('Section must have at most 100 characters.')
-   if(!data.email)warnings.push('Enrolled. An Ormoc school email is needed for registration.')
-   else if(data.email.length>191||!stiEmail.test(data.email))errors.push('Use a valid school email, or leave an unavailable email blank.')
-   else if(!ormocEmail.test(data.email)){
-    warnings.push('Enrolled. The email belongs to another STI campus. An Ormoc school email is needed for registration.')
-    data.email=''
-   }
    if(!status)errors.push('Confirm the listed students are enrolled, or use Enrolled / Not Enrolled in the enrollment-status column.')
    if(options.listedEnrolled&&rawStatus&&status!=='Enrolled')errors.push('The status conflicts with the declaration that everyone listed is enrolled.')
    if(get('academicYear')&&get('academicYear').replace(/[–—]/g,'-')!==options.academicYear)errors.push('The school year differs from the selected term.')

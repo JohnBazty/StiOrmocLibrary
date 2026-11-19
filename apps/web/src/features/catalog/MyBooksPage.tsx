@@ -1,5 +1,4 @@
-import { useLiveQuery } from '../../hooks/useLiveQuery'
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PageHeader, SectionCard, StatusBadge } from '../../components/ui'
 import { circulationApi } from '../circulation/circulation-api'
@@ -9,11 +8,18 @@ import { getCurrentIdentity } from '../auth/auth-storage'
 import { BookDetailDrawer } from './BookDetailDrawer'
 
 export function MyBooksPage() {
-  const query=useLiveQuery('my-book-collection',()=>circulationApi.myBooks())
-  const data=query.data,error=query.error?.message??'',load=query.refresh
+  const [data, setData] = useState<Pick<BorrowingHistoryData, 'items'> | null>(null)
+  const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<{ titleId: number; barcode: string | null } | null>(null)
+  const running = useRef(false)
   const prefix = getCurrentIdentity()?.role === 'Faculty' ? '/faculty' : '/student'
+  const load = useCallback(async () => {
+    if (running.current) return
+    running.current = true
+    try { setData(await circulationApi.myBooks()); setError('') } catch (error) { setError(error instanceof Error ? error.message : 'Your book collection could not be loaded.') } finally { running.current = false }
+  }, [])
+  useEffect(() => { void load(); const timer = window.setInterval(() => { if (!document.hidden) void load() }, 5000); return () => clearInterval(timer) }, [load])
   const books = new Map<number | string, BorrowingHistoryData['items'][number]>()
   for (const item of data?.items ?? []) {
     if (!item.borrowDate || !['Borrowed', 'Overdue', 'Returned', 'Lost'].includes(item.status)) continue

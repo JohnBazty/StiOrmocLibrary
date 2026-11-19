@@ -49,11 +49,28 @@ describe('AdminFinesPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Adjust' }))
     fireEvent.change(screen.getByLabelText('Cash amount paid'), { target: { value: '14' } })
     fireEvent.click(screen.getByRole('button', { name: 'Record payment' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
 
     await waitFor(() => expect(api.pay).toHaveBeenCalledWith(expect.objectContaining({ allocations: [{ fineId: 2, amount: 14 }] })))
     expect(api.adjust).not.toHaveBeenCalled()
     expect(await screen.findByText('Payment record OR-20260903-000012')).toBeTruthy()
     expect(screen.getByText(/Remaining.*₱14\.00/)).toBeTruthy()
+  })
+
+  it('refreshes verified payment status on focus and removes settled actions without losing a draft', async () => {
+    api.adminList.mockResolvedValue(fineList)
+    api.adminTerms.mockResolvedValue([])
+    render(<AdminFinesPage />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Cash payment' }))
+    const amount = screen.getByLabelText('Amount received') as HTMLInputElement
+    fireEvent.change(amount, { target: { value: '12' } })
+    window.dispatchEvent(new Event('focus'))
+    await waitFor(() => expect(api.adminList).toHaveBeenCalledTimes(2))
+    expect(amount.value).toBe('12')
+    api.adminList.mockResolvedValue({ ...fineList, items: [{ ...fineList.items[0], balance: 0, paid: 28, status: 'Paid', paymentAllowed: false }] })
+    window.dispatchEvent(new Event('library-payments-updated'))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Cash payment' })).toBeNull())
+    expect(screen.queryByRole('button', { name: 'Record cash payment' })).toBeNull()
   })
 
   it('records a waiver without creating a cash receipt', async () => {
@@ -66,6 +83,7 @@ describe('AdminFinesPage', () => {
     fireEvent.change(screen.getByLabelText('Adjustment type'), { target: { value: 'Waiver' } })
     fireEvent.change(screen.getByLabelText('Mandatory audit reason'), { target: { value: 'Approved by the head librarian.' } })
     fireEvent.click(screen.getByRole('button', { name: 'Record waiver' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
 
     await waitFor(() => expect(api.adjust).toHaveBeenCalledWith(2, { type: 'Waiver', reason: 'Approved by the head librarian.' }))
     expect(api.pay).not.toHaveBeenCalled()
@@ -83,6 +101,7 @@ describe('AdminFinesPage', () => {
     fireEvent.change(reason, { target: { value: 'Approved by the head librarian.' } })
     expect(reason.value).toBe('Approved by the head librarian.')
     fireEvent.click(screen.getByRole('button', { name: 'Record waiver' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
     expect(await screen.findByText('The adjustment could not be saved.')).toBeTruthy()
     expect(reason.value).toBe('Approved by the head librarian.')
   })
@@ -101,8 +120,10 @@ describe('AdminFinesPage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Cash payment' }))
     fireEvent.click(screen.getByRole('button', { name: 'Record cash payment' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
     expect(await screen.findByText('Payment response was interrupted.')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Record cash payment' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
     await waitFor(() => expect(api.pay).toHaveBeenCalledTimes(2))
     expect(api.pay.mock.calls[0][0].requestKey).toBe(api.pay.mock.calls[1][0].requestKey)
   })

@@ -1,11 +1,11 @@
-import { getAccessToken } from '../auth/auth-storage'
+import { getCsrfToken } from '../auth/auth-storage'
 import type { ResearchCatalogItem, ResearchPagination } from './research-catalog-types'
 
 const BASE_URL = '/api/v1/catalog/research'
 
 function headers(): Record<string, string> {
-  const token = getAccessToken()
-  return { Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+  const token = getCsrfToken()
+  return { Accept: 'application/json', ...(token ? { 'X-CSRF-Token': token } : {}) }
 }
 
 async function json<T>(response: Response) {
@@ -14,9 +14,10 @@ async function json<T>(response: Response) {
   return payload.data as T
 }
 
-export async function fetchResearchCatalog(input: { query?: string; page?: number; signal?: AbortSignal } = {}) {
+export async function fetchResearchCatalog(input: { groupId?: string; query?: string; page?: number; signal?: AbortSignal } = {}) {
   const parameters = new URLSearchParams({ page: String(input.page ?? 1), limit: '25' })
   if (input.query) parameters.set('q', input.query)
+  if (input.groupId) parameters.set('groupId', input.groupId)
   const response = await fetch(`${BASE_URL}?${parameters}`, { headers: headers(), credentials: 'include', signal: input.signal })
   const payload = await response.json().catch(() => null) as {
     success?: boolean; data?: ResearchCatalogItem[]; message?: string

@@ -15,7 +15,7 @@ function NoticeCard({ notice }: { notice: Notice }) {
       <p className="mt-1 text-sm text-[#0b5ea2]/70 dark:text-white/70">{notice.body}</p>
       <p className="mt-2 text-xs text-[#0b5ea2]/50 dark:text-white/50">{date(notice.createdAt)}</p>
     </div>
-    <Link to={notice.actionPath} className="rounded-xl border border-[#0b5ea2]/20 px-4 py-2 text-sm font-bold text-[#0b5ea2] hover:bg-[#0b5ea2]/5 dark:border-white/20 dark:text-white dark:hover:bg-white/10">View users</Link>
+    <Link to={notice.actionPath} className="rounded-xl border border-[#0b5ea2]/20 px-4 py-2 text-sm font-bold text-[#0b5ea2] hover:bg-[#0b5ea2]/5 dark:border-white/20 dark:text-white dark:hover:bg-white/10">{notice.kind === 'lost' ? 'Review lost report' : 'View users'}</Link>
   </li>
 }
 
@@ -23,7 +23,7 @@ export function AdminNotificationsPage() {
   const query=useLiveQuery('admin-notifications',fetchAdminNotifications)
   const inbox=query.data,error=query.error?.message??'',loading=query.loading,load=query.refresh
   return <>
-    <PageHeader eyebrow="Accounts" title="Admin notifications" description="Staff account setup, profile edits, and account status changes." action={<Button variant="secondary" disabled={loading} onClick={() => void load()}><RefreshCw size={16} /> Refresh</Button>} />
+    <PageHeader eyebrow="Accounts" title="Admin notifications" description="Lost-book reports, staff account setup, and account changes." action={<Button variant="secondary" disabled={loading} onClick={() => void load()}><RefreshCw size={16} /> Refresh</Button>} />
     {error ? <p role="alert" className="mb-5 rounded-xl bg-[#FFF200] p-4 font-bold text-[#0b5ea2]">{error}</p> : null}
     {!inbox && loading ? <p role="status" className="rounded-xl border border-[#0b5ea2]/15 p-5 text-sm text-[#0b5ea2]/70 dark:border-white/15 dark:text-white/70">Loading Admin notifications…</p> : null}
     {inbox ? <>

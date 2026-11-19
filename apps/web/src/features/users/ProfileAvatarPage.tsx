@@ -3,9 +3,10 @@ import { Camera, CheckCircle2, GraduationCap, ImagePlus, LockKeyhole, Save, Shie
 import { useSearchParams } from 'react-router-dom'
 import { SelectedFilePreview } from '../../components/SelectedFilePreview'
 import { PageHeader } from '../../components/ui'
-import { getAccessToken } from '../auth/auth-storage'
-import { usersApi, type OwnProfile, type ProfileEdit } from './users-api'
+import { getCsrfToken } from '../auth/auth-storage'
+import { usersApi, type OwnProfile } from './users-api'
 import { notifyProfileUpdated } from './profile-events'
+import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 
 type AvatarState = { currentUrl: string | null; pending: { id: number; submittedAt: string } | null; lastRejection?: { reviewedAt: string; reason: string } | null }
 
@@ -15,14 +16,14 @@ export function ProfileAvatarPage() {
   const showAll = !['personal', 'school', 'photo'].includes(section ?? '')
   const [data, setData] = useState<AvatarState | null>(null)
   const [profile, setProfile] = useState<OwnProfile | null>(null)
-  const [draft, setDraft] = useState<ProfileEdit>({ first_name: '', last_name: '', program_strand: '', year_grade_level: '' })
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
-  const [operation, setOperation] = useState<'profile' | 'photo' | null>(null)
+  const [operation, setOperation] = useState<'photo' | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [messageError, setMessageError] = useState(true)
+  const { ask, dialog: confirmSave } = useConfirmSave()
   useEffect(() => {
     if (!file) { setPreview(null); return }
     const url = URL.createObjectURL(file)
@@ -41,7 +42,7 @@ export function ProfileAvatarPage() {
     setFile(selected); setMessage('')
   }
   const load = useCallback(async () => {
-    const response = await fetch('/api/v1/profile/avatar/me', { headers: { Authorization: `Bearer ${getAccessToken() ?? ''}` } })
+    const response = await fetch('/api/v1/profile/avatar/me', { headers: { 'X-CSRF-Token': getCsrfToken() ?? '' } })
     const payload = await response.json() as { data?: AvatarState; message?: string }
     if (!response.ok || !payload.data) throw new Error(payload.message ?? 'Unable to load your picture.')
     setData(payload.data)
@@ -49,26 +50,19 @@ export function ProfileAvatarPage() {
   useEffect(() => { void load().catch(cause => setMessage(cause instanceof Error ? cause.message : 'Unable to load your picture.')) }, [load])
   useEffect(() => { void usersApi.myProfile().then(value => {
     setProfile(value)
-    setDraft({ first_name: value.first_name ?? '', last_name: value.last_name ?? '', program_strand: value.program_strand ?? '', year_grade_level: value.year_grade_level ?? '' })
   }).catch(cause => setMessage(cause instanceof Error ? cause.message : 'Unable to load your profile.')) }, [])
-  async function saveProfile(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setOperation('profile'); setMessage(''); setMessageError(true)
-    try {
-      await usersApi.saveMyProfile(draft)
-      setProfile(await usersApi.myProfile())
-      notifyProfileUpdated()
-      setMessageError(false); setMessage('Your profile has been updated. The librarian can see the change in your account history.')
-    } catch (cause) { setMessageError(true); setMessage(cause instanceof Error ? cause.message : 'Unable to save your profile.') }
-    finally { setBusy(false); setOperation(null) }
-  }
-  async function submit(event: FormEvent) {
+  function submit(event: FormEvent) {
     event.preventDefault()
+    if (!file || busy) return
+    ask('Save this profile picture.', () => { void persistPicture() })
+  }
+  async function persistPicture() {
     if (!file) return
     setBusy(true); setOperation('photo'); setMessage(''); setMessageError(true)
     try {
       const form = new FormData(); form.set('image', file)
       const response = await fetch('/api/v1/profile/avatar/me', {
-        method: 'POST', headers: { Authorization: `Bearer ${getAccessToken() ?? ''}` }, body: form,
+        method: 'POST', headers: { 'X-CSRF-Token': getCsrfToken() ?? '' }, body: form,
       })
       const payload = await response.json() as { message?: string }
       if (!response.ok) throw new Error(payload.message ?? 'Unable to upload your picture.')
@@ -82,10 +76,10 @@ export function ProfileAvatarPage() {
   }
   const name = profile ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || profile.full_name || 'Your account' : 'Your account'
   const initials = profile ? `${profile.first_name?.[0] ?? ''}${profile.last_name?.[0] ?? ''}`.toUpperCase() : ''
-  return <div className="my-profile-page"><PageHeader eyebrow="My account" title={showAll ? 'My profile' : section === 'personal' ? 'Personal details' : section === 'school' ? 'School details' : 'Profile photo'} />
+  return <div className="my-profile-page">{confirmSave}<PageHeader eyebrow="My account" title={showAll ? 'My profile' : section === 'personal' ? 'Personal details' : section === 'school' ? 'School details' : 'Profile photo'} />
     <section className="profile-summary" aria-label="Account summary">
       <div className="profile-summary-icon"><UserRound size={26} /></div>
-      <div className="min-w-0 flex-1"><p className="profile-summary-eyebrow">Your library identity</p><h2>{name}</h2><p className="profile-summary-description">Keep your details up to date for a smoother library experience.</p></div>
+      <div className="min-w-0 flex-1"><p className="profile-summary-eyebrow">Your library identity</p><h2>{name}</h2><p className="profile-summary-description">Your personal and school details, as recorded by the library.</p></div>
       {profile ? <div className="profile-summary-tags"><span><ShieldCheck size={14} />{profile.role}</span><span><CheckCircle2 size={14} />{profile.account_status}</span></div> : null}
     </section>
     {message ? <p role={messageError ? 'alert' : 'status'} className="profile-message">{message}</p> : null}
@@ -105,17 +99,17 @@ export function ProfileAvatarPage() {
         </div>
       </section> : null}
       {showAll || section !== 'photo' ? <section className="profile-panel profile-details-panel" aria-labelledby="profile-details-heading">
-        <header className="profile-panel-heading"><span className="profile-section-icon"><UserRound size={20} /></span><div><h2 id="profile-details-heading">Profile details</h2><p className="profile-muted">Only you can edit your personal information.</p></div></header>
-        {profile ? <form onSubmit={saveProfile}>
+        <header className="profile-panel-heading"><span className="profile-section-icon"><UserRound size={20} /></span><div><h2 id="profile-details-heading">Profile details</h2><p className="profile-muted">Profile details are view-only. Contact library staff for corrections.</p></div></header>
+        {profile ? <div>
           <fieldset style={!showAll && section !== 'personal' ? { display: 'none' } : undefined} className="profile-field-section" disabled={busy}><legend>Personal information</legend><div className="profile-field-grid">
-            {([['first_name', 'First name'], ['last_name', 'Last name']] as const).map(([key, label]) => <label key={key}>{label}<input required maxLength={100} autoComplete={key === 'first_name' ? 'given-name' : 'family-name'} value={draft[key]} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))} /></label>)}
+            {([['first_name', 'First name'], ['last_name', 'Last name']] as const).map(([key, label]) => <label key={key}>{label}<input readOnly value={profile[key] ?? ''} /></label>)}
           </div></fieldset>
           {profile.role === 'Student' && (showAll || section === 'school') ? <fieldset className="profile-field-section" disabled={busy}><legend><GraduationCap size={16} />Academic details</legend><div className="profile-field-grid">
-            {([['program_strand', 'Program / strand'], ['year_grade_level', 'Year / grade level']] as const).map(([key, label]) => <label key={key}>{label}<input required value={draft[key]} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))} /></label>)}
+            {([['program_strand', 'Program / strand'], ['year_grade_level', 'Year / grade level']] as const).map(([key, label]) => <label key={key}>{label}<input readOnly value={profile[key] ?? ''} /></label>)}
           </div></fieldset> : null}
           <div style={!showAll && section !== 'school' ? { display: 'none' } : undefined} className="profile-identity"><div className="profile-identity-heading"><LockKeyhole size={16} /><h3>School identity</h3><span>Read-only</span></div><p className="profile-muted">Your school ID and email are linked to your account.</p><div className="profile-field-grid"><label>School ID<input value={profile.school_id} readOnly /></label><label>School email<input value={profile.email ?? ''} readOnly /></label></div></div>
-          <footer className="profile-save-bar"><p><ShieldCheck size={15} />Updates are recorded in your account history.</p><button disabled={busy} className="profile-primary-button"><Save size={16} />{operation === 'profile' ? 'Saving…' : 'Save my profile'}</button></footer>
-        </form> : <p className="p-6 profile-muted">Loading profile…</p>}
+          <footer className="profile-save-bar"><p><ShieldCheck size={15} />Personal and academic details are read-only.</p></footer>
+        </div> : <p className="p-6 profile-muted">Loading profile…</p>}
       </section> : null}
     </div>
   </div>

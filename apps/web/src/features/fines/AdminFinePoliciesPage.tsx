@@ -97,7 +97,7 @@ export function AdminFinePoliciesPage() {
         </div>
       )} />
       {error ? <div role="alert" className="mb-4 flex gap-2 rounded-xl bg-[#FFF200] p-4 font-bold text-[#003399]"><AlertTriangle size={18} />{error}</div> : null}
-      {notice ? <div role="status" className="mb-4 rounded-xl bg-emerald-50 p-4 font-semibold text-emerald-800">{notice}</div> : null}
+      {notice ? <div role="status" data-tone="success" className="mb-4 rounded-xl bg-[#003399]/5 p-4 font-semibold text-[#003399]">{notice}</div> : null}
 
       <SectionCard className="mb-4">
         <div className="flex items-start gap-3 text-[#003399]">

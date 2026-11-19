@@ -3,14 +3,18 @@ import test from 'node:test'
 import type { Pool } from '../../config/db.js'
 import { createBulkBookService } from './bulk-book.service.ts'
 
-function fakePool() {
+function fakePool(options: { capacity?: number | null; used?: number; archived?: boolean } = {}) {
   const state = { commits: 0, rollbacks: 0, materialInserts: 0, copyInserts: 0, copyParameters: [] as unknown[][] }
   const connection = {
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() {},
     async execute(sql: string, parameters: unknown[] = []) {
-      if (sql.includes('FROM categories c')) return [[{ category_id: 2, shelf_location: 'Shelf A-1', shelf_id: 1 }]]
+      if (sql.includes('pg_advisory_xact_lock')) return [[]]
+      if (sql.includes('SELECT * FROM catalog_locations')) return [[{ location_id: 1, name: String(parameters[0]), column_count: 3, row_count: 5, default_capacity: options.capacity === undefined ? 100 : options.capacity, lifecycle_status: 'Active' }]]
+      if (sql.includes('FROM catalog_location_capacities')) return [[]]
+      if (sql.includes(') AS used')) return [[{ used: options.used ?? 0 }]]
+      if (sql.includes('FROM categories c')) return [[{ category_id: 2, shelf_location: 'Shelf A-1', shelf_id: 1, shelf_column: 1, shelf_row: 1, column_count: 3, row_count: 5 }]]
       if (sql.includes('FROM catalog_locations')) return parameters?.[0] === 'Unknown Room' ? [[]] : [[{ location_id: 1 }]]
-      if (sql.includes('FROM titles t')) return [[{ title_id: 44, title: 'Clean Code', author_name: 'Robert C. Martin', category_id: 2 }]]
+      if (sql.includes('FROM titles t')) return [[{ title_id: 44, title: 'Clean Code', author_name: 'Robert C. Martin', category_id: 2, lifecycle_status: options.archived ? 'Archived' : 'Active' }]]
       if (sql.includes('INSERT INTO barcode_sequences')) return [{ affectedRows: 1 }]
       if (sql.includes('SELECT last_value FROM barcode_sequences')) return [[{ last_value: 141 }]]
       if (sql.includes('UPDATE barcode_sequences')) return [{ affectedRows: 1 }]
@@ -51,7 +55,11 @@ test('rejects an ISBN already assigned to different catalog metadata before crea
   const connection = {
     async beginTransaction() {}, async commit() {}, async rollback() { state.rollbacks += 1 }, release() {},
     async execute(sql: string, parameters: unknown[] = []) {
-      if (sql.includes('FROM categories c')) return [[{ category_id: 2, shelf_location: 'Shelf A-1', shelf_id: 1 }]]
+      if (sql.includes('pg_advisory_xact_lock')) return [[]]
+      if (sql.includes('SELECT * FROM catalog_locations')) return [[{ location_id: 1, name: String(parameters[0]), column_count: 3, row_count: 5, default_capacity: 100, lifecycle_status: 'Active' }]]
+      if (sql.includes('FROM catalog_location_capacities')) return [[]]
+      if (sql.includes(') AS used')) return [[{ used: 0 }]]
+      if (sql.includes('FROM categories c')) return [[{ category_id: 2, shelf_location: 'Shelf A-1', shelf_id: 1, shelf_column: 1, shelf_row: 1, column_count: 3, row_count: 5 }]]
       if (sql.includes('FROM catalog_locations')) return parameters?.[0] === 'Unknown Room' ? [[]] : [[{ location_id: 1 }]]
       if (sql.includes('FROM titles t')) return [[{ title_id: 44, title: 'Existing Book', author_name: 'Existing Author', category_id: 2 }]]
       if (sql.includes('INSERT INTO physical_copies')) { state.copyInserts += 1; return [{ insertId: 1 }] }
@@ -72,8 +80,12 @@ test('a new title saves the register fields on the title, its details and every 
   const connection = {
     async beginTransaction() {}, async commit() {}, async rollback() {}, release() {},
     async execute(sql: string, parameters: unknown[] = []) {
+      if (sql.includes('pg_advisory_xact_lock')) return [[]]
+      if (sql.includes('SELECT * FROM catalog_locations')) return [[{ location_id: 1, name: String(parameters[0]), column_count: 3, row_count: 5, default_capacity: 100, lifecycle_status: 'Active' }]]
+      if (sql.includes('FROM catalog_location_capacities')) return [[]]
+      if (sql.includes(') AS used')) return [[{ used: 0 }]]
       calls.push({ sql, parameters })
-      if (sql.includes('FROM categories c')) return [[{ category_id: 2, shelf_location: 'Shelf A-1', shelf_id: 1 }]]
+      if (sql.includes('FROM categories c')) return [[{ category_id: 2, shelf_location: 'Shelf A-1', shelf_id: 1, shelf_column: 1, shelf_row: 1, column_count: 3, row_count: 5 }]]
       if (sql.includes('FROM catalog_locations')) return [[{ location_id: 1 }]]
       if (sql.includes('FROM titles t')) return [[]]
       if (sql.includes('INSERT INTO titles')) return [{ insertId: 77 }]
@@ -107,4 +119,43 @@ test('adding copies to an existing title leaves its details alone but still reco
   const renderer = async () => ({ trackingJson: '{}', qrCodeData: 'qr', barcodeImageData: 'bar' })
   await createBulkBookService(database, () => new Date('2026-11-13T08:00:00+08:00'), renderer).addBulk({ ...body, number_of_copies: 1, cost_php: '99.5', classification: 'ignored' })
   assert.deepEqual(state.copyParameters[0].slice(-4), [null, null, '99.50', null])
+})
+
+
+test('capacity failure rolls back the entire bulk group before creating identities or copies', async () => {
+  const { state, database } = fakePool({ capacity: 5, used: 4 })
+  await assert.rejects(createBulkBookService(database).addBulk(body), (error: any) => {
+    assert.equal(error.code, 'SHELF_CAPACITY_EXCEEDED')
+    assert.equal(error.details.remaining, 1)
+    assert.equal(error.details.requested, 2)
+    return true
+  })
+  assert.equal(state.copyInserts, 0)
+  assert.equal(state.materialInserts, 0)
+  assert.equal(state.rollbacks, 1)
+  assert.equal(state.commits, 0)
+})
+
+test('explicit compartment choices reach every copy and an exact fit is permitted', async () => {
+  const { state, database } = fakePool({ capacity: 5, used: 3 })
+  const renderer = async () => ({ trackingJson: '{}', qrCodeData: 'qr', barcodeImageData: 'bar' })
+  await createBulkBookService(database, () => new Date('2026-11-18'), renderer).addBulk({ ...body, shelfColumn: 2, shelfRow: 4 })
+  assert.equal(state.copyInserts, 2)
+  assert.ok(state.copyParameters.every(values => values[6] === 2 && values[7] === 4))
+})
+
+test('a shelf without reviewed capacity blocks new copies', async () => {
+  const { state, database } = fakePool({ capacity: null })
+  await assert.rejects(createBulkBookService(database).addBulk(body), { code: 'SHELF_CAPACITY_NOT_CONFIGURED' })
+  assert.equal(state.copyInserts, 0)
+})
+
+
+test('adding copies to an archived ISBN requires restoring its title first', async () => {
+  const { state, database } = fakePool({ archived: true })
+  await assert.rejects(createBulkBookService(database).addBulk(body), { code: 'CATALOG_TITLE_ARCHIVED' })
+  assert.equal(state.copyInserts, 0)
+  assert.equal(state.materialInserts, 0)
+  assert.equal(state.commits, 0)
+  assert.equal(state.rollbacks, 1)
 })

@@ -3,6 +3,20 @@ import test from 'node:test'
 import { startLocalJobTimer } from './index.ts'
 import type { JobRunner } from './job-runner.service.ts'
 
+test('stopping the local timer drains its active job and prevents another tick', async () => {
+  let release!: () => void, calls = 0, stopped = false
+  const waiting = new Promise<[]>(resolve => { release = () => resolve([]) })
+  const runner = { runAll: () => { calls++; return waiting } } as unknown as JobRunner
+  const timer = startLocalJobTimer(true, runner)!
+  await Promise.resolve()
+  const stopping = timer.stop().then(() => { stopped = true })
+  await Promise.resolve()
+  assert.equal(stopped, false)
+  release(); await stopping
+  await timer.tick()
+  assert.equal(calls, 1)
+})
+
 test('A2: the local job timer stays off unless enabled', () => {
   let calls = 0
   const runner = { runAll: async () => { calls += 1; return [] } } as unknown as JobRunner

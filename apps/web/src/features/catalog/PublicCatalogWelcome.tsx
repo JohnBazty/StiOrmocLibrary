@@ -50,7 +50,8 @@ export function PublicCatalogWelcome({ role, query, categories, selectedCategory
         </nav>
         <div className="flex shrink-0 items-center gap-2 text-sm font-bold lg:gap-3">
          <ThemeToggle className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#0b5ea2]/15 bg-white text-[#0b5ea2]/65 transition hover:bg-[#0b5ea2]/5 dark:border-white/15 dark:bg-[#001a4d] dark:text-white/80" />
-         <div className="hidden items-center gap-3 lg:flex">{role ? <Link to={dashboardForRole(role)}>My workspace</Link> : <><Link className="inline-flex min-h-11 items-center" to="/login" state={{catalogLocation: location}}>Sign In</Link><Link to="/register" state={{catalogLocation: location}} className="rounded-full bg-[#FFF200] px-5 py-2.5 text-[#0b5ea2]">Activate account</Link></>}</div>
+         <Link className="inline-flex min-h-11 shrink-0 items-center rounded-xl px-2 focus-visible:outline-2 focus-visible:outline-offset-2" to="/login" state={{catalogLocation: location}}>Sign In</Link>
+         <div className="hidden items-center gap-3 lg:flex">{role ? <Link to={dashboardForRole(role)}>My workspace</Link> : <Link to="/register" state={{catalogLocation: location}} className="rounded-full bg-[#FFF200] px-5 py-2.5 text-[#0b5ea2]">Activate account</Link>}</div>
          <button ref={menuButton} type="button" aria-label={menuOpen?'Close public menu':'Open public menu'} aria-expanded={menuOpen} aria-controls="public-mobile-menu" onClick={()=>setMenuOpen(value=>!value)} className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#0b5ea2]/15 hover:bg-[#0b5ea2]/5 lg:hidden dark:border-white/15 dark:hover:bg-white/10">{menuOpen?<X size={20}/>:<Menu size={20}/>}</button>
         </div>
        </div>

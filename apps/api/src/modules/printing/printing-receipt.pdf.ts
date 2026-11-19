@@ -8,6 +8,7 @@ export type PrintingReceipt = {
   verification_code: string
   receipt_status: 'Issued' | 'Reversed'
   document_label?: string
+  transaction_fee_centavos?: number; total_received?: number; confirmation_source?: string
   student_name: string
   school_id: string
   file_name: string
@@ -34,9 +35,10 @@ export function createPrintingReceiptPdf(receipt: PrintingReceipt) {
 
   document.rect(0, 0, document.page.width, 94).fill(blue)
   document.fillColor(white).font('Helvetica-Bold').fontSize(12).text(SYSTEM_NAME, 42, 24, { width, lineBreak: false })
-  const legacy = receipt.document_label !== 'Payment Record'
+  const legacy = receipt.document_label !== 'Payment Record' && receipt.confirmation_source!=='Xendit'
+  const online=receipt.confirmation_source==='Xendit'
   document.fillColor(yellow).fontSize(10).text(legacy ? 'OFFICIAL PRINTING SERVICE RECEIPT' : 'PRINTING PAYMENT RECORD — NOT A TAX INVOICE', 42, 53)
-  document.fillColor(white).font('Helvetica').fontSize(8).text('Cash printing payment recorded by authorized library personnel', 42, 70)
+  document.fillColor(white).font('Helvetica').fontSize(8).text(online?'Online printing payment verified through Xendit':'Cash printing payment recorded by authorized library personnel', 42, 70)
 
   let y = 120
   document.fillColor(blue).font('Helvetica-Bold').fontSize(15).text(receipt.receipt_number, 42, y)
@@ -70,12 +72,14 @@ export function createPrintingReceiptPdf(receipt: PrintingReceipt) {
   values.forEach((value,index)=>{document.text(value,x+5,y+14,{width:columnWidths[index]-10});x+=columnWidths[index]})
   y += 66
 
+  if(online){document.fillColor(blue).font('Helvetica').fontSize(10).text(`Printing bill: ${money(receipt.amount_received)}`,42,y)
+    .text(`Transaction fee: ${money((receipt.transaction_fee_centavos??0)/100)}`,42,y+18);y+=45}
   document.roundedRect(document.page.width-252,y,210,58,10).fill(blue)
-  document.fillColor(white).font('Helvetica').fontSize(9).text('TOTAL CASH RECEIVED',document.page.width-235,y+12,{width:175})
-  document.fillColor(yellow).font('Helvetica-Bold').fontSize(18).text(money(receipt.amount_received),document.page.width-235,y+30,{width:175})
+  document.fillColor(white).font('Helvetica').fontSize(9).text(online?'TOTAL PAID':'TOTAL CASH RECEIVED',document.page.width-235,y+12,{width:175})
+  document.fillColor(yellow).font('Helvetica-Bold').fontSize(18).text(money(receipt.total_received??receipt.amount_received),document.page.width-235,y+30,{width:175})
 
   document.moveTo(42,document.page.height-92).lineTo(document.page.width-42,document.page.height-92).strokeColor(blue).strokeOpacity(0.3).stroke().strokeOpacity(1)
-  document.fillColor(blue).font('Helvetica').fontSize(8).text(legacy ? `This receipt belongs only to the ${SYSTEM_SHORT_NAME} Printing Service. It is separate from fines, fine-payment receipts, and clearance balances.` : 'This payment record confirms cash collection for printing. It is not a tax invoice.',42,document.page.height-76,{width,align:'center'})
+  document.fillColor(blue).font('Helvetica').fontSize(8).text(online?'This records verified online payment for printing. It is not a tax invoice.':legacy ? `This receipt belongs only to the ${SYSTEM_SHORT_NAME} Printing Service. It is separate from fines, fine-payment receipts, and clearance balances.` : 'This payment record confirms cash collection for printing. It is not a tax invoice.',42,document.page.height-76,{width,align:'center'})
   document.end()
   return document
 }

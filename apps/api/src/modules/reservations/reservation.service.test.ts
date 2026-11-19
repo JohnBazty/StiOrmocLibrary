@@ -14,7 +14,15 @@ const legacyPolicyRow = {
   long_overdue_after_days: null, change_reason: 'Legacy baseline', created_by_user_id: null, created_at: '2000-01-01',
 }
 
-function reservationPool(role: 'Student' | 'Faculty', activeCount: number, materialType = 'Book', activeBorrowStatus: string | null = null) {
+function reservationPool(
+  role: 'Student' | 'Faculty',
+  activeCount: number,
+  materialType = 'Book',
+  activeBorrowStatus: string | null = null,
+  options: { activeCopies?: number; waitlistCount?: number } = {},
+) {
+  const activeCopies = options.activeCopies ?? 2
+  const waitlistCount = options.waitlistCount ?? 0
   const state = { commits: 0, rollbacks: 0, releases: 0, inserted: false, activeCountQueried: false }
   const connection = {
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() { state.releases += 1 },
@@ -25,6 +33,12 @@ function reservationPool(role: 'Student' | 'Faculty', activeCount: number, mater
       if (sql.includes('SELECT t.*,MIN(pc.material_id)')) return [[{ title_id: 9, material_id: 17, title: 'Clean Code', record_type: materialType }]]
       if (sql.includes('UNION ALL SELECT bt.transaction_id')) return [activeBorrowStatus ? [{ transaction_id: 71 }] : []]
       if (sql.includes('COUNT(*) AS total FROM (')) return [[{ total: activeCount }]]
+      if (sql.includes("COUNT(*) AS n FROM physical_copies") && sql.includes("lifecycle_status='Active'")) {
+        return [[{ n: activeCopies }]]
+      }
+      if (sql.includes("COUNT(*) AS n FROM reservations") && sql.includes("request_kind='Reservation'") && sql.includes('book_title_id=?')) {
+        return [[{ n: waitlistCount }]]
+      }
       if (sql.includes('COUNT(*) AS n FROM reservations')) { state.activeCountQueried = true; return [[{ n: activeCount }]] }
       if (sql.includes('AS position FROM reservations')) return [[{ position: 3 }]]
       if (sql.includes('SELECT pc.* FROM physical_copies') || sql.includes('SELECT pc.*,t.title')) return [[]]
@@ -97,6 +111,20 @@ test('borrower cannot reserve the same title already held in a pending or active
   }
 })
 
+test('waitlist rejects a new reservation when active requests already equal active copies', async () => {
+  const { state, database } = reservationPool('Student', 0, 'Book', null, { activeCopies: 2, waitlistCount: 2 })
+  await assert.rejects(createReservationService(database).create(4, { materialId: 17 }), (error: unknown) => {
+    assert.ok(error instanceof HttpError)
+    assert.equal(error.status, 422)
+    assert.equal(error.code, 'WAITLIST_FULL')
+    assert.match(error.message, /waiting list|waitlist|full/i)
+    return true
+  })
+  assert.equal(state.inserted, false)
+  assert.equal(state.commits, 0)
+  assert.equal(state.rollbacks, 1)
+})
+
 test('administrator cannot approve a legacy queue row when the user already has the same book', async () => {
   const state = { commits: 0, rollbacks: 0, statusUpdates: 0 }
   const connection = {
@@ -141,6 +169,7 @@ test('student reservation listing exposes the normalized title cover path', asyn
   const database = {
     async execute(sql: string) {
       if (sql.includes('SELECT user_id FROM accounts')) return [[{ user_id: 4 }]]
+      if (sql.includes('to_regclass')) return [[{ present: false }]]
       if (sql.includes('FROM reservations r INNER JOIN materials')) return [[{
         reservation_id: 501, title: 'Clean Code', cover_image_path: '/api/assets/covers/clean-code.png',
         queue_position: 1, reservation_status: 'approved', reserved_at: new Date('2026-08-24T08:00:00+08:00'),
@@ -153,4 +182,49 @@ test('student reservation listing exposes the normalized title cover path', asyn
   const result = await createReservationService(database).listForAccount(1)
   assert.equal(result[0].coverImagePath, '/api/assets/covers/clean-code.png')
   assert.equal(result[0].conditionStatus, 'Damaged')
+})
+
+// ---- Waiting-list expiry date on the student list (SPEC R6)
+const S = new Date('2026-11-16T10:00:00+08:00')
+const DAY = 86_400_000
+function listPool(limitDays: number | null, rows: Record<string, unknown>[]) {
+  return {
+    async execute(sql: string) {
+      if (sql.includes('SELECT user_id FROM accounts')) return [[{ user_id: 4 }]]
+      if (sql.includes('to_regclass')) return [[{ present: true }]]
+      if (sql.includes('FROM reservation_settings')) return [[{ pickup_window_days: 3, waiting_expiry_days: limitDays, waiting_expiry_saved_at: limitDays == null ? null : S, pickup_by: 'Maria Librarian', waiting_by: 'Maria Librarian' }]]
+      if (sql.includes('FROM reservations r INNER JOIN materials')) {
+        assert.match(sql, /r\.assigned_physical_copy_id/)
+        return [rows]
+      }
+      throw new Error(`Unexpected SQL: ${sql}`)
+    },
+  } as unknown as Pool
+}
+const listRow = (id: number, extra: Record<string, unknown>) => ({ reservation_id: id, title: 'Clean Code', queue_position: 1, reservation_status: 'pending', request_kind: 'Reservation',
+  requested_iso: new Date(S.getTime() - 2 * DAY), deadline_iso: null, assigned_physical_copy_id: null, barcode: null, ...extra })
+
+test('waiting reservations carry waitingExpiresAt = max(reserved, saved) + L; assigned, ready and cart rows do not (AC 14)', async () => {
+  const later = new Date(S.getTime() + 3 * DAY)
+  const rows = [listRow(1, {}), listRow(2, { requested_iso: later }), listRow(3, { reservation_status: 'approved', assigned_physical_copy_id: 31, barcode: 'B-31' }),
+    listRow(4, { reservation_status: 'ready_for_pickup', assigned_physical_copy_id: 31, barcode: 'B-31', deadline_iso: new Date(S.getTime() + DAY) }),
+    listRow(5, { request_kind: 'CartHandover', reservation_status: 'approved' }), listRow(6, { reservation_status: 'approved' })]
+  const result = await createReservationService(listPool(14, rows)).listForAccount(1)
+  assert.deepEqual(result.map((r) => r.waitingExpiresAt), [
+    new Date(S.getTime() + 14 * DAY).toISOString(), new Date(later.getTime() + 14 * DAY).toISOString(), null, null, null, new Date(S.getTime() + 14 * DAY).toISOString()])
+})
+test('with the limit off no row carries an expiry date (AC 14)', async () => {
+  const result = await createReservationService(listPool(null, [listRow(1, {}), listRow(2, { reservation_status: 'approved' })])).listForAccount(1)
+  assert.deepEqual(result.map((r) => r.waitingExpiresAt), [null, null])
+})
+test('an expired waiting reservation reads the waiting-list text; an expired ready hold reads the pickup text', async () => {
+  const rows = [listRow(1, { reservation_status: 'expired' }),
+    listRow(2, { reservation_status: 'expired', assigned_physical_copy_id: 31, barcode: 'B-31', deadline_iso: new Date(S.getTime() + DAY) })]
+  const result = await createReservationService(listPool(14, rows)).listForAccount(1)
+  assert.match(String(result[0].instructions), /waiting-list limit/)
+  assert.match(String(result[1].instructions), /The pickup deadline passed/)
+})
+test('the student list never carries a librarian name or changedBy field', async () => {
+  const result = await createReservationService(listPool(14, [listRow(1, {})])).listForAccount(1)
+  assert.doesNotMatch(JSON.stringify(result), /Maria Librarian|changedBy|ChangedBy/)
 })

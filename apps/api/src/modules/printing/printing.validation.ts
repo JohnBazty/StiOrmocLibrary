@@ -1,7 +1,8 @@
 import { HttpError } from '../../core/http-error.ts'
+import { paperSizeName } from './paper-sizes.validation.ts'
 
 export type PrintType = 'Colored' | 'Monochrome'
-export type PaperSize = 'Short' | 'A4' | 'Long'
+export type PaperSize = string
 export type PrintStatus = 'Pending' | 'Printing' | 'Ready for Pickup' | 'Completed' | 'Cancelled'
 
 function integer(value: unknown, field: string, minimum: number, maximum: number) {
@@ -18,23 +19,24 @@ export function parsePrintRequest(body: Record<string, unknown>, detectedPageCou
   const numberOfCopies = integer(body.number_of_copies, 'number_of_copies', 1, 100)
   const pageCount = integer(detectedPageCount ?? body.page_count, 'page_count', 1, 500)
   const printType = String(body.print_type ?? '') as PrintType
-  const paperSize = String(body.paper_size ?? '') as PaperSize
+  const paperSize = paperSizeName(body.paper_size)
   if (!['Colored', 'Monochrome'].includes(printType)) throw new HttpError(422, 'PRINT_TYPE_INVALID', 'Choose Colored or Monochrome printing.')
-  if (!['Short', 'A4', 'Long'].includes(paperSize)) throw new HttpError(422, 'PAPER_SIZE_INVALID', 'Choose Short, A4, or Long paper.')
   const notes = String(body.optional_notes ?? '').trim()
   if (notes.length > 1000) throw new HttpError(422, 'PRINT_NOTES_TOO_LONG', 'Printing notes must not exceed 1,000 characters.')
   return { numberOfCopies, pageCount, printType, paperSize, notes: notes || null, totalSheets: numberOfCopies * pageCount }
 }
 
-export type QueueFilters = { q: string; status: string; payment: string; page: number; limit: number }
+export type QueueFilters = { q: string; status: string; payment: string; page: number; limit: number; scope?: '' | 'active' | 'history' }
 export function parseQueueFilters(query: Record<string, unknown>): QueueFilters {
+  const scope = String(query.scope ?? '')
+  if (!['', 'active', 'history'].includes(scope)) throw new HttpError(422, 'PRINT_SCOPE_INVALID', 'Choose Active queue or History.')
   const status = String(query.status ?? '')
   const payment = String(query.payment_status ?? '')
   if (status && !['Pending','Printing','Ready for Pickup','Completed','Cancelled'].includes(status)) throw new HttpError(422, 'PRINT_STATUS_INVALID', 'Choose a valid print status.')
-  if (payment && !['Unpaid','Paid'].includes(payment)) throw new HttpError(422, 'PAYMENT_STATUS_INVALID', 'Choose a valid cash payment status.')
+  if (payment && !['Unpaid','Partially Paid','Paid','Refund pending','Refunded'].includes(payment)) throw new HttpError(422, 'PAYMENT_STATUS_INVALID', 'Choose a valid payment status.')
   const page = Math.max(1, Number.parseInt(String(query.page ?? '1'), 10) || 1)
   const limit = Math.min(100, Math.max(1, Number.parseInt(String(query.limit ?? '25'), 10) || 25))
-  return { q: String(query.q ?? '').trim().slice(0, 150), status, payment, page, limit }
+  return { q: String(query.q ?? '').trim().slice(0, 150), status, payment, page, limit, scope: scope as QueueFilters['scope'] }
 }
 
 export function parseStatusUpdate(body: Record<string, unknown>) {
@@ -58,9 +60,9 @@ export function parseServiceStatus(body: Record<string, unknown>) {
 }
 
 export function parseNewInkStock(body: Record<string, unknown>) {
-  const cartridgeType=String(body.cartridge_type??'').trim(),color=String(body.color_variation??'')
+  const cartridgeType=String(body.cartridge_type??'').trim(),color=String(body.color_variation??'').trim()
   if(cartridgeType.length<2||cartridgeType.length>100)throw new HttpError(422,'INK_TYPE_INVALID','Enter the ink bottle or cartridge type.')
-  if(!['Cyan','Magenta','Yellow','Black'].includes(color))throw new HttpError(422,'INK_COLOR_INVALID','Choose Cyan, Magenta, Yellow, or Black.')
+  if(!/^[\p{L}\p{N}][\p{L}\p{N} ()/.-]{0,59}$/u.test(color))throw new HttpError(422,'INK_COLOR_INVALID','Enter a color name, up to 60 characters.')
   const bottles=integer(body.available_bottles,'available_bottles',1,10000),threshold=integer(body.low_stock_threshold_bottles??1,'low_stock_threshold_bottles',0,10000),cost=Number(body.cost_per_bottle)
   if(!Number.isFinite(cost)||cost<=0||cost>1000000)throw new HttpError(422,'INK_COST_INVALID','Cost per bottle is required and must be greater than zero.')
   return{cartridgeType,color,bottles,threshold,cost}
