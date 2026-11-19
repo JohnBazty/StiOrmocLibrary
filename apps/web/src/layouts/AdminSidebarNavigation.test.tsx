@@ -31,9 +31,9 @@ it('uses the requested order as visible sections, with only Books, Accounts and 
  const accounts=group('Accounts',section('File maintenance'))
  expect(within(accounts).getAllByRole('link',{hidden:true}).map(link=>link.textContent)).toEqual(['Users','Student QR roster'])
  const routes=librarianNav.map(item=>item.to)
- expect(routes).toHaveLength(23)
- expect(new Set(routes).size).toBe(23)
- expect(routes.map(route=>route.replace('/librarian/','')).sort()).toEqual(['borrowing-policies','dashboard','reports','book-archive','categories','circulation','reservations','fines','payments','funds','maintenance','inventory','floor-plan','printing','supplies','attendance','clearance','announcements','users','student-qr-roster','catalog','notifications','profile'].sort())
+ expect(routes).toHaveLength(24)
+ expect(new Set(routes).size).toBe(24)
+ expect(routes.map(route=>route.replace('/librarian/','')).sort()).toEqual(['audit-logs','borrowing-policies','dashboard','reports','book-archive','categories','circulation','reservations','fines','payments','funds','maintenance','inventory','floor-plan','printing','supplies','attendance','clearance','announcements','users','student-qr-roster','catalog','notifications','profile'].sort())
 })
 
 it('opens only the active payment branch and highlights the current page',()=>{

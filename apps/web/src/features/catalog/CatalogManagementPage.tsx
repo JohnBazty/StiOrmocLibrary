@@ -10,7 +10,6 @@ import {
   MapPin,
   Plus,
   RefreshCw,
-  ScanBarcode,
   Search,
   X,
 } from 'lucide-react'
@@ -69,7 +68,7 @@ export function CatalogManagementPage({ maintenance = false }: { maintenance?: b
   const [form, setForm] = useState<'book' | 'thesis' | null>(null)
   const [notice, setNotice] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
   const [loading, setLoading] = useState(true)
-  const [scannerActive, setScannerActive] = useState(true)
+  const [scannerActive] = useState(true)
   const [, setSavingKind] = useState<'book' | 'thesis' | null>(null)
   const [exportingPdf, setExportingPdf] = useState(false)
   const [, setFieldErrors] = useState<Record<string, string>>({})
@@ -415,7 +414,7 @@ export function CatalogManagementPage({ maintenance = false }: { maintenance?: b
         </div>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-3">
         <StatCard
           label="Matching catalog titles"
           value={pagination.total}
@@ -437,29 +436,6 @@ export function CatalogManagementPage({ maintenance = false }: { maintenance?: b
           icon={FileText}
           tone="amber"
         />
-        <StatCard
-          label="Physical copies listed"
-          value={totals.copies}
-          note={scannerActive ? 'Barcode scanner listening' : 'Barcode scanner paused'}
-          icon={ScanBarcode}
-          tone="slate"
-        />
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white px-4 py-2.5 text-sm shadow-2xs dark:border-slate-700/60 dark:bg-slate-900">
-        <p role="status" className="font-semibold text-slate-700 dark:text-slate-200">
-          {loading ? 'Loading catalog…' : loadError ? 'Catalog could not be loaded.' : `${pagination.total} matching titles`}
-        </p>
-        <label className="flex min-h-9 cursor-pointer items-center gap-2 text-xs font-bold text-[#0b5ea2] dark:text-sky-300">
-          <input
-            type="checkbox"
-            role="switch"
-            checked={scannerActive}
-            onChange={(event) => setScannerActive(event.target.checked)}
-            className="h-4 w-4 rounded border-slate-300 text-[#0b5ea2]"
-          />
-          Barcode scanner {scannerActive ? 'listening' : 'paused'}
-        </label>
       </div>
 
       {loadError && <NoticeBanner tone="error">{loadError} Use Refresh to try again.</NoticeBanner>}
@@ -586,10 +562,15 @@ export function CatalogManagementPage({ maintenance = false }: { maintenance?: b
       <SectionCard className="overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 bg-slate-50/70 px-5 py-4 dark:border-slate-700/60 dark:bg-slate-800/40">
           <div>
-            <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-100">
-              Unified catalog results
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-100">
+                Unified catalog results
+              </h2>
+              <p role="status" className="rounded-full bg-[#0b5ea2]/10 px-2.5 py-0.5 text-xs font-bold text-[#0b5ea2] dark:bg-sky-500/20 dark:text-sky-300">
+                {loading ? 'Loading catalog…' : loadError ? 'Catalog could not be loaded.' : `${pagination.total} matching titles`}
+              </p>
+            </div>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
               STI Holdings Register format: Accession #, DDC + Cutter Table, bibliographic details, copies, shelf, and remarks.
             </p>
           </div>

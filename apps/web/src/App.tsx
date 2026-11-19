@@ -68,6 +68,7 @@ const AdminBorrowingPoliciesPage = lazy(() => import('./features/borrowing-polic
 const CatalogMaintenancePage = lazy(() => import('./features/catalog/CatalogMaintenancePage').then(m => ({ default: m.CatalogMaintenancePage })))
 const CatalogWorkspace = lazy(() => import('./features/catalog/CatalogWorkspace').then(m => ({ default: m.CatalogWorkspace })))
 const CatalogReportsPage = lazy(() => import('./features/catalog/CatalogReportsPage').then(m => ({ default: m.CatalogReportsPage })))
+const AdminAuditLogsPage = lazy(() => import('./features/reports/AdminAuditLogsPage').then(m => ({ default: m.AdminAuditLogsPage })))
 
 const loadingFallback = <div className="flex min-h-screen items-center justify-center bg-[#0b5ea2]/5"><div className="text-center"><div className="mb-4 h-8 w-8 animate-spin rounded-full border-4 border-[#0b5ea2] border-t-transparent"></div><p className="text-sm text-[#0b5ea2]/65">Loading...</p></div></div>
 
@@ -136,6 +137,7 @@ export default function App() {
           <Route path="/admin/library-schedule" element={<AppLayout><LibrarySchedulePage /></AppLayout>} />
           <Route path="/admin/notifications" element={<AppLayout><WorkspaceNotificationsPage workspace="admin" /></AppLayout>} />
           <Route path="/admin/clearance" element={<AppLayout><AdminClearancePage /></AppLayout>} />
+          <Route path="/admin/audit-logs" element={<AppLayout><AdminAuditLogsPage /></AppLayout>} />
         </Route>
       </Route>
 
@@ -157,6 +159,7 @@ export default function App() {
           <Route path="/librarian/catalog" element={<AppLayout><CatalogWorkspace /></AppLayout>} />
           <Route path="/librarian/maintenance" element={<AppLayout><CatalogMaintenancePage /></AppLayout>} />
           <Route path="/librarian/reports" element={<AppLayout><CatalogReportsPage /></AppLayout>} />
+          <Route path="/librarian/audit-logs" element={<AppLayout><AdminAuditLogsPage /></AppLayout>} />
           <Route path="/librarian/collection-review" element={<Navigate to="/librarian/maintenance" replace />} />
           <Route path="/librarian/book-register" element={<Navigate to="/librarian/catalog" replace />} />
           <Route path="/librarian/book-archive" element={<AppLayout><BookArchivePage /></AppLayout>} />

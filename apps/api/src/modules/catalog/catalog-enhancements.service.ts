@@ -197,11 +197,11 @@ export async function commitImport(value:unknown,actor:number){
    let titleId=Number(row.target_title_id),copyIds:number[]=[]
    if(row.decision==='reuse'){const prior=(await rows(c,"SELECT result_json FROM catalog_import_rows WHERE import_row_id=? AND batch_id=? AND status='Imported'",[row.reuse_row_id,batchId]))[0];if(!prior)throw fail('The earlier holding has not been imported yet. Review it first.');titleId=Number(prior.result_json.titleId)}
    if(row.decision==='new'){
-    if((await matchTitles(c,data)).length)throw fail('A matching title was added since review. Choose the existing holding before retrying.')
-    const coverImagePath=await acceptedImportCover(c,rowId,data as unknown as Record<string,unknown>)
+    const existingMatch=(await matchTitles(c,data)).find(m=>m.status==='Active')
+    if(existingMatch){titleId=Number(existingMatch.id)}else{const coverImagePath=await acceptedImportCover(c,rowId,data as unknown as Record<string,unknown>)
     titleId=Number(await insertTitle(c,{title:data.title,recordType:'Book',categoryId:data.categoryId,isbn:data.isbn||null,publisher:data.publisher||null,publicationYear:data.publicationYear?Number(data.publicationYear):null,callNumber:data.callNumber||null,searchText:[data.title,data.author,data.isbn].join(' ')}));if(coverImagePath)await c.execute('UPDATE titles SET cover_image_path=? WHERE title_id=?',[coverImagePath,titleId]);await insertAuthors(c,titleId,[data.author])
     if(data.callNumber||data.volumes||data.remarks)await c.execute('UPDATE titles SET classification=COALESCE(?,classification),volumes=COALESCE(?,volumes),remarks=COALESCE(?,remarks) WHERE title_id=?',[data.callNumber||null,data.volumes||null,data.remarks||null,titleId])
-    await c.execute('INSERT INTO catalog_title_details(title_id,copyright_year,edition,page_count,synopsis,type_id,updated_by) VALUES (?,?,?,?,?,(SELECT type_id FROM catalog_resource_types WHERE name=?),?)',[titleId,data.copyrightYear?Number(data.copyrightYear):null,data.edition||null,data.pages?Number(data.pages):null,data.summary||data.remarks||'','Book',actor])
+    await c.execute('INSERT INTO catalog_title_details(title_id,copyright_year,edition,page_count,synopsis,type_id,updated_by) VALUES (?,?,?,?,?,(SELECT type_id FROM catalog_resource_types WHERE name=?),?)',[titleId,data.copyrightYear?Number(data.copyrightYear):null,data.edition||null,data.pages?Number(data.pages):null,data.summary||data.remarks||'','Book',actor])}
    }else if(!(await rows(c,"SELECT title_id FROM titles WHERE title_id=? AND record_type='Book' AND lifecycle_status='Active' FOR UPDATE",[titleId])).length)throw fail('The selected holding is no longer active.')
    if(needsCopies){
     const count=Number(data.copies),missing=Number(data.missingCopies||0),year=new Date().getFullYear(),start=await reserveBarcodeSequence(c,year,count),accessions:string[]=[],barcodes=identityList(data.barcodes)

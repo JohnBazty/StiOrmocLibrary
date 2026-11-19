@@ -235,6 +235,13 @@ export function AdminRightQuickSidebar({
         path: '/librarian/announcements',
         accent: 'bg-purple-500/10 text-purple-700 dark:text-purple-300',
       },
+      {
+        title: 'System audit logs',
+        subtitle: 'Track all library activity & history',
+        icon: Sparkles,
+        path: '/librarian/audit-logs',
+        accent: 'bg-slate-500/10 text-slate-700 dark:text-slate-300',
+      },
     ]
   }, [role])
 

@@ -36,6 +36,7 @@ export const adminNavigation: AdminNavItem[] = [
   ]},
   {id:'reports',label:'Reports',icon:FileBarChart,section:true,children:[
     link('Reports','reports',FileBarChart),
+    link('Audit logs','audit-logs',ClipboardCheck),
   ]},
   {id:'library',label:'Library',icon:BookOpen,section:true,children:[
     link('Library setup','maintenance',Settings),
