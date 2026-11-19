@@ -75,7 +75,7 @@ test('student checkout at the combined two-item cap rolls back before inserting'
 test('faculty checkout bypasses the cap and commits synchronized availability and alerts', async () => {
   const { state, database } = checkoutPool('Faculty', 12)
   const result = await createCirculationService(database, () => new Date(2026, 7, 24, 14, 0)).confirmCheckout(1, { barcode: 'book-20', school_id: 'sti-7' })
-  assert.equal(result.transactionId, 55); assert.equal(new Date(result.dueAt).getTime() - new Date(2026, 7, 24, 14, 0).getTime(), 86_400_000)
+  assert.equal(result.transactionId, 55); assert.equal(new Date(result.dueAt).getTime(), new Date(2026, 7, 25, 8, 59).getTime(), 'due at the policy due time on the next open day')
   assert.equal(state.borrowInserts, 1); assert.equal(state.notifications, 2); assert.equal(state.commits, 1); assert.equal(state.rollbacks, 0)
 })
 
@@ -232,4 +232,39 @@ test('borrowing history exposes the normalized title cover path', async () => {
   assert.equal(result.items[0].coverImagePath, '/api/assets/covers/clean-code.png')
   assert.equal(result.summary.loanLimit, 2)
   assert.equal(result.summary.dueCutoffLabel, 'See the exact due date and time for each loan')
+})
+
+function overdueReturnPool(role: string, state: { fines: number }) {
+  const connection = {
+    async beginTransaction() {}, async commit() {}, async rollback() {}, release() {},
+    async execute(sql: string) {
+      if (sql.includes('SELECT user_id FROM accounts')) return [[{ user_id: 2 }]]
+      if (sql.includes('FROM borrow_transactions')) return [[{ transaction_id: 8, user_id: 7, user_role: role, returned_at: null, material_id: 30, physical_copy_id: 20, due_at: '2026-08-24 08:00:00', transaction_status: 'Overdue', title_id: 10, accession_number: 'ACC-20', title: 'Clean Code' }]]
+      if (sql.includes('FROM fine_policy_versions')) return [[{ hourly_rate: 2, daily_rate: 10, maximum_penalty: 500 }]]
+      if (sql.includes('FROM library_operating_schedule')) return [[1, 2, 3, 4, 5, 6].map((day_of_week) => ({ day_of_week, is_open: 1 }))]
+      if (sql.includes('FROM library_closed_days')) return [[]]
+      if (sql.includes('INSERT INTO fines')) { state.fines += 1; return [{ affectedRows: 1 }] }
+      if (sql.includes('SELECT * FROM reservations WHERE book_title_id=') || sql.includes('SELECT reservation_id, user_id, queue_position') || sql.includes('SELECT r.user_id,r.request_kind')) return [[]]
+      if (sql.startsWith('SELECT') || sql.includes(' FOR UPDATE')) return [[]]
+      return [{ affectedRows: 1, insertId: 1 }]
+    },
+  }
+  return { getConnection: async () => connection, execute: connection.execute.bind(connection) } as unknown as Pool
+}
+
+test('returning an overdue book creates a fine for a student but not for faculty', async () => {
+  const clock = () => new Date('2026-08-25T10:00:00+08:00')
+  const student = { fines: 0 }
+  await createCirculationService(overdueReturnPool('Student', student), clock).returnBook(1, 8)
+  assert.equal(student.fines, 1)
+  const faculty = { fines: 0 }
+  await createCirculationService(overdueReturnPool('Faculty', faculty), clock).returnBook(1, 8)
+  assert.equal(faculty.fines, 0)
+})
+
+test('penalty calculation records nothing for a faculty loan', async () => {
+  const faculty = { fines: 0 }
+  const result = await createCirculationService(overdueReturnPool('Faculty', faculty), () => new Date('2026-08-25T10:00:00+08:00')).calculatePenalty(8)
+  assert.equal(faculty.fines, 0)
+  assert.equal(result.amount, 0)
 })

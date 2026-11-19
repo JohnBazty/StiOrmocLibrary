@@ -1,7 +1,7 @@
 export type ClearanceSchedule = { termId: number | null; academicYear?: string; termName?: string; deadlineAt: string | null; version: number }
 export type ClearanceRecord = {
   schedule?: ClearanceSchedule | null
-  student: { userId: number; schoolId: string; name: string; program: string | null; section: string | null; accountStatus: string }
+  student: { userId: number; schoolId: string; name: string; role?: string; program: string | null; section: string | null; accountStatus: string }
   status: 'Cleared' | 'Not Cleared'; computedStatus: 'Cleared' | 'Not Cleared'; reason: string; checkedAt: string
   summary: { activeLoans: number; unpaidOverdueFines: number; unpaidReplacementCharges: number; totalOutstanding: number; blockCount: number }
   loans: Array<{ transactionId: number; title: string; accessionNumber: string | null; status: string; borrowedAt: string | null; dueAt: string | null; overdueHours: number; currentFine: number }>

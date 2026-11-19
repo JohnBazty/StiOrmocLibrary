@@ -1,7 +1,8 @@
 import type { PoolConnection, RowDataPacket } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { closeAttendanceAtCutoff, libraryState } from '../attendance/attendance-operations.service.ts'
-import { manilaDate, nextDate } from '../attendance/attendance-intervals.ts'
+import { manilaDate, manilaInstant, nextDate } from '../attendance/attendance-intervals.ts'
+import { formatDueCutoffLabel } from './due-date.ts'
 import { exactLoanDeadline } from './exact-loan-deadline.ts'
 import { enrollmentDecision } from '../enrollment/enrollment-policy.ts'
 
@@ -9,6 +10,14 @@ export async function borrowingPolicy(q: PoolConnection, now: Date) {
   const [rows] = await q.execute<RowDataPacket[]>(`SELECT * FROM borrowing_policy_versions WHERE effective_on<=?::date ORDER BY effective_on DESC,borrowing_policy_version_id DESC LIMIT 1`,[manilaDate(now)])
   if (!rows[0]) throw new HttpError(503,'BORROW_POLICY_UNAVAILABLE','No approved borrowing policy is effective today.')
   return rows[0]
+}
+
+/** Take-home checkout (desk, kiosk, reservation pickup) starts at the policy's checkout time; reading and online requests do not. */
+export function checkoutWindowBlocker(now: Date, policy: { checkout_opens_at?: unknown }, mode: string): string | null {
+  if (mode !== 'TakeHome') return null
+  const opensAt = String(policy.checkout_opens_at ?? '14:00:00')
+  if (now >= manilaInstant(manilaDate(now), opensAt)) return null
+  return `Checkout opens at ${formatDueCutoffLabel(opensAt)}. You can read this book inside the library now.`
 }
 
 /** A not-yet-due loan affects end-of-term clearance, not the desk's explicit hold. */
@@ -35,6 +44,8 @@ export async function borrowerEligibility(q: PoolConnection,userId:number,now:Da
   if(holds[0]?.override_status==='Not Cleared')blockers.push(`An explicit library hold is active: ${holds[0].reason}`)
   const policy=await borrowingPolicy(q,now)
   const limit=user?.user_role==='Student'?Number(policy.student_max_active_books):user?.user_role==='Faculty'&&policy.faculty_max_active_books!=null?Number(policy.faculty_max_active_books):null
+  const windowBlocker=checkoutWindowBlocker(now,policy,mode)
+  if(windowBlocker)blockers.push(windowBlocker)
   const state=await libraryState(q,now)
   if(mode !== 'Online' && !state.allowBorrowing)blockers.push('The library is not accepting borrowing at this time.')
   return {user,visit:visits[0]??null,blockers,balance,loans,limit,policy,state,enrollment:enrollment.label}
@@ -52,6 +63,7 @@ export async function policyDueDate(q:PoolConnection,now:Date,policy:RowDataPack
   const [closed]=await q.execute<RowDataPacket[]>('SELECT to_char(closed_date,\'YYYY-MM-DD\') AS closed_date FROM library_closed_days WHERE closed_date>=?::date AND closed_date<=?::date',[manilaDate(now),nextDate(manilaDate(now),731)])
   const closures=new Set(closed.map(r=>String(r.closed_date)))
   const open=new Set(schedule.filter(r=>Boolean(r.is_open)).map(r=>Number(r.day_of_week)))
-  try { return exactLoanDeadline(now, Number(policy.borrowing_days), open, closures) }
+  const dueTime=policy.due_time_cutoff==null?undefined:String(policy.due_time_cutoff).slice(0,8)
+  try { return exactLoanDeadline(now, Number(policy.borrowing_days), open, closures, dueTime) }
   catch { throw new HttpError(503,'BORROW_CALENDAR_UNAVAILABLE','The borrowing period or operating calendar needs Librarian review.') }
 }

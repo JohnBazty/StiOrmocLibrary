@@ -1,8 +1,14 @@
 # Database Schema Context
 
+## Checkout opens at — November 19, 2026 (not applied)
+
+`041_checkout_opens_at.sql` adds `borrowing_policy_versions.checkout_opens_at TIME NOT NULL DEFAULT '14:00'` with check `08:00 <= value < 17:00`. Take-home checkout before this time is refused; in-library reading and online requests are not. Apply before deploying the API (schema readiness requires the column). Plan: [borrowing-hours-faculty-rules](borrowing-hours-faculty-rules.md).
+
+`042_librarian_borrowing_rules.sql` (data only) publishes a new `borrowing_policy_versions` row effective on the Manila date it runs: students 2, faculty 5, 1 day, due 08:00, checkout opens 14:00; every other value and the material rules are copied from the version effective then. A rerun does nothing. Apply right after 041.
+
 ## November 18 application rollback
 
-The fines-and-borrowing-policies application merge d3e5fe3 is reverted at the owner's request. The borrowing-policy editor is archived again and the previous fine calculator is restored. Already-applied migrations 038 and 040 and their additive schema/data remain intact. Latest applied 040 / next unused 041 remains valid. No database rollback was executed. See [rollback record](plans/2026-11-18-undo-fines-merge.md).
+The fines-and-borrowing-policies application merge d3e5fe3 is reverted at the owner's request. The borrowing-policy editor is archived again and the previous fine calculator is restored. Already-applied migrations 038 and 040 and their additive schema/data remain intact. Latest applied 040 remains valid; 041 and 042 are written on `fix/borrowing-hours-faculty-rules` and next unused is 043. No database rollback was executed. See [rollback record](plans/2026-11-18-undo-fines-merge.md).
 
 ## Fines and borrowing policies integration — November 18, 2026
 
@@ -10,7 +16,7 @@ Read-only checks confirm applied migrations `038_fine_policy_maintenance.sql` an
 `040_library_hours_8am_5pm.sql` with exact source checksum matches. The fine-policy
 change reason and three CHECK constraints exist; RLS is enabled and browser roles
 have no table access. Open days run 08:00–17:00; Sunday remains closed. Latest
-applied migration is **040**, **039** remains reserved, next unused is **041**.
+applied migration is **040**, **039** remains reserved, **041** (`checkout_opens_at`) and **042** (Librarian rules policy version) are written but not applied, next unused is **043**.
 No database writes or migration replays occurred during this integration.
 
 Historical integration behavior (reverted on 2026-11-18): Borrowing policies and Fine rules were available only to the Librarian. New fine
@@ -52,7 +58,7 @@ See [implementation and remaining human acceptance](revision-oct17-remaining-imp
 The API runs on Supabase PostgreSQL only (`DATABASE_URL`, `pg`). MySQL was retired on 2026-11-10; see [mysql-removal-plan.md](mysql-removal-plan.md). History of the move: [supabase-migration-plan.md](supabase-migration-plan.md).
 
 - When `DATABASE_URL` (postgresql://…) is set, the runtime uses `pg` against drafts under [database/supabase/](../database/supabase/).
-- The current migration tracker is maintained in `.cursor/agent-protocol.md`: latest applied 040, next unused 041, with 039 reserved. Earlier engine notes below are historical.
+- The current migration tracker is maintained in `.cursor/agent-protocol.md`: latest applied 040, 041 and 042 written but not applied, next unused 043, with 039 reserved. Earlier engine notes below are historical.
 - Additive MAIN product tables for Postgres land in `database/supabase/005_main_product_gapfill.sql` (033–040).
 - Applied Supabase Phase 2 files `012`–`014` add `book_quotations`, lost-report charge resolution, `library_job_runs`, `invoice_setup`, and `customer_invoices`. Since 2026-11-11 the scheduled jobs use `scheduled_job_state` and `scheduled_job_runs` from `019` (one row per job, created on first claim; leases, cursor, 30-day history); `library_job_runs` is no longer read or written. Existing payment rows now have `document_label='Legacy Receipt'`; future rows default to `Payment Record`.
 - Branding 033 changes the default public library name and updates the former stock name. It preserves customized names.

@@ -10,7 +10,7 @@ import {
   excluded,
 } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
-import { calculateOperatingFine, loadFineContext } from '../fines/fine-calculator.ts'
+import { calculateOperatingFine, loadFineContext, overdueFineApplies } from '../fines/fine-calculator.ts'
 import { assertTokenMatchesEvaluation, evaluateCheckoutRules, signPreflightToken, sortedWarningCodes, throwFirstBlocker, type CheckoutEvaluationContext, type CheckoutFlow } from './circulation-preflight.ts'
 import { createBorrowingPolicyService } from './borrowing-policy.service.ts'
 import { roleBookLimit } from './borrowing-policy.types.ts'
@@ -627,16 +627,17 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         await actorUserId(connection, actorAccountId)
         const [rows] = await connection.execute<RowDataPacket[]>(
           `SELECT bt.transaction_id, bt.user_id, bt.material_id, bt.physical_copy_id, ${loanTimestamp('bt.due_at')}, bt.transaction_status,
-                  pc.title_id, pc.accession_number, pc.condition_status, t.title FROM borrow_transactions bt
+                  pc.title_id, pc.accession_number, pc.condition_status, t.title, u.user_role FROM borrow_transactions bt
              INNER JOIN physical_copies pc ON pc.physical_copy_id = bt.physical_copy_id INNER JOIN titles t ON t.title_id = pc.title_id
-            WHERE bt.transaction_id = ? LIMIT 1 FOR UPDATE`, [transactionId],
+             INNER JOIN users u ON u.user_id = bt.user_id
+            WHERE bt.transaction_id = ? LIMIT 1 FOR UPDATE OF bt`, [transactionId],
         )
         const loan = rows[0]
         if (!loan) throw new HttpError(404, 'CIRCULATION_TRANSACTION_NOT_FOUND', 'The borrowing transaction was not found.')
         if (!['Borrowed', 'Overdue'].includes(String(loan.transaction_status))) throw new HttpError(422, 'CIRCULATION_RETURN_INVALID', 'Only active or overdue transactions can be returned.')
         const returnedAt = clock()
         await connection.execute(`UPDATE borrow_transactions SET transaction_status = 'Returned', returned_at = ${"(?::timestamptz AT TIME ZONE 'Asia/Manila')"}, updated_at = NOW() WHERE transaction_id = ?`, [returnedAt, transactionId])
-        if(loan.due_at&&(loan.transaction_status==='Overdue'||localTimestamp(loan.due_at)<returnedAt.getTime())){
+        if(overdueFineApplies(loan.user_role)&&loan.due_at&&(loan.transaction_status==='Overdue'||localTimestamp(loan.due_at)<returnedAt.getTime())){
           const due=new Date(localTimestamp(loan.due_at));const context=await loadFineContext(connection,due,returnedAt);const charge=calculateOperatingFine(due,returnedAt,context.policy,context.calendar)
           await connection.execute(
             `INSERT INTO fines(transaction_id,user_id,fine_type,fine_amount,payment_status,calculation_basis,overdue_units,rate_applied,maximum_cap_applied,applied_date,finalized_at,notes,updated_at)
@@ -653,12 +654,13 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
       const transactionId = positiveCirculationId(transactionIdValue, 'transactionId'); const connection = await database.getConnection()
       try {
         await connection.beginTransaction()
-        const [rows] = await connection.execute<RowDataPacket[]>(`SELECT transaction_id, user_id, ${loanTimestamp('due_at')}, ${loanTimestamp('returned_at')} FROM borrow_transactions WHERE transaction_id = ? LIMIT 1 FOR UPDATE`, [transactionId])
+        const [rows] = await connection.execute<RowDataPacket[]>(`SELECT bt.transaction_id, bt.user_id, u.user_role, ${loanTimestamp('bt.due_at')}, ${loanTimestamp('bt.returned_at')} FROM borrow_transactions bt INNER JOIN users u ON u.user_id = bt.user_id WHERE bt.transaction_id = ? LIMIT 1 FOR UPDATE OF bt`, [transactionId])
         const loan = rows[0]
         if (!loan) throw new HttpError(404, 'CIRCULATION_TRANSACTION_NOT_FOUND', 'The borrowing transaction was not found.')
+        if (!overdueFineApplies(loan.user_role)) { await connection.commit(); return { transactionId, amount: 0, currency: 'PHP', basis: 'None', units: 0, rate: 0, maximumPenalty: null, capApplied: false } }
         const due = new Date(loan.due_at); const ended = loan.returned_at ? new Date(loan.returned_at) : clock(); const context=await loadFineContext(connection,due,ended);const charge=calculateOperatingFine(due,ended,context.policy,context.calendar);const status=loan.returned_at?'Unpaid':'Accruing'
         await connection.execute(
-          `INSERT INTO fines (transaction_id,user_id,fine_type,fine_amount,payment_status,calculation_basis,overdue_units,rate_applied,maximum_cap_applied,applied_date,finalized_at,notes,updated_at) VALUES (?,?,'Overdue',?,?,?,?,?,?,NOW(),?,'Calculated from the operating calendar and 8:59 AM cutoff',NOW()) ON CONFLICT (transaction_id) DO UPDATE SET fine_amount=${excluded('fine_amount')},payment_status=${caseIf("fines.payment_status IN ('Paid','Waived','Voided')", 'fines.payment_status', excluded('payment_status'))},calculation_basis=${excluded('calculation_basis')},overdue_units=${excluded('overdue_units')},rate_applied=${excluded('rate_applied')},maximum_cap_applied=${excluded('maximum_cap_applied')},finalized_at=${excluded('finalized_at')},notes=${excluded('notes')},updated_at=NOW()`,
+          `INSERT INTO fines (transaction_id,user_id,fine_type,fine_amount,payment_status,calculation_basis,overdue_units,rate_applied,maximum_cap_applied,applied_date,finalized_at,notes,updated_at) VALUES (?,?,'Overdue',?,?,?,?,?,?,NOW(),?,'Calculated from the operating calendar and library closing time',NOW()) ON CONFLICT (transaction_id) DO UPDATE SET fine_amount=${excluded('fine_amount')},payment_status=${caseIf("fines.payment_status IN ('Paid','Waived','Voided')", 'fines.payment_status', excluded('payment_status'))},calculation_basis=${excluded('calculation_basis')},overdue_units=${excluded('overdue_units')},rate_applied=${excluded('rate_applied')},maximum_cap_applied=${excluded('maximum_cap_applied')},finalized_at=${excluded('finalized_at')},notes=${excluded('notes')},updated_at=NOW()`,
           [transactionId,loan.user_id,charge.amount,status,charge.basis,charge.units,charge.rate,charge.capApplied?context.policy.maximumPenalty:null,loan.returned_at??null],
         )
         await connection.commit(); return { transactionId, amount:charge.amount, currency: 'PHP', basis:charge.basis, units:charge.units, rate:charge.rate,maximumPenalty:context.policy.maximumPenalty,capApplied:charge.capApplied }

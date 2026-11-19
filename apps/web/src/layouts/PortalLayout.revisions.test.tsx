@@ -70,3 +70,8 @@ it('places Book Reports below Dashboard and Maintenance below Fines without chan
   expect(screen.getByRole('link',{name:'Book Reports'}).getAttribute('href')).toBe('/librarian/reports')
   expect(screen.getAllByRole('link',{name:'Maintenance'})).toHaveLength(1)
 })
+it('links Librarians to the borrowing policy editor',()=>{
+  vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({success:true,data:{unreadCount:0}}))))
+  render(<MemoryRouter initialEntries={['/librarian/dashboard']}><ThemeProvider><Routes><Route element={<PortalLayout role="librarian"/>}><Route path="/librarian/dashboard" element={<h1>Dashboard content</h1>}/></Route></Routes></ThemeProvider></MemoryRouter>)
+  expect(screen.getByRole('link',{name:'Borrowing policies'}).getAttribute('href')).toBe('/librarian/borrowing-policies')
+})

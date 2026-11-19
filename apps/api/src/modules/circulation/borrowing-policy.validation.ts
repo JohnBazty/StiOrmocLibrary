@@ -45,23 +45,34 @@ function requireDate(value: unknown, field: string): string {
   return text
 }
 
-function requireCutoff(value: unknown): string {
+function requireCutoff(value: unknown, field = 'dueTimeCutoff'): string {
   const text = typeof value === 'string' ? value.trim() : ''
   const match = text.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/)
   if (!match) {
-    throw new HttpError(422, 'BORROWING_POLICY_VALIDATION_FAILED', 'dueTimeCutoff must be HH:mm or HH:mm:ss.', {
-      errors: { dueTimeCutoff: 'Must be HH:mm or HH:mm:ss.' },
+    throw new HttpError(422, 'BORROWING_POLICY_VALIDATION_FAILED', `${field} must be HH:mm or HH:mm:ss.`, {
+      errors: { [field]: 'Must be HH:mm or HH:mm:ss.' },
     })
   }
   const hour = Number(match[1])
   const minute = Number(match[2])
   const second = match[3] ? Number(match[3]) : 0
   if (hour > 23 || minute > 59 || second > 59) {
-    throw new HttpError(422, 'BORROWING_POLICY_VALIDATION_FAILED', 'dueTimeCutoff is not a valid time.', {
-      errors: { dueTimeCutoff: 'Must be a valid time of day.' },
+    throw new HttpError(422, 'BORROWING_POLICY_VALIDATION_FAILED', `${field} is not a valid time.`, {
+      errors: { [field]: 'Must be a valid time of day.' },
     })
   }
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:${String(second).padStart(2, '0')}`
+}
+
+/** Checkout must open while the library is open (08:00 to 16:59); matches migration 041's check. */
+function requireCheckoutOpensAt(value: unknown): string {
+  const time = requireCutoff(value, 'checkoutOpensAt')
+  if (time < '08:00:00' || time >= '17:00:00') {
+    throw new HttpError(422, 'BORROWING_POLICY_VALIDATION_FAILED', 'checkoutOpensAt must be between 08:00 and 16:59.', {
+      errors: { checkoutOpensAt: 'Choose a time from 8:00 AM to 4:59 PM.' },
+    })
+  }
+  return time
 }
 
 function requireReason(value: unknown): string {
@@ -129,6 +140,7 @@ export function validatePublishBorrowingPolicy(body: unknown): PublishBorrowingP
     facultyMaxActiveBooks: optionalUnlimitedInt(input.facultyMaxActiveBooks ?? input.faculty_max_active_books, 'facultyMaxActiveBooks', 1, 100),
     borrowingDays: requirePositiveInt(input.borrowingDays ?? input.borrowing_days, 'borrowingDays', 1, 60),
     dueTimeCutoff: requireCutoff(input.dueTimeCutoff ?? input.due_time_cutoff),
+    checkoutOpensAt: requireCheckoutOpensAt(input.checkoutOpensAt ?? input.checkout_opens_at),
     maxRenewals: requirePositiveInt(input.maxRenewals ?? input.max_renewals, 'maxRenewals', 0, 10),
     renewalExtensionDays: requirePositiveInt(input.renewalExtensionDays ?? input.renewal_extension_days, 'renewalExtensionDays', 1, 60),
     studentMaxActiveReservations: requirePositiveInt(

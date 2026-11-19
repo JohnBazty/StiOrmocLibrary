@@ -42,6 +42,8 @@ function toDto(version: BorrowingPolicyVersion, status: BorrowingPolicyDerivedSt
     borrowingDays: version.borrowingDays,
     dueTimeCutoff: version.dueTimeCutoff,
     dueCutoffLabel: formatDueCutoffLabel(version.dueTimeCutoff),
+    checkoutOpensAt: version.checkoutOpensAt,
+    checkoutOpensLabel: formatDueCutoffLabel(version.checkoutOpensAt),
     maxRenewals: version.maxRenewals,
     renewalExtensionDays: version.renewalExtensionDays,
     studentMaxActiveReservations: version.studentMaxActiveReservations,

@@ -2,7 +2,7 @@ import type { Pool, RowDataPacket } from '../../config/db.js'
 import { localTimestamp } from '../attendance/attendance-intervals.ts'
 import { db } from '../../config/db.js'
 import { caseIf, excluded } from '../../config/sql-dialect.js'
-import { calculateOperatingFine, loadFineContext } from '../fines/fine-calculator.ts'
+import { calculateOperatingFine, loadFineContext, overdueFineApplies } from '../fines/fine-calculator.ts'
 import type { OverdueCursor } from '../job-runner/job-runner.rules.ts'
 
 export function overdueCharge(dueAt: Date, evaluatedAt: Date) {
@@ -18,9 +18,10 @@ export async function escalateOverdueTransactions(database: Pool = db, now: Date
   try {
     await connection.beginTransaction()
     const [rows] = await connection.execute<RowDataPacket[]>(
-      `SELECT bt.transaction_id, bt.user_id, ${"(bt.due_at AT TIME ZONE 'Asia/Manila') AS due_at"}, bt.due_at::text AS due_at_key, COALESCE(t.title, m.title) AS title
+      `SELECT bt.transaction_id, bt.user_id, ${"(bt.due_at AT TIME ZONE 'Asia/Manila') AS due_at"}, bt.due_at::text AS due_at_key, COALESCE(t.title, m.title) AS title, u.user_role
          FROM borrow_transactions bt
          INNER JOIN materials m ON m.material_id = bt.material_id
+         INNER JOIN users u ON u.user_id = bt.user_id
          LEFT JOIN physical_copies pc ON pc.physical_copy_id = bt.physical_copy_id
          LEFT JOIN titles t ON t.title_id = pc.title_id
         WHERE bt.transaction_status IN ('Borrowed','Overdue') AND bt.lost_confirmed_at IS NULL
@@ -46,7 +47,8 @@ export async function escalateOverdueTransactions(database: Pool = db, now: Date
           [loan.user_id, loan.transaction_id, `${loan.title} passed its recorded return deadline.`],
         )
       }
-      await connection.execute(
+      const fined = overdueFineApplies(loan.user_role)
+      if (fined) await connection.execute(
         `INSERT INTO fines
            (transaction_id, user_id, fine_type, fine_amount, payment_status, calculation_basis, overdue_units, rate_applied, maximum_cap_applied, notes, updated_at)
          VALUES (?, ?, 'Overdue', ?, 'Accruing', ?, ?, ?, ?, 'Automatically calculated from the operating calendar and recorded return deadline', NOW())
@@ -61,7 +63,7 @@ export async function escalateOverdueTransactions(database: Pool = db, now: Date
          VALUES (?, 'Not Cleared', ?, NOW(), NOW())
          ON CONFLICT (user_id) DO UPDATE SET standing_status = 'Not Cleared', reason_block_details = ${excluded('reason_block_details')},
            last_checked_at = NOW(), updated_at = NOW()`,
-        [loan.user_id, `Overdue material: ${loan.title}; outstanding fine: PHP ${charge.amount.toFixed(2)}.`],
+        [loan.user_id, fined ? `Overdue material: ${loan.title}; outstanding fine: PHP ${charge.amount.toFixed(2)}.` : `Overdue material: ${loan.title}.`],
       )
     }
     await connection.commit()

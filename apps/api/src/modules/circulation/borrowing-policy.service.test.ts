@@ -80,3 +80,40 @@ test('resolver fails closed when no policy exists', async () => {
     (error: unknown) => error instanceof HttpError && error.code === 'BORROWING_POLICY_NOT_CONFIGURED',
   )
 })
+
+const validPolicyBody = {
+  effectiveOn: '2026-11-20', studentMaxActiveBooks: 2, facultyMaxActiveBooks: 5, borrowingDays: 1,
+  dueTimeCutoff: '08:00', maxRenewals: 1, renewalExtensionDays: 1, studentMaxActiveReservations: 2,
+  facultyMaxActiveReservations: null, blockRenewalIfOverdue: true, blockRenewalIfUnpaidFines: true,
+  blockRenewalIfReserved: true, longOverdueAfterDays: 14, changeReason: 'Librarian rules from 2026-11-19.',
+  materialRules: [{ materialType: 'Book', isBorrowable: true }, { materialType: 'Thesis/Manuscript', isBorrowable: false }],
+}
+const fieldError = (field: string) => (error: unknown) =>
+  error instanceof HttpError && error.code === 'BORROWING_POLICY_VALIDATION_FAILED' && field in ((error.details as { errors?: object })?.errors ?? {})
+
+test('checkout opens at must fall between 08:00 and 16:59', () => {
+  assert.equal(validatePublishBorrowingPolicy({ ...validPolicyBody, checkoutOpensAt: '14:00' }).checkoutOpensAt, '14:00:00')
+  assert.equal(validatePublishBorrowingPolicy({ ...validPolicyBody, checkoutOpensAt: '08:00' }).checkoutOpensAt, '08:00:00')
+  assert.equal(validatePublishBorrowingPolicy({ ...validPolicyBody, checkoutOpensAt: '16:59' }).checkoutOpensAt, '16:59:00')
+  assert.throws(() => validatePublishBorrowingPolicy({ ...validPolicyBody, checkoutOpensAt: '07:59' }), fieldError('checkoutOpensAt'))
+  assert.throws(() => validatePublishBorrowingPolicy({ ...validPolicyBody, checkoutOpensAt: '17:00' }), fieldError('checkoutOpensAt'))
+  assert.throws(() => validatePublishBorrowingPolicy({ ...validPolicyBody, checkoutOpensAt: 'noon' }), fieldError('checkoutOpensAt'))
+})
+
+test('checkout opens at is required so a publish never silently resets it', () => {
+  assert.throws(() => validatePublishBorrowingPolicy(validPolicyBody), fieldError('checkoutOpensAt'))
+  assert.equal(validatePublishBorrowingPolicy({ ...validPolicyBody, checkoutOpensAt: '14:00' }).checkoutOpensAt, '14:00:00')
+})
+
+test('resolver returns the checkout opens at time', async () => {
+  const database = {
+    async execute(sql: string) {
+      if (sql.includes('FROM borrowing_policy_versions')) return [[{ ...legacyPolicyRow, checkout_opens_at: '14:00:00' }]]
+      if (sql.includes('FROM borrowing_policy_material_rules')) return [[{ borrowing_policy_version_id: 1, material_type: 'Book', is_borrowable: 1 }]]
+      throw new Error(sql)
+    },
+    async getConnection() { throw new Error('unused') },
+  } as unknown as Pool
+  const policy = await createBorrowingPolicyService(database, () => new Date('2026-10-09T00:00:00+08:00')).resolveActive(database)
+  assert.equal(policy.checkoutOpensAt, '14:00:00')
+})

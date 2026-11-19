@@ -34,3 +34,33 @@ test('admin clearance list exposes pending lost-book reports for review', async 
     reportedAt: '2026-09-26T01:00:00.000Z',
   }])
 })
+
+function clearanceListPool(seen: string[]) {
+  return {
+    async execute(sql: string, values: unknown[] = []) {
+      if (sql.includes('FROM users u') && sql.includes('active_loans')) {
+        seen.push(sql)
+        return [[
+          { user_id: 1, school_id: 'S-1', full_name: 'A Student', user_role: 'Student', account_status: 'Active', active_loans: 0, unpaid_fines: 0, unpaid_replacement: 0 },
+          { user_id: 2, school_id: 'F-1', full_name: 'B Faculty', user_role: 'Faculty', account_status: 'Active', active_loans: 1, unpaid_fines: 0, unpaid_replacement: 0 },
+        ].filter((row) => (values[0] as string[]).includes(row.user_role))]
+      }
+      return [[]]
+    },
+  } as unknown as Pool
+}
+
+test('the clearance list includes faculty, and a faculty member with an unreturned book is not cleared', async () => {
+  const seen: string[] = []
+  const result = await createClearanceService(clearanceListPool(seen)).list({ role: 'Librarian' }, {})
+  const faculty = result.items.find((item) => item.student.schoolId === 'F-1')
+  assert.ok(faculty, 'faculty are listed')
+  assert.equal(faculty.status, 'Not Cleared')
+  assert.equal(faculty.student.role, 'Faculty')
+  assert.equal(result.items.find((item) => item.student.schoolId === 'S-1')?.student.role, 'Student')
+})
+
+test('the student clearance summary still counts students only', async () => {
+  const summary = await createClearanceService(clearanceListPool([])).activeStudentSummary()
+  assert.deepEqual(summary, { cleared: 1, notCleared: 0, unknown: 0 })
+})

@@ -72,13 +72,20 @@ export function parseFineFilters(query: Record<string, unknown>): FineFilters {
   }
 }
 
+/** The one manual category Faculty can be charged (Ethan, 2026-11-19); it names the damaged copy. */
+export const DAMAGED_BOOK_CATEGORY = 'Damaged book'
+
 export function validateInfraction(input: unknown) {
   const body = object(input)
   const incidentAt = new Date(String(body.incidentAt ?? body.incident_at ?? ''))
   if (Number.isNaN(incidentAt.getTime())) throw new HttpError(422, 'FINE_INVALID_INCIDENT_DATE', 'Enter a valid incident date and time.')
+  const category = requiredText(body.category, 'Category', 2, 80)
+  const accession = String(body.accessionNumber ?? body.accession_number ?? '').trim()
+  if (category === DAMAGED_BOOK_CATEGORY && !accession) throw new HttpError(422, 'FINE_ACCESSION_REQUIRED', 'Enter the accession number of the damaged copy.')
   return {
     schoolId: requiredText(body.schoolId ?? body.school_id, 'School ID', 3, 50),
-    category: requiredText(body.category, 'Category', 2, 80),
+    category,
+    accessionNumber: category === DAMAGED_BOOK_CATEGORY ? requiredText(accession, 'Accession number', 1, 50) : null,
     amount: positiveNumber(body.amount, 'Fine amount'),
     incidentAt,
     location: body.location ? requiredText(body.location, 'Location', 2, 150) : null,
