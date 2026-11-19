@@ -16,6 +16,7 @@ import { createBorrowingPolicyService } from './borrowing-policy.service.ts'
 import { roleBookLimit } from './borrowing-policy.types.ts'
 import { borrowerEligibility, borrowingPolicy, requireEligible, requireLoanSlot, policyDueDate } from './desk-circulation.policy.ts'
 import { prepareReturnedCopy } from './returned-copy-preparation.ts'
+import { insertUserNotice, manilaTime, rolePath } from '../notifications/user-notices.ts'
 import { localTimestamp } from '../attendance/attendance-intervals.ts'
 import { positiveCirculationId, validateBorrowCart, validateCancellation, validateCheckout, validateHistoryQuery, validatePreflight, type BorrowCartInput } from './circulation.validation.ts'
 
@@ -627,7 +628,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         await actorUserId(connection, actorAccountId)
         const [rows] = await connection.execute<RowDataPacket[]>(
           `SELECT bt.transaction_id, bt.user_id, bt.material_id, bt.physical_copy_id, ${loanTimestamp('bt.due_at')}, bt.transaction_status,
-                  pc.title_id, pc.accession_number, pc.condition_status, t.title FROM borrow_transactions bt
+                  pc.title_id, pc.accession_number, pc.condition_status, t.title, (SELECT user_role FROM users WHERE user_id = bt.user_id) AS user_role FROM borrow_transactions bt
              INNER JOIN physical_copies pc ON pc.physical_copy_id = bt.physical_copy_id INNER JOIN titles t ON t.title_id = pc.title_id
             WHERE bt.transaction_id = ? LIMIT 1 FOR UPDATE`, [transactionId],
         )
@@ -645,6 +646,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
             [transactionId,loan.user_id,charge.amount,charge.basis,charge.units,charge.rate,charge.capApplied?context.policy.maximumPenalty:null,returnedAt],
           )
         }
+        await insertUserNotice(connection, { userId: Number(loan.user_id), title: 'Book returned', body: `${loan.title} was returned on ${manilaTime(returnedAt)}.`, triggerType: 'Return', sourceType: 'Borrow Transaction', sourceId: transactionId, actionPath: rolePath(loan.user_role, 'borrowing'), priority: 'Normal', dedupeKey: `loan:${transactionId}:returned` })
         {const release=await prepareReturnedCopy(connection,loan as any,clock());await connection.execute("INSERT INTO admin_notifications(event_type,actor_user_id,borrow_transaction_id,book_title_id,message_title,message_body) VALUES ('return_completed',?,?,?,'Return completed',?)",[loan.user_id,transactionId,loan.title_id,`${loan.title} was returned${release.nextReservationId?' and assigned for preparation':''}.`]);await connection.commit();return {transactionId,status:'Returned',returnedAt,...release}}
       } catch (error) { await connection.rollback(); throw error } finally { connection.release() }
     },
