@@ -2,7 +2,6 @@ import {useEffect,useRef,useState,type FormEvent,type ReactNode} from 'react'
 import {Link,useSearchParams} from 'react-router-dom'
 import {PageHeader,SectionCard as Card} from '../../components/ui'
 import {stocktakeApi,type InventoryOutcome,type LookupResult,type SavedCount,type ScanResponse,type StocktakeDetail} from './stocktake-api'
-import {BarcodeToPcInstructions} from './BarcodeToPcInstructions'
 import {StocktakeCameraScanner} from './StocktakeCameraScanner'
 import {StocktakeConditionDialog,type ObservedCondition} from './StocktakeConditionDialog'
 
@@ -92,7 +91,6 @@ export function StocktakePage(){
  return <div className="space-y-5"><PageHeader title="Stocktake" description="Count books and research, then review what needs a physical check."/><Link to="/librarian/inventory" className="inline-block text-sm font-semibold text-[#0b5ea2] dark:text-sky-300">Back to inventory</Link>
  {error&&<p role="alert" className="rounded-lg bg-red-50 p-3 text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
  {message&&<p role="status" className="rounded-lg bg-blue-50 p-3 text-blue-900 dark:bg-blue-950 dark:text-blue-100">{message}{messageLink&&<> <Link to={messageLink.to} className="font-semibold underline">{messageLink.label}</Link></>}</p>}
- <BarcodeToPcInstructions/>
  <SectionCard title="Saved counts"><label className="block text-sm font-semibold">Open a count<select aria-label="Open a count" className={inputClass} value={selected??''} disabled={busy} onChange={e=>setParams(e.target.value?{count:e.target.value}:{})}><option value="">Start a new count</option>{saved.map(s=><option key={s.id} value={s.id}>{s.name} · {s.kind} · {s.location} · {s.status.replaceAll('_',' ')}</option>)}</select></label></SectionCard>
  {!selected&&<SectionCard title="Start a physical count"><form onSubmit={start} className="space-y-4"><label className="block text-sm font-semibold">Count name<input required maxLength={200} className={inputClass} value={name} onChange={e=>setName(e.target.value)} placeholder="November library count"/></label><div className="grid gap-4 sm:grid-cols-2"><label className="text-sm font-semibold">Collection<select className={inputClass} value={kind} onChange={e=>setKind(e.target.value)}><option value="both">Books and research</option><option value="book">Books</option><option value="research">Research</option></select></label><label className="text-sm font-semibold">Count scope<select className={inputClass} value={scope} onChange={e=>setScope(e.target.value)}><option value="">All locations</option>{locations.map(l=><option key={l}>{l}</option>)}</select></label></div><p className="text-sm">This saves a list of physical items to check. Loans remain separate. Nothing is marked lost automatically.</p><button className={buttonClass} disabled={busy}>{busy?'Starting…':'Start inventory now'}</button></form></SectionCard>}
  {selected&&!data&&<p role="status">{busy?'Opening saved count…':'Select another count or refresh to try again.'}</p>}
