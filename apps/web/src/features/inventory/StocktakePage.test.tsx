@@ -81,3 +81,73 @@ it('links repairable research items to the filtered research inventory and lists
   expect(within(screen.getByRole('status')).getByRole('link',{name:/Research in repair/}).getAttribute('href')).toBe('/librarian/inventory?resource=research&condition=for_repair')
   expect(within(screen.getByRole('list',{name:'Recent camera scans'})).getByText('Synthetic thesis (R1)')).toBeTruthy()
 })
+it('shows validation toast and inline error when clicking Record item with missing fields',async()=>{
+  open()
+  const recordBtn=await screen.findByRole('button',{name:'Record item'})
+  fireEvent.click(recordBtn)
+  expect((await screen.findByRole('alert')).textContent).toMatch(/observed condition/i)
+  expect(stocktakeApi.scan).not.toHaveBeenCalled()
+})
+it('surfaces outside-scope scans in a floating toast and lets staff locate them in the Outside scope & Unknown tab',async()=>{
+  const outsideReport:ScanResponse={
+    ...structuredClone(result),
+    report:{
+      ...structuredClone(result.report),
+      summary:{...result.report.summary,unexpected:1},
+      findings:[{
+        key:'unexpected:book:86',
+        code:'unexpected',
+        label:'Item outside the count scope',
+        expectedId:null,
+        evidence:{code:'STIORMOC2026000086',shelf:'Shelf A',condition:'good',item:{title:'Out-of-shelf title',accession:'STI-ACC-2026-000086',barcode:'STIORMOC2026000086',shelf:'AISLE 3',kind:'book'}},
+      }],
+    },
+    scanResult:{inventory:{status:'none'}},
+  }
+  vi.mocked(stocktakeApi.lookup).mockResolvedValue({found:true,code:'000123',inScope:false,alreadyCounted:false,item:{kind:'book',title:'Out-of-shelf title',accession:'STI-ACC-2026-000086',barcode:'STIORMOC2026000086',shelf:'AISLE 3',condition:'Good',availability:'Available',lifecycle:'Active',loan:'none'}})
+  vi.mocked(stocktakeApi.scan).mockResolvedValue(outsideReport)
+  await readLabel()
+  fireEvent.click(screen.getByRole('button',{name:'Save condition'}))
+  await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull())
+  const toast=screen.getByTestId('stocktake-toast')
+  expect(toast.textContent).toMatch(/Outside scope/i)
+  fireEvent.click(within(toast).getByRole('button',{name:/Locate in table/i}))
+  expect(screen.getByRole('tab',{name:/Outside scope & Unknown/i}).getAttribute('aria-selected')).toBe('true')
+  expect(screen.getByText('STIORMOC2026000086')).toBeTruthy()
+  expect(screen.getByText('AISLE 3')).toBeTruthy()
+})
+it('pins the most recently scanned item to the top of Physical item results',async()=>{
+  const twoRows:StocktakeDetail={
+    ...structuredClone(result),
+    report:{
+      ...structuredClone(result.report),
+      summary:{...result.report.summary,expected:2,notChecked:2},
+      rows:[
+        {expectedId:1,original:{kind:'book',id:1,title:'Alpha unchecked',barcode:'000111',accession:'A1',shelf:'Shelf A',condition:'Good'},item:{kind:'book',id:1,title:'Alpha unchecked',barcode:'000111',accession:'A1',shelf:'Shelf A',condition:'Good'},outcome:'Not yet checked',scans:0,damaged:false,changed:false},
+        {expectedId:2,original:{kind:'book',id:2,title:'Zeta scanned',barcode:'000222',accession:'A2',shelf:'Shelf A',condition:'Good'},item:{kind:'book',id:2,title:'Zeta scanned',barcode:'000222',accession:'A2',shelf:'Shelf A',condition:'Good'},outcome:'Not yet checked',scans:0,damaged:false,changed:false},
+      ],
+    },
+  }
+  const afterScan:ScanResponse={
+    ...structuredClone(twoRows),
+    report:{
+      ...structuredClone(twoRows.report),
+      summary:{...twoRows.report.summary,found:1,notChecked:1},
+      rows:[
+        twoRows.report.rows[0],
+        {...twoRows.report.rows[1],outcome:'Found',scans:1},
+      ],
+    },
+    scanResult:{inventory:{status:'none'}},
+  }
+  vi.mocked(stocktakeApi.get).mockResolvedValue(twoRows)
+  vi.mocked(stocktakeApi.scan).mockResolvedValue(afterScan)
+  open()
+  const input=await screen.findByLabelText('Scan barcode or enter accession')
+  fireEvent.change(screen.getByLabelText('Observed condition'),{target:{value:'good'}})
+  fireEvent.change(input,{target:{value:'000222'}})
+  fireEvent.click(screen.getByRole('button',{name:'Record item'}))
+  await waitFor(()=>expect(screen.getByText('Just scanned')).toBeTruthy())
+  const rows=screen.getAllByRole('row')
+  expect(rows[1].textContent).toMatch(/Zeta scanned/)
+})

@@ -91,3 +91,13 @@ it('finishes stopping the first camera before starting the newly chosen camera',
   await act(async()=>{resolveStop()})
   await waitFor(()=>expect(events).toEqual(['start','stop-start','stop-end','start']))
 })
+it('shows live single-read progress and lets staff accept immediately or clear cooldown',async()=>{
+  const onDetected=open();await waitFor(()=>expect(camera.start).toHaveBeenCalled())
+  await read('STIORMOC2026000086')
+  const useNow=screen.getByRole('button',{name:/Use STIORMOC2026000086/i})
+  fireEvent.click(useNow)
+  expect(onDetected).toHaveBeenCalledWith('STIORMOC2026000086')
+  fireEvent.click(screen.getByRole('button',{name:/Scan same code again/i}))
+  await read('STIORMOC2026000086');await read('STIORMOC2026000086')
+  expect(onDetected).toHaveBeenCalledTimes(2)
+})

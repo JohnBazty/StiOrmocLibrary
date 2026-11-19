@@ -5,8 +5,10 @@ export function qrScanBox(width: number, height: number) {
 }
 
 export function barcodeScanBox(width: number, height: number) {
+  const boxWidth = Math.max(2, Math.min(width - 16, Math.min(1152, Math.floor(width * 0.92))))
+  const boxHeight = Math.max(1, Math.min(height - 16, Math.min(boxWidth - 1, Math.min(420, Math.floor(height * 0.52)))))
   return {
-    width: Math.max(1, Math.min(640, Math.floor(width * 0.9))),
-    height: Math.max(1, Math.min(240, Math.floor(height * 0.4))),
+    width: boxWidth,
+    height: boxHeight,
   }
 }
