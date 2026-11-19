@@ -63,6 +63,7 @@ export async function policyDueDate(q:PoolConnection,now:Date,policy:RowDataPack
   const [closed]=await q.execute<RowDataPacket[]>('SELECT to_char(closed_date,\'YYYY-MM-DD\') AS closed_date FROM library_closed_days WHERE closed_date>=?::date AND closed_date<=?::date',[manilaDate(now),nextDate(manilaDate(now),731)])
   const closures=new Set(closed.map(r=>String(r.closed_date)))
   const open=new Set(schedule.filter(r=>Boolean(r.is_open)).map(r=>Number(r.day_of_week)))
-  try { return exactLoanDeadline(now, Number(policy.borrowing_days), open, closures) }
+  const dueTime=policy.due_time_cutoff==null?undefined:String(policy.due_time_cutoff).slice(0,8)
+  try { return exactLoanDeadline(now, Number(policy.borrowing_days), open, closures, dueTime) }
   catch { throw new HttpError(503,'BORROW_CALENDAR_UNAVAILABLE','The borrowing period or operating calendar needs Librarian review.') }
 }

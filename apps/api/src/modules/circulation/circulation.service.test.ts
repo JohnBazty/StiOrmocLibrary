@@ -75,7 +75,7 @@ test('student checkout at the combined two-item cap rolls back before inserting'
 test('faculty checkout bypasses the cap and commits synchronized availability and alerts', async () => {
   const { state, database } = checkoutPool('Faculty', 12)
   const result = await createCirculationService(database, () => new Date(2026, 7, 24, 14, 0)).confirmCheckout(1, { barcode: 'book-20', school_id: 'sti-7' })
-  assert.equal(result.transactionId, 55); assert.equal(new Date(result.dueAt).getTime() - new Date(2026, 7, 24, 14, 0).getTime(), 86_400_000)
+  assert.equal(result.transactionId, 55); assert.equal(new Date(result.dueAt).getTime(), new Date(2026, 7, 25, 8, 59).getTime(), 'due at the policy due time on the next open day')
   assert.equal(state.borrowInserts, 1); assert.equal(state.notifications, 2); assert.equal(state.commits, 1); assert.equal(state.rollbacks, 0)
 })
 

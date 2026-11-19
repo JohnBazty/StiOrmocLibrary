@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { checkoutWindowBlocker } from './desk-circulation.policy.ts'
+import { checkoutWindowBlocker, policyDueDate } from './desk-circulation.policy.ts'
 
 const policy = { checkout_opens_at: '14:00:00' }
 const at = (time: string) => new Date(`2026-11-23T${time}+08:00`)
@@ -27,4 +27,14 @@ test('a policy row without the column uses 14:00', () => {
 test('the configured time is used', () => {
   assert.equal(checkoutWindowBlocker(at('09:30:00'), { checkout_opens_at: '09:00:00' }, 'TakeHome'), null)
   assert.match(String(checkoutWindowBlocker(at('08:30:00'), { checkout_opens_at: '09:00:00' }, 'TakeHome')), /9:00 AM/)
+})
+
+test('policy due date uses the policy due time on the next open day', async () => {
+  const q = { async execute(sql: string) {
+    if (sql.includes('library_operating_schedule')) return [[1, 2, 3, 4, 5, 6].map((day) => ({ day_of_week: day, is_open: 1 })).concat({ day_of_week: 7, is_open: 0 })]
+    if (sql.includes('library_closed_days')) return [[]]
+    throw new Error(sql)
+  } } as never
+  const due = await policyDueDate(q, new Date('2026-11-21T15:10:00+08:00'), { borrowing_days: 1, due_time_cutoff: '08:00:00' } as never)
+  assert.equal(due.toISOString(), '2026-11-23T00:00:00.000Z', 'Saturday 15:10 is due Monday 08:00 Manila')
 })
