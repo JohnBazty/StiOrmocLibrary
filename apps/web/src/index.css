@@ -711,6 +711,22 @@ html.dark .portal-sidebar {
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
 }
+@media (min-width: 1024px) {
+  .portal-sidebar {
+    width: var(--portal-left-panel-width, 16rem);
+  }
+  .portal-main-shell {
+    padding-left: var(--portal-left-width, 16rem);
+  }
+}
+@media (min-width: 1280px) {
+  .portal-right-sidebar {
+    width: var(--portal-right-panel-width, 20rem);
+  }
+  .portal-main-shell {
+    padding-right: var(--portal-right-width, 0px);
+  }
+}
 .portal-content { padding-bottom: max(6rem, calc(5rem + env(safe-area-inset-bottom))); }
 :where(:is([role="dialog"], [role="alertdialog"]), .public-auth-dialog) { overflow-wrap: anywhere; }
 :where(:is([role="dialog"], [role="alertdialog"]), [aria-modal="true"]):not(.fixed) { max-height: calc(100dvh - 2rem); overflow-y: auto; }

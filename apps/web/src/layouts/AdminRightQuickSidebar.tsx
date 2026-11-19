@@ -23,6 +23,13 @@ import type { Announcement, ManagedLibrarySchedule, NotificationItem } from '../
 import { borrowingScheduleApi, type AdminBorrowingSchedule } from '../features/reservations/borrowing-schedule-api'
 import { reservationApi } from '../features/reservations/reservation-api'
 import type { ReservationQueueItem } from '../features/reservations/types'
+import { SidebarResizeHandle } from './SidebarResizeHandle'
+import {
+  RIGHT_SIDEBAR_COLLAPSE_THRESHOLD,
+  RIGHT_SIDEBAR_DEFAULT_WIDTH,
+  RIGHT_SIDEBAR_MAX_WIDTH,
+  RIGHT_SIDEBAR_MIN_WIDTH,
+} from './workspace-layout-prefs'
 
 type Role = 'admin' | 'librarian' | 'staff'
 
@@ -110,10 +117,16 @@ export function AdminRightQuickSidebar({
   role,
   open,
   onToggle,
+  width = RIGHT_SIDEBAR_DEFAULT_WIDTH,
+  onResize,
+  onResizingChange,
 }: {
   role: Role
   open: boolean
   onToggle: () => void
+  width?: number
+  onResize?: (nextWidth: number) => void
+  onResizingChange?: (active: boolean) => void
 }) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -155,13 +168,19 @@ export function AdminRightQuickSidebar({
       notificationApi.announcements(),
     ])
     if (signal?.aborted) return
-    if (results[0].status === 'fulfilled') setSchedule(results[0].value)
-    if (results[1].status === 'fulfilled') setEvents(results[1].value ?? [])
-    if (results[2].status === 'fulfilled') setReservations(results[2].value?.items ?? [])
-    if (results[3].status === 'fulfilled') setPickups(results[3].value?.items ?? [])
-    if (results[4].status === 'fulfilled') setAuditLogs(results[4].value ?? [])
-    if (results[5].status === 'fulfilled') setNotifications(results[5].value?.items ?? [])
-    if (results[6].status === 'fulfilled') setAnnouncements(results[6].value ?? [])
+    if (results[0].status === 'fulfilled') setSchedule(results[0].value ?? null)
+    if (results[1].status === 'fulfilled') setEvents(Array.isArray(results[1].value) ? results[1].value : [])
+    if (results[2].status === 'fulfilled') {
+      setReservations(Array.isArray(results[2].value?.items) ? results[2].value.items : [])
+    }
+    if (results[3].status === 'fulfilled') {
+      setPickups(Array.isArray(results[3].value?.items) ? results[3].value.items : [])
+    }
+    if (results[4].status === 'fulfilled') setAuditLogs(Array.isArray(results[4].value) ? results[4].value : [])
+    if (results[5].status === 'fulfilled') {
+      setNotifications(Array.isArray(results[5].value?.items) ? results[5].value.items : [])
+    }
+    if (results[6].status === 'fulfilled') setAnnouncements(Array.isArray(results[6].value) ? results[6].value : [])
     setLoadingAgenda(false)
   }, [])
 
@@ -183,7 +202,8 @@ export function AdminRightQuickSidebar({
   // Map closures and weekly operating rules
   const closureByDate = useMemo(() => {
     const map = new Map<string, { reason: string; startsAt?: string | null; endsAt?: string | null }>()
-    for (const closure of schedule?.upcomingClosures ?? []) {
+    const closures = Array.isArray(schedule?.upcomingClosures) ? schedule.upcomingClosures : []
+    for (const closure of closures) {
       map.set(closure.date, { reason: closure.reason, startsAt: closure.startsAt, endsAt: closure.endsAt })
     }
     return map
@@ -207,7 +227,8 @@ export function AdminRightQuickSidebar({
       const [y, m, d] = dateKey.split('-').map(Number)
       const jsDay = new Date(y, (m || 1) - 1, d || 1).getDay() // 0 = Sun .. 6 = Sat
       const isoDay = jsDay === 0 ? 7 : jsDay // 1 = Mon .. 7 = Sun
-      const weeklyRule = schedule?.weekly.find((item) => item.dayOfWeek === isoDay)
+      const weeklyRules = Array.isArray(schedule?.weekly) ? schedule.weekly : []
+      const weeklyRule = weeklyRules.find((item) => item.dayOfWeek === isoDay)
       if (weeklyRule && !weeklyRule.isOpen) {
         return {
           isClosed: true,
@@ -257,7 +278,8 @@ export function AdminRightQuickSidebar({
     }
 
     // 1. Dated closures from Library Hours
-    for (const closure of schedule?.upcomingClosures ?? []) {
+    const closures = Array.isArray(schedule?.upcomingClosures) ? schedule.upcomingClosures : []
+    for (const closure of closures) {
       const windowText =
         closure.startsAt && closure.endsAt
           ? `${formatClock12Hour(closure.startsAt, '08:00')} – ${formatClock12Hour(closure.endsAt, '17:00')}`
@@ -564,8 +586,22 @@ export function AdminRightQuickSidebar({
   return (
     <section
       aria-label="Admin quick actions and calendar"
-      className="fixed inset-y-0 right-0 z-30 hidden w-80 flex-col border-l border-[var(--sl-border)] bg-[var(--sl-bg-elevated)] text-[var(--sl-text)] shadow-[var(--sl-shadow-xs)] xl:flex"
+      className="portal-right-sidebar fixed inset-y-0 right-0 z-30 hidden w-80 flex-col border-l border-[var(--sl-border)] bg-[var(--sl-bg-elevated)] text-[var(--sl-text)] shadow-[var(--sl-shadow-xs)] xl:flex"
     >
+      {onResize ? (
+        <SidebarResizeHandle
+          side="right"
+          label="Resize calendar sidebar"
+          width={width}
+          minWidth={RIGHT_SIDEBAR_MIN_WIDTH}
+          maxWidth={RIGHT_SIDEBAR_MAX_WIDTH}
+          defaultWidth={RIGHT_SIDEBAR_DEFAULT_WIDTH}
+          collapseThreshold={RIGHT_SIDEBAR_COLLAPSE_THRESHOLD}
+          onResize={onResize}
+          onCollapse={onToggle}
+          onResizingChange={onResizingChange}
+        />
+      ) : null}
       {/* Vaadin Lumo App Panel Header */}
       <div className="flex h-16 shrink-0 items-center justify-between border-b border-[var(--sl-border)] px-4">
         <div className="flex items-center gap-2.5">

@@ -19,6 +19,8 @@ import {
   Menu,
   Map,
   Megaphone,
+  PanelLeftClose,
+  PanelLeftOpen,
   Printer,
   QrCode,
   ShoppingCart,
@@ -27,7 +29,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { cn } from '../components/ui'
 import { getCurrentIdentity } from '../features/auth/auth-storage'
@@ -41,6 +43,15 @@ import { notificationApi } from '../features/notifications/notification-api'
 import { formatManilaTime12 } from '../features/notifications/LibrarySchedulePage'
 import type { ManagedLibrarySchedule } from '../features/notifications/types'
 import { SidebarAccountCard } from './SidebarAccountCard'
+import { SidebarResizeHandle } from './SidebarResizeHandle'
+import {
+  LEFT_SIDEBAR_COLLAPSE_THRESHOLD,
+  LEFT_SIDEBAR_DEFAULT_WIDTH,
+  LEFT_SIDEBAR_MAX_WIDTH,
+  LEFT_SIDEBAR_MIN_WIDTH,
+  loadWorkspaceLayoutPrefs,
+  saveWorkspaceLayoutPrefs,
+} from './workspace-layout-prefs'
 
 function getPatronLibraryClosedReason(schedule: ManagedLibrarySchedule | null, now = new Date()): string | null {
   if (!schedule) return null
@@ -50,7 +61,8 @@ function getPatronLibraryClosedReason(schedule: ManagedLibrarySchedule | null, n
   const jsDay = shifted.getUTCDay()
   const dayOfWeek = jsDay === 0 ? 7 : jsDay
 
-  const closure = schedule.upcomingClosures.find((c) => c.date === dateKey)
+  const closures = Array.isArray(schedule.upcomingClosures) ? schedule.upcomingClosures : []
+  const closure = closures.find((c) => c.date === dateKey)
   if (closure) {
     if (closure.startsAt && closure.endsAt) {
       if (timeHHMM >= closure.startsAt && timeHHMM < closure.endsAt) {
@@ -61,7 +73,8 @@ function getPatronLibraryClosedReason(schedule: ManagedLibrarySchedule | null, n
     }
   }
 
-  const rule = schedule.weekly.find((d) => d.dayOfWeek === dayOfWeek)
+  const weekly = Array.isArray(schedule.weekly) ? schedule.weekly : []
+  const rule = weekly.find((d) => d.dayOfWeek === dayOfWeek)
   if (!rule || !rule.isOpen || !rule.opensAt || !rule.closesAt) {
     return 'Scheduled weekly closed day'
   }
@@ -119,14 +132,34 @@ const navigation = (role: Role): NavItem[] => role === 'admin' ? adminNav : role
 
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex min-w-0 items-center gap-3">
       <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#FFF200] text-[#0b5ea2] shadow-sm"><LibraryBig size={22} strokeWidth={2.5} /><span className="absolute bottom-0 h-1 w-full bg-[#0b5ea2]" /></div>
-      {!compact ? <div><p className="font-display text-sm font-black leading-tight tracking-tight text-white">STI COLLEGE ORMOC</p><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/70">ILMS</p></div> : null}
+      {!compact ? <div className="min-w-0"><p className="truncate font-display text-sm font-black leading-tight tracking-tight text-white">STI COLLEGE ORMOC</p><p className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-white/70">ILMS</p></div> : null}
     </div>
   )
 }
 
-function Sidebar({ role, open, onClose }: { role: Role; open: boolean; onClose: () => void }) {
+function Sidebar({
+  role,
+  open,
+  desktopCollapsed,
+  width,
+  isResizing,
+  onClose,
+  onResize,
+  onCollapseDesktop,
+  onResizingChange,
+}: {
+  role: Role
+  open: boolean
+  desktopCollapsed: boolean
+  width: number
+  isResizing: boolean
+  onClose: () => void
+  onResize: (nextWidth: number) => void
+  onCollapseDesktop: () => void
+  onResizingChange: (active: boolean) => void
+}) {
   const [mobile, setMobile] = useState(() => window.matchMedia?.('(max-width: 1023px)').matches ?? false)
   useEffect(() => {
     const media = window.matchMedia?.('(max-width: 1023px)')
@@ -138,29 +171,80 @@ function Sidebar({ role, open, onClose }: { role: Role; open: boolean; onClose: 
   const nav = navigation(role)
   const preview = useMockAuth()
   const claims = preview.identity ?? getCurrentIdentity()
+  const isInert = mobile ? !open : desktopCollapsed
   return (
     <>
       {open ? <button aria-label="Close navigation" onClick={onClose} className="fixed inset-0 z-40 bg-[#0b5ea2]/45 backdrop-blur-sm lg:hidden" /> : null}
-      <aside id="portal-navigation" aria-label="Portal navigation" inert={!open && mobile ? true : undefined} className={cn('portal-sidebar fixed inset-y-0 left-0 z-50 flex w-64 max-w-[calc(100vw-2rem)] flex-col bg-[#0b5ea2] text-white transition-transform duration-300 lg:max-w-none lg:translate-x-0', open ? 'translate-x-0' : '-translate-x-full')}>
-        <div className="flex h-20 items-center justify-between border-b border-white/10 px-5"><Brand /><button onClick={onClose} aria-label="Close navigation menu" className="min-h-11 min-w-11 shrink-0 rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white lg:hidden"><X size={18} /></button></div>
+      <aside
+        id="portal-navigation"
+        aria-label="Portal navigation"
+        inert={isInert ? true : undefined}
+        className={cn(
+          'portal-sidebar fixed inset-y-0 left-0 z-50 flex w-64 max-w-[calc(100vw-2rem)] flex-col bg-[#0b5ea2] text-white lg:max-w-none',
+          isResizing ? 'transition-none' : 'transition-transform duration-300',
+          open ? 'translate-x-0' : '-translate-x-full',
+          desktopCollapsed ? 'lg:-translate-x-full' : 'lg:translate-x-0',
+        )}
+      >
+        <div className="flex h-20 items-center justify-between gap-2 border-b border-white/10 px-4"><Brand /><button onClick={onClose} aria-label="Close navigation menu" className="min-h-11 min-w-11 shrink-0 rounded-lg p-2 text-white/60 hover:bg-white/10 hover:text-white lg:hidden"><X size={18} /></button></div>
         <nav className="flex-1 overflow-y-auto px-3 py-5">
           {role === 'librarian' ? <AdminSidebarNavigation onNavigate={onClose}/> : nav.map((item) => {
             const Icon = item.icon
-            return <div key={item.to}>{item.section ? <h2 className="mb-2 mt-4 px-3 text-xs font-bold uppercase text-white/65">{item.section}</h2> : null}<NavLink onClick={onClose} to={item.to} className={({ isActive }) => cn('mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition lg:py-2.5', isActive ? 'bg-white text-[#0b5ea2] shadow-sm dark:bg-[#FFF200]' : 'text-white/70 hover:bg-white/10 hover:text-white')}><Icon size={17} /><span>{item.label}</span></NavLink></div>
+            return <div key={item.to}>{item.section ? <h2 className="mb-2 mt-4 px-3 text-xs font-bold uppercase text-white/65">{item.section}</h2> : null}<NavLink onClick={onClose} to={item.to} className={({ isActive }) => cn('mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition lg:py-2.5', isActive ? 'bg-white text-[#0b5ea2] shadow-sm dark:bg-[#FFF200]' : 'text-white/70 hover:bg-white/10 hover:text-white')}><Icon size={17} className="shrink-0" /><span className="min-w-0 flex-1 truncate">{item.label}</span></NavLink></div>
           })}
         </nav>
         <div className="border-t border-white/10 p-3"><SidebarAccountCard key={`${claims?.source}:${claims?.userId}`} identity={claims} preview={preview.enabled} /></div>
+        {!desktopCollapsed ? (
+          <SidebarResizeHandle
+            side="left"
+            label="Resize navigation sidebar"
+            width={width}
+            minWidth={LEFT_SIDEBAR_MIN_WIDTH}
+            maxWidth={LEFT_SIDEBAR_MAX_WIDTH}
+            defaultWidth={LEFT_SIDEBAR_DEFAULT_WIDTH}
+            collapseThreshold={LEFT_SIDEBAR_COLLAPSE_THRESHOLD}
+            onResize={onResize}
+            onCollapse={onCollapseDesktop}
+            onResizingChange={onResizingChange}
+            className="hidden lg:flex"
+          />
+        ) : null}
       </aside>
     </>
   )
 }
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
+}
+
 export function PortalLayout({ role }: { role: Role }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
+  const [layoutPrefs, setLayoutPrefs] = useState(loadWorkspaceLayoutPrefs)
+  const [isResizing, setIsResizing] = useState(false)
   const [confirmSignOut, setConfirmSignOut] = useState(false)
   const isStaffWorkspace = role === 'librarian' || role === 'admin' || role === 'staff'
   const isPatronWorkspace = role === 'student' || role === 'faculty'
+  const { leftCollapsed, leftWidth, rightOpen: rightSidebarOpen, rightWidth } = layoutPrefs
+
+  useEffect(() => {
+    saveWorkspaceLayoutPrefs(layoutPrefs)
+  }, [layoutPrefs])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return
+      if (event.key.toLowerCase() !== 'b') return
+      if (isEditableTarget(event.target)) return
+      const isDesktop = window.matchMedia?.('(min-width: 1024px)').matches ?? true
+      if (!isDesktop) return
+      event.preventDefault()
+      setLayoutPrefs((current) => ({ ...current, leftCollapsed: !current.leftCollapsed }))
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
   const [librarySchedule, setLibrarySchedule] = useState<ManagedLibrarySchedule | null>(null)
   const [clockTick, setClockTick] = useState(() => Date.now())
 
@@ -235,12 +319,56 @@ export function PortalLayout({ role }: { role: Role }) {
     } finally { setSigningOut(false) }
   }
 
+  const layoutStyle = {
+    '--portal-left-width': `${leftCollapsed ? 0 : leftWidth}px`,
+    '--portal-left-panel-width': `${leftWidth}px`,
+    '--portal-right-width': `${isStaffWorkspace && rightSidebarOpen ? rightWidth : 0}px`,
+    '--portal-right-panel-width': `${rightWidth}px`,
+  } as CSSProperties
+  const workspaceMaximized = leftCollapsed || (isStaffWorkspace && !rightSidebarOpen)
+
   return (
-    <div data-portal={role} className="portal-layout min-h-dvh bg-[var(--sl-bg)] text-[var(--sl-text)] transition-colors">
-      <Sidebar role={role} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className={cn('lg:pl-64 transition-[padding] duration-200', isStaffWorkspace && rightSidebarOpen ? 'xl:pr-80' : '')} inert={sidebarOpen ? true : undefined}>
+    <div
+      data-portal={role}
+      style={layoutStyle}
+      className="portal-layout min-h-dvh bg-[var(--sl-bg)] text-[var(--sl-text)] transition-colors"
+    >
+      <Sidebar
+        role={role}
+        open={sidebarOpen}
+        desktopCollapsed={leftCollapsed}
+        width={leftWidth}
+        isResizing={isResizing}
+        onClose={() => setSidebarOpen(false)}
+        onResize={(nextWidth) => setLayoutPrefs((current) => ({ ...current, leftWidth: nextWidth }))}
+        onCollapseDesktop={() => setLayoutPrefs((current) => ({ ...current, leftCollapsed: true }))}
+        onResizingChange={setIsResizing}
+      />
+      <div
+        className={cn(
+          'portal-main-shell',
+          isResizing ? 'transition-none' : 'transition-[padding] duration-200',
+        )}
+        inert={sidebarOpen ? true : undefined}
+      >
         <header className="sticky top-0 z-30 flex h-16 items-center border-b border-[var(--sl-border)] bg-[var(--sl-bg-elevated)]/95 px-4 backdrop-blur-md transition-colors sm:px-6 lg:px-8">
           <button onClick={() => setSidebarOpen(true)} aria-label="Open navigation" aria-controls="portal-navigation" aria-expanded={sidebarOpen} className="mr-3 shrink-0 rounded-[6px] border border-[var(--sl-border-strong)] p-2 text-[var(--sl-text-secondary)] hover:bg-[var(--sl-bg-hover)] lg:hidden"><Menu size={19} /></button>
+          <button
+            type="button"
+            onClick={() => setLayoutPrefs((current) => ({ ...current, leftCollapsed: !current.leftCollapsed }))}
+            aria-label={leftCollapsed ? 'Show navigation sidebar' : 'Hide navigation sidebar'}
+            aria-controls="portal-navigation"
+            aria-expanded={!leftCollapsed}
+            title={leftCollapsed ? 'Show navigation sidebar (Ctrl+B)' : 'Hide navigation sidebar (Ctrl+B)'}
+            className={cn(
+              'mr-3 hidden h-9 w-9 shrink-0 items-center justify-center rounded-[6px] border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0b5ea2] lg:inline-flex',
+              leftCollapsed
+                ? 'border-[#0b5ea2]/35 bg-[#0b5ea2]/10 text-[#0b5ea2] hover:bg-[#0b5ea2]/15 dark:border-sky-400/40 dark:bg-sky-400/15 dark:text-sky-300'
+                : 'border-[var(--sl-border-strong)] bg-[var(--sl-bg-elevated)] text-[var(--sl-text-secondary)] hover:bg-[var(--sl-bg-hover)] hover:text-[var(--sl-text-header)]',
+            )}
+          >
+            {leftCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+          </button>
           <div className="hidden sm:block"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--sl-text-muted)]">{role === 'admin' ? 'Admin workspace' : role === 'librarian' ? 'Library Admin workspace' : role === 'staff' ? 'Staff workspace' : role === 'faculty' ? 'Faculty portal' : 'Student portal'}</p><p className="mt-0.5 font-display text-sm font-semibold text-[var(--sl-text-header)]">{current?.label ?? 'STI College Ormoc ILMS'}</p></div>
           <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
@@ -275,7 +403,10 @@ export function PortalLayout({ role }: { role: Role }) {
         ) : null}
         <main
           data-view-only={isViewOnly ? 'true' : undefined}
-          className="portal-content mx-auto min-w-0 max-w-[1500px] p-4 sm:p-6 lg:p-8"
+          className={cn(
+            'portal-content mx-auto min-w-0 p-4 sm:p-6 lg:p-8',
+            workspaceMaximized ? 'max-w-none' : 'max-w-[1500px]',
+          )}
         >
           <Outlet />
         </main>
@@ -286,7 +417,10 @@ export function PortalLayout({ role }: { role: Role }) {
         <AdminRightQuickSidebar
           role={role}
           open={rightSidebarOpen}
-          onToggle={() => setRightSidebarOpen((current) => !current)}
+          width={rightWidth}
+          onToggle={() => setLayoutPrefs((current) => ({ ...current, rightOpen: !current.rightOpen }))}
+          onResize={(nextWidth) => setLayoutPrefs((current) => ({ ...current, rightWidth: nextWidth }))}
+          onResizingChange={setIsResizing}
         />
       ) : null}
       {confirmSignOut ? <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-[2px]" onKeyDown={(event) => { if (event.key === 'Escape' && !signingOut) setConfirmSignOut(false) }}><div role="alertdialog" aria-modal="true" aria-labelledby="sign-out-title" aria-describedby="sign-out-text" className="w-full max-w-md overflow-hidden rounded-[10px] border border-[var(--sl-border)] bg-[var(--sl-bg-elevated)] text-[var(--sl-text)] shadow-[var(--sl-shadow-l)]"><div className="px-6 py-5"><h2 id="sign-out-title" className="font-display text-lg font-semibold text-[var(--sl-text-header)]">Are you sure you want to sign out?</h2><p id="sign-out-text" className="mt-2 text-sm text-[var(--sl-text-secondary)]">You will need to sign in again to use this portal.</p></div><div className="flex flex-wrap justify-end gap-2 border-t border-[var(--sl-border)] bg-[var(--sl-bg-subtle)] px-6 py-3"><button type="button" disabled={signingOut} onClick={() => setConfirmSignOut(false)} className="min-h-[38px] rounded-[6px] border border-[var(--sl-border-strong)] bg-[var(--sl-bg-elevated)] px-4 text-sm font-semibold text-[var(--sl-text-header)] hover:bg-[var(--sl-bg-hover)] disabled:opacity-50">Cancel</button><button type="button" disabled={signingOut} onClick={() => void signOut()} className="min-h-[38px] rounded-[6px] bg-[#0b5ea2] px-4 text-sm font-semibold text-white hover:bg-[#094e87] disabled:opacity-50">{signingOut ? 'Signing out…' : 'Sign out now'}</button></div></div></div> : null}
