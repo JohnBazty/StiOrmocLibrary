@@ -72,3 +72,36 @@ it('separates active jobs from history and keeps retention outside Refresh', asy
   expect(screen.getByRole('button',{name:'Keep document'}).closest('button')?.parentElement?.closest('button')).toBeNull()
   expect(screen.queryByRole('button',{name:'Refresh'})).toBeNull()
 })
+
+it('confirms before cancelling unpaid jobs, flags large total-sheet jobs, and saves an updated pause reason', async () => {
+  api.summary.mockResolvedValue({
+    pending_jobs: 1, printing_jobs: 0, ready_jobs: 0, unpaid_jobs: 1, revenue_today: 0,
+    service_status: { accepting_requests: 0, manually_accepting_requests: 0, unavailable_reason: 'Maintenance' },
+  })
+  api.queue.mockResolvedValue({
+    rows: [{
+      request_id: 41, file_name: 'thesis.pdf', full_name: 'QA Borrower', calculated_cost: 120,
+      payment_status: 'Unpaid', job_status: 'Pending', created_at: '2026-11-19T01:00:00Z',
+      page_count: 30, number_of_copies: 2, total_sheets: 60,
+    }],
+  })
+  api.status.mockResolvedValue({})
+  api.setServiceStatus.mockResolvedValue({})
+  render(<AdminPrintingQueuePage />)
+
+  await screen.findAllByText('thesis.pdf')
+  expect(screen.getByText('Large job · check paper stock')).toBeTruthy()
+
+  fireEvent.change(screen.getByLabelText('Printing unavailable reason'), { target: { value: 'Refilling ink tanks' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save reason' }))
+  await screen.findByText('Pause reason updated.')
+  expect(api.setServiceStatus).toHaveBeenCalledWith(false, 'Refilling ink tanks')
+
+  fireEvent.click(screen.getByLabelText('Actions for print request 41'))
+  fireEvent.click(screen.getByRole('button', { name: /^Cancel$/ }))
+  expect(api.status).not.toHaveBeenCalled()
+  expect(screen.getByRole('dialog', { name: 'Cancel print request?' })).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel print request' }))
+  await screen.findByText('Print request #41 cancelled.')
+  expect(api.status).toHaveBeenCalledWith(41, 'Cancelled', 'Cancelled by printing staff')
+})
