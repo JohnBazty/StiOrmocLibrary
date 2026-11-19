@@ -1,5 +1,5 @@
 import { AlertTriangle, CalendarClock, Plus, RefreshCw, ScrollText, Shield } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Button, PageHeader, SectionCard, StatusBadge } from '../../components/ui'
 import { borrowingPoliciesApi } from './borrowing-policies-api'
 import type { BorrowingPolicyList, BorrowingPolicyVersion, PublishBorrowingPolicyInput } from './types'
@@ -64,6 +64,30 @@ export function AdminBorrowingPoliciesPage() {
   const [showForm, setShowForm] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [draft, setDraft] = useState<PublishBorrowingPolicyInput>(() => fromVersion(null))
+  const [formError, setFormError] = useState('')
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const openerRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    if (showForm) dialogRef.current?.querySelector<HTMLElement>('input, textarea, button')?.focus()
+  }, [showForm])
+
+  // Any edit invalidates the reviewed change list, so the Librarian must review again.
+  function editDraft(next: PublishBorrowingPolicyInput) {
+    setDraft(next)
+    setConfirming(false)
+  }
+
+  function closeForm() {
+    setShowForm(false)
+    setConfirming(false)
+    setFormError('')
+    openerRef.current?.focus()
+  }
+
+  function onDialogKeyDown(event: KeyboardEvent) {
+    if (event.key === 'Escape' && !busy) closeForm()
+  }
 
   const load = useCallback(async () => {
     setBusy(true)
@@ -95,7 +119,7 @@ export function AdminBorrowingPoliciesPage() {
       ['Block if overdue', String(active.blockRenewalIfOverdue), String(draft.blockRenewalIfOverdue)],
       ['Block if unpaid fines', String(active.blockRenewalIfUnpaidFines), String(draft.blockRenewalIfUnpaidFines)],
       ['Block if reserved', String(active.blockRenewalIfReserved), String(draft.blockRenewalIfReserved)],
-      ['Long overdue days', String(active.longOverdueAfterDays ?? 'null'), String(draft.longOverdueAfterDays)],
+      ['Long overdue days', String(active.longOverdueAfterDays ?? 'Disabled'), String(draft.longOverdueAfterDays)],
       ['Effective on', active.effectiveOn, draft.effectiveOn],
     ]
     for (const rule of draft.materialRules) {
@@ -108,6 +132,8 @@ export function AdminBorrowingPoliciesPage() {
   function openCreate() {
     setDraft(fromVersion(data?.active ?? null))
     setConfirming(false)
+    setFormError('')
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setShowForm(true)
     setNotice('')
   }
@@ -119,16 +145,15 @@ export function AdminBorrowingPoliciesPage() {
       return
     }
     setBusy(true)
-    setError('')
+    setFormError('')
     try {
       const cutoff = draft.dueTimeCutoff.length === 5 ? `${draft.dueTimeCutoff}:00` : draft.dueTimeCutoff
       const created = await borrowingPoliciesApi.publish({ ...draft, dueTimeCutoff: cutoff })
       setNotice(`${created.displayName} published and is ${created.status}.`)
-      setShowForm(false)
-      setConfirming(false)
+      closeForm()
       await load()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'The policy could not be published.')
+      setFormError(cause instanceof Error ? cause.message : 'The policy could not be published.')
       setConfirming(false)
     } finally {
       setBusy(false)
@@ -197,25 +222,25 @@ export function AdminBorrowingPoliciesPage() {
 
       {showForm ? (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-[#0b5ea2]/75 p-4">
-          <div className="mx-auto my-8 max-w-3xl rounded-2xl bg-white shadow-2xl">
+          <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="policy-form-title" onKeyDown={onDialogKeyDown} className="mx-auto my-8 max-w-3xl rounded-2xl bg-white shadow-2xl">
             <header className="border-b border-[#0b5ea2]/15 p-5">
-              <h2 className="font-display text-xl font-bold text-[#0b5ea2]">Publish new borrowing policy</h2>
+              <h2 id="policy-form-title" className="font-display text-xl font-bold text-[#0b5ea2]">Publish new borrowing policy</h2>
               <p className="mt-1 text-sm text-[#0b5ea2]/70">Published versions are permanent. Corrections require another version.</p>
             </header>
             <form onSubmit={publish} className="grid gap-4 p-5 sm:grid-cols-2">
-              <label className="text-sm font-bold text-[#0b5ea2]">Effective on<input required type="date" min={todayCampusDate()} value={draft.effectiveOn} onChange={(event) => setDraft({ ...draft, effectiveOn: event.target.value })} className={`${field} mt-1`} /></label>
-              <label className="text-sm font-bold text-[#0b5ea2]">Due cutoff<input required type="time" value={draft.dueTimeCutoff.slice(0, 5)} onChange={(event) => setDraft({ ...draft, dueTimeCutoff: event.target.value })} className={`${field} mt-1`} /></label>
-              <label className="text-sm font-bold text-[#0b5ea2]">Student max books<input required type="number" min={1} max={20} value={draft.studentMaxActiveBooks} onChange={(event) => setDraft({ ...draft, studentMaxActiveBooks: Number(event.target.value) })} className={`${field} mt-1`} /></label>
-              <label className="text-sm font-bold text-[#0b5ea2]">Faculty max books (blank = unlimited)<input type="number" min={1} max={100} value={draft.facultyMaxActiveBooks ?? ''} onChange={(event) => setDraft({ ...draft, facultyMaxActiveBooks: event.target.value === '' ? null : Number(event.target.value) })} className={`${field} mt-1`} /></label>
-              <label className="text-sm font-bold text-[#0b5ea2]">Borrowing days<input required type="number" min={1} max={60} value={draft.borrowingDays} onChange={(event) => setDraft({ ...draft, borrowingDays: Number(event.target.value) })} className={`${field} mt-1`} /></label>
-              <label className="text-sm font-bold text-[#0b5ea2]">Max renewals<input required type="number" min={0} max={10} value={draft.maxRenewals} onChange={(event) => setDraft({ ...draft, maxRenewals: Number(event.target.value) })} className={`${field} mt-1`} /></label>
-              <label className="text-sm font-bold text-[#0b5ea2]">Renewal extension days<input required type="number" min={1} max={60} value={draft.renewalExtensionDays} onChange={(event) => setDraft({ ...draft, renewalExtensionDays: Number(event.target.value) })} className={`${field} mt-1`} /></label>
-              <label className="text-sm font-bold text-[#0b5ea2]">Long overdue after days<input required type="number" min={1} max={365} value={draft.longOverdueAfterDays} onChange={(event) => setDraft({ ...draft, longOverdueAfterDays: Number(event.target.value) })} className={`${field} mt-1`} /></label>
-              <label className="text-sm font-bold text-[#0b5ea2]">Student max reservations<input required type="number" min={1} max={20} value={draft.studentMaxActiveReservations} onChange={(event) => setDraft({ ...draft, studentMaxActiveReservations: Number(event.target.value) })} className={`${field} mt-1`} /></label>
-              <label className="text-sm font-bold text-[#0b5ea2]">Faculty max reservations (blank = unlimited)<input type="number" min={1} max={100} value={draft.facultyMaxActiveReservations ?? ''} onChange={(event) => setDraft({ ...draft, facultyMaxActiveReservations: event.target.value === '' ? null : Number(event.target.value) })} className={`${field} mt-1`} /></label>
-              <label className="flex items-center gap-2 text-sm font-bold text-[#0b5ea2]"><input type="checkbox" checked={draft.blockRenewalIfOverdue} onChange={(event) => setDraft({ ...draft, blockRenewalIfOverdue: event.target.checked })} />Block renewal if overdue</label>
-              <label className="flex items-center gap-2 text-sm font-bold text-[#0b5ea2]"><input type="checkbox" checked={draft.blockRenewalIfUnpaidFines} onChange={(event) => setDraft({ ...draft, blockRenewalIfUnpaidFines: event.target.checked })} />Block renewal if unpaid fines</label>
-              <label className="flex items-center gap-2 text-sm font-bold text-[#0b5ea2] sm:col-span-2"><input type="checkbox" checked={draft.blockRenewalIfReserved} onChange={(event) => setDraft({ ...draft, blockRenewalIfReserved: event.target.checked })} />Block renewal if another user has an active reservation</label>
+              <label className="text-sm font-bold text-[#0b5ea2]">Effective on<input required type="date" min={todayCampusDate()} value={draft.effectiveOn} onChange={(event) => editDraft({ ...draft, effectiveOn: event.target.value })} className={`${field} mt-1`} /></label>
+              <label className="text-sm font-bold text-[#0b5ea2]">Due cutoff<input required type="time" value={draft.dueTimeCutoff.slice(0, 5)} onChange={(event) => editDraft({ ...draft, dueTimeCutoff: event.target.value })} className={`${field} mt-1`} /></label>
+              <label className="text-sm font-bold text-[#0b5ea2]">Student max books<input required type="number" min={1} max={20} value={draft.studentMaxActiveBooks} onChange={(event) => editDraft({ ...draft, studentMaxActiveBooks: Number(event.target.value) })} className={`${field} mt-1`} /></label>
+              <label className="text-sm font-bold text-[#0b5ea2]">Faculty max books (blank = unlimited)<input type="number" min={1} max={100} value={draft.facultyMaxActiveBooks ?? ''} onChange={(event) => editDraft({ ...draft, facultyMaxActiveBooks: event.target.value === '' ? null : Number(event.target.value) })} className={`${field} mt-1`} /></label>
+              <label className="text-sm font-bold text-[#0b5ea2]">Borrowing days<input required type="number" min={1} max={60} value={draft.borrowingDays} onChange={(event) => editDraft({ ...draft, borrowingDays: Number(event.target.value) })} className={`${field} mt-1`} /></label>
+              <label className="text-sm font-bold text-[#0b5ea2]">Max renewals<input required type="number" min={0} max={10} value={draft.maxRenewals} onChange={(event) => editDraft({ ...draft, maxRenewals: Number(event.target.value) })} className={`${field} mt-1`} /></label>
+              <label className="text-sm font-bold text-[#0b5ea2]">Renewal extension days<input required type="number" min={1} max={60} value={draft.renewalExtensionDays} onChange={(event) => editDraft({ ...draft, renewalExtensionDays: Number(event.target.value) })} className={`${field} mt-1`} /></label>
+              <label className="text-sm font-bold text-[#0b5ea2]">Long overdue after days<input required type="number" min={1} max={365} value={draft.longOverdueAfterDays} onChange={(event) => editDraft({ ...draft, longOverdueAfterDays: Number(event.target.value) })} className={`${field} mt-1`} /></label>
+              <label className="text-sm font-bold text-[#0b5ea2]">Student max reservations<input required type="number" min={1} max={20} value={draft.studentMaxActiveReservations} onChange={(event) => editDraft({ ...draft, studentMaxActiveReservations: Number(event.target.value) })} className={`${field} mt-1`} /></label>
+              <label className="text-sm font-bold text-[#0b5ea2]">Faculty max reservations (blank = unlimited)<input type="number" min={1} max={100} value={draft.facultyMaxActiveReservations ?? ''} onChange={(event) => editDraft({ ...draft, facultyMaxActiveReservations: event.target.value === '' ? null : Number(event.target.value) })} className={`${field} mt-1`} /></label>
+              <label className="flex items-center gap-2 text-sm font-bold text-[#0b5ea2]"><input type="checkbox" checked={draft.blockRenewalIfOverdue} onChange={(event) => editDraft({ ...draft, blockRenewalIfOverdue: event.target.checked })} />Block renewal if overdue</label>
+              <label className="flex items-center gap-2 text-sm font-bold text-[#0b5ea2]"><input type="checkbox" checked={draft.blockRenewalIfUnpaidFines} onChange={(event) => editDraft({ ...draft, blockRenewalIfUnpaidFines: event.target.checked })} />Block renewal if unpaid fines</label>
+              <label className="flex items-center gap-2 text-sm font-bold text-[#0b5ea2] sm:col-span-2"><input type="checkbox" checked={draft.blockRenewalIfReserved} onChange={(event) => editDraft({ ...draft, blockRenewalIfReserved: event.target.checked })} />Block renewal if another user has an active reservation</label>
               {draft.materialRules.map((rule, index) => (
                 <label key={rule.materialType} className="flex items-center gap-2 text-sm font-bold text-[#0b5ea2]">
                   <input
@@ -225,21 +250,22 @@ export function AdminBorrowingPoliciesPage() {
                     onChange={(event) => {
                       const materialRules = [...draft.materialRules]
                       materialRules[index] = { ...rule, isBorrowable: event.target.checked }
-                      setDraft({ ...draft, materialRules })
+                      editDraft({ ...draft, materialRules })
                     }}
                   />
                   {rule.materialType} borrowable
                 </label>
               ))}
-              <label className="text-sm font-bold text-[#0b5ea2] sm:col-span-2">Change reason<textarea required minLength={10} maxLength={500} value={draft.changeReason} onChange={(event) => setDraft({ ...draft, changeReason: event.target.value })} className={`${field} mt-1 h-28 py-3`} placeholder="Explain why this policy version is being published" /></label>
+              <label className="text-sm font-bold text-[#0b5ea2] sm:col-span-2">Change reason<textarea required minLength={10} maxLength={500} value={draft.changeReason} onChange={(event) => editDraft({ ...draft, changeReason: event.target.value })} className={`${field} mt-1 h-28 py-3`} placeholder="Explain why this policy version is being published" /></label>
               {confirming ? (
                 <div className="rounded-xl bg-[#FFF200] p-4 text-sm font-semibold text-[#0b5ea2] sm:col-span-2">
                   <p className="mb-2">Confirm permanent publication. Changed fields:</p>
                   <ul className="list-disc space-y-1 pl-5">{changes.length ? changes.map((item) => <li key={item}>{item}</li>) : <li>No field differences from the active policy (same values, new version).</li>}</ul>
                 </div>
               ) : null}
+              {formError ? <div role="alert" className="flex gap-2 rounded-xl bg-[#FFF200] p-4 text-sm font-bold text-[#0b5ea2] sm:col-span-2"><AlertTriangle size={18} />{formError}</div> : null}
               <div className="flex flex-wrap gap-2 sm:col-span-2">
-                <Button type="button" variant="secondary" onClick={() => { setShowForm(false); setConfirming(false) }}>Cancel</Button>
+                <Button type="button" variant="secondary" onClick={closeForm}>Cancel</Button>
                 <Button type="submit" disabled={busy}>{confirming ? 'Confirm publish' : 'Review and continue'}</Button>
               </div>
             </form>
