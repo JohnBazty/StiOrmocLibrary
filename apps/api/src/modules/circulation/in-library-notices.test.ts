@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { PoolConnection, RowDataPacket } from '../../config/db.js'
+import type { Pool, PoolConnection, RowDataPacket } from '../../config/db.js'
 import { manilaTime } from '../notifications/user-notices.ts'
-import { inLibraryNotice, startInLibraryUse } from './desk-circulation.service.ts'
+import { createNoticeTestDatabase } from '../notifications/user-notices.test.helper.ts'
+import { flagUnreturnedInLibrary, inLibraryNotice, startInLibraryUse } from './desk-circulation.service.ts'
 
 const HAND_BACK = '2026-11-19T09:00:00.000Z'
 const NOW = new Date('2026-11-19T03:00:00Z')
@@ -100,4 +101,77 @@ test('start notice values carry no user or staff name', async () => {
   await startInLibraryUse(q, start(bookCopy))
   const values = JSON.stringify(calls.find(c => c.sql.includes('INSERT INTO notifications'))?.values)
   assert.doesNotMatch(values, /Ana|Ben|Libby/)
+})
+
+const SWEEP_DDL = `
+  CREATE TABLE users (user_id BIGINT PRIMARY KEY, user_role TEXT NOT NULL, full_name TEXT NOT NULL);
+  CREATE TABLE titles (title_id BIGINT PRIMARY KEY, title TEXT NOT NULL);
+  CREATE TABLE physical_copies (physical_copy_id BIGINT PRIMARY KEY, title_id BIGINT NOT NULL);
+  CREATE TABLE research_inventory (research_inventory_id BIGINT PRIMARY KEY, title_id BIGINT NOT NULL);
+  CREATE TABLE in_library_uses (use_id BIGINT PRIMARY KEY, user_id BIGINT NOT NULL, physical_copy_id BIGINT, research_inventory_id BIGINT, status TEXT NOT NULL,
+    hand_back_by TIMESTAMPTZ NOT NULL, ended_at TIMESTAMPTZ, reviewed_at TIMESTAMPTZ, updated_at TIMESTAMPTZ);
+  CREATE TABLE admin_notifications (event_type TEXT, actor_user_id BIGINT, message_title TEXT, message_body TEXT);
+  CREATE TABLE library_profile_settings (settings_id BIGINT PRIMARY KEY);
+  INSERT INTO library_profile_settings VALUES (1);
+  INSERT INTO users VALUES (7,'Student','Ana Sweep-Student'),(8,'Faculty','Ben Sweep-Faculty');
+  INSERT INTO titles VALUES (1,'Clean Code'),(2,'Thesis on Rice Yields');
+  INSERT INTO physical_copies VALUES (20,1);
+  INSERT INTO research_inventory VALUES (5,2);
+  INSERT INTO in_library_uses VALUES
+    (1,7,20,NULL,'Open',    '2026-11-19T01:00:00Z',NULL,NULL,NULL),
+    (2,8,NULL,5,'Open',     '2026-11-19T01:30:00Z',NULL,NULL,NULL),
+    (3,7,20,NULL,'Returned','2026-11-19T01:00:00Z','2026-11-19T00:30:00Z',NULL,NULL),
+    (4,7,20,NULL,'Open',    '2026-11-19T04:00:00Z',NULL,NULL,NULL);`
+const SWEEP_NOW = new Date('2026-11-19T02:00:00Z')
+
+async function sweepDb() {
+  const { pg, pool } = await createNoticeTestDatabase(SWEEP_DDL)
+  const notices = async () => (await pg.query<Record<string, unknown>>('SELECT * FROM notifications ORDER BY dedupe_key')).rows
+  return { pg, pool, notices }
+}
+
+test('the sweep sends one hand-back notice per use it moves to Review and none for handed-back or not-due uses', async () => {
+  const { pg, pool, notices } = await sweepDb()
+  assert.deepEqual(await flagUnreturnedInLibrary(pool, SWEEP_NOW), { flagged: 2 })
+  const rows = await notices()
+  assert.deepEqual(rows.map(r => [r.dedupe_key, r.user_id, r.action_path]), [
+    ['in-library-use:1:overdue', 7, '/student/my-books'], ['in-library-use:2:overdue', 8, '/faculty/my-books'],
+  ])
+  assert.ok(rows.every(r => r.message_title === 'Please return the book to the desk' && r.priority === 'Important' && r.source_type === 'In-Library Use'))
+  assert.equal(rows[0].message_body, `Clean Code was due back at the library desk by ${manilaTime('2026-11-19T01:00:00Z')}. Please return it to the library desk.`)
+  assert.equal(rows[1].message_body, `Thesis on Rice Yields was due back at the library desk by ${manilaTime('2026-11-19T01:30:00Z')}. Please return it to the library desk.`)
+  assert.equal((await pg.query('SELECT 1 FROM admin_notifications WHERE event_type = \'in_library_handback_missing\'')).rows.length, 2)
+  assert.deepEqual((await pg.query('SELECT use_id, status FROM in_library_uses ORDER BY use_id')).rows.map(r => (r as { status: string }).status), ['Review', 'Review', 'Returned', 'Open'])
+})
+
+test('a second sweep sends nothing more', async () => {
+  const { pool, notices } = await sweepDb()
+  await flagUnreturnedInLibrary(pool, SWEEP_NOW)
+  assert.deepEqual(await flagUnreturnedInLibrary(pool, SWEEP_NOW), { flagged: 0 })
+  assert.equal((await notices()).length, 2)
+})
+
+test('overdue notices name no user and threaten no penalty', async () => {
+  const { pool, notices } = await sweepDb()
+  await flagUnreturnedInLibrary(pool, SWEEP_NOW)
+  for (const row of await notices()) {
+    assert.doesNotMatch(String(row.message_body), /fine|penalt|charge|fee|suspend|block|₱/i)
+    assert.doesNotMatch(JSON.stringify(row), /Ana Sweep-Student|Ben Sweep-Faculty/)
+  }
+})
+
+test('a failing overdue notice rolls the whole sweep back', async () => {
+  const { pg, pool, notices } = await sweepDb()
+  const failing = {
+    ...pool,
+    async getConnection() {
+      const conn = await pool.getConnection()
+      const execute = async (sql: string, values?: unknown[]) => { if (sql.includes('INSERT INTO notifications')) throw new Error('notice insert failed'); return conn.execute(sql, values) }
+      return { ...conn, execute, query: execute, rollback: () => conn.rollback(), commit: () => conn.commit(), beginTransaction: () => conn.beginTransaction(), release() {} }
+    },
+  } as unknown as Pool
+  await assert.rejects(flagUnreturnedInLibrary(failing, SWEEP_NOW), /notice insert failed/)
+  assert.deepEqual((await pg.query('SELECT status FROM in_library_uses WHERE use_id IN (1,2)')).rows.map(r => (r as { status: string }).status), ['Open', 'Open'])
+  assert.equal((await notices()).length, 0)
+  assert.equal((await pg.query('SELECT 1 FROM admin_notifications')).rows.length, 0)
 })
