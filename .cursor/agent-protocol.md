@@ -157,3 +157,4 @@ Prefer simple, readable scripts under a clear folder (for example `tools/` or `s
 | 2026-10-09 | Configurable borrowing policies: MySQL `046` / Supabase `016`; tracker advanced to MySQL next `047` and Supabase next `017`. |
 | 2026-11-10 | Start session now reads the Obsidian wiki first and scans only what it does not cover; added the `start-session` skill. Migration numbers unchanged. |
 | 2026-11-10 | MySQL retired (`docs/mysql-removal-plan.md`): tracker is Supabase only, `016` / next `017`; MySQL rows and the `mysql_to_pg.py` step removed. |
+| 2026-11-16 | Migration number `039` (`039_mobile_refresh_tokens.sql`) is reserved by branch `feat/mobile-refresh-token` (draft PR, not applied). The applied and next numbers above are unchanged. See `docs/mobile-refresh-token.md`. |

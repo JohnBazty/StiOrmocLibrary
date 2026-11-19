@@ -16,9 +16,9 @@ test('every job name has a handler that calls its service on the given database'
   for (const name of JOB_NAMES) {
     const outcome = await handlers[name]({ cursor: null }).then((value) => value, (error: unknown) => error)
     if (outcome === marker) continue
-    // Enrollment is switched off in tests, so it answers without the database.
-    assert.equal(name, 'enrollment-close', `${name} did not use the database`)
-    assert.deepEqual(outcome, { result: { closed: false } })
+    // Enrollment and the mobile refresh purge are switched off in tests, so they answer without the database.
+    assert.ok(name === 'enrollment-close' || name === 'mobile-refresh-purge', `${name} did not use the database`)
+    assert.deepEqual(outcome, name === 'enrollment-close' ? { result: { closed: false } } : { result: { deleted: 0, enabled: false } })
   }
 })
 

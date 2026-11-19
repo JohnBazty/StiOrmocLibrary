@@ -8,6 +8,8 @@ import { createEnrollmentService } from '../enrollment/enrollment.service.ts'
 import { generateNotifications } from '../notifications/notification.worker.ts'
 import { deliverBookRequestEmails } from '../reservations/book-request-email.worker.ts'
 import { createBookRequestService } from '../reservations/book-request.service.ts'
+import { mobileRefreshEnabled } from '../auth/login-device-policy.ts'
+import { purgeMobileRefreshTokens } from '../auth/mobile-refresh-purge.service.ts'
 import { expireReadyReservations } from '../reservations/reservation-expiration.service.ts'
 import { parseOverdueCursor } from './job-runner.rules.ts'
 
@@ -22,6 +24,7 @@ export const JOB_NAMES = [
   'notifications',
   'book-request-emails',
   'collection-review-refresh',
+  'mobile-refresh-purge',
 ] as const
 
 export type JobName = (typeof JOB_NAMES)[number]
@@ -53,5 +56,15 @@ export function createJobHandlers(database: Pool = db, clock = () => new Date())
     notifications: async () => ({ result: counts(await generateNotifications(database, clock())) }),
     'book-request-emails': async () => ({ result: counts(await deliverBookRequestEmails(database, clock())) }),
     'collection-review-refresh': async () => ({ result: counts(await createCollectionReviewService(database).refresh()) }),
+    'mobile-refresh-purge': async () => {
+      if (!mobileRefreshEnabled()) return { result: { deleted: 0, enabled: false } }
+      try {
+        return { result: counts(await purgeMobileRefreshTokens(database, clock())) }
+      } catch (error) {
+        // 42P01: the flag is on but migration 039 is not applied yet; schema readiness reports that, the purge just waits.
+        if ((error as { code?: unknown })?.code === '42P01') return { result: { deleted: 0, tableMissing: true } }
+        throw error
+      }
+    },
   }
 }
