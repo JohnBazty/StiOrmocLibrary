@@ -1,8 +1,8 @@
 import { usePaymentUpdates } from '../payments/payment-updates'
 import { ViewLocationButton } from '../floor-plan/ViewLocationButton'
-import { BookOpen, CheckCircle2, Eye, MapPin, Trash2, X } from 'lucide-react'
+import { BookOpen, CheckCircle2, Eye, MapPin, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { PageHeader, SectionCard } from '../../components/ui'
+import { Button, EmptyState, LumoDialog, NoticeBanner, PageHeader, SectionCard, StatusBadge } from '../../components/ui'
 import { BookCartApiError, fetchCartState, submitBorrowRequest, type BorrowRequestReceipt } from './book-cart-api'
 import { readBookCart, useBookCart } from './book-cart-store'
 import { BookDetailDrawer } from './BookDetailDrawer'
@@ -12,56 +12,77 @@ import { TitleAlreadyActiveDialog } from './TitleAlreadyActiveDialog'
 import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 
 export function BookCart() {
-  const requestKey=useRef('')
-  const selectionKey=useRef('')
-  const saving=useRef(false)
+  const requestKey = useRef('')
+  const selectionKey = useRef('')
+  const saving = useRef(false)
   const { items, updateItem, removeItem, removeItems, clear } = useBookCart()
-  const [syncNotice,setSyncNotice]=useState('')
+  const [syncNotice, setSyncNotice] = useState('')
   const { ask, dialog: confirmSave } = useConfirmSave()
-  const [heldTitles,setHeldTitles]=useState<string[]>([])
-  const [outstanding,setOutstanding]=useState<number|null>(null)
-  const [syncError,setSyncError]=useState('')
-  const cartFlight=useRef<Promise<void>|null>(null)
-  const mounted=useRef(false)
+  const [heldTitles, setHeldTitles] = useState<string[]>([])
+  const [outstanding, setOutstanding] = useState<number | null>(null)
+  const [unavailableIds, setUnavailableIds] = useState<number[]>([])
+  const [syncError, setSyncError] = useState('')
+  const cartFlight = useRef<Promise<void> | null>(null)
+  const mounted = useRef(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [receipt, setReceipt] = useState<BorrowRequestReceipt | null>(null)
   const [detailTitleId, setDetailTitleId] = useState<number | null>(null)
   const hydratedTitleIds = useRef(new Set<number>())
-  const hasItems=items.length>0
+  const hasItems = items.length > 0
 
-  const refreshCart=useCallback(()=>{
-    if(!hasItems||saving.current)return Promise.resolve()
-    if(cartFlight.current)return cartFlight.current
-    cartFlight.current=(async()=>{
-      try{
-        const state=await fetchCartState()
-        if(!mounted.current||saving.current)return
+  const refreshCart = useCallback(() => {
+    if (!hasItems || saving.current) return Promise.resolve()
+    if (cartFlight.current) return cartFlight.current
+    cartFlight.current = (async () => {
+      try {
+        const state = await fetchCartState()
+        if (!mounted.current || saving.current) return
         setOutstanding(state.outstandingBalance ?? 0)
         setSyncError('')
-        const removed=readBookCart().filter(item=>state.activeTitleIds.includes(item.titleId))
-        if(removeItems(state.activeTitleIds)>0){
-          setHeldTitles(removed.map(item=>item.title))
+        const removed = readBookCart().filter(item => state.activeTitleIds.includes(item.titleId))
+        if (removeItems(state.activeTitleIds) > 0) {
+          setHeldTitles(removed.map(item => item.title))
           setSyncNotice('')
           setDetailTitleId(null)
         }
-      }catch(reason){
+      } catch (reason) {
         /* Keep local selections when the authoritative check is unavailable. */
-        if(mounted.current)setSyncError(reason instanceof Error ? reason.message : 'Your current library balance could not be checked.')
-      }finally{cartFlight.current=null}
+        if (mounted.current) {
+          setSyncError(reason instanceof Error ? reason.message : 'Your current library balance could not be checked.')
+        }
+      } finally {
+        cartFlight.current = null
+      }
     })()
     return cartFlight.current
-  },[hasItems,removeItems])
-  useEffect(()=>{mounted.current=true;void refreshCart();return()=>{mounted.current=false}},[refreshCart])
-  usePaymentUpdates(refreshCart,15000)
+  }, [hasItems, removeItems])
 
   useEffect(() => {
+    mounted.current = true
+    void refreshCart()
+    return () => {
+      mounted.current = false
+    }
+  }, [refreshCart])
+  usePaymentUpdates(refreshCart, 15000)
+
+  useEffect(() => {
+    const activeIds = new Set(items.map(item => item.titleId))
+    setUnavailableIds(prev => prev.filter(id => activeIds.has(id)))
     for (const item of items) {
       if (hydratedTitleIds.current.has(item.titleId)) continue
       hydratedTitleIds.current.add(item.titleId)
       void Promise.resolve(fetchBookOverview(item.titleId))
-        .then((book) => {
+        .then(book => {
           if (!book) return
+          if (mounted.current && typeof book.availableCopiesCount === 'number') {
+            setUnavailableIds(prev =>
+              book.availableCopiesCount <= 0
+                ? prev.includes(item.titleId) ? prev : [...prev, item.titleId]
+                : prev.filter(id => id !== item.titleId),
+            )
+          }
           updateItem(item.titleId, {
             title: book.title,
             author: book.author,
@@ -72,63 +93,229 @@ export function BookCart() {
             coverImagePath: book.coverImagePath,
           })
         })
-        .catch(() => { /* Keep the locally saved cart record when refresh fails. */ })
+        .catch(() => {
+          /* Keep the locally saved cart record when refresh fails. */
+        })
     }
   }, [items, updateItem])
 
   async function submit() {
     if (!items.length || saving.current) return
-    saving.current=true
-    const selection=items.map(item=>item.titleId).sort((a,b)=>a-b).join(',')
-    if(selection!==selectionKey.current){requestKey.current='';selectionKey.current=selection}
-    setSubmitting(true); setError('')
+    saving.current = true
+    const selection = items.map(item => item.titleId).sort((a, b) => a - b).join(',')
+    if (selection !== selectionKey.current) {
+      requestKey.current = ''
+      selectionKey.current = selection
+    }
+    setSubmitting(true)
+    setError('')
     try {
       requestKey.current ||= crypto.randomUUID()
-      const result = await submitBorrowRequest(items.map((item) => item.titleId),requestKey.current)
-      requestKey.current=''
+      const result = await submitBorrowRequest(
+        items.map(item => item.titleId),
+        requestKey.current,
+      )
+      requestKey.current = ''
       clear()
       setReceipt(result)
     } catch (reason) {
-      const blockers=reason instanceof BookCartApiError && reason.code==='CIRCULATION_ELIGIBILITY_BLOCKED'
-        ? (reason.details as {blockers?:unknown})?.blockers : null
-      if(Array.isArray(blockers)&&blockers.every(value=>typeof value==='string')){
-        // The authoritative standing banner owns balance warnings. Keep other holds.
-        setError(blockers.filter(value=>!value.startsWith('Settle the outstanding library balance of ')).join(' '))
-      }else if(reason instanceof BookCartApiError && reason.code === 'STUDENT_BORROW_LIMIT_REACHED') {
+      const blockers =
+        reason instanceof BookCartApiError && reason.code === 'CIRCULATION_ELIGIBILITY_BLOCKED'
+          ? (reason.details as { blockers?: unknown })?.blockers
+          : null
+      if (Array.isArray(blockers) && blockers.every(value => typeof value === 'string')) {
+        const balanceBannerVisible = outstanding !== null && outstanding > 0
+        const filtered = balanceBannerVisible
+          ? blockers.filter(value => !value.startsWith('Settle the outstanding library balance of '))
+          : blockers
+        setError((filtered.length ? filtered : blockers).join(' '))
+      } else if (reason instanceof BookCartApiError && reason.code === 'STUDENT_BORROW_LIMIT_REACHED') {
         const specific = reason.message.startsWith('You have ')
-        setError(specific ? `${reason.message} Your cart has been kept.` : `${reason.message} Return a book or cancel an existing request, then try again. Your cart has been kept.`)
-      }else setError(reason instanceof Error ? reason.message : 'The borrow request could not be submitted.')
+        setError(
+          specific
+            ? `${reason.message} Your cart has been kept.`
+            : `${reason.message} Return a book or cancel an existing request, then try again. Your cart has been kept.`,
+        )
+      } else {
+        setError(reason instanceof Error ? reason.message : 'The borrow request could not be submitted.')
+      }
     } finally {
-      saving.current=false; setSubmitting(false); void refreshCart()
+      saving.current = false
+      setSubmitting(false)
+      void refreshCart()
     }
   }
 
-  return <>
-    {confirmSave}
-    <PageHeader eyebrow="My library" title="Book cart" description="Review available books before sending them to the library desk. Your loan starts at staff handover." />
-    <p className="mb-5 text-sm opacity-70">Send your cart to the desk, then bring the selected books to staff. Staff review and confirm the handover.</p>
-    {heldTitles.length>0&&<TitleAlreadyActiveDialog titles={heldTitles} onClose={()=>setHeldTitles([])}/>}
-    {syncNotice&&<p role="status" className="mb-4 rounded-xl border border-[#0b5ea2]/15 p-3 text-sm">{syncNotice}</p>}
-    {syncError ? <div role="alert" className="mb-4 rounded-xl border p-4 text-sm">{syncError} <button type="button" className="min-h-11 underline" onClick={()=>void refreshCart()}>Refresh balance</button></div> : null}
-    {outstanding!==null&&outstanding>0&&hasItems ? <div role="alert" className="mb-4 rounded-xl border p-4 text-sm font-semibold">Settle the outstanding library balance of ₱{outstanding.toFixed(2)} before borrowing. <a className="underline" href="../fines">View fines</a></div> : null}
-    {error ? <div role="alert" className="mb-4 rounded-xl border border-[#0b5ea2] bg-[#FFF200] px-4 py-3 text-sm font-semibold text-[#0b5ea2]">{error}</div> : null}
-    <SectionCard className="overflow-hidden">
-      <div className="border-b border-[#0b5ea2]/15 px-5 py-4"><h2 className="font-display text-lg font-bold text-[#0b5ea2]">Review your selected books</h2></div>
-      {items.length ? <div className="divide-y divide-[#0b5ea2]/10">{items.map((item) => <article key={item.titleId} className="grid gap-4 px-5 py-5 sm:grid-cols-[auto_1fr_auto] sm:items-center">
-        <BookCoverThumbnail title={item.title} coverImagePath={item.coverImagePath} className="h-20 w-14" />
-        <div className="min-w-0"><h3 className="font-display font-bold text-[#0b5ea2]">{item.title}</h3><p className="mt-1 text-sm text-[#0b5ea2]/70">{item.author}</p><div className="mt-2 flex flex-wrap gap-3 text-xs text-[#0b5ea2]/65"><span>ISBN: {item.isbn ?? 'Not recorded'}</span><span className="inline-flex items-center gap-1 font-semibold"><MapPin size={13} />{item.shelfLocation ?? item.callNumber ?? 'Shelf pending'}</span></div></div>
-        <div className="flex flex-wrap items-center gap-2"><ViewLocationButton titleId={item.titleId} availableOnly/><button type="button" onClick={() => setDetailTitleId(item.titleId)} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#0b5ea2] px-3 text-xs font-bold text-[#FFFFFF]"><Eye size={16} /> View details</button><button type="button" aria-label={`Remove ${item.title}`} disabled={submitting} onClick={() => removeItem(item.titleId)} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] text-[#0b5ea2] transition hover:bg-[#FFF200]"><Trash2 size={17} /></button></div>
-      </article>)}</div> : <div className="px-5 py-16 text-center"><BookOpen className="mx-auto text-[#0b5ea2]" size={30} /><h2 className="mt-3 font-display text-lg font-bold text-[#0b5ea2]">Your cart is empty</h2></div>}
-      <div className="flex justify-end border-t border-[#0b5ea2]/15 bg-[#FFFFFF] px-5 py-4"><button type="button" disabled={!items.length || submitting || (outstanding!==null && outstanding>0)} onClick={() => ask(`Send ${items.length} ${items.length === 1 ? 'book' : 'books'} to the library desk. The loan starts when staff hand over the copy.`, () => { void submit() })} className="h-11 rounded-xl bg-[#0b5ea2] px-6 text-sm font-bold text-[#FFFFFF] transition disabled:cursor-not-allowed disabled:bg-[#0b5ea2]/25 disabled:text-[#FFFFFF]">{submitting ? 'Submitting…' : 'Check Out'}</button></div>
-    </SectionCard>
+  const hasUnavailable = items.some(item => unavailableIds.includes(item.titleId))
+  const checkoutBlocked = !items.length || submitting || (outstanding !== null && outstanding > 0) || hasUnavailable
 
-    {receipt ? <div role="dialog" aria-modal="true" aria-labelledby="borrow-confirmation-title" className="fixed inset-0 z-[100] flex items-center justify-center bg-[#0b5ea2]/55 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl border border-[#0b5ea2]/15 bg-[#FFFFFF] shadow-2xl">
-        <div className="flex items-start justify-between border-b border-[#0b5ea2]/15 p-5"><div className="flex gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#FFF200] text-[#0b5ea2]"><CheckCircle2 size={22} /></span><div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#0b5ea2]">Request submitted</p><h2 id="borrow-confirmation-title" className="mt-1 font-display text-xl font-bold text-[#0b5ea2]">Cart sent to library desk</h2></div></div><button aria-label="Close confirmation" onClick={() => setReceipt(null)} className="rounded-lg p-2 text-[#0b5ea2]"><X size={18} /></button></div>
-        <div className="p-5"><p className="rounded-xl bg-[#FFF200] p-4 text-base font-bold text-[#0b5ea2]">{receipt.instructions}</p><p className="mt-4 text-sm text-[#0b5ea2]/70">These available books are awaiting staff handover. They are not in the reservation queue. Your loan starts only after staff confirm the physical handover.</p><div className="mt-4 space-y-2">{receipt.items.map(item=><div key={item.reservationId??item.titleId} className="flex items-center justify-between gap-2"><span className="text-sm font-bold">{item.title}{item.statusLabel?` · ${item.statusLabel}`:''}</span><ViewLocationButton titleId={item.titleId} copyId={item.physicalCopyId??undefined}/></div>)}</div><p className="mt-4 font-mono text-xs text-[#0b5ea2]/60">Request: {receipt.requestGroupId}</p></div>
-        <div className="flex justify-end border-t border-[#0b5ea2]/15 p-4"><button onClick={() => setReceipt(null)} className="h-10 rounded-xl bg-[#0b5ea2] px-5 text-sm font-bold text-[#FFFFFF]">Done</button></div>
-      </div>
-    </div> : null}
-    {detailTitleId !== null ? <BookDetailDrawer titleId={detailTitleId} barcode={items.find((item) => item.titleId === detailTitleId)?.previewBarcode ?? null} onClose={() => setDetailTitleId(null)} /> : null}
-  </>
+  return (
+    <>
+      {confirmSave}
+      <PageHeader
+        eyebrow="My library"
+        title="Book cart"
+        description="Review available books before sending them to the library desk. Bring the selected copies to staff to start your loan."
+      />
+      {heldTitles.length > 0 && <TitleAlreadyActiveDialog titles={heldTitles} onClose={() => setHeldTitles([])} />}
+      {syncNotice ? <NoticeBanner tone="info">{syncNotice}</NoticeBanner> : null}
+      {syncError ? (
+        <NoticeBanner
+          tone="error"
+          action={
+            <button type="button" className="min-h-8 text-xs font-semibold underline" onClick={() => void refreshCart()}>
+              Refresh balance
+            </button>
+          }
+        >
+          {syncError}
+        </NoticeBanner>
+      ) : null}
+      {outstanding !== null && outstanding > 0 && hasItems ? (
+        <NoticeBanner
+          tone="error"
+          action={
+            <a className="inline-flex min-h-8 items-center text-xs font-semibold underline" href="../fines">
+              View fines
+            </a>
+          }
+        >
+          Settle the outstanding library balance of ₱{outstanding.toFixed(2)} before borrowing.
+        </NoticeBanner>
+      ) : null}
+      {hasUnavailable ? (
+        <NoticeBanner tone="warning">
+          One or more books in your cart no longer have an available copy. Remove unavailable books before checking out.
+        </NoticeBanner>
+      ) : null}
+      {error ? <NoticeBanner tone="error">{error}</NoticeBanner> : null}
+
+      <SectionCard className="overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--sl-border)] px-5 py-3.5">
+          <h2 className="font-display text-base font-semibold text-[var(--sl-text-header)]">Review your selected books</h2>
+          {items.length ? (
+            <span className="text-xs font-medium text-[var(--sl-text-muted)] tabular-nums">
+              {items.length} {items.length === 1 ? 'book' : 'books'} selected
+            </span>
+          ) : null}
+        </div>
+        {items.length ? (
+          <div className="divide-y divide-[var(--sl-border)]">
+            {items.map(item => {
+              const isUnavailable = unavailableIds.includes(item.titleId)
+              return (
+                <article
+                  key={item.titleId}
+                  className="grid gap-4 px-5 py-4 sm:grid-cols-[auto_1fr_auto] sm:items-center"
+                >
+                  <BookCoverThumbnail title={item.title} coverImagePath={item.coverImagePath} className="h-20 w-14" />
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-display text-base font-semibold text-[var(--sl-text-header)]">{item.title}</h3>
+                      {isUnavailable ? <StatusBadge status="Unavailable" /> : null}
+                    </div>
+                    <p className="mt-0.5 text-sm text-[var(--sl-text-secondary)]">{item.author}</p>
+                    <div className="mt-1.5 flex flex-wrap gap-3 text-xs text-[var(--sl-text-muted)]">
+                      <span>ISBN: {item.isbn ?? 'Not recorded'}</span>
+                      <span className="inline-flex items-center gap-1 font-medium text-[var(--sl-text-secondary)]">
+                        <MapPin size={13} aria-hidden="true" />
+                        {item.shelfLocation ?? item.callNumber ?? 'Shelf pending'}
+                      </span>
+                    </div>
+                    {isUnavailable ? (
+                      <p className="field-error mt-1.5 text-xs font-medium">
+                        No copies are currently available. Remove this book or reserve it from the catalog instead.
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <ViewLocationButton titleId={item.titleId} availableOnly />
+                    <Button variant="secondary" size="sm" onClick={() => setDetailTitleId(item.titleId)}>
+                      <Eye size={15} aria-hidden="true" /> View details
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Remove ${item.title}`}
+                      disabled={submitting}
+                      onClick={() => removeItem(item.titleId)}
+                    >
+                      <Trash2 size={16} aria-hidden="true" />
+                    </Button>
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        ) : (
+          <EmptyState
+            icon={BookOpen}
+            title="Your cart is empty"
+            description="Browse the library catalog to add available books before visiting the desk."
+            action={
+              <a
+                href="../library"
+                className="inline-flex min-h-[38px] items-center justify-center rounded-[6px] bg-[#0b5ea2] px-4 text-sm font-semibold text-white hover:bg-[#094e87]"
+              >
+                Browse catalog
+              </a>
+            }
+          />
+        )}
+        <div className="flex justify-end border-t border-[var(--sl-border)] bg-[var(--sl-bg-subtle)] px-5 py-3.5">
+          <Button
+            disabled={checkoutBlocked}
+            onClick={() =>
+              ask(
+                `Send ${items.length} ${items.length === 1 ? 'book' : 'books'} to the library desk. The loan starts when staff hand over the copy.`,
+                () => {
+                  void submit()
+                },
+              )
+            }
+          >
+            {submitting ? 'Submitting…' : 'Check Out'}
+          </Button>
+        </div>
+      </SectionCard>
+
+      {receipt ? (
+        <LumoDialog
+          eyebrow="Request submitted"
+          title="Cart sent to library desk"
+          onClose={() => setReceipt(null)}
+          footer={<Button onClick={() => setReceipt(null)}>Done</Button>}
+        >
+          <NoticeBanner tone="success" className="mb-4">
+            <span className="inline-flex items-center gap-2">
+              <CheckCircle2 size={16} aria-hidden="true" />
+              {receipt.instructions}
+            </span>
+          </NoticeBanner>
+          <p className="text-sm text-[var(--sl-text-secondary)]">
+            These available books are awaiting staff handover and are not in the reservation queue. Your loan starts only after staff confirm the physical handover.
+          </p>
+          <div className="mt-4 divide-y divide-[var(--sl-border)] rounded-[8px] border border-[var(--sl-border)]">
+            {receipt.items.map(item => (
+              <div key={item.reservationId ?? item.titleId} className="flex items-center justify-between gap-2 px-3 py-2.5">
+                <span className="text-sm font-semibold text-[var(--sl-text-header)]">
+                  {item.title}
+                  {item.statusLabel ? ` · ${item.statusLabel}` : ''}
+                </span>
+                <ViewLocationButton titleId={item.titleId} copyId={item.physicalCopyId ?? undefined} />
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 font-mono text-xs text-[var(--sl-text-muted)]">Request: {receipt.requestGroupId}</p>
+        </LumoDialog>
+      ) : null}
+      {detailTitleId !== null ? (
+        <BookDetailDrawer
+          titleId={detailTitleId}
+          barcode={items.find(item => item.titleId === detailTitleId)?.previewBarcode ?? null}
+          onClose={() => setDetailTitleId(null)}
+        />
+      ) : null}
+    </>
+  )
 }

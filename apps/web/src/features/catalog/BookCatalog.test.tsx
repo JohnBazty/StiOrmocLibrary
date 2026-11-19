@@ -158,6 +158,15 @@ it('redirects the former catalog URL without losing selected title, filters or h
   expect((await screen.findByTestId('location')).textContent).toBe('/faculty/library?titleId=42&q=Computing#catalog')
 })
 
+it('shows unpaid fines upfront and disables Reserve book proactively when fines are unpaid or limit is full', async () => {
+  vi.mocked(enhancedCatalog.search).mockResolvedValue({ items: [{ ...record, available: 0 }], pagination: { page: 1, limit: 24, total: 1 } } as never)
+  vi.mocked(fetchCartState).mockResolvedValue({ activeTitleIds: [], outstandingBalance: 75 })
+  setup()
+  expect(await screen.findByText(/Settle your unpaid library balance of ₱75.00/i)).toBeTruthy()
+  expect(screen.getByRole('link', { name: /View fines/i }).getAttribute('href')).toBe('/student/fines')
+  expect((screen.getByRole('button', { name: 'Reserve book' }) as HTMLButtonElement).disabled).toBe(true)
+})
+
 it('keeps digital-only book details accessible without the physical-copy API', async () => {
   const digital = { ...record, available: 0, copyCount: 0 }
   vi.mocked(enhancedCatalog.search).mockResolvedValue({ items: [digital], pagination: { page: 1, limit: 24, total: 1 } } as never)

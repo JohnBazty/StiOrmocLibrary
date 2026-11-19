@@ -77,7 +77,7 @@ Every phase follows TDD (write/update Vitest + Testing Library tests first), pre
 - [x] **Milestone 0:** Create and commit project skills `sti-vaadin-design-system` and `sti-ux-qa-critic` in both `.agents/skills/` and `.claude/skills/`, registered in `AGENTS.md` and `CLAUDE.md` (commit `8c458b5`).
 - [x] **Milestone 0b:** Complete code-backed Admin Side & Booking Validation Audit and save phased plan (`docs/plans/2026-11-20-admin-ui-design-system-overhaul.md`).
 - [x] **Phase 1:** STI × Vaadin Lumo tokens, shared primitives (`ui.tsx`, `ConfirmSaveDialog`, `ExportMenu`, `RowActions`, `PortalLayout`, `AdminSidebarNavigation`) + tests + commit.
-- [ ] **Phase 2:** Proactive zero-dead-end validation in `book-cart.ts`, `BookCatalog.tsx`, `BookCart.tsx`, `ScheduleBorrowingForm.tsx`, `BorrowingSchedules.tsx` + tests + commit.
+- [x] **Phase 2:** Proactive zero-dead-end validation in `book-cart.ts`, `BookCatalog.tsx`, `BookCart.tsx`, `ScheduleBorrowingForm.tsx`, `BorrowingSchedules.tsx` + tests + commit.
 - [ ] **Phase 3:** Admin Dashboard, Borrow & Return, Book Queue & Scheduled Borrowing overhaul + tests + commit.
 - [ ] **Phase 4:** Admin Printing, Supplies, Fines, Payments, Funds, Attendance & Clearance overhaul + tests + commit.
 - [ ] **Phase 5:** Admin Catalog, Inventory, Stocktake, Users, Policies, Schedule, Announcements & Notifications overhaul + tests + commit.

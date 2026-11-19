@@ -6,7 +6,7 @@ import { useBookReservations } from './useBookReservations'
 
 import { Link, useSearchParams } from 'react-router-dom'
 
-import { PageHeader } from '../../components/ui'
+import { Button, LumoDialog, NoticeBanner, PageHeader } from '../../components/ui'
 
 import { getCurrentIdentity } from '../auth/auth-storage'
 
@@ -51,6 +51,7 @@ export function BookCatalog() {
   const [notice, setNotice] = useState('')
 
   const [activeTitleIds, setActiveTitleIds] = useState<number[] | null>(null)
+  const [outstandingBalance, setOutstandingBalance] = useState<number>(0)
 
   const [heldTitle, setHeldTitle] = useState<string | null>(null)
 
@@ -60,7 +61,12 @@ export function BookCatalog() {
   useEffect(() => {
     let cancelled = false
     fetchCartState()
-      .then(state => { if (!cancelled) setActiveTitleIds(state.activeTitleIds) })
+      .then(state => {
+        if (!cancelled) {
+          setActiveTitleIds(state.activeTitleIds)
+          setOutstandingBalance(state.outstandingBalance ?? 0)
+        }
+      })
       .catch(() => { if (!cancelled) setActiveTitleIds(null) })
     return () => { cancelled = true }
   }, [refreshKey])
@@ -117,25 +123,29 @@ export function BookCatalog() {
     selectBook({titleId:Number(book.id),title:book.title,author:book.author || 'Author not recorded',isbn:book.isbn ?? null,coverImagePath:book.coverImagePath ?? null,shelfLocation:null,callNumber:null,previewBarcode:null})
   }
 
+  const atBorrowLimit = viewerReady && viewer.bookLimit !== null && viewer.activeBookCount >= viewer.bookLimit
+  const hasUnpaidFines = outstandingBalance > 0
+
   function bookAction(book: CatalogRecord) {
     const id = Number(book.id), selected = cartBooks.has(id), unavailable = Number(book.available) === 0
-    return <div className="space-y-2"><div className="flex items-center gap-1.5"><button onClick={() => { if (holdIfAlreadyActive(id, book.title)) return; setConfirmBook({ kind: unavailable ? 'reserve' : 'borrow', book }) }} disabled={Number(book.copyCount) === 0 || reservations.pending.has(id) || reservations.reserved.has(id) || (!unavailable && selected)} className="min-h-11 min-w-0 flex-1 rounded-full bg-[#0b5ea2] px-2 py-2 text-sm text-white disabled:opacity-50">
+    const reserveBlocked = unavailable && (hasUnpaidFines || atBorrowLimit)
+    return <div className="space-y-2"><div className="flex items-center gap-1.5"><button onClick={() => { if (holdIfAlreadyActive(id, book.title)) return; setConfirmBook({ kind: unavailable ? 'reserve' : 'borrow', book }) }} disabled={Number(book.copyCount) === 0 || reservations.pending.has(id) || reservations.reserved.has(id) || (!unavailable && selected) || reserveBlocked} title={reserveBlocked ? (hasUnpaidFines ? 'Settle unpaid fines before reserving' : 'Borrowing limit reached') : undefined} className="min-h-11 min-w-0 flex-1 rounded-full bg-[#0b5ea2] px-2 py-2 text-sm text-white disabled:opacity-50">
       {Number(book.copyCount) === 0 ? 'No copies available' : reservations.reserved.has(id) ? 'Reserved' : reservations.pending.has(id) ? 'Reserving…' : unavailable ? 'Reserve book' : selected ? 'In cart' : 'Borrow book'}
-    </button>{Number(book.copyCount)>0?<button type="button" aria-label={`Schedule borrowing for ${book.title}`} title="Schedule borrowing" onClick={()=>{if(!holdIfAlreadyActive(id,book.title))openBook(id,true)}} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#0b5ea2]/25 text-[#0b5ea2] hover:bg-[#0b5ea2]/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0b5ea2]"><CalendarDays size={18} aria-hidden="true"/></button>:null}</div>{reservations.errors.has(id) && <p role="alert" className="text-xs text-red-700">{reservations.errors.get(id)}</p>}</div>
+    </button>{Number(book.copyCount)>0?<button type="button" disabled={hasUnpaidFines} aria-label={`Schedule borrowing for ${book.title}`} title={hasUnpaidFines ? 'Settle unpaid fines before scheduling' : 'Schedule borrowing'} onClick={()=>{if(!holdIfAlreadyActive(id,book.title))openBook(id,true)}} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#0b5ea2]/25 text-[#0b5ea2] hover:bg-[#0b5ea2]/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0b5ea2] disabled:opacity-45"><CalendarDays size={18} aria-hidden="true"/></button>:null}</div>{reservations.errors.has(id) && <p role="alert" className="text-xs text-red-700">{reservations.errors.get(id)}</p>}</div>
   }
 
   return <>
 
-    <PageHeader eyebrow="My library" title="Library catalog" description="Add available books to your cart. Reserve unavailable books to join their waiting list. Borrowing begins at staff handover." action={<div className="flex flex-wrap items-center gap-2"><Link to={`${base}/reservations`} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[#0b5ea2] px-3 text-xs font-bold text-white"><ListChecks size={16}/> Requests &amp; reservations</Link>{<Link to={`${base}/cart`} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[#0b5ea2]/15 px-3 text-xs font-bold"><ShoppingBag size={16}/> Book cart ({cart.length})</Link>}<button onClick={() => { setError(''); void viewerQuery.refresh(); setRefreshKey(value => value + 1) }} aria-label="Refresh catalog" className="rounded-xl border border-[#0b5ea2]/15 p-2.5"><RefreshCw size={17}/></button></div>}/>
+    <PageHeader eyebrow="My library" title="Library catalog" description="Add available books to your cart and send them to the desk, or reserve unavailable books to join the waiting list." action={<div className="flex flex-wrap items-center gap-2"><Link to={`${base}/reservations`} className="inline-flex min-h-[38px] items-center gap-2 rounded-[6px] bg-[#0b5ea2] px-3.5 text-xs font-semibold text-white hover:bg-[#094e87]"><ListChecks size={15}/> Requests &amp; reservations</Link><Link to={`${base}/cart`} className="inline-flex min-h-[38px] items-center gap-2 rounded-[6px] border border-[var(--sl-border-strong)] bg-[var(--sl-bg-elevated)] px-3.5 text-xs font-semibold text-[var(--sl-text-header)] hover:bg-[var(--sl-bg-subtle)]"><ShoppingBag size={15}/> Book cart ({cart.length})</Link><Button variant="secondary" size="sm" onClick={() => { setError(''); void viewerQuery.refresh(); setRefreshKey(value => value + 1) }} aria-label="Refresh catalog"><RefreshCw size={16}/></Button></div>}/>
 
-    <p className="mb-5 text-sm opacity-70">Available books: choose Borrow book, review your cart and send it to the desk. Unavailable books: reserve and wait for a copy.</p>
-    {viewerError && <p role="status" className="mb-4 rounded-xl border border-[#0b5ea2]/15 p-3 text-sm">{viewerError} You can still choose books; eligibility will be checked when you submit. Use Refresh catalog to retry the check.</p>}
-    {error && <p role="alert" className="auth-error mb-4 rounded-xl p-3 text-sm font-semibold">{error}</p>}
+    {hasUnpaidFines && <NoticeBanner tone="error" action={<Link to={`${base}/fines`} className="inline-flex min-h-8 items-center text-xs font-semibold underline">View fines</Link>}>Settle your unpaid library balance of ₱{outstandingBalance.toFixed(2)} before borrowing or reserving.</NoticeBanner>}
+    {viewerError && <NoticeBanner tone="warning">{viewerError} You can still choose books; eligibility will be checked when you submit. Use Refresh catalog to retry the check.</NoticeBanner>}
+    {error && <NoticeBanner tone="error">{error}</NoticeBanner>}
 
-    {notice && <p role="status" className="mb-4 rounded-xl bg-[#0b5ea2] p-3 text-sm font-semibold text-white">{notice}</p>}
-    {viewerReady && viewer.bookLimit !== null && viewer.activeBookCount >= viewer.bookLimit && <p className="mb-4 rounded-xl border border-[#0b5ea2]/15 p-3 text-sm">You can prepare a cart, but your active books and requests already fill your limit of {viewer.bookLimit}. Return a book or cancel an existing request before submitting another request.</p>}
+    {notice && <NoticeBanner tone="success">{notice}</NoticeBanner>}
+    {atBorrowLimit && <NoticeBanner tone="warning" action={<Link to={`${base}/my-books`} className="inline-flex min-h-8 items-center text-xs font-semibold underline">View my books</Link>}>You can prepare a cart, but your active books and requests already fill your limit of {viewer.bookLimit}. Return a book or cancel an existing request before submitting another request.</NoticeBanner>}
 
-    {viewer.bookLimit!==null && <p className="mb-5 text-xs font-semibold">{viewerReady ? `Active books + requests: ${viewer.activeBookCount} / ${viewer.bookLimit}` : viewerError ? 'Borrowing check unavailable. You can still choose books.' : 'Checking borrowing eligibility… You can choose books while this loads.'}</p>}
+    {viewer.bookLimit!==null && <p className="mb-4 text-xs font-semibold text-[var(--sl-text-secondary)]">{viewerReady ? `Active books + requests: ${viewer.activeBookCount} / ${viewer.bookLimit}` : viewerError ? 'Borrowing check unavailable. You can still choose books.' : 'Checking borrowing eligibility… You can choose books while this loads.'}</p>}
 
     <div className={cart.length ? 'pb-20' : undefined}><PublicCatalogPage embedded refreshKey={refreshKey} onViewBook={openBook} renderBookAction={bookAction}/></div>
 
@@ -146,7 +156,7 @@ export function BookCatalog() {
     {selectedTitleId !== null && <BookOverview scheduleOnOpen={params.get('schedule')==='1'} titleId={selectedTitleId} role={viewer.role} activeBookCount={viewerReady ? viewer.activeBookCount : 0} bookLimit={viewer.bookLimit} selectedBookCount={cart.length} alreadySelected={cartBooks.has(selectedTitleId)} alreadyReserved={reservations.reserved.has(selectedTitleId)} onAddToCart={selectBook} onReserve={book => void reserveBook(book)} requestDisabled={reservations.pending.has(selectedTitleId)} onClose={closeBook} requestError={reservations.errors.get(selectedTitleId) ?? error} requestNotice={notice}/>}
     {confirmBook ? <ConfirmBookActionDialog kind={confirmBook.kind} title={confirmBook.book.title} onCancel={() => setConfirmBook(null)} onConfirm={() => { const choice = confirmBook; setConfirmBook(null); if (choice.kind === 'borrow') addBook(choice.book); else void reserveBook({ titleId: Number(choice.book.id), title: choice.book.title }) }} /> : null}
     {heldTitle ? <TitleAlreadyActiveDialog titles={[heldTitle]} onClose={() => setHeldTitle(null)} /> : null}
-    {waitingTitle ? <div className="fixed inset-0 z-[130] flex items-center justify-center bg-[#0b5ea2]/60 p-4"><section role="dialog" aria-modal="true" aria-labelledby="waiting-list-title" className="w-full max-w-md rounded-2xl bg-white p-6 text-[#0b5ea2] shadow-2xl"><h2 id="waiting-list-title" className="font-display text-xl font-bold">On the waiting list</h2><p className="mt-3 text-sm leading-6">We will notify you when a copy of {waitingTitle} is ready.</p><div className="mt-5 flex justify-end"><button type="button" autoFocus onClick={() => setWaitingTitle(null)} className="h-11 rounded-xl bg-[#0b5ea2] px-5 text-sm font-bold text-white">OK</button></div></section></div> : null}
+    {waitingTitle ? <LumoDialog size="sm" title="On the waiting list" onClose={() => setWaitingTitle(null)} footer={<Button onClick={() => setWaitingTitle(null)}>Done</Button>}><p className="text-sm text-[var(--sl-text)]">We will notify you when a copy of {waitingTitle} is ready.</p></LumoDialog> : null}
 
   </>
 

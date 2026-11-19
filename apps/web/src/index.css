@@ -592,6 +592,13 @@ html [role="alert"]:not([data-tone="info"]):not([data-tone="success"]):not([data
 .responsive-table tbody tr:hover {
   background-color: var(--sl-bg-hover);
 }
+.sl-field-required::after {
+  content: " *";
+  color: var(--sl-error);
+}
+html.dark .sl-field-required::after {
+  color: var(--sl-error-ink);
+}
 .sl-input {
   min-height: 2.375rem;
   width: 100%;

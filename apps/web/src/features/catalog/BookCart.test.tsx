@@ -175,6 +175,32 @@ describe('BookCart', () => {
     expect(screen.queryByTestId('cart-qr-code')).toBeNull()
     expect(screen.queryByText('QR code')).toBeNull()
   })
+
+  it('proactively flags unavailable cart books and disables Check Out before submission', async () => {
+    api.fetchCartState.mockResolvedValue({ activeTitleIds: [], outstandingBalance: 0 })
+    catalogApi.fetchBookOverview.mockResolvedValue({
+      titleId: 4, title: 'Clean Code', author: 'Robert C. Martin', isbn: '9780132350884', publisher: 'Prentice Hall', publicationYear: 2008,
+      categoryId: 1, categoryName: 'Programming', callNumber: 'QA76', shelfLocation: 'Shelf A-1', currentAvailabilityStatus: 'Unavailable',
+      totalCopiesCount: 1, availableCopiesCount: 0, reservableMaterialId: 5, previewBarcode: 'STIORMOC2026000142', coverImagePath: '/api/assets/covers/clean-code.png',
+    })
+    render(<><AddFixture /><BookCart /></>)
+    fireEvent.click(screen.getByRole('button', { name: 'Add fixture' }))
+    expect(await screen.findByText(/No copies are currently available/i)).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Check Out' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(api.submitBorrowRequest).not.toHaveBeenCalled()
+  })
+
+  it('never swallows a server balance blocker when local balance was zero or unchecked', async () => {
+    api.fetchCartState.mockResolvedValue({ activeTitleIds: [], outstandingBalance: 0 })
+    api.submitBorrowRequest.mockRejectedValueOnce(new BookCartApiError('Blocked', 'CIRCULATION_ELIGIBILITY_BLOCKED', {
+      blockers: ['Settle the outstanding library balance of ₱50.00 before borrowing.'],
+    }))
+    render(<><AddFixture /><BookCart /></>)
+    fireEvent.click(screen.getByRole('button', { name: 'Add fixture' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Check Out' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('Settle the outstanding library balance of ₱50.00 before borrowing.')
+  })
 })
 
 afterEach(() => { cleanup(); clearBookCartForTests(); vi.resetAllMocks() })

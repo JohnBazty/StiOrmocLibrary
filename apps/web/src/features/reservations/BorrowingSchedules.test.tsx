@@ -34,3 +34,16 @@ it('a stale background response cannot restore a cancelled schedule',async()=>{
  await act(async()=>finish([schedule]))
  expect(screen.queryByRole('button',{name:'Cancel schedule'})).toBeNull()
 })
+it('shows cancellation errors inside the open dialog and closes on Escape',async()=>{
+ const schedule={scheduleId:1,title:'Sample book',pickupDate:'2026-11-24',status:'scheduled'}
+ api.mine.mockResolvedValue([schedule])
+ api.cancel.mockRejectedValueOnce(new Error('Schedule was already prepared.'))
+ render(<BorrowingSchedules/>);await screen.findByText('Sample book')
+ fireEvent.click(screen.getByRole('button',{name:'Cancel schedule'}))
+ const dialog=screen.getByRole('alertdialog',{name:'Cancel this schedule?'})
+ fireEvent.click(screen.getByRole('button',{name:'Confirm cancellation'}))
+ expect((await screen.findByRole('alert')).textContent).toContain('Schedule was already prepared.')
+ expect(dialog.contains(screen.getByRole('alert'))).toBe(true)
+ fireEvent.keyDown(document,{key:'Escape'})
+ expect(screen.queryByRole('alertdialog')).toBeNull()
+})

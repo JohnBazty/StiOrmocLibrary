@@ -522,9 +522,8 @@ export function FormField({
 }) {
   return (
     <div className={cn('flex min-w-0 flex-col gap-1.5', className)}>
-      <label htmlFor={id} className="text-[13px] font-semibold text-[var(--sl-text-header)]">
+      <label htmlFor={id} className={cn('text-[13px] font-semibold text-[var(--sl-text-header)]', required && 'sl-field-required')}>
         {label}
-        {required ? <span className="ml-0.5 text-[#b42318] dark:text-[#fca5a5]" aria-hidden="true">*</span> : null}
       </label>
       {children}
       {error ? (
