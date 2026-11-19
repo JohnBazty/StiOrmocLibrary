@@ -282,12 +282,21 @@ export function createClearanceService(database: Pool = db) {
       const overrideId = positiveId(overrideIdValue, 'Override ID')
       const input = validateRevocation(body)
       const staffUserId = await linkedUserId(database, actorAccountId(actor))
-      const [result] = await database.execute<ResultSetHeader>(
-        `UPDATE clearance_overrides SET revoked_by_user_id=?,revoked_at=NOW(),revocation_reason=?
-          WHERE clearance_override_id=? AND user_id=? AND revoked_at IS NULL`, [staffUserId, input.reason, overrideId, userId],
-      )
-      if (!result.affectedRows) throw new HttpError(404, 'CLEARANCE_OVERRIDE_NOT_FOUND', 'The active override was not found.')
-      return compute(userId)
+      const connection = await database.getConnection()
+      try {
+        await connection.beginTransaction()
+        const [result] = await connection.execute<ResultSetHeader>(
+          `UPDATE clearance_overrides SET revoked_by_user_id=?,revoked_at=NOW(),revocation_reason=?
+            WHERE clearance_override_id=? AND user_id=? AND revoked_at IS NULL`, [staffUserId, input.reason, overrideId, userId],
+        )
+        // Nothing changed: already revoked, so no notice and the catch rolls back.
+        if (!result.affectedRows) throw new HttpError(404, 'CLEARANCE_OVERRIDE_NOT_FOUND', 'The active override was not found.')
+        // Recomputed inside the transaction: another active override or the computed standing, not the revoked status.
+        const clearance = await compute(userId, true, connection)
+        await notifyClearanceChange(connection, userId, overrideId, 'revoked', clearance.status)
+        await connection.commit()
+        return clearance
+      } catch (error) { await connection.rollback(); throw error } finally { connection.release() }
     },
 
     async reportLost(actor: ClearanceActor, transactionIdValue: unknown) {

@@ -86,3 +86,46 @@ test('on the transaction connection the compute reads run one at a time', async 
   await service.applyOverride(actor, 7, { status: 'Cleared', reason: SECRET })
   assert.equal(state.maxInFlight, 1)
 })
+
+const revokeInput = { reason: SECRET }
+
+test('revoking states the recomputed status and tells the user to contact the library', async () => {
+  const { state, service } = overrideFake({ active: null, loans: [loan] })
+  const result = await service.revokeOverride(actor, 7, 41, revokeInput)
+  assert.equal(result.status, 'Not Cleared')
+  assert.deepEqual(state.notices, [[7, 'Clearance updated', 'Your clearance status is now Not Cleared. Contact the library for details.', 'Clearance', 'Clearance Override', 41, '/student/clearance', 'Important', 'clearance-override:41:revoked']])
+  assert.deepEqual(state.commitsAtNotice, [0])
+  assert.equal(state.commits, 1); assert.equal(state.rollbacks, 0)
+  assertNoLeak(state)
+})
+
+test('revoking while another override is still active reports that override status', async () => {
+  const { state, service } = overrideFake({ active: { ...clearedOverride, clearance_override_id: 40 }, loans: [loan] })
+  await service.revokeOverride(actor, 7, 41, revokeInput)
+  assert.equal(state.notices[0][2], 'Your clearance status is now Cleared. Contact the library for details.')
+})
+
+test('revoking an already revoked override writes no notice and saves nothing', async () => {
+  const { state, service } = overrideFake({ revokeAffected: 0 })
+  await assert.rejects(service.revokeOverride(actor, 7, 41, revokeInput), { code: 'CLEARANCE_OVERRIDE_NOT_FOUND' })
+  assert.equal(state.notices.length, 0)
+  assert.equal(state.commits, 0); assert.equal(state.rollbacks, 1)
+})
+
+test('a failed notice rolls back a grant and a revoke', async () => {
+  for (const run of [
+    (service: ReturnType<typeof overrideFake>['service']) => service.applyOverride(actor, 7, { status: 'Cleared', reason: SECRET }),
+    (service: ReturnType<typeof overrideFake>['service']) => service.revokeOverride(actor, 7, 41, revokeInput),
+  ]) {
+    const { state, service } = overrideFake({ failNotice: true })
+    await assert.rejects(run(service), /notice insert failed/)
+    assert.equal(state.commits, 0); assert.equal(state.rollbacks, 1)
+  }
+})
+
+test('an override for a user who is not a Student or Faculty rolls back with no notice', async () => {
+  const { state, service } = overrideFake({ noUserRow: true })
+  await assert.rejects(service.applyOverride(actor, 7, { status: 'Cleared', reason: SECRET }), { code: 'CLEARANCE_STUDENT_NOT_FOUND' })
+  assert.equal(state.notices.length, 0)
+  assert.equal(state.commits, 0); assert.equal(state.rollbacks, 1)
+})
