@@ -1,0 +1,23 @@
+{
+  "contract": "1.0.0",
+  "flavor": "core",
+  "milestone": null,
+  "phases": [
+    {
+      "number": "1",
+      "name": "Reservation Maintenance",
+      "status": "in_progress"
+    },
+    {
+      "number": "2",
+      "name": "User notification gaps",
+      "status": "pending"
+    }
+  ],
+  "next": {
+    "command": "/gsd-progress --next",
+    "label": "Advance to the next step",
+    "reason": "Phase 1 of 2 · 0% · executing"
+  },
+  "updated_at": "2026-11-19T01:48:48.686Z"
+}
