@@ -595,7 +595,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         }
         await connection.execute("UPDATE physical_copies SET availability_status = 'Borrowed', row_version = row_version + 1, updated_at = NOW() WHERE physical_copy_id = ?", [copy.physical_copy_id])
         await connection.execute("UPDATE materials SET availability_status = 'Borrowed', updated_at = NOW() WHERE material_id = ?", [copy.material_id])
-        await connection.execute(`INSERT INTO notifications (user_id, message_title, message_body, trigger_type, is_read) VALUES (?, 'Borrow confirmed', ?, 'Due Date', 0)`, [borrower.user_id, `${copy.title} is due ${dueAt.toLocaleString('en-PH',{timeZone:'Asia/Manila',dateStyle:'medium',timeStyle:'short'})}.`])
+        await insertUserNotice(connection, { userId: Number(borrower.user_id), title: 'Borrow confirmed', body: `${copy.title} is due ${manilaTime(dueAt)}.`, triggerType: 'Due Date', sourceType: 'Borrow Transaction', sourceId: transactionId, actionPath: rolePath(borrower.role_name, 'my-books'), priority: 'Normal', dedupeKey: `loan:${transactionId}:borrowed` })
         await connection.execute(`INSERT INTO admin_notifications (event_type, actor_user_id, reservation_id, borrow_transaction_id, book_title_id, message_title, message_body) VALUES ('checkout_confirmed', ?, ?, ?, ?, 'Checkout confirmed', ?)`, [borrower.user_id, fulfilledReservation?.reservation_id ?? null, transactionId, copy.title_id, `${borrower.full_name} borrowed ${copy.title}.`])
         if (confirmation.overrideReason && confirmation.decisionId && confirmation.warningCodes.length > 0 && processedByUserId) {
           await connection.execute(

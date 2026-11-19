@@ -28,11 +28,11 @@ test('cart reconciliation reads only the owner active loans and queue titles wit
   assert.equal(calls,1)
 })
 
-function checkoutPool(role: 'Student' | 'Faculty', activeCount = 0, readyClaim: boolean | 'cart' = false, condition = 'Good') {
-  const state = { commits: 0, rollbacks: 0, borrowInserts: 0, queueCompactions: 0, notifications: 0, overrideInserts: 0 }
+function checkoutPool(role: 'Student' | 'Faculty', activeCount = 0, readyClaim: boolean | 'cart' = false, condition = 'Good', failNotice = false) {
+  const state = { commits: 0, rollbacks: 0, borrowInserts: 0, queueCompactions: 0, notifications: 0, overrideInserts: 0, noticeCalls: [] as { sql: string; values: unknown[] }[] }
   const connection = {
     async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() {},
-    async execute(sql: string) {
+    async execute(sql: string, values: unknown[] = []) {
       const eligible = borrowerEligibilityRows(sql, role, 7)
       if (eligible) return [eligible]
       if (sql.includes('AS commitments')) return [[{ commitments: activeCount }]]
@@ -56,7 +56,9 @@ function checkoutPool(role: 'Student' | 'Faculty', activeCount = 0, readyClaim: 
       if (sql.includes('UPDATE borrow_transactions')) return [{ affectedRows: 1 }]
       if (sql.includes("UPDATE reservations SET reservation_status = 'claimed'")) return [{ affectedRows: 1 }]
       if (sql.includes('UPDATE reservations SET queue_position')) { state.queueCompactions += 1; return [{ affectedRows: 1 }] }
-      if (sql.includes('INTO notifications') || sql.includes('INSERT INTO admin_notifications')) { state.notifications += 1; return [{ insertId: 1, affectedRows: 1 }] }
+      if (sql.includes('INTO notifications') || sql.includes('INSERT INTO admin_notifications')) {
+        if (sql.includes('INTO notifications') && !sql.includes('admin_notifications')) { if (failNotice) throw new Error('notice insert failed'); state.noticeCalls.push({ sql, values }) }
+        state.notifications += 1; return [{ insertId: 1, affectedRows: 1 }] }
       if (sql.includes('UPDATE physical_copies') || sql.includes('UPDATE materials')) return [{ affectedRows: 1 }]
       throw new Error(`Unexpected SQL: ${sql}`)
     },
@@ -77,6 +79,43 @@ test('faculty checkout bypasses the cap and commits synchronized availability an
   const result = await createCirculationService(database, () => new Date(2026, 7, 24, 14, 0)).confirmCheckout(1, { barcode: 'book-20', school_id: 'sti-7' })
   assert.equal(result.transactionId, 55); assert.equal(new Date(result.dueAt).getTime() - new Date(2026, 7, 24, 14, 0).getTime(), 86_400_000)
   assert.equal(state.borrowInserts, 1); assert.equal(state.notifications, 2); assert.equal(state.commits, 1); assert.equal(state.rollbacks, 0)
+})
+
+const borrowNotice = (state: { noticeCalls: { sql: string; values: unknown[] }[] }) => state.noticeCalls.filter(c => c.values[1] === 'Borrow confirmed')
+
+test('checkout saves Borrow confirmed with source, student link and a per-loan key', async () => {
+  const { state, database } = checkoutPool('Student')
+  await createCirculationService(database, () => new Date(2026, 7, 24, 14, 0)).confirmCheckout(1, { barcode: 'book-20', school_id: 'sti-7' })
+  const [notice, ...rest] = borrowNotice(state)
+  assert.equal(rest.length, 0)
+  assert.equal(String(notice.values[2]).startsWith('Clean Code is due '), true)
+  assert.deepEqual([...notice.values.slice(0, 2), ...notice.values.slice(3)], [7, 'Borrow confirmed', 'Due Date', 'Borrow Transaction', 55, '/student/my-books', 'Normal', 'loan:55:borrowed'])
+})
+
+test('a faculty checkout links Borrow confirmed to the faculty My Books page', async () => {
+  const { state, database } = checkoutPool('Faculty', 12)
+  await createCirculationService(database, () => new Date(2026, 7, 24, 14, 0)).confirmCheckout(1, { barcode: 'book-20', school_id: 'sti-7' })
+  assert.equal(borrowNotice(state)[0].values[6], '/faculty/my-books')
+})
+
+test('fulfilling a pending claim keys Borrow confirmed to the claimed loan', async () => {
+  const { state, database } = checkoutPool('Student', 1, true)
+  await createCirculationService(database, () => new Date(2026, 7, 24, 14, 0)).fulfillClaim({ accountId: 1, role: 'Librarian' }, { barcode: 'book-20', school_id: 'sti-7' })
+  const [notice] = borrowNotice(state)
+  assert.equal(notice.values[5], 54)
+  assert.equal(notice.values[8], 'loan:54:borrowed')
+})
+
+test('a failing Borrow confirmed insert rolls the checkout back', async () => {
+  const { state, database } = checkoutPool('Student', 0, false, 'Good', true)
+  await assert.rejects(createCirculationService(database, () => new Date(2026, 7, 24, 14, 0)).confirmCheckout(1, { barcode: 'book-20', school_id: 'sti-7' }), /notice insert failed/)
+  assert.equal(state.commits, 0); assert.equal(state.rollbacks, 1)
+})
+
+test('Borrow confirmed parameters never carry a person name', async () => {
+  const { state, database } = checkoutPool('Student')
+  await createCirculationService(database, () => new Date(2026, 7, 24, 14, 0)).confirmCheckout(1, { barcode: 'book-20', school_id: 'sti-7' })
+  assert.doesNotMatch(JSON.stringify(state.noticeCalls.map(c => c.values)), /Test Borrower/)
 })
 
 test('damaged copies require assessment before checkout', async () => {
