@@ -1,4 +1,3 @@
-import { DeweyMaintenancePanel } from './DeweyMaintenancePanel'
 import { LibrarySchedulePage } from '../notifications/LibrarySchedulePage'
 import {BookCoversPage} from './BookCoversPage'
 import { PrintingServiceSetup } from '../printing/PrintingServiceSetup'
@@ -18,7 +17,7 @@ import { CatalogDetailsPanel, catalogInput } from './CatalogDetailsPanel'
 import { enhancedCatalog, type CatalogRecord, type Option, type Options } from './enhanced-catalog-api'
 
 type Kind = 'locations' | 'programs' | 'courses' | 'types'
-const maintenanceTabs = ['reservations', 'dewey', 'printing', 'research-groups', 'covers', 'schedule', 'books', 'details', 'imports', 'find', 'categories', 'locations', 'programs', 'courses'] as const
+const maintenanceTabs = ['reservations', 'printing', 'research-groups', 'covers', 'schedule', 'books', 'details', 'imports', 'find', 'categories', 'locations', 'programs', 'courses'] as const
 type MaintenanceTab = (typeof maintenanceTabs)[number]
 
 function FoundationEditor({ kind }: { kind: Kind }) {
@@ -103,11 +102,11 @@ export function CatalogMaintenancePage() {
       <PageHeader eyebrow="Library administration" title="Library setup" />
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><p className="text-sm">Configure shelves, academic groups and library services. Daily book work is in Catalog.</p><Link className="inline-flex min-h-11 items-center rounded-xl border px-4 text-sm font-bold" to="/librarian/catalog">Open catalog</Link></div>
       <nav aria-label="Library setup sections" className="mb-5 space-y-3">
-        <div className="flex flex-wrap gap-2">{([['locations','Shelves & locations'],['reservations','Reservations & renewals'],['research-groups','Academic groups'],['printing','Printing settings'],['schedule','Library hours'],['dewey','Dewey classifications']] as const).map(([key,label]) => <Button key={key} variant={tab === key ? 'primary' : 'secondary'} onClick={() => openTab(key)}>{label}</Button>)}</div>
+        <div className="flex flex-wrap gap-2">{([['locations','Shelves & locations'],['reservations','Reservations & renewals'],['research-groups','Academic groups'],['printing','Printing settings'],['schedule','Library hours']] as const).map(([key,label]) => <Button key={key} variant={tab === key ? 'primary' : 'secondary'} onClick={() => openTab(key)}>{label}</Button>)}</div>
         {(['research-groups','programs','courses'] as string[]).includes(tab) && <div className="flex flex-wrap gap-2" aria-label="Academic group settings">{([['research-groups','Research groups'],['programs','Programs'],['courses','Courses']] as const).map(([key,label]) => <Button key={key} variant={tab === key ? 'primary' : 'secondary'} onClick={() => openTab(key)}>{label}</Button>)}</div>}
         {(['books','details','imports','find','covers','categories'] as string[]).includes(tab) && <details open><summary className="cursor-pointer text-sm font-semibold">Existing catalog link</summary><p className="my-2 text-sm">This tool remains available. Use Catalog for titles, import and book-list tools.</p><div className="flex flex-wrap gap-2">{([['books','Books & research'],['details','Catalog information'],['imports','Add books from Excel/CSV'],['find','Find book details'],['covers','Book covers'],['categories','Book categories']] as const).map(([key,label]) => <Button key={key} variant={tab === key ? 'primary' : 'secondary'} onClick={() => openTab(key)}>{label}</Button>)}</div></details>}
       </nav>
-      {tab === 'reservations' ? <LibraryCirculationSetupPanel /> : tab === 'dewey' ? <DeweyMaintenancePanel /> : tab === 'covers' ? <BookCoversPage /> : tab === 'research-groups' ? <ResearchGroupsPanel /> : tab === 'printing' ? <PrintingServiceSetup /> : tab === 'schedule' ? <LibrarySchedulePage manage embedded /> : tab === 'books' ? <CatalogManagementPage maintenance /> : tab === 'details' ? <CatalogInformationEditor /> : tab === 'imports' ? <HoldingsImportPage /> : tab === 'find' ? <FindBookDetailsPage /> : tab === 'categories' ? <CategoryManagementPage /> : tab === 'locations' ? <ShelfManagementPage /> : <FoundationEditor key={tab} kind={tab as Kind} />}
+      {tab === 'reservations' ? <LibraryCirculationSetupPanel /> : tab === 'covers' ? <BookCoversPage /> : tab === 'research-groups' ? <ResearchGroupsPanel /> : tab === 'printing' ? <PrintingServiceSetup /> : tab === 'schedule' ? <LibrarySchedulePage manage embedded /> : tab === 'books' ? <CatalogManagementPage maintenance /> : tab === 'details' ? <CatalogInformationEditor /> : tab === 'imports' ? <HoldingsImportPage /> : tab === 'find' ? <FindBookDetailsPage /> : tab === 'categories' ? <CategoryManagementPage /> : tab === 'locations' ? <ShelfManagementPage /> : <FoundationEditor key={tab} kind={tab as Kind} />}
     </div>
   )
 }
