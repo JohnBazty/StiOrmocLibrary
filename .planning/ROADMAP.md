@@ -31,7 +31,7 @@ Plans:
 **Goal:** Users get one in-app notice when a librarian records a return, grants or revokes a clearance override, starts an in-library use or flags it overdue, or pauses or resumes printing. The Borrow confirmed notice gets a source, action path and dedupe key like the other notices. Account status, semester end and invoice notices are deferred (see 02-SPEC.md).
 **Requirements**: NOTIF-01, NOTIF-02, NOTIF-03, NOTIF-04, NOTIF-05, NOTIF-06, NOTIF-07, NOTIF-08, NOTIF-09
 **Depends on:** None (branch docs/notification-gaps-spec from main)
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans executed
 
 Plans:
 **Wave 1**
@@ -40,4 +40,4 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 - [x] 02-02-PLAN.md — Clearance override granted and revoked notices in a new transaction (wave 2)
 - [x] 02-03-PLAN.md — Printing paused and resumed notices to users with open requests (wave 2)
-- [ ] 02-04-PLAN.md — In-library use started and overdue notices; Borrow confirmed fields (wave 2)
+- [x] 02-04-PLAN.md — In-library use started and overdue notices; Borrow confirmed fields (wave 2)

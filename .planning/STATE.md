@@ -2,14 +2,14 @@
 gsd_state_version: "1.0"
 current_phase: 02
 status: in_progress
-stopped_at: Completed 02-03-PLAN.md
-last_updated: "2026-11-19T02:15:35.691Z"
-state_head: 16b0dbfa06f20c0a77b8249b0470e17e1adb94de
+stopped_at: Completed 02-04-PLAN.md
+last_updated: "2026-11-19T02:20:34.194Z"
+state_head: 427907ea7267a97259a5a707fb57de7ebee2cf6d
 progress:
   total_phases: 2
   completed_phases: 0
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 current_phase_name: User notification gaps
 ---
@@ -36,6 +36,7 @@ current_phase_name: User notification gaps
 - [Phase 02]: 02-01: return notice states the saved fines row (omitted when Paid, Waived, Voided or 0.00) and a condition only when passed by the desk route
 - [Phase 02]: Clearance notice body is built only from the computed status and fixed text, never the override reason or names; revoke status is recomputed in the transaction
 - [Phase 02]: 02-03: printing notice dedupe event id is a fresh randomUUID per real accepting switch; locked FOR UPDATE read decides whether a save is a real switch
+- [Phase 02]: 02-04: startInLibraryUse extracted from desk checkout; notice keyed by new use id, never copy id
 
 ## Accumulated Context
 
@@ -53,9 +54,10 @@ current_phase_name: User notification gaps
 | Phase 02 P01 | 35 min | 2 tasks | 6 files |
 | Phase 02 P02 | 12min | 2 tasks | 2 files |
 | Phase 02 P03 | 15min | 2 tasks | 2 files |
+| Phase 02 P04 | 20min | 3 tasks | 4 files |
 
 ## Session
 
-**Last session:** 2026-11-19T02:15:35.662Z
-**Stopped at:** Completed 02-03-PLAN.md
+**Last session:** 2026-11-19T02:20:34.162Z
+**Stopped at:** Completed 02-04-PLAN.md
 **Resume file:** None
