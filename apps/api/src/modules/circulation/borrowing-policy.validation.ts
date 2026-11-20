@@ -1,4 +1,5 @@
 import { HttpError } from '../../core/http-error.ts'
+import { CLOCK_TIME_HINT, formatClockTime, parseClockTime } from '../../core/clock-time.ts'
 import {
   SUPPORTED_MATERIAL_TYPES,
   type PublishBorrowingPolicyInput,
@@ -127,9 +128,21 @@ function requireMaterialRules(value: unknown) {
   return rules
 }
 
+function deskWindow(opens: unknown, closes: unknown, field: 'borrow' | 'return', label: string) {
+  const fail = (message: string): never => { throw new HttpError(422, 'BORROWING_POLICY_VALIDATION_FAILED', message, { errors: { [`${field}Window`]: message } }) }
+  const from = parseClockTime(opens), to = parseClockTime(closes)
+  if (from === undefined || to === undefined) fail(`${label} times must be ${CLOCK_TIME_HINT}, with AM or PM.`)
+  if ((from === null) !== (to === null)) fail(`Enter both ${label.toLowerCase()} times, or leave both blank for no limit.`)
+  if (from && to && from >= to) fail(`${label} must start (${formatClockTime(from)}) before it ends (${formatClockTime(to)}).`)
+  return [from ?? null, to ?? null] as const
+}
+
 export function validatePublishBorrowingPolicy(body: unknown): PublishBorrowingPolicyInput {
   const input = asObject(body)
+  const [borrowOpensAt, borrowClosesAt] = deskWindow(input.borrowOpensAt, input.borrowClosesAt, 'borrow', 'Borrowing')
+  const [returnOpensAt, returnClosesAt] = deskWindow(input.returnOpensAt, input.returnClosesAt, 'return', 'Returning')
   return {
+    borrowOpensAt, borrowClosesAt, returnOpensAt, returnClosesAt,
     effectiveOn: requireDate(input.effectiveOn ?? input.effective_on, 'effectiveOn'),
     studentMaxActiveBooks: requirePositiveInt(input.studentMaxActiveBooks ?? input.student_max_active_books, 'studentMaxActiveBooks', 1, 20),
     facultyMaxActiveBooks: optionalUnlimitedInt(input.facultyMaxActiveBooks ?? input.faculty_max_active_books, 'facultyMaxActiveBooks', 1, 100),

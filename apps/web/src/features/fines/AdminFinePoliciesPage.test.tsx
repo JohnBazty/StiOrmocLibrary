@@ -74,3 +74,18 @@ it('lists every value for review when no rule is saved yet', async () => {
   expect(within(dialog).getByText('Hourly rate: PHP 2.00')).toBeTruthy()
   expect(within(dialog).getByText('Maximum fine: PHP 500.00')).toBeTruthy()
 })
+
+it('sets the hours in which hourly fines count, in 12-hour time', async () => {
+  vi.mocked(finePoliciesApi.publish).mockResolvedValue({ ...active, versionId: 2, hourlyStartsAt: '08:00', hourlyEndsAt: '17:00' } as never)
+  const { dialog } = await openForm()
+  fireEvent.change(within(dialog).getByLabelText('Fine hours start hour'), { target: { value: '8' } })
+  fireEvent.change(within(dialog).getByLabelText('Fine hours end hour'), { target: { value: '5' } })
+  fireEvent.change(within(dialog).getByLabelText('Fine hours end AM or PM'), { target: { value: 'PM' } })
+  fireEvent.change(within(dialog).getByLabelText('Reason for the change'), { target: { value: 'Fines count only in desk hours.' } })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Review changes' }))
+  expect(within(dialog).getByText('Fine hours: until closing time → 8:00 AM to 5:00 PM')).toBeTruthy()
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Save fine rules' }))
+  expect(await screen.findByText(/Fine rules saved/)).toBeTruthy()
+  expect(vi.mocked(finePoliciesApi.publish).mock.calls[0][0]).toMatchObject({ hourlyStartsAt: '08:00', hourlyEndsAt: '17:00' })
+  expect(document.body.textContent).not.toMatch(/\b17:00\b/)
+})

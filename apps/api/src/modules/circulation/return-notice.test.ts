@@ -54,6 +54,7 @@ function returnFake(options: Options = {}) {
         state.notices.push(values); state.commitsAtNotice.push(state.commits); return [{ affectedRows: 1 }]
       }
       if (sql.includes('INSERT INTO admin_notifications')) { state.adminNotices += 1; return [{ affectedRows: 1 }] }
+      if (sql.includes('FROM borrowing_policy_versions')) return [[]] // no returning window set
       throw new Error(`Unexpected SQL: ${sql}`)
     },
   }

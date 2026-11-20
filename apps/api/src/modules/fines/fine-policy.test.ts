@@ -23,6 +23,7 @@ function fieldError(fn: () => unknown, field: string) {
 test('fine policy validation accepts numbers and numeric strings', () => {
   assert.deepEqual(validateFinePolicy({ ...valid, hourlyRate: '2.50', changeReason: '  Raise   the cap after review.  ' }), {
     hourlyRate: 2.5, dailyRate: 10, maximumPenalty: 500, effectiveOn: '2026-11-20', changeReason: 'Raise the cap after review.',
+    hourlyStartsAt: null, hourlyEndsAt: null,
   })
 })
 
@@ -136,4 +137,13 @@ test('a bad body through the router returns 422 with field errors', async () => 
   const response = await request(app).post('/fine-policies').send({ ...valid, maximumPenalty: 900 })
   assert.equal(response.status, 422)
   assert.ok(response.body.details.errors.maximumPenalty)
+})
+
+test('publishing saves the fine hours and returns them', async () => {
+  const { database, calls } = fakeDatabase([seed])
+  const saved = await createFinePolicyService(database, now).publish(5, { ...valid, hourlyStartsAt: '8:00 AM', hourlyEndsAt: '5:00 PM' })
+  const insert = calls.find((call) => /^\s*INSERT INTO fine_policy_versions/.test(call.sql))!
+  assert.deepEqual(insert.values.slice(6, 8), ['08:00', '17:00'])
+  assert.deepEqual([saved.hourlyStartsAt, saved.hourlyEndsAt], ['08:00', '17:00'])
+  assert.ok(calls.some((call) => /INSERT INTO admin_notifications/.test(call.sql) && String(call.values[1]).includes('8:00 AM to 5:00 PM')))
 })

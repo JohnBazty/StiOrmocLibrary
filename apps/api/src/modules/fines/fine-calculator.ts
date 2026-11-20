@@ -1,6 +1,7 @@
 import type { Pool, PoolConnection, RowDataPacket } from '../../config/db.js'
 
-export type FinePolicy = { hourlyRate: number; dailyRate: number; maximumPenalty: number }
+/** hourlyStartsAt/hourlyEndsAt ('HH:MM', Manila) limit when hourly fines count; without them the closing time ends the count. */
+export type FinePolicy = { hourlyRate: number; dailyRate: number; maximumPenalty: number; hourlyStartsAt?: string | null; hourlyEndsAt?: string | null }
 /** closesAt maps ISO weekday (1 = Monday) to `library_operating_schedule.closes_at` (HH:MM[:SS]). */
 export type FineCalendar = { openDays: Set<number>; closedDates: Set<string>; closesAt?: Map<number, string> }
 
@@ -36,8 +37,10 @@ export function calculateOperatingFine(dueAt:Date,evaluatedAt:Date,policy:FinePo
   const result=(rawAmount:number,units:number,basis:'Hourly'|'Daily')=>({amount:Math.min(rawAmount,policy.maximumPenalty),rawAmount,units,rate:basis==='Hourly'?policy.hourlyRate:policy.dailyRate,basis,capApplied:rawAmount>policy.maximumPenalty})
   if(evaluatedAt<=dueAt)return result(0,0,'Hourly')
   const dueDate=manilaDate(dueAt);const evaluatedDate=manilaDate(evaluatedAt)
-  const hoursEnd=Math.min(evaluatedAt.getTime(),closingOn(dueDate,calendar).getTime())
-  const hours=Math.max(0,Math.ceil((hoursEnd-dueAt.getTime())/3_600_000))
+  const windowed=Boolean(policy.hourlyStartsAt&&policy.hourlyEndsAt)
+  const hoursStart=windowed?Math.max(dueAt.getTime(),new Date(`${dueDate}T${policy.hourlyStartsAt}:00+08:00`).getTime()):dueAt.getTime()
+  const hoursEnd=Math.min(evaluatedAt.getTime(),windowed?new Date(`${dueDate}T${policy.hourlyEndsAt}:00+08:00`).getTime():closingOn(dueDate,calendar).getTime())
+  const hours=Math.max(0,Math.ceil((hoursEnd-hoursStart)/3_600_000))
   // A due date that reaches the daily rate is reported as one day, so units × rate always equals the amount.
   const dueDay=hours*policy.hourlyRate>=policy.dailyRate?result(policy.dailyRate,1,'Daily'):result(hours*policy.hourlyRate,hours,'Hourly')
   if(dueDate===evaluatedDate)return dueDay
@@ -55,10 +58,10 @@ export function selectFinePolicy(versions:FinePolicyVersion[],dueAt:Date):FinePo
 /** `from` is the earliest due date in the batch. Use `policyFor(dueAt)` for each loan. */
 export async function loadFineContext(executor:Pool|PoolConnection,from:Date,to:Date){
   const [policies]=await executor.execute<RowDataPacket[]>(
-    `SELECT hourly_rate,daily_rate,maximum_penalty,effective_from FROM fine_policy_versions
+    `SELECT hourly_rate,daily_rate,maximum_penalty,effective_from,to_char(hourly_starts_at,'HH24:MI') AS hourly_starts_at,to_char(hourly_ends_at,'HH24:MI') AS hourly_ends_at FROM fine_policy_versions
       WHERE is_active=1 ORDER BY effective_from DESC,fine_policy_id DESC`,[],
   )
-  const versions:FinePolicyVersion[]=policies.map((row)=>({effectiveFrom:row.effective_from instanceof Date?row.effective_from:new Date(String(row.effective_from)),policy:{hourlyRate:Number(row.hourly_rate),dailyRate:Number(row.daily_rate),maximumPenalty:Number(row.maximum_penalty)}}))
+  const versions:FinePolicyVersion[]=policies.map((row)=>({effectiveFrom:row.effective_from instanceof Date?row.effective_from:new Date(String(row.effective_from)),policy:{hourlyRate:Number(row.hourly_rate),dailyRate:Number(row.daily_rate),maximumPenalty:Number(row.maximum_penalty),hourlyStartsAt:row.hourly_starts_at??null,hourlyEndsAt:row.hourly_ends_at??null}}))
   const policyFor=(dueAt:Date)=>selectFinePolicy(versions,dueAt)
   const [schedule]=await executor.execute<RowDataPacket[]>('SELECT day_of_week,is_open,closes_at FROM library_operating_schedule')
   const openDays=schedule.length?new Set(schedule.filter((row)=>Boolean(row.is_open)).map((row)=>Number(row.day_of_week))):DEFAULT_OPEN_DAYS

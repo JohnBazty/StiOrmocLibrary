@@ -1,3 +1,4 @@
+import { TimeField12, formatTime12 } from '../../components/TimeField12'
 import { AlertTriangle, CalendarClock, Plus, RefreshCw, ScrollText, Shield } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
@@ -16,6 +17,8 @@ function todayCampusDate() {
   }).format(new Date())
 }
 
+const deskHours = (opens?: string | null, closes?: string | null) => opens && closes ? `${formatTime12(opens)} to ${formatTime12(closes)}` : 'Any time'
+
 function fromVersion(version: BorrowingPolicyVersion | null): PublishBorrowingPolicyInput {
   return {
     effectiveOn: todayCampusDate(),
@@ -31,6 +34,11 @@ function fromVersion(version: BorrowingPolicyVersion | null): PublishBorrowingPo
     blockRenewalIfUnpaidFines: version?.blockRenewalIfUnpaidFines ?? true,
     blockRenewalIfReserved: version?.blockRenewalIfReserved ?? true,
     longOverdueAfterDays: version?.longOverdueAfterDays ?? 14,
+    // Desk hours carry forward so publishing other changes never clears them.
+    borrowOpensAt: version?.borrowOpensAt ?? null,
+    borrowClosesAt: version?.borrowClosesAt ?? null,
+    returnOpensAt: version?.returnOpensAt ?? null,
+    returnClosesAt: version?.returnClosesAt ?? null,
     changeReason: '',
     materialRules: version?.materialRules ?? [
       { materialType: 'Book', isBorrowable: true },
@@ -111,7 +119,9 @@ export function AdminBorrowingPoliciesPage() {
       ['Student max books', String(active.studentMaxActiveBooks), String(draft.studentMaxActiveBooks)],
       ['Faculty max books', limitLabel(active.facultyMaxActiveBooks), limitLabel(draft.facultyMaxActiveBooks)],
       ['Borrowing days', String(active.borrowingDays), String(draft.borrowingDays)],
-      ['Due cutoff', active.dueTimeCutoff.slice(0, 5), draft.dueTimeCutoff.slice(0, 5)],
+      ['Due cutoff', formatTime12(active.dueTimeCutoff), formatTime12(draft.dueTimeCutoff)],
+      ['Borrowing hours', deskHours(active.borrowOpensAt, active.borrowClosesAt), deskHours(draft.borrowOpensAt, draft.borrowClosesAt)],
+      ['Returning hours', deskHours(active.returnOpensAt, active.returnClosesAt), deskHours(draft.returnOpensAt, draft.returnClosesAt)],
       ['Max renewals', String(active.maxRenewals), String(draft.maxRenewals)],
       ['Renewal extension', String(active.renewalExtensionDays), String(draft.renewalExtensionDays)],
       ['Student reservations', String(active.studentMaxActiveReservations), String(draft.studentMaxActiveReservations)],
@@ -233,7 +243,14 @@ export function AdminBorrowingPoliciesPage() {
             </header>
             <form onSubmit={publish} className="grid gap-4 p-5 sm:grid-cols-2">
               <label className="text-sm font-bold text-slate-800 dark:text-slate-200">Effective on<input required type="date" min={todayCampusDate()} value={draft.effectiveOn} onChange={(event) => editDraft({ ...draft, effectiveOn: event.target.value })} className={`${field} mt-1`} /></label>
-              <label className="text-sm font-bold text-slate-800 dark:text-slate-200">Due cutoff<input required type="time" value={draft.dueTimeCutoff.slice(0, 5)} onChange={(event) => editDraft({ ...draft, dueTimeCutoff: event.target.value })} className={`${field} mt-1`} /></label>
+              <TimeField12 label="Due cutoff" value={draft.dueTimeCutoff.slice(0, 5)} onChange={(value) => editDraft({ ...draft, dueTimeCutoff: value || draft.dueTimeCutoff })} />
+              <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2">
+                <TimeField12 label="Borrowing opens" optional value={draft.borrowOpensAt ?? ''} onChange={(value) => editDraft({ ...draft, borrowOpensAt: value || null })} />
+                <TimeField12 label="Borrowing closes" optional value={draft.borrowClosesAt ?? ''} onChange={(value) => editDraft({ ...draft, borrowClosesAt: value || null })} />
+                <TimeField12 label="Returning opens" optional value={draft.returnOpensAt ?? ''} onChange={(value) => editDraft({ ...draft, returnOpensAt: value || null })} />
+                <TimeField12 label="Returning closes" optional value={draft.returnClosesAt ?? ''} onChange={(value) => editDraft({ ...draft, returnClosesAt: value || null })} />
+                <p className="text-xs text-slate-600 sm:col-span-2 dark:text-slate-300">Optional. The desk lends and takes back books only between these times. Leave a pair empty for no limit.</p>
+              </div>
               <label className="text-sm font-bold text-slate-800 dark:text-slate-200">Student max books<input required type="number" min={1} max={20} value={draft.studentMaxActiveBooks} onChange={(event) => editDraft({ ...draft, studentMaxActiveBooks: Number(event.target.value) })} className={`${field} mt-1`} /></label>
               <label className="text-sm font-bold text-slate-800 dark:text-slate-200">Faculty max books (blank = unlimited)<input type="number" min={1} max={100} value={draft.facultyMaxActiveBooks ?? ''} onChange={(event) => editDraft({ ...draft, facultyMaxActiveBooks: event.target.value === '' ? null : Number(event.target.value) })} className={`${field} mt-1`} /></label>
               <label className="text-sm font-bold text-slate-800 dark:text-slate-200">Borrowing days<input required type="number" min={1} max={60} value={draft.borrowingDays} onChange={(event) => editDraft({ ...draft, borrowingDays: Number(event.target.value) })} className={`${field} mt-1`} /></label>

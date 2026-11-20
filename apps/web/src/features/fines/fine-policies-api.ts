@@ -4,9 +4,11 @@ export type FinePolicyVersion = {
   versionId: number; status: 'active' | 'scheduled' | 'superseded'
   hourlyRate: number; dailyRate: number; maximumPenalty: number
   effectiveFrom: string; effectiveUntil: string | null; changeReason: string | null; createdByUserId: number | null; createdAt: string
+  /** Hours ('HH:MM') in which hourly fines count; shown as 12-hour times. Null: until closing time. */
+  hourlyStartsAt?: string | null; hourlyEndsAt?: string | null
 }
 export type FinePolicyList = { active: FinePolicyVersion | null; scheduled: FinePolicyVersion[]; history: FinePolicyVersion[] }
-export type FinePolicyInput = { hourlyRate: number; dailyRate: number; maximumPenalty: number; effectiveOn: string; changeReason: string }
+export type FinePolicyInput = { hourlyRate: number; dailyRate: number; maximumPenalty: number; effectiveOn: string; changeReason: string; hourlyStartsAt?: string | null; hourlyEndsAt?: string | null }
 
 export class FinePolicyError extends Error {
   constructor(message: string, readonly fieldErrors: Record<string, string> = {}) { super(message) }

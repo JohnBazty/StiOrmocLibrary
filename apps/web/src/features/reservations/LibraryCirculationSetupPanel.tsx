@@ -45,6 +45,11 @@ function draftFromPolicy(version: BorrowingPolicyVersion | null): PublishBorrowi
     blockRenewalIfUnpaidFines: version?.blockRenewalIfUnpaidFines ?? true,
     blockRenewalIfReserved: version?.blockRenewalIfReserved ?? true,
     longOverdueAfterDays: version?.longOverdueAfterDays ?? 14,
+    // Desk hours carry forward so publishing other changes never clears them.
+    borrowOpensAt: version?.borrowOpensAt ?? null,
+    borrowClosesAt: version?.borrowClosesAt ?? null,
+    returnOpensAt: version?.returnOpensAt ?? null,
+    returnClosesAt: version?.returnClosesAt ?? null,
     changeReason: '',
     materialRules: version?.materialRules ?? [
       { materialType: 'Book', isBorrowable: true },
