@@ -9,9 +9,9 @@ import { useManagedShelves } from './useManagedShelves'
 import type { PlacementValue } from './types'
 
 export type MovableCopy = { id: number; accession: string; shelfLocation: string; shelfColumn: number; shelfRow: number }
-export function MoveCopiesDialog({ kind, copies, onClose, onMoved }: { kind: 'Book' | 'Research/Thesis'; copies: MovableCopy[]; onClose: () => void; onMoved: () => Promise<void> }) {
+export function MoveCopiesDialog({ kind, copies, onClose, onMoved, initialPlacement }: { kind: 'Book' | 'Research/Thesis'; copies: MovableCopy[]; onClose: () => void; onMoved: () => Promise<void>; initialPlacement?: PlacementValue }) {
   const { shelves, error: loadError, loading, refresh } = useManagedShelves()
-  const [placement, setPlacement] = useState<PlacementValue>({ shelfLocation: copies[0]?.shelfLocation ?? '', shelfColumn: copies[0]?.shelfColumn ?? 1, shelfRow: copies[0]?.shelfRow ?? 1 })
+  const [placement, setPlacement] = useState<PlacementValue>(initialPlacement ?? { shelfLocation: copies[0]?.shelfLocation ?? '', shelfColumn: copies[0]?.shelfColumn ?? 1, shelfRow: copies[0]?.shelfRow ?? 1 })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const { ask, dialog } = useConfirmSave()
