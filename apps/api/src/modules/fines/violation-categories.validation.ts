@@ -18,6 +18,8 @@ function fail(field: string, message: string): never {
 function name(value: unknown) {
   const text = typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : ''
   if (text.length < 2 || text.length > 80 || /[\u0000-\u001f\u007f]/.test(text)) fail('name', 'Enter a category name of 2 to 80 characters.')
+  // The Fines filter packs type and category into one value split on "::", and "__earlier" is its older-violations bucket.
+  if (text.includes('::') || text.toLowerCase() === '__earlier') fail('name', 'Choose a name without "::" and not "__earlier".')
   return text
 }
 

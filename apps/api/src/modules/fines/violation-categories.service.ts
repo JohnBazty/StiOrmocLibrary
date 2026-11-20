@@ -2,18 +2,20 @@ import { db, type Pool, type PoolConnection, type RowDataPacket } from '../../co
 import { HttpError } from '../../core/http-error.ts'
 import { validateViolationCategory } from './violation-categories.validation.ts'
 
-const COLUMNS = `c.category_id,c.name,c.description,c.warnings_before_fine,c.fine_amount,c.is_active,c.sort_order,c.updated_at,
+// Microsecond text, so the version a client sends back compares exactly (a JS Date would round it).
+const COLUMNS = `to_char(c.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS version,c.category_id,c.name,c.description,c.warnings_before_fine,c.fine_amount,c.is_active,c.sort_order,c.updated_at,
   (EXISTS(SELECT 1 FROM conduct_incidents i WHERE i.category=c.name) OR EXISTS(SELECT 1 FROM conduct_students s WHERE s.category=c.name)) AS used`
 
 function toDto(row: RowDataPacket) {
   return {
     categoryId: Number(row.category_id), name: String(row.name), description: row.description ? String(row.description) : null,
     warningsBeforeFine: Number(row.warnings_before_fine), fineAmount: Number(row.fine_amount), isActive: Boolean(row.is_active),
-    sortOrder: Number(row.sort_order), used: Boolean(row.used),
+    sortOrder: Number(row.sort_order), used: Boolean(row.used), updatedAt: String(row.version),
   }
 }
 export type ViolationCategoryDto = ReturnType<typeof toDto>
 
+const isUniqueViolation = (error: unknown) => (error as { code?: string } | null)?.code === '23505'
 const rollbackQuietly = (connection: PoolConnection) => connection.rollback().catch(() => {})
 
 export function createViolationCategoriesService(database: Pool = db) {
@@ -55,6 +57,7 @@ export function createViolationCategoriesService(database: Pool = db) {
       try {
         await connection.beginTransaction()
         if (await duplicateExists(connection, input.name, 0)) throw duplicate()
+        // Concurrent creates can both pass the check above; the lower(name) unique index decides.
         const [sort] = await connection.execute<RowDataPacket[]>('SELECT COALESCE(MAX(sort_order),0)+1 AS next FROM violation_categories', [])
         const [insert] = await connection.execute<RowDataPacket[]>(
           'INSERT INTO violation_categories(name,description,warnings_before_fine,fine_amount,sort_order,updated_by_account_id) VALUES(?,?,?,?,?,?)',
@@ -64,7 +67,7 @@ export function createViolationCategoriesService(database: Pool = db) {
         await note(connection, account, 'Violation category added', summary({ ...input, isActive: true }))
         await connection.commit()
         return (await fetchOne(database, id))!
-      } catch (error) { await rollbackQuietly(connection); throw error } finally { connection.release() }
+      } catch (error) { await rollbackQuietly(connection); throw isUniqueViolation(error) ? duplicate() : error } finally { connection.release() }
     },
 
     async update(actor: unknown, target: unknown, body: unknown) {
@@ -72,12 +75,15 @@ export function createViolationCategoriesService(database: Pool = db) {
       const id = Number(target)
       if (!Number.isSafeInteger(id) || id < 1) throw new HttpError(422, 'VIOLATION_CATEGORY_INVALID', 'Choose a valid category.')
       const patch = validateViolationCategory(body, true)
+      const sent = (body as { updatedAt?: unknown } | null)?.updatedAt
+      if (typeof sent !== 'string' || !sent) throw new HttpError(422, 'VIOLATION_CATEGORY_INVALID', 'Reload the rules and try again.', { errors: { updatedAt: 'Reload the rules and try again.' } })
       const connection = await database.getConnection()
       try {
         await connection.beginTransaction()
         const [locked] = await connection.execute<RowDataPacket[]>('SELECT category_id FROM violation_categories WHERE category_id=? FOR UPDATE', [id])
         if (!locked[0]) throw new HttpError(404, 'VIOLATION_CATEGORY_NOT_FOUND', 'Violation category not found.')
         const before = (await fetchOne(connection, id))!
+        if (before.updatedAt !== sent) throw new HttpError(409, 'VIOLATION_CATEGORY_STALE', 'This category was changed by someone else. Reload the rules and try again.')
         if (patch.name !== undefined && patch.name !== before.name) {
           // conduct_students is append-only, so a rename after use would orphan history.
           if (before.used) throw new HttpError(409, 'VIOLATION_CATEGORY_NAME_LOCKED', 'This category already has records, so its name cannot change. Edit the description, or retire it and add a new category.', { errors: { name: 'The name is locked because records use it.' } })
@@ -92,7 +98,7 @@ export function createViolationCategoriesService(database: Pool = db) {
         await note(connection, account, title, summary(next))
         await connection.commit()
         return (await fetchOne(database, id))!
-      } catch (error) { await rollbackQuietly(connection); throw error } finally { connection.release() }
+      } catch (error) { await rollbackQuietly(connection); throw isUniqueViolation(error) ? duplicate() : error } finally { connection.release() }
     },
   }
 }

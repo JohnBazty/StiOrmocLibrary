@@ -121,28 +121,75 @@ test('saved lifetime reviews and old Final warning rows still count, so the next
   } finally { await resetConductTestDb(pg) }
 })
 
-test('paper-log records count as warnings, never fine or notify, and are tagged in history', async () => {
+test('paper-log records only back-fill earlier warnings: they count, never fine or notify, and are tagged in history', async () => {
   const { pg, service } = await setup()
   try {
     const paper = { ...input, incidentAt: '2025-06-01T03:00:00Z', fromPaperLog: true }
+    assert.equal((await service.standing(librarian, { schoolId: 'STU-TEST', category: 'Noise' })).paperLogAllowed, true)
     const first = await save(service, paper)
     assert.equal(first.preview.action, 'First warning')
     assert.equal((await pg.query('SELECT * FROM notifications')).rows.length, 0)
-    const second = await save(service, paper)
+    const second = await save(service, { ...paper, incidentAt: '2025-07-01T03:00:00Z' })
     assert.equal(second.preview.action, 'Second warning')
-    const third = await save(service, paper)
-    assert.equal(third.preview.action, 'Final warning', 'a paper-log entry is never a fine')
-    assert.equal((await pg.query('SELECT * FROM fines')).rows.length, 0)
     const rows = (await pg.query<{ source: string; fine_id: string | null }>('SELECT source,fine_id FROM conduct_incidents')).rows
     assert.ok(rows.every(r => r.source === 'Paper log' && r.fine_id === null))
     const standing = await service.standing(librarian, { schoolId: 'STU-TEST', category: 'Noise' })
     assert.equal(standing.nextStep, 'Fine')
-    assert.deepEqual(standing.history.map(h => h.source), ['Paper log', 'Paper log', 'Paper log'])
-    assert.equal(standing.amount, 50)
+    assert.equal(standing.paperLogAllowed, false)
+    assert.match(String(standing.paperLogReason), /already at the fine step/)
+    assert.deepEqual(standing.history.map(h => h.source), ['Paper log', 'Paper log'])
+    // At the fine step a paper-log entry is refused, never turned into a warning.
+    await assert.rejects(service.preview(librarian, { ...paper, incidentAt: '2025-08-01T03:00:00Z' }), { status: 409, code: 'CONDUCT_PAPER_LOG_FINE_STEP', message: 'This person is already at the fine step. Paper-log entries only add earlier warnings.' })
     // A recorded offense after the paper log is a real fine.
     assert.equal((await save(service, input)).saved.action, 'Fine issued')
     await assert.rejects(pg.exec("INSERT INTO fines(user_id) VALUES(2); INSERT INTO conduct_incidents(user_id,category,incident_at,location,details,action,fine_id,recorded_by_account_id,request_key,payload_hash,source) VALUES(2,'Noise',NOW(),'Library','Synthetic invalid paper fine','Fine issued',(SELECT MAX(fine_id) FROM fines),1,gen_random_uuid(),'q','Paper log')"))
+  } finally { await resetConductTestDb(pg) }
+})
+
+test('paper-log rules: students only, warnings must exist, dated before today, in date order, and before any system record', async () => {
+  const { pg, service } = await setup()
+  try {
+    const paper = { ...input, incidentAt: '2025-06-01T03:00:00Z', fromPaperLog: true }
     await assert.rejects(service.preview(librarian, { ...paper, schoolId: 'FAC-TEST' }), { code: 'CONDUCT_PAPER_FACULTY' })
+    const faculty = await service.standing(librarian, { schoolId: 'FAC-TEST', category: 'Noise' })
+    assert.equal(faculty.paperLogAllowed, false)
+    await pg.exec("UPDATE violation_categories SET warnings_before_fine=0 WHERE name='Other conduct'")
+    await assert.rejects(service.preview(librarian, { ...paper, category: 'Other conduct' }), { code: 'CONDUCT_PAPER_LOG_NO_WARNINGS' })
+    assert.equal((await service.standing(librarian, { schoolId: 'STU-TEST', category: 'Other conduct' })).paperLogAllowed, false)
+    // Today (Philippines) and later are not "from before the system".
+    const today = new Date(Date.now() - 60_000).toISOString()
+    await assert.rejects(service.preview(librarian, { ...paper, incidentAt: today }), { code: 'CONDUCT_PAPER_LOG_DATE' })
+    await save(service, { ...paper, incidentAt: '2025-07-01T03:00:00Z' })
+    await assert.rejects(service.preview(librarian, { ...paper, incidentAt: '2025-06-01T03:00:00Z' }), { code: 'CONDUCT_PAPER_LOG_ORDER' })
+    await save(service, { ...paper, incidentAt: '2025-07-01T03:00:00Z' }) // same instant as the latest is allowed
+  } finally { await resetConductTestDb(pg) }
+})
+
+test('a paper-log entry is refused once the person has a record made in the system, but a voided one does not block', async () => {
+  const { pg, service } = await setup()
+  try {
+    const paper = { ...input, incidentAt: '2025-06-01T03:00:00Z', fromPaperLog: true }
+    const recorded = await save(service, input)
+    const standing = await service.standing(librarian, { schoolId: 'STU-TEST', category: 'Noise' })
+    assert.equal(standing.paperLogAllowed, false)
+    assert.match(String(standing.paperLogReason), /before the first record made in the system/)
+    await assert.rejects(service.preview(librarian, paper), { status: 422, code: 'CONDUCT_PAPER_LOG_AFTER_RECORDS', message: 'Paper-log entries must come before the first record made in the system.' })
+    // Another category is unaffected.
+    assert.equal((await service.preview(librarian, { ...paper, category: 'Eating or food' })).action, 'First warning')
+    await service.event(librarian, recorded.saved.incident_id, { type: 'Voided', reason: 'Synthetic mistaken record voided' })
+    assert.equal((await service.preview(librarian, paper)).action, 'First warning')
+  } finally { await resetConductTestDb(pg) }
+})
+
+test('record locks the acting account without blocking foreign-key checks on it', async () => {
+  const { pg, pool, service } = await setup()
+  try {
+    const seen: string[] = []
+    const spy = { ...pool, getConnection: async () => { const c = await (pool as unknown as { getConnection: () => Promise<{ execute: (s: string, v?: unknown[]) => Promise<unknown> }> }).getConnection(); const run = c.execute; c.execute = async (sql: string, v?: unknown[]) => { seen.push(sql); return run(sql, v) }; return c } } as never
+    const spied = createConductService(spy)
+    await spied.record(librarian, { ...input, reviewToken: (await service.preview(librarian, input)).reviewToken, requestKey: randomUUID() })
+    assert.ok(seen.some(sql => /FROM accounts WHERE account_id=\? FOR NO KEY UPDATE/.test(sql)))
+    assert.ok(!seen.some(sql => /FROM accounts WHERE account_id=\? FOR UPDATE/.test(sql)))
   } finally { await resetConductTestDb(pg) }
 })
 

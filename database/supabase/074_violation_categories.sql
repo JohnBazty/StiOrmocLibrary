@@ -1,5 +1,8 @@
 -- Violation rules maintained in Library setup instead of fixed lists.
 -- Default seed (change in Library setup -> Violation rules): PHP 50.00 fine, 2 warnings before the fine, per category.
+-- Before applying on live: SELECT DISTINCT category FROM conduct_incidents UNION SELECT category FROM conduct_students;
+-- every value must be Noise, Eating or food or Other conduct, or the foreign keys below fail (and nothing is changed).
+SET LOCAL lock_timeout = '5s';
 CREATE TABLE violation_categories (
  category_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
  name TEXT NOT NULL UNIQUE CHECK(length(trim(name)) BETWEEN 2 AND 80),
@@ -12,12 +15,13 @@ CREATE TABLE violation_categories (
  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE UNIQUE INDEX violation_categories_name_lower ON violation_categories(lower(name));
 INSERT INTO violation_categories(name,warnings_before_fine,fine_amount,sort_order)
 VALUES('Noise',2,50.00,1),('Eating or food',2,50.00,2),('Other conduct',2,50.00,3);
 
 -- The fixed-list CHECKs become a foreign key to the maintained list. Names are locked once used, so no cascade is needed.
-ALTER TABLE conduct_students DROP CONSTRAINT IF EXISTS conduct_students_category_check;
-ALTER TABLE conduct_incidents DROP CONSTRAINT IF EXISTS conduct_incidents_category_check;
+ALTER TABLE conduct_students DROP CONSTRAINT conduct_students_category_check;
+ALTER TABLE conduct_incidents DROP CONSTRAINT conduct_incidents_category_check;
 ALTER TABLE conduct_students ADD CONSTRAINT conduct_students_category_fk FOREIGN KEY(category) REFERENCES violation_categories(name);
 ALTER TABLE conduct_incidents ADD CONSTRAINT conduct_incidents_category_fk FOREIGN KEY(category) REFERENCES violation_categories(name);
 CREATE INDEX conduct_incidents_category ON conduct_incidents(category);

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { db, type Pool, type PoolConnection, type RowDataPacket, type ResultSetHeader } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
-import { conductAction, type ConductAction } from './conduct-policy.ts'
+import { conductAction } from './conduct-policy.ts'
 import { refreshClearance, type FineActor } from './fines.service.ts'
 
 function text(value: unknown, label: string, min: number, max: number) {
@@ -28,15 +28,11 @@ const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(valu
 type Executor = Pool | PoolConnection
 type Source = 'Recorded' | 'Paper log'
 
-/** A paper-log entry is always a warning. When the person is already at the fine step it is kept as a final warning. */
-function stepFor(count: number, threshold: number, fromPaperLog: boolean): ConductAction {
-  const step = conductAction(count, threshold)
-  return fromPaperLog && step === 'Fine' ? 'Final warning' : step
-}
+const manilaToday = () => `${new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10)}T00:00:00+08:00`
 
 export function createConductService(database: Pool = db) {
   /** One place decides the person's standing, so standing, preview and save always agree. */
-  async function standingFor(ex: Executor, schoolId: string, categoryName: string, fromPaperLog: boolean, lock=false) {
+  async function standingFor(ex: Executor, schoolId: string, categoryName: string, fromPaperLog: boolean, lock=false, incidentAt?: string) {
     const [users]=await ex.execute<RowDataPacket[]>(`SELECT user_id,full_name,school_id,user_role FROM users WHERE school_id=? AND user_role IN ('Student','Faculty') AND account_status='Active' ${lock?'FOR UPDATE':''}`,[schoolId])
     const user=users[0]
     if (!user) throw new HttpError(404,'CONDUCT_PERSON','No active student or faculty account matches that school ID.')
@@ -44,20 +40,32 @@ export function createConductService(database: Pool = db) {
     const category=categories[0]
     if (!category) throw new HttpError(422,'CONDUCT_CATEGORY','Choose a listed violation category.')
     const isFaculty=user.user_role==='Faculty'
-    if (isFaculty && fromPaperLog) throw new HttpError(422,'CONDUCT_PAPER_FACULTY','Faculty go straight to a fine, so there is no earlier warning to copy from the paper log.')
     const [reviews]=await ex.execute<RowDataPacket[]>('SELECT prior_warnings,reviewed_at FROM conduct_students WHERE user_id=? AND category=?',[user.user_id,categoryName])
     const [history]=await ex.execute<RowDataPacket[]>("SELECT incident_id,incident_at,action,source FROM conduct_incidents WHERE user_id=? AND category=? AND voided_at IS NULL ORDER BY incident_at,incident_id",[user.user_id,categoryName])
     // Saved lifetime reviews from before this change keep counting so nobody's history is reset.
     const earlier=Number(reviews[0]?.prior_warnings??0)
     const warningsUsed=history.length+earlier
     const warningsBeforeFine=isFaculty?0:Number(category.warnings_before_fine)
-    const action=stepFor(warningsUsed,warningsBeforeFine,fromPaperLog)
+    const action=conductAction(warningsUsed,warningsBeforeFine)
+    // A paper log only back-fills warnings from before the system, so it can never touch the fine step or follow system records.
+    const [recorded]=await ex.execute<RowDataPacket[]>("SELECT COUNT(*) AS count FROM conduct_incidents WHERE user_id=? AND category=? AND voided_at IS NULL AND source='Recorded'",[user.user_id,categoryName])
+    const [latestPaper]=await ex.execute<RowDataPacket[]>("SELECT MAX(incident_at) AS latest FROM conduct_incidents WHERE user_id=? AND category=? AND voided_at IS NULL AND source='Paper log'",[user.user_id,categoryName])
+    const block=isFaculty?{status:422,code:'CONDUCT_PAPER_FACULTY',message:'Faculty go straight to a fine, so there is no earlier warning to copy from the paper log.'}
+      :warningsBeforeFine===0?{status:422,code:'CONDUCT_PAPER_LOG_NO_WARNINGS',message:'This category has no warnings, so there is nothing to copy from the paper log.'}
+      :Number(recorded[0].count)>0?{status:422,code:'CONDUCT_PAPER_LOG_AFTER_RECORDS',message:'Paper-log entries must come before the first record made in the system.'}
+      :action==='Fine'?{status:409,code:'CONDUCT_PAPER_LOG_FINE_STEP',message:'This person is already at the fine step. Paper-log entries only add earlier warnings.'}
+      :null
+    if (fromPaperLog) {
+      if (block) throw new HttpError(block.status,block.code,block.message)
+      if (incidentAt && new Date(incidentAt).getTime()>=new Date(manilaToday()).getTime()) throw new HttpError(422,'CONDUCT_PAPER_LOG_DATE','Paper-log entries are for dates before today.')
+      if (incidentAt && latestPaper[0]?.latest && new Date(incidentAt).getTime()<new Date(latestPaper[0].latest).getTime()) throw new HttpError(422,'CONDUCT_PAPER_LOG_ORDER','Enter paper-log entries in date order. A later paper-log entry already exists for this person.')
+    }
     const fineAmount=Number(category.fine_amount)
     const amount=action==='Fine'?fineAmount:null
     const snapshot={userId:Number(user.user_id),role:String(user.user_role),name:String(user.full_name),schoolId:String(user.school_id),category:categoryName,warningsUsed,warningsBeforeFine,fineAmount,action,amount,fromPaperLog,categoryActive:Boolean(category.is_active)}
-    return {...snapshot,nextStep:action,earlierWarnings:earlier>0?{count:earlier,reviewedAt:reviews[0].reviewed_at}:null,history:history.map(h=>({incidentId:Number(h.incident_id),date:h.incident_at,step:String(h.action),source:String(h.source) as Source})),reviewToken:hash(snapshot)}
+    return {...snapshot,paperLogAllowed:!block,paperLogReason:block?block.message:null,nextStep:action,earlierWarnings:earlier>0?{count:earlier,reviewedAt:reviews[0].reviewed_at}:null,history:history.map(h=>({incidentId:Number(h.incident_id),date:h.incident_at,step:String(h.action),source:String(h.source) as Source})),reviewToken:hash(snapshot)}
   }
-  const prepare=(ex: Executor, input: ReturnType<typeof conductInput>, lock=false)=>standingFor(ex,input.schoolId,input.category,input.fromPaperLog,lock)
+  const prepare=(ex: Executor, input: ReturnType<typeof conductInput>, lock=false)=>standingFor(ex,input.schoolId,input.category,input.fromPaperLog,lock,input.incidentAt)
 
   return {
     async preview(actor: FineActor, body: unknown) {manager(actor);account(actor);return prepare(database,conductInput(body))},
@@ -87,7 +95,7 @@ export function createConductService(database: Pool = db) {
       try {
         await c.beginTransaction()
         // Serialize retries across people as well as concurrent incidents for one person.
-        await c.execute('SELECT account_id FROM accounts WHERE account_id=? FOR UPDATE',[actorId])
+        await c.execute('SELECT account_id FROM accounts WHERE account_id=? FOR NO KEY UPDATE',[actorId])
         const [saved]=await c.execute<RowDataPacket[]>('SELECT incident_id,payload_hash,action,fine_id FROM conduct_incidents WHERE recorded_by_account_id=? AND request_key=?',[actorId,requestKey])
         if(saved[0]) {if(saved[0].payload_hash!==payloadHash) throw new HttpError(409,'CONDUCT_RETRY_CHANGED','This reference was used for different incident details. Review again.');await c.commit();return saved[0]}
         const preview=await prepare(c,input,true)
