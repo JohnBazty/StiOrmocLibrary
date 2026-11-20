@@ -83,6 +83,11 @@ export function publicPracticeTransfer(row: PracticeTransfer, now = Date.now()) 
     destination: row.sourceBank ? `${row.sourceBank.label} · ${row.sourceBank.bank} · ${row.sourceBank.account}` : 'School bank (not recorded)', practice: true as const }
 }
 
+function generatedReference(at: number) {
+  const day = new Date(at + 8 * 3_600_000).toISOString().slice(0, 10).replaceAll('-', '')
+  return `FUND-${day}-${randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase()}`
+}
+
 const bankFingerprint = (bank: Beneficiary) => createHash('sha256').update(JSON.stringify(bank.recipient)).digest('hex')
 
 export function createPracticeFunds(deps: Dependencies) {
@@ -103,7 +108,11 @@ export function createPracticeFunds(deps: Dependencies) {
       const direction = input.direction as PracticeTransfer['direction'], principal = amount(input.amount)
       if (direction === 'Withdrawal' && !deps.allowWithdrawals) throw paymentError('Withdrawals now use Xendit. Use Withdraw funds instead.', 'USE_XENDIT_WITHDRAWAL', 409)
       const reason = text(input.reason, 'a purpose with at least 10 characters', 10, 500), key = requestKey(input.requestKey)
-      const reference = direction === 'TopUp' ? text(input.transferReference, 'the bank transfer reference', 6, 100).replace(/\s/g, '').toUpperCase() : undefined
+      // The library generates the funding reference when none is supplied, so staff never have to invent one.
+      const suppliedReference = input.transferReference !== undefined && input.transferReference !== ''
+      const reference = direction !== 'TopUp' ? undefined
+        : suppliedReference ? text(input.transferReference, 'the bank transfer reference', 6, 100).replace(/\s/g, '').toUpperCase()
+          : generatedReference(now())
       if (reference && !/^[A-Z0-9._/-]{6,100}$/.test(reference)) throw paymentError('Enter a valid bank transfer reference.')
       const transferred = direction === 'TopUp' ? Date.parse(String(input.transferredAt)) : undefined
       if (direction === 'TopUp' && (!Number.isFinite(transferred) || transferred! > now()+300_000 || transferred! < Date.UTC(2000,0,1))) throw paymentError('Enter a valid transfer date and time that is not in the future.')
@@ -115,7 +124,7 @@ export function createPracticeFunds(deps: Dependencies) {
           || previous.sourceBank?.id !== input.beneficiaryId) {
           throw paymentError('This request was already used. Review the saved transfer.', 'FUNDS_RETRY_CONFLICT', 409)
         }
-        if (previous.transferReference !== reference || previous.transferredAt !== (transferred === undefined ? undefined : new Date(transferred).toISOString())) throw paymentError('This request was already used. Open the saved funding record.', 'FUNDS_RETRY_CONFLICT', 409)
+        if ((suppliedReference && previous.transferReference !== reference) || previous.transferredAt !== (transferred === undefined ? undefined : new Date(transferred).toISOString())) throw paymentError('This request was already used. Open the saved funding record.', 'FUNDS_RETRY_CONFLICT', 409)
         await deps.funds.save(ledger); return publicPracticeTransfer(previous, now())
       }
       const bank = direction === 'TopUp' ? ledger.beneficiaries.find(bank => bank.id === input.beneficiaryId && bank.type === 'SchoolBank' && bank.active) : undefined

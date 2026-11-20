@@ -266,6 +266,20 @@ test('hybrid provider falls back on 401/403/404 and never falls back on 5xx or n
   await assert.rejects(hybrid.getBalance(), { code: 'PAYMENT_PROVIDER_UNAVAILABLE' })
 })
 
+test('add funds generates a unique funding reference when none is entered and retries reuse it', async () => {
+  const f = previewFixture()
+  const bank = await f.preview.moneyOut.setupSampleBank(admin, { confirmed: true })
+  const requestKey = randomUUID()
+  const input = { direction: 'TopUp', amount: '25', reason: 'School library operating buffer', requestKey, beneficiaryId: bank.id, transferredAt: new Date().toISOString() }
+  const first = await f.preview.moneyOut.practice.draft(admin, input)
+  assert.match(String(first.transferReference), /^FUND-\d{8}-[A-F0-9]{8}$/)
+  const retry = await f.preview.moneyOut.practice.draft(admin, input)
+  assert.equal(retry.id, first.id)
+  assert.equal(retry.transferReference, first.transferReference)
+  const second = await f.preview.moneyOut.practice.draft(admin, { ...input, requestKey: randomUUID() })
+  assert.notEqual(second.transferReference, first.transferReference)
+})
+
 test('ledger-only practice mode rejects forged webhook tokens while keeping demoCheckout working', async () => {
   const f = previewFixture([], emptyFunds(), 0, '')
   await assert.rejects(

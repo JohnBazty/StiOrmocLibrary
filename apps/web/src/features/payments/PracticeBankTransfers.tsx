@@ -102,7 +102,7 @@ export function PracticeTransferDialog({ direction, selected, available, fee, le
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
   const [bank, setBank] = useState(() => banks.find(b => b.type === 'SchoolBank' && b.isDefault)?.id ?? banks.find(b => b.type === 'SchoolBank')?.id ?? ''), [addBank, setAddBank] = useState(false), [addedBanks, setAddedBanks] = useState<Destination[]>([])
   const schoolBanks = [...banks, ...addedBanks.filter(added => !banks.some(bank => bank.id === added.id))].filter(bank => bank.type === 'SchoolBank')
-  const [transferReference,setTransferReference]=useState(''),[transferredAt,setTransferredAt]=useState(()=>currentManilaDateTime()),[verificationNote,setVerificationNote]=useState(''),[confirmed,setConfirmed]=useState(false)
+  const [transferredAt,setTransferredAt]=useState(()=>currentManilaDateTime()),[verificationNote,setVerificationNote]=useState(''),[confirmed,setConfirmed]=useState(false)
   const key = useRef(crypto.randomUUID()), sending = useRef(false)
   const withdrawal = direction === 'Withdrawal', noun = withdrawal ? 'withdrawal' : 'addition'
   const trimmedAmount = amount.trim()
@@ -114,7 +114,7 @@ export function PracticeTransferDialog({ direction, selected, available, fee, le
       const isoTransferredAt = transferredAt
         ? new Date(transferredAt.includes('+') || transferredAt.endsWith('Z') ? transferredAt : transferredAt + '+08:00').toISOString()
         : undefined
-      const result = row ? await moneyOutApi.confirmPractice(row.id,withdrawal?undefined:{confirmed,verificationNote}) : await moneyOutApi.draftPractice({ direction, amount: trimmedAmount, reason, requestKey: key.current, ...(!withdrawal ? { beneficiaryId: bank,transferReference,transferredAt:isoTransferredAt } : {}) })
+      const result = row ? await moneyOutApi.confirmPractice(row.id,withdrawal?undefined:{confirmed,verificationNote}) : await moneyOutApi.draftPractice({ direction, amount: trimmedAmount, reason, requestKey: key.current, ...(!withdrawal ? { beneficiaryId: bank,transferredAt:isoTransferredAt } : {}) })
       setRow(result); onSaved()
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'This transfer could not be saved. Please try again.') }
     finally { sending.current = false; setBusy(false) }
@@ -126,13 +126,13 @@ export function PracticeTransferDialog({ direction, selected, available, fee, le
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Cancel this review before closing.') }
     finally { sending.current = false; setBusy(false) }
   }
-  const valid = validAmount && reason.trim().length >= 10 && (withdrawal || schoolBanks.some(row => row.id === bank)&&transferReference.trim().length>=6&&transferredAt)
+  const valid = validAmount && reason.trim().length >= 10 && (withdrawal || schoolBanks.some(row => row.id === bank)&&transferredAt)
   return <MoneyOutDialog title={legacyWithdrawal?'Previous local withdrawal':withdrawal ? 'Withdraw to school bank' : 'Add funds from school bank'} busy={busy} onClose={() => void close()}>
     {addBank ? <SchoolBankForm bankOptions={bankOptions} onSaved={destination => { setAddedBanks(current => [...current, destination]); setBank(destination.id); setAddBank(false); onSaved() }} onCancel={() => setAddBank(false)}/> : <div className="space-y-5">
       <p className="payment-field-note">This records school-bank funding in the library. It does not debit a bank account or increase the Xendit balance.</p>
       {row ? <>
         <h3 className="text-lg font-bold">{row.state === 'Succeeded' ? legacyWithdrawal?'Recorded locally':withdrawal ? 'Withdrawal completed' : 'Funding recorded' : stateLabel(row.state)}</h3>
-        <p className="payment-muted text-sm">{row.reference} · {row.destination}</p>{row.transferReference?<p className="text-sm">Bank reference: {row.transferReference}<br/>Transfer date: {row.transferredAt?dateLabel(row.transferredAt):'Not recorded'}</p>:null}
+        <p className="payment-muted text-sm">{row.reference} · {row.destination}</p>{row.transferReference?<p className="text-sm">Funding reference: {row.transferReference}<br/>Transfer date: {row.transferredAt?dateLabel(row.transferredAt):'Not recorded'}</p>:null}
         <dl className="payment-summary space-y-3">
           <div className="flex justify-between gap-4"><dt>Amount {withdrawal ? 'to school bank' : 'from school bank'}</dt><dd className="font-semibold">{paymentMoney(row.amountCentavos)}</dd></div>
           <div className="flex justify-between gap-4"><dt>Transfer fee</dt><dd>{paymentMoney(row.feeCentavos)}</dd></div>
@@ -147,7 +147,7 @@ export function PracticeTransferDialog({ direction, selected, available, fee, le
         <label className="block font-semibold">Amount in pesos<input className="payment-field mt-2" inputMode="decimal" value={amount} onChange={event => setAmount(event.target.value)}/></label>
         <p className="payment-field-note">Available online: {paymentMoney(available)}. Transfer fee: {paymentMoney(withdrawal ? fee : 0)}.</p>
         {trimmedAmount && !validAmount ? <p className="payment-error">Enter a valid peso amount with up to two decimal places.</p> : null}
-        {!withdrawal?<><label className="block font-semibold">Bank transfer reference<input className="payment-field mt-2" value={transferReference} maxLength={100} autoComplete="off" onChange={event=>setTransferReference(event.target.value)}/></label>{transferReference.trim().length>0&&transferReference.trim().length<6?<p className="payment-error">Enter at least 6 characters for the bank transfer reference.</p>:null}<label className="block font-semibold">Transfer date and time (Manila)<input className="payment-field mt-2" type="datetime-local" value={transferredAt} onChange={event=>setTransferredAt(event.target.value)}/></label></>:null}
+        {!withdrawal?<><p className="payment-field-note">A funding reference is created automatically when you review this addition.</p><label className="block font-semibold">Transfer date and time (Manila)<input className="payment-field mt-2" type="datetime-local" value={transferredAt} onChange={event=>setTransferredAt(event.target.value)}/></label></>:null}
         <label className="block font-semibold">Purpose<textarea className="payment-field mt-2" rows={3} maxLength={500} value={reason} onChange={event => setReason(event.target.value)}/></label>
         {reason.trim().length > 0 && reason.trim().length < 10 ? <p className="payment-error">Enter at least 10 characters for the purpose.</p> : null}
         <Button className="payment-button w-full" disabled={busy || !valid} onClick={() => void run()}>{busy ? 'Preparing…' : 'Review ' + noun}</Button>
