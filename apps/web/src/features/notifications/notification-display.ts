@@ -5,7 +5,7 @@ export const notificationsUpdated = 'smartlib:notifications-updated'
 
 export function formatNotificationDate(value: string) {
   const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Manila' })
 }
 
 export function notificationIcon(type: string) {

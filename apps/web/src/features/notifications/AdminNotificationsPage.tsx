@@ -5,7 +5,7 @@ import { RefreshCw, UserRound } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button, PageHeader, SectionCard } from '../../components/ui'
 
-const date = (value: string) => new Date(value).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
+const date = (value: string) => new Date(value).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Manila' })
 
 function NoticeCard({ notice }: { notice: Notice }) {
   return <li className="flex flex-wrap items-start gap-4 border-b border-[#0b5ea2]/10 p-5 last:border-b-0 dark:border-white/10">

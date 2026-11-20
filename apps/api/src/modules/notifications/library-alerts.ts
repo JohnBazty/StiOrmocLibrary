@@ -8,7 +8,8 @@ type Alert = {
 /** Uses the caller's transaction. Notifies all active Librarian, Staff, and Admin accounts. */
 export async function notifyLibrarians(connection: Pick<PoolConnection, 'execute'>, alert: Alert) {
   const insert = 'INSERT INTO'
-  const now = "(NOW() AT TIME ZONE 'UTC')"
+  // Session time is Asia/Manila (078), the same clock the reader and other notifications use.
+  const now = "NOW()"
   const staffPath = alert.path.replace('/librarian/', '/staff/')
   await connection.execute(`${insert} notifications
     (user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,
