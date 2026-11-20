@@ -35,11 +35,11 @@ function database() {
 
 test('admin fine records expose receipt verification data and support verification-code search',async()=>{
   const service=createFinesService(database())
-  const result=await service.list({search:verificationCode,status:'all',type:'all',period:'all',date:null,month:null,week:null,termId:null,from:null,to:null,page:1,limit:25})
+  const result=await service.list({search:verificationCode,status:'all',type:'all',category:null,period:'all',date:null,month:null,week:null,termId:null,from:null,to:null,page:1,limit:25})
   assert.equal(result.pagination.total,1)
   assert.deepEqual(result.items[0]?.receipts,[{receiptId:8,receiptNumber:receipt.receiptNumber,verificationCode,status:'Issued'}])
 
-  const missing=await service.list({search:'NOT-A-RECEIPT',status:'all',type:'all',period:'all',date:null,month:null,week:null,termId:null,from:null,to:null,page:1,limit:25})
+  const missing=await service.list({search:'NOT-A-RECEIPT',status:'all',type:'all',category:null,period:'all',date:null,month:null,week:null,termId:null,from:null,to:null,page:1,limit:25})
   assert.equal(missing.pagination.total,0)
 })
 
@@ -91,4 +91,56 @@ test('staff fine partial payments and confirmed refund projections retain only m
   const restored = await service.listForStaff(staff, service.filters({}))
   assert.equal(restored.items[0].status, 'Unpaid')
   assert.equal(restored.items[0].balance, 28)
+})
+
+function violationDatabase() {
+  const base = database()
+  const violation = (fineId: number, category: string, incidentId: number) => ({
+    fine_id: fineId, user_id: 7, fine_type: 'Infraction', fine_amount: 50, payment_status: 'Unpaid', calculation_basis: 'Manual', overdue_units: 1, rate_applied: 50,
+    maximum_cap_applied: null, applied_date: '2026-09-05 10:00:00', finalized_at: '2026-09-05 10:00:00', notes: null, updated_at: '2026-09-05 10:00:00',
+    school_id: receipt.student.schoolId, full_name: 'Buentheo Nathaniel Noval', transaction_status: null, lost_confirmed_at: null, source_title: category,
+    category, incident_at: '2026-09-05 10:00:00', incident_location: 'Library', details: 'Loud conversation in the reading area', incident_id: incidentId, paid_amount: 0, adjusted_amount: 0,
+  })
+  return { async execute(sql: string, values?: unknown[]) {
+    if (sql.includes('FROM fines f INNER JOIN users')) {
+      const [rows] = await base.execute(sql) as [RowDataPacket[], unknown]
+      return [[...rows, violation(11, 'Noise', 5), violation(12, 'Eating or food', 6), violation(13, 'Old free text', 7)], []]
+    }
+    if (sql.includes('FROM fine_infractions')) return [[{ category: 'Old free text' }], []]
+    if (sql.includes('FROM violation_categories')) {
+      const known = [{ name: 'Noise', is_active: true }, { name: 'Eating or food', is_active: true }, { name: 'Retired rule', is_active: false }]
+      return [sql.includes('WHERE name=?') ? known.filter((row) => row.name === values?.[0]) : known, []]
+    }
+    return base.execute(sql)
+  } } as unknown as Pool
+}
+
+test('violation fines are labelled by category and link to their violation record', async () => {
+  const service = createFinesService(violationDatabase())
+  const result = await service.list(service.filters({ type: 'Infraction' }))
+  const noise = result.items.find((item) => item.category === 'Noise')!
+  assert.equal(noise.typeLabel, 'Violation · Noise')
+  assert.equal(noise.incidentId, 5)
+  assert.equal(noise.reason, 'Loud conversation in the reading area')
+  assert.equal(result.items.every((item) => item.type === 'Infraction'), true)
+})
+
+test('the category filter narrows violations, groups older free-text categories, and refuses unknown names', async () => {
+  const service = createFinesService(violationDatabase())
+  const noise = await service.list(service.filters({ type: 'Infraction', category: 'Noise' }))
+  assert.deepEqual(noise.items.map((item) => item.category), ['Noise'])
+  const earlier = await service.list(service.filters({ type: 'Infraction', category: '__earlier' }))
+  assert.deepEqual(earlier.items.map((item) => item.category), ['Old free text'])
+  assert.equal((await service.list(service.filters({ type: 'Overdue' }))).items.every((item) => item.type === 'Overdue'), true)
+  await assert.rejects(service.list(service.filters({ type: 'Infraction', category: 'Made up' })), { code: 'FINE_INVALID_CATEGORY' })
+  assert.equal((await service.report(service.filters({ type: 'Infraction', category: 'Eating or food' }), staff)).items.length, 1)
+})
+
+test('filter options come from setup, keep retired categories, and group older violations', async () => {
+  const service = createFinesService(violationDatabase())
+  const options = await service.filterOptions()
+  assert.deepEqual(options.types.map((type) => type.value), ['Overdue', 'Lost Book', 'Damage Replacement'])
+  assert.deepEqual(options.violations.map((item) => [item.category, item.label]), [
+    [null, 'All violations'], ['Noise', 'Noise'], ['Eating or food', 'Eating or food'], ['Retired rule', 'Retired rule (retired)'], ['__earlier', 'Other earlier violations'],
+  ])
 })

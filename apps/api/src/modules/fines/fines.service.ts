@@ -8,7 +8,7 @@ import { guardCounterPayment } from '../payments/payments.guard.ts'
 import { createPaymentsRepository } from '../payments/payments.repository.ts'
 import { localPaymentPreview } from '../payments/payments.preview.ts'
 import { previewFine, type PreviewCredit } from '../payments/preview-balances.ts'
-import { fineId, parseFineFilters, receiptId, validateAdjustment, validateCashPayment, validateInfraction, validateReversal, type FineFilters } from './fines.validation.ts'
+import { fineId, parseFineFilters, receiptId, validateAdjustment, validateCashPayment, validateReversal, EARLIER_VIOLATIONS, FINE_TYPES, type FineFilters } from './fines.validation.ts'
 
 export type FineActor = { accountId?: number; role?: string }
 
@@ -87,14 +87,22 @@ async function resolveRange(database: Pool, filters: FineFilters) {
 
 type Obligation = {
   id: string; fineId: number | null; lostBookReportId: number | null; userId: number; schoolId: string; userName: string
-  type: 'Overdue' | 'Infraction' | 'Lost Book' | 'Damage Replacement'; title: string; reason: string; assessed: number; paid: number
+  type: 'Overdue' | 'Infraction' | 'Lost Book' | 'Damage Replacement'; typeLabel: string; category: string | null; incidentId: number | null; title: string; reason: string; assessed: number; paid: number
   adjusted: number; balance: number; status: string; occurredAt: unknown; updatedAt: unknown; paymentAllowed: boolean
   receipts: Array<{ receiptId: number; receiptNumber: string; verificationCode: string; status: string }>
 }
 
 function number(value: unknown) { return Number(value ?? 0) }
+const TYPE_LABELS: Record<string, string> = { Overdue: 'Overdue', 'Lost Book': 'Lost book', 'Damage Replacement': 'Damage replacement' }
 
 async function queryObligations(database: Pool, filters: FineFilters, onlyUserId?: number, credits: PreviewCredit[] = [], report = false) {
+  if (filters.category && filters.category !== EARLIER_VIOLATIONS) {
+    const [known] = await database.execute<RowDataPacket[]>('SELECT name FROM violation_categories WHERE name=?', [filters.category])
+    if (!known[0]) throw new HttpError(422, 'FINE_INVALID_CATEGORY', 'The selected violation category is not in Library setup.')
+  }
+  const earlier = filters.category === EARLIER_VIOLATIONS
+    ? new Set(((await database.execute<RowDataPacket[]>('SELECT DISTINCT fi.category FROM fine_infractions fi WHERE NOT EXISTS (SELECT 1 FROM violation_categories vc WHERE vc.name=fi.category)', []))[0]).map((row) => String(row.category)))
+    : null
   const range = report && filters.period==='all' ? {from:'0001-01-01',to:'9998-12-31',label:'All fine records',termId:null} : await resolveRange(database, filters)
   const commonParameters: Array<string|number> = [`${range.from} 00:00:00`, report ? `${new Date(Date.parse(range.to+'T00:00:00Z')+86400000).toISOString().slice(0,10)} 00:00:00` : `${range.to} 23:59:59`]
   const userClause = onlyUserId ? ' AND f.user_id=?' : ''
@@ -105,7 +113,7 @@ async function queryObligations(database: Pool, filters: FineFilters, onlyUserId
             f.overdue_units,f.rate_applied,f.maximum_cap_applied,f.applied_date,f.finalized_at,f.notes,f.updated_at,
             u.school_id,u.full_name,bt.transaction_status,bt.lost_confirmed_at,
             COALESCE(t.title,m.title,fi.category,'Library fine') AS source_title,
-            fi.category,fi.incident_at,fi.incident_location,fi.details,
+            fi.category,fi.incident_at,fi.incident_location,fi.details,ci.incident_id,
             COALESCE(payments.paid_amount,0) AS paid_amount,
             COALESCE(adjustments.adjusted_amount,0) AS adjusted_amount
        FROM fines f INNER JOIN users u ON u.user_id=f.user_id
@@ -114,6 +122,7 @@ async function queryObligations(database: Pool, filters: FineFilters, onlyUserId
        LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id
        LEFT JOIN titles t ON t.title_id=pc.title_id
        LEFT JOIN fine_infractions fi ON fi.fine_id=f.fine_id
+       LEFT JOIN conduct_incidents ci ON ci.fine_id=f.fine_id
        LEFT JOIN (
          SELECT a.fine_id,SUM(a.amount_allocated) AS paid_amount FROM fine_payment_allocations a
          INNER JOIN fine_payment_receipts r ON r.fine_payment_receipt_id=a.fine_payment_receipt_id AND r.receipt_status='Issued'
@@ -146,11 +155,13 @@ async function queryObligations(database: Pool, filters: FineFilters, onlyUserId
     const accruing = row.fine_type === 'Overdue' && ['Borrowed', 'Overdue'].includes(String(row.transaction_status)) && !row.lost_confirmed_at
     const status = accruing ? 'Accruing' : row.payment_status === 'Accruing' ? 'Unpaid' : String(row.payment_status)
     const reason = row.fine_type === 'Infraction'
-      ? `${row.category}: ${row.details}`
+      ? String(row.details)
       : `${row.overdue_units} ${String(row.calculation_basis).toLowerCase()} unit(s) at PHP ${number(row.rate_applied).toFixed(2)}`
     return {
       id: `F-${row.fine_id}`, fineId: Number(row.fine_id), lostBookReportId: null, userId: Number(row.user_id), schoolId: String(row.school_id), userName: String(row.full_name),
-      type: String(row.fine_type) as 'Overdue' | 'Infraction', title: String(row.source_title), reason, assessed, paid, adjusted, balance,
+      type: String(row.fine_type) as 'Overdue' | 'Infraction',
+      typeLabel: row.fine_type === 'Infraction' ? `Violation · ${row.category ?? 'Other'}` : (TYPE_LABELS[String(row.fine_type)] ?? String(row.fine_type)),
+      category: row.fine_type === 'Infraction' ? String(row.category ?? '') : null, incidentId: row.incident_id ? Number(row.incident_id) : null, title: String(row.source_title), reason, assessed, paid, adjusted, balance,
       status, occurredAt: row.incident_at ?? row.applied_date, updatedAt: row.updated_at ?? row.applied_date,
       paymentAllowed: !accruing && balance > 0 && !['Waived', 'Voided'].includes(status),
       receipts: [],
@@ -160,7 +171,7 @@ async function queryObligations(database: Pool, filters: FineFilters, onlyUserId
     const assessed = number(row.replacement_charge); const paid = number(row.paid_amount); const balance = Math.max(0, assessed - paid)
     return {
       id: `L-${row.lost_book_report_id}`, fineId: null, lostBookReportId: Number(row.lost_book_report_id), userId: Number(row.user_id), schoolId: String(row.school_id), userName: String(row.full_name),
-      type: (row.charge_resolution==='Damage Replacement'?'Damage Replacement':'Lost Book') as Obligation['type'], title: String(row.source_title), reason: row.charge_resolution==='Damage Replacement'?'Reviewed charge for returned damage beyond repair':'Confirmed lost-book replacement charge', assessed, paid, adjusted: 0, balance,
+      type: (row.charge_resolution==='Damage Replacement'?'Damage Replacement':'Lost Book') as Obligation['type'], typeLabel: row.charge_resolution==='Damage Replacement'?'Damage replacement':'Lost book', category: null, incidentId: null, title: String(row.source_title), reason: row.charge_resolution==='Damage Replacement'?'Reviewed charge for returned damage beyond repair':'Confirmed lost-book replacement charge', assessed, paid, adjusted: 0, balance,
       status: String(row.payment_status), occurredAt: row.verified_at ?? row.reported_at, updatedAt: row.updated_at ?? row.verified_at ?? row.reported_at,
       paymentAllowed: row.payment_status !== 'Paid' && balance > 0,
       receipts: [],
@@ -194,6 +205,7 @@ async function queryObligations(database: Pool, filters: FineFilters, onlyUserId
   const needle = filters.search.toLocaleLowerCase('en-US')
   const filtered = obligations.map(item => previewFine(item, credits)).filter((item) => {
     if (filters.type !== 'all' && item.type !== filters.type) return false
+    if (filters.category && (earlier ? !earlier.has(String(item.category)) : item.category !== filters.category)) return false
     if (filters.status === 'outstanding' ? item.balance <= 0 || ['Paid','Waived','Voided'].includes(item.status) : filters.status !== 'all' && item.status !== filters.status) return false
     return !needle || [item.id,item.userName,item.schoolId,item.title,item.reason,...item.receipts.flatMap((receipt) => [receipt.receiptNumber,receipt.verificationCode])].some((value) => value.toLocaleLowerCase('en-US').includes(needle))
   }).sort((left, right) => new Date(String(right.occurredAt)).getTime() - new Date(String(left.occurredAt)).getTime())
@@ -256,7 +268,7 @@ export function createFinesService(database: Pool = db, options: { previewCredit
     }
     const [allocations] = await database.execute<RowDataPacket[]>(
       `SELECT a.amount_allocated,a.balance_before,a.balance_after,a.fine_id,a.lost_book_report_id,
-              CASE WHEN a.fine_id IS NOT NULL THEN f.fine_type WHEN l.charge_resolution='Damage Replacement' THEN 'Damage Replacement' ELSE 'Lost Book' END AS obligation_type,
+              CASE WHEN a.fine_id IS NOT NULL THEN (CASE WHEN f.fine_type='Infraction' THEN 'Violation · '||COALESCE(fi.category,'Other') ELSE f.fine_type END) WHEN l.charge_resolution='Damage Replacement' THEN 'Damage Replacement' ELSE 'Lost Book' END AS obligation_type,
               COALESCE(t.title,m.title,fi.category,lt.title,lm.title,'Library obligation') AS source_title,
               COALESCE(f.fine_amount,l.replacement_charge,0) AS assessed_amount
          FROM fine_payment_allocations a
@@ -318,31 +330,18 @@ export function createFinesService(database: Pool = db, options: { previewCredit
       return list(filters, userId, credits)
     },
     async report(filters: FineFilters, actor?: FineActor) { return queryObligations(database, filters, undefined, actor ? await staffCredits(actor) : [], true) },
-    async issueInfraction(actor: FineActor, body: unknown) {
-      requireStaff(actor); const input = validateInfraction(body); const connection = await database.getConnection()
-      try {
-        await connection.beginTransaction(); const staffUserId = await linkedUserId(connection, actorAccountId(actor))
-        const [users] = await connection.execute<RowDataPacket[]>("SELECT user_id,full_name FROM users WHERE school_id=? AND user_role IN ('Student','Faculty') AND account_status='Active' LIMIT 1 FOR UPDATE", [input.schoolId])
-        if (!users[0]) throw new HttpError(404, 'FINE_USER_NOT_FOUND', 'The active student or faculty account was not found.')
-        const targetUserId=Number(users[0].user_id)
-        const [insert] = await connection.execute<ResultSetHeader>(
-          `INSERT INTO fines(transaction_id,user_id,fine_type,fine_amount,payment_status,calculation_basis,overdue_units,rate_applied,applied_date,finalized_at,notes,updated_at)
-           VALUES (NULL,?,'Infraction',?,'Unpaid','Manual',1,?,NOW(),NOW(),?,NOW())`, [targetUserId,input.amount,input.amount,`${input.category}: ${input.details}`],
-        )
-        await connection.execute(
-          'INSERT INTO fine_infractions(fine_id,category,incident_at,incident_location,details,issued_by_user_id) VALUES (?,?,?,?,?,?)',
-          [insert.insertId,input.category,input.incidentAt,input.location,input.details,staffUserId],
-        )
-        await connection.execute(
-          `INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
-           VALUES (?,'Library fine issued',?,'Fine','Fine',?,'/student/fines','Important',?,NOW(),NOW())
-          ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
-          [targetUserId,`${input.category} fine: PHP ${input.amount.toFixed(2)}.`,insert.insertId,`fine:${insert.insertId}:issued`],
-        )
-        await refreshClearance(connection,targetUserId); await connection.commit()
-        await notifyStaffRolesSafe(database,{key:`fine:${insert.insertId}:issued`,title:'Library fine issued',body:`${input.category} fine: PHP ${input.amount.toFixed(2)}.`,type:'Fine',sourceType:'Fine',sourceId:Number(insert.insertId),personUserId:targetUserId,librarianPath:'/librarian/fines',staffPath:'/staff/notifications',priority:'Important'})
-        return { fineId: Number(insert.insertId), status: 'Unpaid' }
-      } catch (error) { await connection.rollback(); throw error } finally { connection.release() }
+    /** Fine types plus the violation categories from Library setup (retired ones stay, so older fines remain filterable). */
+    async filterOptions() {
+      const [categories] = await database.execute<RowDataPacket[]>('SELECT name,is_active FROM violation_categories ORDER BY sort_order,name', [])
+      const [earlier] = await database.execute<RowDataPacket[]>('SELECT 1 FROM fine_infractions fi WHERE NOT EXISTS (SELECT 1 FROM violation_categories vc WHERE vc.name=fi.category) LIMIT 1', [])
+      return {
+        types: FINE_TYPES.filter((type) => type.group === 'Borrowing').map(({ value, label }) => ({ value, label })),
+        violations: [
+          { type: 'Infraction', category: null as string | null, label: 'All violations' },
+          ...categories.map((row) => ({ type: 'Infraction', category: String(row.name) as string | null, label: row.is_active ? String(row.name) : `${row.name} (retired)` })),
+          ...(earlier[0] ? [{ type: 'Infraction', category: EARLIER_VIOLATIONS as string | null, label: 'Other earlier violations' }] : []),
+        ],
+      }
     },
     async recordCashPayment(actor: FineActor, body: unknown) {
       const run=async()=>{

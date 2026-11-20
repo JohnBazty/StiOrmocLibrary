@@ -18,14 +18,14 @@ export const finesController = {
   terms: handle(async (_request,response)=>response.json({success:true,data:await finesService.terms()})),
   receipts: handle(async (_request,response)=>response.json({success:true,data:await finesService.receiptsForUser(actor(response))})),
   receipt: handle(async (request,response)=>response.json({success:true,data:await finesService.receipt(receiptId(request.params.receiptId),actor(response))})),
-  issueInfraction: handle(async (request,response)=>response.status(201).json({success:true,data:await finesService.issueInfraction(actor(response),request.body)})),
+  filterOptions: handle(async (_request,response)=>response.set('Cache-Control','private, no-store').json({success:true,data:await finesService.filterOptions()})),
   payment: handle(async (request,response)=>response.status(201).json({success:true,data:await finesService.recordCashPayment(actor(response),request.body)})),
   adjustment: handle(async (request,response)=>response.json({success:true,data:await finesService.adjust(actor(response),fineId(request.params.fineId),request.body)})),
   reverseReceipt: handle(async (request,response)=>response.json({success:true,data:await finesService.reverseReceipt(actor(response),receiptId(request.params.receiptId),request.body)})),
   reportPdf: handle(async (request,response)=>{
     const filters=parseFineFilters(request.query as Record<string,unknown>); const result=await finesService.report(filters,actor(response))
     const totals=result.items.reduce((value,item)=>({assessed:value.assessed+item.assessed,collected:value.collected+item.paid,outstanding:value.outstanding+item.balance,waived:value.waived+item.adjusted}),{assessed:0,collected:0,outstanding:0,waived:0})
-    const report=createFineAuditPdf(result.items,{label:result.range.label,generatedBy:actor(response).schoolId??'Authorized staff',...totals})
+    const report=createFineAuditPdf(result.items.map((item)=>({...item,type:item.typeLabel})),{label:result.range.label,generatedBy:actor(response).schoolId??'Authorized staff',...totals})
     response.status(200).set({'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="smartlib-fines-${safeFilename(result.range.from)}-${safeFilename(result.range.to)}.pdf"`,'Cache-Control':'private, no-store'})
     report.on('error',(error)=>response.destroy(error)).pipe(response)
   }),

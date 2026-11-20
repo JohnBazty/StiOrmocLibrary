@@ -5,6 +5,8 @@ export type FineFilters = {
   search: string
   status: string
   type: string
+  /** Only with type Infraction: a violation category name, or EARLIER_VIOLATIONS for older free-text categories. */
+  category: string | null
   period: FinePeriod
   date: string | null
   month: string | null
@@ -17,7 +19,15 @@ export type FineFilters = {
 }
 
 const STATUSES = new Set(['all', 'outstanding', 'Accruing', 'Unpaid', 'Partially Paid', 'Paid', 'Waived', 'Voided'])
-const TYPES = new Set(['all', 'Overdue', 'Infraction', 'Lost Book'])
+/** The one list of fine types: the filter, the API check and the filter-options endpoint all read it. */
+export const FINE_TYPES = [
+  { value: 'Overdue', label: 'Overdue', group: 'Borrowing' },
+  { value: 'Lost Book', label: 'Lost book', group: 'Borrowing' },
+  { value: 'Damage Replacement', label: 'Damage replacement', group: 'Borrowing' },
+  { value: 'Infraction', label: 'All violations', group: 'Violations' },
+] as const
+export const EARLIER_VIOLATIONS = '__earlier'
+const TYPES = new Set<string>(['all', ...FINE_TYPES.map((type) => type.value)])
 const PERIODS = new Set<FinePeriod>(['all', 'daily', 'weekly', 'monthly', 'semester', 'custom'])
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const MONTH = /^\d{4}-\d{2}$/
@@ -53,6 +63,8 @@ export function parseFineFilters(query: Record<string, unknown>): FineFilters {
   const type = String(query.type ?? 'all')
   if (!STATUSES.has(status)) throw new HttpError(422, 'FINE_INVALID_STATUS', 'The selected fine status is invalid.')
   if (!TYPES.has(type)) throw new HttpError(422, 'FINE_INVALID_TYPE', 'The selected fine type is invalid.')
+  const category = query.category ? String(query.category) : null
+  if (category && (category.length > 80 || type !== 'Infraction')) throw new HttpError(422, 'FINE_INVALID_CATEGORY', 'Choose a violation category together with the violations type.')
   const date = query.date ? String(query.date) : null
   const month = query.month ? String(query.month) : null
   const from = query.from ? String(query.from) : null
@@ -66,23 +78,9 @@ export function parseFineFilters(query: Record<string, unknown>): FineFilters {
   const termId = query.termId === undefined ? null : positiveId(query.termId, 'Semester')
   const search = String(query.search ?? '').trim().slice(0, 100)
   return {
-    search, status, type, period, date, month, week, termId, from, to,
+    search, status, type, category, period, date, month, week, termId, from, to,
     page: Math.max(1, Math.trunc(Number(query.page) || 1)),
     limit: Math.min(100, Math.max(1, Math.trunc(Number(query.limit) || 25))),
-  }
-}
-
-export function validateInfraction(input: unknown) {
-  const body = object(input)
-  const incidentAt = new Date(String(body.incidentAt ?? body.incident_at ?? ''))
-  if (Number.isNaN(incidentAt.getTime())) throw new HttpError(422, 'FINE_INVALID_INCIDENT_DATE', 'Enter a valid incident date and time.')
-  return {
-    schoolId: requiredText(body.schoolId ?? body.school_id, 'School ID', 3, 50),
-    category: requiredText(body.category, 'Category', 2, 80),
-    amount: positiveNumber(body.amount, 'Fine amount'),
-    incidentAt,
-    location: body.location ? requiredText(body.location, 'Location', 2, 150) : null,
-    details: requiredText(body.details, 'Incident details', 10, 500),
   }
 }
 

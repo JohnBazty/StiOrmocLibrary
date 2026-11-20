@@ -10,6 +10,7 @@ function conductHandler(operation: (req: Request,res: Response)=>Promise<unknown
 }
 function actor(res:Response){const u=res.locals.authenticatedUser;return {accountId:u?.accountId??u?.id,role:u?.role}}
 export const userFinesV1Router=Router()
+userFinesV1Router.get('/violations/standing',conductHandler((_req,res)=>conductService.ownStanding(actor(res))))
 userFinesV1Router.get('/violations',conductHandler((req,res)=>conductService.list(actor(res),req.query,true)))
 userFinesV1Router.get('/me',finesController.mine)
 userFinesV1Router.get('/terms',finesController.terms)
@@ -21,16 +22,18 @@ export const adminFinesV1Router=Router()
 adminFinesV1Router.get('/urgent-cases',conductHandler(()=>createUrgentCases().list()))
 adminFinesV1Router.post('/urgent-settings',conductHandler((req,res)=>createUrgentCases().save(Number(actor(res).accountId),req.body)))
 adminFinesV1Router.get('/terms',finesController.terms)
+adminFinesV1Router.get('/filter-options',finesController.filterOptions)
 adminFinesV1Router.get('/report.pdf',finesController.reportPdf)
 adminFinesV1Router.get('/receipts/:receiptId.pdf',finesController.receiptPdf)
 adminFinesV1Router.get('/receipts/:receiptId',finesController.receipt)
 adminFinesV1Router.post('/receipts/:receiptId/reverse',finesController.reverseReceipt)
 adminFinesV1Router.get('/violations/report.:format',conductExport)
+adminFinesV1Router.get('/violations/standing',conductHandler((req,res)=>conductService.standing(actor(res),req.query)))
 adminFinesV1Router.get('/violations',conductHandler((req,res)=>conductService.list(actor(res),req.query)))
 adminFinesV1Router.post('/violations/preview',conductHandler((req,res)=>conductService.preview(actor(res),req.body)))
 adminFinesV1Router.post('/violations',conductHandler((req,res)=>conductService.record(actor(res),req.body)))
 adminFinesV1Router.post('/violations/:id/events',conductHandler((req,res)=>conductService.event(actor(res),req.params.id,req.body)))
-// Legacy clients must also supply a reviewed conduct incident; no immediate-fine bypass.
+// Alias of the violation record route. The amount is set by the server from Library setup, so legacy clients cannot send money.
 adminFinesV1Router.post('/infractions',conductHandler((req,res)=>conductService.record(actor(res),req.body)))
 adminFinesV1Router.post('/payments',finesController.payment)
 adminFinesV1Router.post('/:fineId/adjustments',finesController.adjustment)

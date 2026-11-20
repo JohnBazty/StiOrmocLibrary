@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { HttpError } from '../../core/http-error.ts'
-import { parseFineFilters,validateAdjustment,validateCashPayment,validateInfraction } from './fines.validation.ts'
+import { EARLIER_VIOLATIONS,FINE_TYPES,parseFineFilters,validateAdjustment,validateCashPayment } from './fines.validation.ts'
 
 test('fine filters support all records, daily, four selected weeks, monthly, semester, and custom periods',()=>{
   assert.equal(parseFineFilters({}).period,'all')
@@ -19,8 +19,17 @@ test('cash payment requires one target per positive allocation and an idempotenc
   assert.throws(()=>validateCashPayment({requestKey:'cash-test-002',allocations:[{fineId:3,lostBookReportId:4,amount:1}]}),HttpError)
 })
 
-test('infractions and adjustments require audit-quality details',()=>{
-  const incident=validateInfraction({schoolId:'02000000001',category:'Noise violation',amount:25,incidentAt:'2026-09-02T10:00:00+08:00',details:'Repeated loud conversation in the reading area.'})
-  assert.equal(incident.schoolId,'02000000001');assert.equal(incident.amount,25)
+test('adjustments require audit-quality details',()=>{
   assert.throws(()=>validateAdjustment({type:'Waiver',reason:'short'}),HttpError)
+})
+
+test('the fine type filter reads one shared list and accepts a violation category only with violations',()=>{
+  for(const {value} of FINE_TYPES)assert.equal(parseFineFilters({type:value}).type,value)
+  assert.ok(FINE_TYPES.some(t=>t.value==='Damage Replacement'))
+  assert.equal(parseFineFilters({}).category,null)
+  assert.equal(parseFineFilters({type:'Infraction',category:'Noise'}).category,'Noise')
+  assert.equal(parseFineFilters({type:'Infraction',category:EARLIER_VIOLATIONS}).category,EARLIER_VIOLATIONS)
+  assert.throws(()=>parseFineFilters({type:'Overdue',category:'Noise'}),(error:unknown)=>error instanceof HttpError&&error.code==='FINE_INVALID_CATEGORY')
+  assert.throws(()=>parseFineFilters({type:'Infraction',category:'x'.repeat(81)}),HttpError)
+  assert.throws(()=>parseFineFilters({type:'Made up'}),(error:unknown)=>error instanceof HttpError&&error.code==='FINE_INVALID_TYPE')
 })
