@@ -1,4 +1,4 @@
-import { RefreshCw, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { Button, NoticeBanner, SectionCard, StatusBadge } from '../../components/ui'
@@ -8,6 +8,7 @@ import { paymentMoney } from './payments-api'
 import { RefundApproval } from './RefundApproval'
 import { refundRequestsApi, type RefundQueueRow, type RefundRequestDetails } from './refund-requests-api'
 import { MoneyOutDialog, MoneyOutSummary } from './RefundReview'
+import { RefreshButton } from '../../components/RefreshButton'
 
 export function AdminRefundRequests() {
   const [filters, setFilters] = useState({ state: 'PendingReview', kind: '', search: '', page: 1 })
@@ -99,9 +100,7 @@ export function AdminRefundRequests() {
               {data?.pending ?? '…'} awaiting librarian review. Verify the payment and bill before approving.
             </p>
           </div>
-          <Button variant="secondary" size="sm" disabled={loading} onClick={() => void refresh()}>
-            <RefreshCw size={14} aria-hidden="true" /> Refresh requests
-          </Button>
+          <RefreshButton label="Refresh requests" onRefresh={() => refresh()} variant="secondary" size="sm" disabled={loading} />
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto] lg:items-end">

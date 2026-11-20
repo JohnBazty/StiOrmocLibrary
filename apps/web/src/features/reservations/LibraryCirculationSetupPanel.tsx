@@ -1,4 +1,4 @@
-import { AlertTriangle, BookOpenCheck, CalendarClock, CheckCircle2, RefreshCw, Search, ShieldCheck, Users } from 'lucide-react'
+import { AlertTriangle, BookOpenCheck, CalendarClock, CheckCircle2, Search, ShieldCheck, Users } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { Button, NoticeBanner, SectionCard, StatCard, StatusBadge } from '../../components/ui'
@@ -7,6 +7,7 @@ import type { BorrowingPolicyVersion, PublishBorrowingPolicyInput } from '../bor
 import { circulationApi } from '../circulation/circulation-api'
 import type { CirculationMonitorData, RenewalPreflightData } from '../circulation/types'
 import { ReservationSettingsPanel } from './ReservationSettingsPanel'
+import { RefreshButton } from '../../components/RefreshButton'
 
 const fieldClass = 'h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/15 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
 
@@ -271,9 +272,7 @@ export function LibraryCirculationSetupPanel() {
               Adjust maximum waitlist reservations per borrower, maximum renewals for borrowed books, extension days, and automatic renewal blockers.
             </p>
           </div>
-          <Button variant="secondary" disabled={policyBusy} onClick={() => void loadPolicyAndLoans()}>
-            <RefreshCw size={15} /> Refresh policy
-          </Button>
+          <RefreshButton label="Refresh policy" onRefresh={() => loadPolicyAndLoans()} variant="secondary" disabled={policyBusy} />
         </div>
 
         {policyError ? <NoticeBanner tone="error" className="mb-4">{policyError}</NoticeBanner> : null}

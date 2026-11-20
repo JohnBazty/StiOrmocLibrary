@@ -30,6 +30,7 @@ import { finesApi } from './fines-api'
 import type { FineFilterOptions, FineFilters, FineList, FineObligation, FineReceipt, FineTerm } from './types'
 import { UrgentCases } from './UrgentCases'
 import { ViolationsRecords } from './ViolationsRecords'
+import { RefreshButton } from '../../components/RefreshButton'
 
 type FinesTab = 'fines' | 'urgent' | 'violations' | 'service-charges'
 
@@ -433,9 +434,7 @@ export function AdminFinesPage() {
       {activeTab === 'fines' ? (
         <>
           <div className="mb-3 flex flex-wrap justify-end gap-2">
-            <Button variant="secondary" onClick={() => void load()}>
-              <RefreshCw size={16} aria-hidden="true" /> Refresh
-            </Button>
+            <RefreshButton onRefresh={() => load()} variant="secondary" />
             <Button onClick={() => void downloadReport()}>
               <Download size={16} aria-hidden="true" /> Export filtered PDF
             </Button>

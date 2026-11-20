@@ -2,7 +2,7 @@ import { downloadServiceReceipt } from './ServiceChargesPanel'
 import { useCallback, useEffect, useState } from 'react'
 import { usePaymentUpdates } from './payment-updates'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ArrowRight, CreditCard, Download, FileText, MapPin, Printer, ReceiptText, RefreshCw, Search } from 'lucide-react'
+import { ArrowRight, CreditCard, Download, FileText, MapPin, Printer, ReceiptText, Search } from 'lucide-react'
 import { Button, cn } from '../../components/ui'
 import { getCurrentIdentity } from '../auth/auth-storage'
 import { finesApi } from '../fines/fines-api'
@@ -13,6 +13,7 @@ import { paymentResultPath } from './payment-navigation'
 import { RefundRequestDialog, RefundRequestHistory } from './RefundRequestDialog'
 import { RefundTimeline } from './RefundReview'
 import { downloadPaymentRecord, paymentMoney, paymentsApi, paymentStatus, type Transaction, type Payment } from './payments-api'
+import { RefreshButton } from '../../components/RefreshButton'
 
 export function UserPaymentsPage() {
   const [params] = useSearchParams(), [search, setSearch] = useState(params.get('search') ?? ''), [channel, setChannel] = useState('all')
@@ -39,7 +40,7 @@ export function UserPaymentsPage() {
   }
   const pages = Math.max(1, Math.ceil((data?.pagination.total ?? 0) / (data?.pagination.limit ?? 12)))
   return <div className="payment-ui payment-page">
-    <header className="payment-page-header"><div><h1>Transactions</h1><p>All your library payment activity, in one place.</p></div><Button variant="secondary" className="payment-button" onClick={refresh}><RefreshCw size={17} aria-hidden="true"/>Refresh transactions</Button></header>
+    <header className="payment-page-header"><div><h1>Transactions</h1><p>All your library payment activity, in one place.</p></div><RefreshButton label="Refresh transactions" onRefresh={refresh} variant="secondary" className="payment-button" /></header>
     <div className="mb-6 flex flex-wrap items-center gap-2"><span className="payment-muted mr-2 text-sm">Need to pay a bill?</span><Link className="payment-link" to={prefix + '/printing'}><Printer size={16} aria-hidden="true"/>Printing service<ArrowRight size={14} aria-hidden="true"/></Link><Link className="payment-link" to={prefix + '/fines'}><ReceiptText size={16} aria-hidden="true"/>Fines<ArrowRight size={14} aria-hidden="true"/></Link></div>
     <section className="payment-surface overflow-hidden" aria-label="Payment activity">
       <div className="payment-toolbar"><div role="group" aria-label="Transaction filters" className="payment-filters">{[['all', 'All transactions'], ['Online', 'Online'], ['Onsite', 'Onsite']].map(([value, label]) => <button key={value} type="button" aria-pressed={channel === value} onClick={() => { setChannel(value); setPage(1) }}>{label}</button>)}</div><label className="payment-search"><Search size={18} aria-hidden="true"/><span className="sr-only">Search transactions</span><input placeholder="Search reference or service" value={search} maxLength={120} onChange={event => { setSearch(event.target.value); setPage(1) }}/></label></div>

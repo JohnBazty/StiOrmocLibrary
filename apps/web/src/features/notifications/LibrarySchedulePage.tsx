@@ -5,6 +5,7 @@ import { UnsavedGuard } from '../../components/UnsavedChanges'
 import { useLiveQuery } from '../../hooks/useLiveQuery'
 import { notificationApi } from './notification-api'
 import type { ManagedLibrarySchedule } from './types'
+import { RefreshButton } from '../../components/RefreshButton'
 
 const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const field =
@@ -203,9 +204,7 @@ export function LibrarySchedulePage({ manage = false, embedded = false }: { mana
       </div>
 
       <div className="flex flex-wrap gap-2.5">
-        <Button variant="secondary" disabled={busy} onClick={() => void query.refresh()}>
-          Refresh schedule
-        </Button>
+        <RefreshButton label="Refresh schedule" onRefresh={() => query.refresh()} variant="secondary" disabled={busy} />
         {manage && !draft && query.data ? (
           <Button
             onClick={() => {

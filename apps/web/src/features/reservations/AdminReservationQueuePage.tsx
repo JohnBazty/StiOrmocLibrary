@@ -1,7 +1,7 @@
 import { useLiveQuery } from '../../hooks/useLiveQuery'
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { RefreshCw, PackageCheck } from 'lucide-react'
+import { PackageCheck } from 'lucide-react'
 import { Button, EmptyState, NoticeBanner, PageHeader, SectionCard, StatusBadge } from '../../components/ui'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { getCurrentIdentity } from '../auth/auth-storage'
@@ -10,6 +10,7 @@ import { DialogShell, MoveDialog, SwapCopyDialog } from './ReservationQueueDialo
 import { AdminScheduledBorrowing } from './AdminScheduledBorrowing'
 import { pickupDateLabel } from './borrowing-schedule-api'
 import type { ReservationFilters, ReservationQueueItem, ReservationStatus } from './types'
+import { RefreshButton } from '../../components/RefreshButton'
 
 const initial: ReservationFilters = { status: 'active', dateFrom: '', dateTo: '', user: '', role: '', kind: 'Reservation' }
 const when = (s: string) =>
@@ -109,15 +110,10 @@ export function AdminReservationQueuePage() {
             >
               Open counter
             </Link>
-            <Button
-              variant="secondary"
-              onClick={() => {
+            <RefreshButton onRefresh={() => {
                 if (scheduled) setScheduleRefresh(value => value + 1)
                 else void load()
-              }}
-            >
-              <RefreshCw size={15} aria-hidden="true" /> Refresh
-            </Button>
+              }} variant="secondary" />
           </div>
         }
       />

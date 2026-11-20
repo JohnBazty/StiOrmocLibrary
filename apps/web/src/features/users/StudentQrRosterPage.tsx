@@ -1,7 +1,8 @@
-import { QrCode, RefreshCw, Search } from 'lucide-react'
+import { QrCode, Search } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button, PageHeader, SectionCard } from '../../components/ui'
 import { enrollmentApi, type Semester, type StudentQrCard } from './enrollment-api'
+import { RefreshButton } from '../../components/RefreshButton'
 
 type QrSemester = Pick<Semester, 'semester_id' | 'academic_year' | 'term_name' | 'status'>
 const field = 'min-h-11 w-full rounded-xl border border-[#003399]/20 bg-white px-3 text-sm text-[#003399] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#003399]'
@@ -42,7 +43,7 @@ export function StudentQrRosterPage() {
   }, [semesterId, page, query, revision, accountStatus])
 
   return <>
-    <PageHeader eyebrow="Student enrollment" title="Student QR roster" description="Find a student and view their library QR code from the semester roster." action={<Button variant="secondary" onClick={() => setRevision(value => value + 1)}><RefreshCw size={16} />Refresh</Button>} />
+    <PageHeader eyebrow="Student enrollment" title="Student QR roster" description="Find a student and view their library QR code from the semester roster." action={<RefreshButton onRefresh={() => setRevision(value => value + 1)} variant="secondary" />} />
     <SectionCard className="mb-5 border-l-4 border-l-[#FFF200] p-5">
       <div className="flex items-start gap-3 text-[#003399]"><QrCode size={24} className="shrink-0" /><div><h2 className="font-bold">Fresh roster, fresh QR codes</h2><p className="mt-1 text-sm leading-6">Every roster upload replaces student QR codes, even when the file is unchanged. Previously saved codes stop working. Download and give students their new code after an upload.</p><p className="mt-2 text-xs leading-5">Students must register before a library QR is available. Keep QR images private and share each code only with its student.</p></div></div>
     </SectionCard>

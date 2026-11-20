@@ -1,5 +1,5 @@
 import { formatLoanDate } from './loan-time'
-import { BookOpen, CalendarPlus, RefreshCw, Search } from 'lucide-react'
+import { BookOpen, CalendarPlus, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, EmptyState, NoticeBanner, PageHeader, SectionCard, StatusBadge } from '../../components/ui'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
@@ -12,6 +12,7 @@ import { ReportLostDialog } from './ReportLostDialog'
 import { StaffRenewLoanDialog } from './StaffRenewLoanDialog'
 import { CirculationDesk } from './CirculationDesk'
 import { DamageCasesPanel } from './DamageCasesPanel'
+import { RefreshButton } from '../../components/RefreshButton'
 
 function formatDate(value: string | null) {
   return formatLoanDate(value, '—')
@@ -182,9 +183,7 @@ export function AdminCirculationMonitor() {
         title="Borrow & return"
         description="Scan borrowers and copies at the counter, hand over ready pickups, and process returns (Philippine time)."
         action={
-          <Button variant="secondary" onClick={() => void load()}>
-            <RefreshCw size={16} aria-hidden="true" /> Refresh
-          </Button>
+          <RefreshButton onRefresh={() => load()} variant="secondary" />
         }
       />
       {error ? <NoticeBanner tone="error">{error}</NoticeBanner> : null}

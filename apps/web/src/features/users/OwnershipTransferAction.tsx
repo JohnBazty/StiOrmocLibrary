@@ -3,6 +3,7 @@ import {useNavigate} from 'react-router-dom'
 import {Button} from '../../components/ui'
 import {clearAuthSession,setSessionIdentity} from '../auth/auth-storage'
 import {ownershipApi,OwnershipError,type OwnershipState,type RecipientReview} from './ownership-api'
+import { RefreshButton } from '../../components/RefreshButton'
 
 const field='mt-2 block min-h-11 w-full rounded-xl border border-current/25 bg-transparent px-3 py-2'
 const errorText=(error:unknown)=>error instanceof Error?error.message:'Ownership settings are unavailable. Please try again.'
@@ -49,7 +50,7 @@ function OwnershipDialog({onClose}:{onClose:()=>void}){
     <h3 className="font-bold">Invitation awaiting acceptance</h3><p className="break-all">{pending.email}</p>
     <p className="text-sm">Expires {new Intl.DateTimeFormat('en-PH',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Manila'}).format(new Date(pending.expiresAt))}</p>
     <p role="status" className="text-sm">{pending.mailStatus==='Pending'?'Sending invitation through the scheduled mail service…':pending.mailStatus==='Sent'?'Email accepted by the sender. Waiting for the recipient to finish setup.':'Email could not be completed. Cancel or replace this invitation.'}</p>
-    <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={busy} onClick={()=>void cancel()}>Cancel invitation</Button><Button variant="secondary" disabled={busy} onClick={()=>{setEditing(true);setEmail(pending.email);setReview(null);setPassword('')}}>Replace invitation</Button><Button variant="ghost" disabled={busy} onClick={()=>void load()}>Refresh status</Button></div>
+    <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={busy} onClick={()=>void cancel()}>Cancel invitation</Button><Button variant="secondary" disabled={busy} onClick={()=>{setEditing(true);setEmail(pending.email);setReview(null);setPassword('')}}>Replace invitation</Button><RefreshButton label="Refresh status" onRefresh={() => load()} variant="ghost" disabled={busy} /></div>
    </section>}
    {(!pending||editing)&&(!review?<form className="space-y-4" onSubmit={preview}>
     <label className="block text-sm font-semibold">New administrator’s Ormoc Microsoft email<input autoFocus required type="email" maxLength={191} autoComplete="email" disabled={busy} className={field} value={email} onChange={e=>{setEmail(e.target.value);setReview(null);setPassword('');setError('')}}/></label>

@@ -1,4 +1,4 @@
-import { Download, Plus, RefreshCw } from 'lucide-react'
+import { Download, Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { Button, NoticeBanner, SectionCard, StatusBadge } from '../../components/ui'
@@ -6,6 +6,7 @@ import { ViolationRecordDrawer } from './ViolationRecordDrawer'
 import { ViolationRecordForm } from './ViolationRecordForm'
 import type { ViolationCategory } from './violation-categories-api'
 import { adminViolationsBase, ownViolationsBase, violationRequest, violationsApi, type Incident, type OwnStanding } from './violations-api'
+import { RefreshButton } from '../../components/RefreshButton'
 
 const date = (value: string) => new Date(value).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })
 const PAGE_SIZE = 25
@@ -118,7 +119,7 @@ export function ViolationsRecords({ admin = false, onSaved, incidentId = null, o
           {!admin ? <p className="mt-0.5 text-xs text-[var(--sl-text-secondary)]">A warning does not block borrowing or clearance. Counts do not reset each term.</p> : null}
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => setRefresh(value => value + 1)}><RefreshCw size={16} aria-hidden="true" /> Refresh</Button>
+          <RefreshButton onRefresh={() => setRefresh(value => value + 1)} variant="secondary" />
           {admin ? (
             <>
               <Button variant="secondary" onClick={() => void download('csv')}><Download size={16} aria-hidden="true" /> Export CSV</Button>

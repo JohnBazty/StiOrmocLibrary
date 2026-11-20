@@ -1,7 +1,7 @@
 import { PaymentProofPanel } from './PaymentProofPanel'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, RefreshCw } from 'lucide-react'
+import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { Button } from '../../components/ui'
 import { getCurrentIdentity } from '../auth/auth-storage'
 import { fineDate } from '../fines/fine-format'
@@ -11,6 +11,7 @@ import { PaymentStateIcon, PaymentTrustNote } from './PaymentPresentation'
 import { PaymentStatusPanel, PaymentSummary } from './PaymentAction'
 import { RefundTimeline } from './RefundReview'
 import { notifyPaymentUpdate } from './payment-updates'
+import { RefreshButton } from '../../components/RefreshButton'
 
 function heading(payment: Payment) {
   if (payment.refundStatus) return payment.refundStatus === 'Refunded' ? 'Payment refunded' : 'Payment partially refunded'
@@ -74,7 +75,7 @@ export function PaymentResultPage() {
         <RefundTimeline rows={payment.refunds}/>
         <p className="payment-muted my-4 text-center text-xs leading-6">Returning from checkout does not confirm payment. Only a verified payment updates this status.</p>
       </> : null}
-      <div className="mt-5 flex flex-wrap gap-2"><Link className="payment-link flex-1" to={back}>Back to {payment?.kind === 'Printing' ? 'printing' : 'library fines'}<ArrowRight size={15} aria-hidden="true"/></Link><Button className="payment-button" variant="secondary" disabled={loading} onClick={() => void load()}><RefreshCw size={16} aria-hidden="true"/>Refresh status</Button></div>
+      <div className="mt-5 flex flex-wrap gap-2"><Link className="payment-link flex-1" to={back}>Back to {payment?.kind === 'Printing' ? 'printing' : 'library fines'}<ArrowRight size={15} aria-hidden="true"/></Link><RefreshButton label="Refresh status" onRefresh={() => load()} variant="secondary" disabled={loading} className="payment-button" /></div>
     </section>
     <div className="mt-5"><PaymentTrustNote/></div>
   </div></main>

@@ -1,4 +1,4 @@
-import { RefreshCw, Search, X } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import {
@@ -24,6 +24,7 @@ import {
 } from './payments-api'
 import { RefundRequestDialog } from './RefundRequestDialog'
 import { RefundTimeline, VoidFineReview } from './RefundReview'
+import { RefreshButton } from '../../components/RefreshButton'
 
 export function AdminPaymentsPage() {
   const [filters, setFilters] = useState({ state: '', channel: '', kind: '', page: 1 })
@@ -145,9 +146,7 @@ export function AdminPaymentsPage() {
         title="Online payments"
         description="Verify online payment statuses before accepting counter cash, review refund requests, and inspect provider settlement records."
         action={
-          <Button variant="secondary" disabled={loading || Boolean(busy)} onClick={() => void load()}>
-            <RefreshCw size={15} aria-hidden="true" /> Refresh
-          </Button>
+          <RefreshButton onRefresh={() => load()} variant="secondary" disabled={loading || Boolean(busy)} />
         }
       />
 

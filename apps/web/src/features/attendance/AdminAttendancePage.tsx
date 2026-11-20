@@ -35,6 +35,7 @@ import {
 import { useAttendanceRefresh } from './attendance-updates'
 import { AttendanceScannerModal } from './AttendanceScannerModal'
 import { LibraryOperationsPanel } from './LibraryOperationsPanel'
+import { RefreshButton } from '../../components/RefreshButton'
 
 const today = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Manila',
@@ -199,9 +200,7 @@ export function AdminAttendancePage() {
             <Button variant="secondary" onClick={() => setCapacityOpen(v => !v)}>
               <Settings2 size={15} aria-hidden="true" /> Capacity
             </Button>
-            <Button variant="secondary" onClick={() => void load()}>
-              <RefreshCw size={15} aria-hidden="true" /> Refresh
-            </Button>
+            <RefreshButton onRefresh={() => load()} variant="secondary" />
             <Button onClick={exportPdf} disabled={exporting}>
               <Download size={15} aria-hidden="true" />
               {exporting ? 'Generating…' : 'Export'}

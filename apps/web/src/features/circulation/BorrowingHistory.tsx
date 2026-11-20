@@ -2,7 +2,7 @@ import { formatLoanDate } from './loan-time'
 import { usePaymentUpdates } from '../payments/payment-updates'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { ViewLocationButton } from '../floor-plan/ViewLocationButton'
-import { AlertTriangle, BookOpen, CalendarClock, CalendarPlus, Eye, RefreshCw, X } from 'lucide-react'
+import { AlertTriangle, BookOpen, CalendarClock, CalendarPlus, Eye, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, PageHeader, SectionCard, StatCard, StatusBadge } from '../../components/ui'
 import { circulationApi } from './circulation-api'
@@ -14,6 +14,7 @@ import { RenewLoanDialog } from './RenewLoanDialog'
 import { ReportLostDialog } from './ReportLostDialog'
 import { BookCoverThumbnail } from '../catalog/BookCoverThumbnail'
 import { clearanceApi } from '../clearance/clearance-api'
+import { RefreshButton } from '../../components/RefreshButton'
 
 function formatDate(value: string | null) { return formatLoanDate(value, '—') }
 
@@ -80,7 +81,7 @@ export function BorrowingHistory() {
 
   const summary = data?.summary
   return <>
-    <PageHeader eyebrow="My library" title="Borrowing history" action={<Button variant="secondary" onClick={() => void load()}><RefreshCw size={16} /> Refresh</Button>} />
+    <PageHeader eyebrow="My library" title="Borrowing history" action={<RefreshButton onRefresh={() => load()} variant="secondary" />} />
     <p className="-mt-3 mb-5 text-xs opacity-70">Dates and times use Philippine time (Asia/Manila).</p>
     {error ? <div role="alert" className="mb-5 flex items-center gap-3 rounded-xl bg-[#FFF200] px-4 py-3 font-semibold text-[#0b5ea2]"><AlertTriangle size={18} />{error}</div> : null}
     {notice ? <div role="status" className="mb-5 flex items-center justify-between rounded-xl bg-[#0b5ea2] px-4 py-3 font-semibold text-[#FFFFFF]"><span>{notice}</span><button aria-label="Dismiss" onClick={() => setNotice('')}><X size={17} /></button></div> : null}

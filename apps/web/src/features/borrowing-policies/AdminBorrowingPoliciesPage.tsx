@@ -1,9 +1,10 @@
-import { AlertTriangle, CalendarClock, Plus, RefreshCw, ScrollText, Shield } from 'lucide-react'
+import { AlertTriangle, CalendarClock, Plus, ScrollText, Shield } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { Button, NoticeBanner, PageHeader, SectionCard, StatusBadge } from '../../components/ui'
 import { borrowingPoliciesApi } from './borrowing-policies-api'
 import type { BorrowingPolicyList, BorrowingPolicyVersion, PublishBorrowingPolicyInput } from './types'
+import { RefreshButton } from '../../components/RefreshButton'
 
 const field = 'h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/15 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
 
@@ -168,7 +169,7 @@ export function AdminBorrowingPoliciesPage() {
         description="Manage loan quotas, due-time cutoffs, renewal rules, and waitlist caps across students and faculty."
         action={(
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" disabled={busy} onClick={() => void load()}><RefreshCw size={16} />Refresh</Button>
+            <RefreshButton onRefresh={() => load()} variant="secondary" disabled={busy} />
             <Button disabled={busy || !data} onClick={openCreate}><Plus size={16} />Create new version</Button>
           </div>
         )}

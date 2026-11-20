@@ -1,7 +1,7 @@
 import { ViolationsRecords } from './ViolationsRecords'
 import { ServiceChargesPanel } from '../payments/ServiceChargesPanel'
 import { usePaymentUpdates } from '../payments/payment-updates'
-import { AlertTriangle,PhilippinePeso,ReceiptText,RefreshCw } from 'lucide-react'
+import { AlertTriangle,PhilippinePeso,ReceiptText } from 'lucide-react'
 import { useCallback,useEffect,useRef,useState } from 'react'
 import { Button,PageHeader,SectionCard,StatCard,StatusBadge } from '../../components/ui'
 import { fineDate,fineMoney,today } from './fine-format'
@@ -12,6 +12,7 @@ import {getCurrentIdentity} from '../auth/auth-storage'
 import { PaymentAction } from '../payments/PaymentAction'
 import {paymentsApi} from '../payments/payments-api'
 import {paymentResultPath} from '../payments/payment-navigation'
+import { RefreshButton } from '../../components/RefreshButton'
 
 export function StudentFinesPage(){
   const [data,setData]=useState<FineList|null>(null);const [error,setError]=useState('')
@@ -28,7 +29,7 @@ export function StudentFinesPage(){
   useEffect(()=>{void load()},[load])
   usePaymentUpdates(load)
   return <>
-    <PageHeader eyebrow="Account payments" title="Library fines" action={<Button variant="secondary" onClick={()=>void load()}><RefreshCw size={16}/>Refresh</Button>}/>
+    <PageHeader eyebrow="Account payments" title="Library fines" action={<RefreshButton onRefresh={() => load()} variant="secondary" />}/>
     <ViolationsRecords/>
     {error?<div role="alert" className="mb-5 flex gap-2 rounded-xl bg-[#FFF200] p-4 font-bold text-[#0b5ea2]"><AlertTriangle size={18}/>{error}</div>:null}
     <div className="mb-5 grid gap-3 sm:grid-cols-3"><StatCard label="Total assessed" value={fineMoney(data?.summary.assessed??0)} icon={PhilippinePeso}/><StatCard label="Outstanding balance" value={fineMoney(data?.summary.outstanding??0)} icon={AlertTriangle} tone="orange"/><StatCard label="Payments applied" value={fineMoney(data?.summary.collected??0)} icon={ReceiptText}/></div>

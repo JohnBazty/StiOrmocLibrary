@@ -1,9 +1,10 @@
-import { CalendarDays, Plus, RefreshCw } from 'lucide-react'
+import { CalendarDays, Plus } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Button, StatusBadge } from '../../components/ui'
 import { clearanceApi } from './clearance-api'
 import { ClearanceDayPicker } from './ClearanceDayPicker'
 import type { ClearanceGroup, ClearanceSchedule, ClearanceWindow } from './types'
+import { RefreshButton } from '../../components/RefreshButton'
 
 const groups: ClearanceGroup[] = ['All', 'BSIT', 'BSHM', 'BSTM', 'Grade 11', 'Grade 12']
 const field = 'mt-1 min-h-11 w-full rounded-xl border bg-transparent px-3 py-2 text-sm'
@@ -110,7 +111,7 @@ export function ClearanceScheduleEditor() {
   return <section aria-label="Clearance schedules" className="mb-5 overflow-hidden rounded-2xl border">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4 sm:p-5">
       <div className="flex items-center gap-3"><CalendarDays size={22} className="shrink-0 text-[#0b5ea2]" /><div><h2 className="text-balance text-lg font-bold">Clearance schedules</h2><p className="text-sm opacity-70">Set periods for a group or all students. Asia/Manila time.</p></div></div>
-      <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={!termId || busy || refreshing} onClick={() => void reload()}><RefreshCw size={16} />Refresh schedules</Button><Button disabled={!data || busy || opened || Boolean(cancelTarget)} onClick={() => open(null)}><Plus size={16} />Add schedule</Button></div>
+      <div className="flex flex-wrap gap-2"><RefreshButton label="Refresh schedules" onRefresh={() => reload()} variant="secondary" disabled={!termId || busy || refreshing} /><Button disabled={!data || busy || opened || Boolean(cancelTarget)} onClick={() => open(null)}><Plus size={16} />Add schedule</Button></div>
     </div>
     <div className="p-4 sm:p-5">
       <label className="block max-w-sm text-sm font-semibold">Semester<select className={field} disabled={busy || opened || Boolean(cancelTarget)} value={termId} onChange={event => setTermId(event.target.value)}><option value="">Choose semester</option>{terms.map(term => <option key={term.id} value={term.id}>{term.academic_year} — {term.term_name}</option>)}</select></label>

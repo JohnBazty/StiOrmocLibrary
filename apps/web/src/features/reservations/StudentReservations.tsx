@@ -1,5 +1,5 @@
 import {useLiveQuery} from '../../hooks/useLiveQuery'
-import { RefreshCw, Search } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, PageHeader, SectionCard, StatusBadge } from '../../components/ui'
@@ -10,6 +10,7 @@ import { ViewLocationButton } from '../floor-plan/ViewLocationButton'
 import { getCurrentIdentity } from '../auth/auth-storage'
 import { BorrowingSchedules } from './BorrowingSchedules'
 import { pickupDateLabel } from './borrowing-schedule-api'
+import { RefreshButton } from '../../components/RefreshButton'
 const labels:Record<string,string>={received:'Request received',waiting:'Waiting for a copy',preparing:'Preparing',ready_for_pickup:'Ready for pickup',claimed:'Collected',cancelled:'Cancelled',expired:'Expired'}
 const when=(s:string)=>new Date(s).toLocaleString('en-PH',{timeZone:'Asia/Manila',dateStyle:'medium',timeStyle:'short'})
 const day=(s:string)=>new Date(s).toLocaleDateString('en-PH',{timeZone:'Asia/Manila',dateStyle:'medium'})
@@ -23,7 +24,7 @@ export function StudentReservations() {
   const pages=Math.max(1,Math.ceil(filtered.length/10)),currentPage=Math.min(page,pages)
   async function cancel(id:number){setBusyId(id);setError('');try{await reservationApi.cancelMine(id);await load()}catch(e){setError(e instanceof Error?e.message:'The request could not be cancelled.')}finally{setBusyId(null)}}
   return <>
-    <PageHeader eyebrow="My library" title="Requests & reservations" description="Track carts awaiting handover and reservations for unavailable books. Reservation pickup timers start only when staff mark a copy ready." action={<div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={()=>void load()}><RefreshCw size={16}/> Refresh</Button><Link to={catalogPath}><Button><Search size={16}/> Find a book</Button></Link></div>}/>
+    <PageHeader eyebrow="My library" title="Requests & reservations" description="Track carts awaiting handover and reservations for unavailable books. Reservation pickup timers start only when staff mark a copy ready." action={<div className="flex flex-wrap gap-2"><RefreshButton onRefresh={() => load()} variant="secondary" /><Link to={catalogPath}><Button><Search size={16}/> Find a book</Button></Link></div>}/>
     <BorrowingSchedules/>
     {error||query.error?<p role="alert" className="auth-error mb-5 rounded-xl p-4">{error||query.error?.message}</p>:null}
     <label className="mb-4 block text-sm font-semibold">Show requests<select aria-label="Show requests" value={view} onChange={e=>{setView(e.target.value);setPage(1)}} className="ml-3 min-h-11 rounded-xl border bg-transparent px-3"><option value="active">Active requests</option><option value="history">Request history</option></select></label>

@@ -31,6 +31,7 @@ import { generateDdcAndCutter } from './ddc-cutter'
 import { enhancedCatalog } from './enhanced-catalog-api'
 import type { CatalogFilters, CatalogItem, Category } from './types'
 import { useBarcodeScanner } from './useBarcodeScanner'
+import { RefreshButton } from '../../components/RefreshButton'
 
 const fieldClass =
   'h-[38px] w-full rounded-[6px] border border-[var(--sl-border-strong)] bg-[var(--sl-bg-elevated)] px-3 text-sm font-medium text-[var(--sl-text)] shadow-[var(--sl-shadow-xs)] outline-none transition focus:border-[#0b5ea2] focus:ring-3 focus:ring-[#0b5ea2]/15 dark:border-white/20 dark:bg-[#1e202b] dark:text-[#f7f9ff]'
@@ -380,9 +381,7 @@ export function CatalogManagementPage({ maintenance = false }: { maintenance?: b
         description="Search holdings by Accession #, DDC + Cutter call number, ISBN, title, or author, export catalog files, and manage physical copies."
         action={
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" type="button" onClick={() => void refresh()} disabled={loading}>
-              <RefreshCw size={15} /> Refresh
-            </Button>
+            <RefreshButton onRefresh={() => refresh()} variant="secondary" disabled={loading} />
             <Button variant="secondary" type="button" onClick={exportCatalogHoldingsFile} disabled={loading}>
               <Download size={15} /> Export catalog file
             </Button>

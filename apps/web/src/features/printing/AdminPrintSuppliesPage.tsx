@@ -33,6 +33,7 @@ import {
   type StockUsageEntry,
   type SupplyData,
 } from './printing-api'
+import { RefreshButton } from '../../components/RefreshButton'
 
 type Selection = { kind: 'ink' | 'paper'; id: number; name: string; unit: 'bottles' | 'reams'; current: number }
 type UsageSelection = { brandId?: number; kind: 'ink' | 'paper'; id: number; name: string; current: number }
@@ -297,9 +298,7 @@ export function AdminPrintSuppliesPage() {
             <Button variant="secondary" disabled={!data} onClick={() => setPaperStock(null)}>
               <Plus size={15} aria-hidden="true" /> Add paper stock
             </Button>
-            <Button variant="secondary" onClick={() => void refresh()}>
-              <RefreshCw size={15} aria-hidden="true" /> Refresh
-            </Button>
+            <RefreshButton onRefresh={() => refresh()} variant="secondary" />
           </div>
         }
       />

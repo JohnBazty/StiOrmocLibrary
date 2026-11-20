@@ -1,4 +1,4 @@
-import { BadgeCheck, Clock3, Download, Eye, RefreshCw, ShieldCheck, X } from 'lucide-react'
+import { BadgeCheck, Clock3, Download, Eye, ShieldCheck, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
@@ -17,6 +17,7 @@ import { usePaymentUpdates } from '../payments/payment-updates'
 import { clearanceApi } from './clearance-api'
 import { ClearanceScheduleEditor } from './ClearanceScheduleEditor'
 import type { ClearanceList, ClearanceRecord } from './types'
+import { RefreshButton } from '../../components/RefreshButton'
 
 function lostResolution(item: ClearanceRecord['lostBooks'][number]) {
   return (
@@ -290,9 +291,7 @@ export function AdminClearancePage() {
         description="Live obligations, documented exceptions, lost-book charges, and audit history."
         action={
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={() => void load()}>
-              <RefreshCw size={16} aria-hidden="true" /> Refresh
-            </Button>
+            <RefreshButton onRefresh={() => load()} variant="secondary" />
             <Button onClick={() => void exportCsv()}>
               <Download size={16} aria-hidden="true" /> Export bulk status
             </Button>

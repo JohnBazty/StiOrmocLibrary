@@ -8,6 +8,7 @@ import { usersApi, type UserDetail } from './users-api'
 import { LateEnrollment } from './LateEnrollment'
 import { UnsavedGuard, confirmLeave } from '../../components/UnsavedChanges'
 import { useConfirmSave } from '../../components/ConfirmSaveDialog'
+import { RefreshButton } from '../../components/RefreshButton'
 
 const field='mt-1 block min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-950 dark:border-slate-600 dark:bg-slate-900 dark:text-white'
 const displayTime=(value:string|null)=>value?new Intl.DateTimeFormat('en-PH',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Manila'}).format(new Date(value)):'—'
@@ -51,7 +52,7 @@ function EnrollmentContent({area}:{area:'admin'|'librarian'}) {
       <Button variant={archive?'secondary':'primary'} onClick={()=>confirmLeave(()=>{setArchive(false);setEditor(null);setSelected(null);setLateOpen(false)})}>Semesters</Button>
       <Button variant={archive?'primary':'secondary'} onClick={()=>confirmLeave(()=>{setArchive(true);setEditor(null);setSelected(null);setLateOpen(false)})}>Semester Archive</Button>
       {!archive&&<Button variant="secondary" onClick={()=>setEditor('new')}>+ Add Semester</Button>}
-      <Button variant="ghost" onClick={reload}>Refresh</Button>
+      <RefreshButton onRefresh={reload} variant="ghost" />
     </div>
     {loading&&<p role="status">Loading semesters…</p>}
     {error&&<p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-900">{error}</p>}

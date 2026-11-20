@@ -10,6 +10,7 @@ import { BookCoverThumbnail } from './BookCoverThumbnail'
 import { fetchBookOverview } from './book-catalog-api'
 import { TitleAlreadyActiveDialog } from './TitleAlreadyActiveDialog'
 import { useConfirmSave } from '../../components/ConfirmSaveDialog'
+import { RefreshButton } from '../../components/RefreshButton'
 
 export function BookCart() {
   const requestKey = useRef('')
@@ -163,9 +164,7 @@ export function BookCart() {
         <NoticeBanner
           tone="error"
           action={
-            <button type="button" className="min-h-8 text-xs font-semibold underline" onClick={() => void refreshCart()}>
-              Refresh balance
-            </button>
+            <RefreshButton label="Refresh balance" onRefresh={() => refreshCart()} variant="ghost" size="sm" />
           }
         >
           {syncError}
