@@ -181,7 +181,7 @@ test('MED-08: paperSizesService.addStock updates price_per_page on conflict when
   }
   const service = createPaperSizesService({ getConnection: async () => connection, execute: connection.execute } as never)
   await service.addStock(
-    { accountId: 1, schoolId: 'LIB-1', role: 'Librarian' },
+    { accountId: 1 },
     1,
     {
       quantity: 2,

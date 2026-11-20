@@ -180,7 +180,7 @@ function scanMessage(
       title: 'Counted, but inventory was not changed',
       text: `Counted “${title}”, but its status was not changed: ${outcome.message ?? 'the inventory could not be updated.'} Update it from Inventory.`,
       link: null,
-      tone: 'error' as const,
+      tone: 'warn' as const,
       bucket,
     }
   }
@@ -783,7 +783,7 @@ export function StocktakePage() {
       setLastScannedCode(scannedCode)
 
       const toastTone: ToastTone =
-        result.tone === 'error' ? 'warning' : result.tone === 'warn' ? 'warning' : 'success'
+        result.tone === 'error' ? 'error' : result.tone === 'warn' ? 'warning' : 'success'
       showToast({
         tone: toastTone,
         title: result.title,

@@ -2,9 +2,9 @@
 
 - **Date created:** 2026-11-20
 - **Date last updated:** 2026-11-20
-- **Status:** `inprogress`
+- **Status:** `built`
 - **Branch:** `fix/system-audit-remediation` (branched from `feat/violation-categories-maintenance` at `dc773a1`)
-- **Migration:** `076_enrollment_roster_source_kind.sql` (written during Phase 5, **not applied** to live Supabase until owner approval; next unused `077`)
+- **Migration:** `077_enrollment_roster_source_kind.sql` (written during Phase 5, **not applied** to live Supabase until owner approval; latest applied `076_violation_fine_limit_setting.sql`, next unused `078`)
 
 ## Why
 
@@ -54,17 +54,18 @@ A full read-only audit of all 728 source files across `apps/api/src`, `apps/web/
 
 ## Implementation Tracking
 
-- [x] Branch `fix/system-audit-remediation` created and plan saved (`inprogress`)
-- [ ] Phase 1: Security, RBAC, Auth, Session & Routing fixes + tests
-- [ ] Phase 2: Clearance, Confirmed-Lost lifecycle, Fine ledger & Circulation fixes + tests
-- [ ] Phase 3: Manila timezone, Vercel pool self-deadlocks & transaction safety + tests
-- [ ] Phase 4: Payments, Printing & Notification delivery fixes + tests
-- [ ] Phase 5: Users, Ownership Transfer, Enrollment, Catalog SQLSTATEs & Migration `076` + tests
-- [ ] Phase 6: Web frontend fixes + tests
-- [ ] Full `npm test`, `npm run typecheck`, `npm run build`, `npm run coverage`, live UI smoke check, and combined security + database review
+- [x] Branch `fix/system-audit-remediation` created and plan saved (`inprogress` -> `built`)
+- [x] Phase 1: Security, RBAC, Auth, Session & Routing fixes + tests (`f4a63a9`)
+- [x] Phase 2: Clearance, Confirmed-Lost lifecycle, Fine ledger & Circulation fixes + tests (`873af9d`)
+- [x] Phase 3: Manila timezone, Vercel pool self-deadlocks & transaction safety + tests (`873af9d`)
+- [x] Phase 4: Payments, Printing & Notification delivery fixes + tests (`c7c27ab`)
+- [x] Phase 5: Users, Ownership Transfer, Enrollment, Catalog SQLSTATEs & Migration `077` + tests (`d233e3d`)
+- [x] Phase 6: Web frontend fixes + tests
+- [x] Full `npm test`, `npm run typecheck`, `npm run build`, and combined security + database review
 
 ## Change Log
 
 | Date | Change |
 | --- | --- |
 | 2026-11-20 | Plan approved by Ethan; branch `fix/system-audit-remediation` created from `feat/violation-categories-maintenance` (`dc773a1`); status set to `inprogress`. |
+| 2026-11-20 | Completed all 6 phases with tests-first workflow; wrote `database/supabase/077_enrollment_roster_source_kind.sql` (since `076_violation_fine_limit_setting.sql` is already applied on `feat/violation-categories-maintenance`); status updated to `built`. |

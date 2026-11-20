@@ -48,8 +48,9 @@ const emptyFilters: CatalogFilters = {
   availability: '',
 }
 
-function escapeCsvCell(value: unknown): string {
-  const str = String(value ?? '').replace(/\r?\n/g, ' ').trim()
+export function escapeCsvCell(value: unknown): string {
+  const raw = String(value ?? '').replace(/\r?\n/g, ' ').trim()
+  const str = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw
   if (/[",]/.test(str)) {
     return `"${str.replace(/"/g, '""')}"`
   }
@@ -223,7 +224,23 @@ export function CatalogManagementPage({ maintenance = false }: { maintenance?: b
     }
   }
 
-  function exportCatalogHoldingsFile() {
+  async function exportCatalogHoldingsFile() {
+    let exportItems = items
+    if (pagination.total > items.length) {
+      try {
+        const collected: CatalogItem[] = []
+        const pageLimit = 100
+        const totalPages = Math.min(50, Math.ceil(pagination.total / pageLimit))
+        for (let p = 1; p <= totalPages; p += 1) {
+          const pageRes = await catalogApi.search({ ...filters, page: p, limit: pageLimit })
+          collected.push(...pageRes.items)
+          if (collected.length >= pageRes.pagination.total || pageRes.items.length === 0) break
+        }
+        if (collected.length > 0) exportItems = collected
+      } catch {
+        exportItems = items
+      }
+    }
     const headers = [
       'Accesion #',
       'DDC + Cutter Table',
@@ -244,7 +261,7 @@ export function CatalogManagementPage({ maintenance = false }: { maintenance?: b
       'AVAILABILITY',
     ]
     const csvRows = [headers.map(escapeCsvCell).join(',')]
-    for (const item of items) {
+    for (const item of exportItems) {
       const rawCall = (item.callNumber || item.classification || '').trim()
       const generatedDdc =
         item.recordType === 'Book'
@@ -301,7 +318,7 @@ export function CatalogManagementPage({ maintenance = false }: { maintenance?: b
     window.setTimeout(() => URL.revokeObjectURL(url), 1000)
     setNotice({
       tone: 'success',
-      text: `Exported ${items.length} catalog holdings in STI DDC & Cutter spreadsheet format.`,
+      text: `Exported ${exportItems.length} catalog holdings in STI DDC & Cutter spreadsheet format.`,
     })
   }
 

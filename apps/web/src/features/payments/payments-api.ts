@@ -72,7 +72,7 @@ export const paymentsApi={
 export async function downloadPaymentRecord(payment:Payment,admin=false) {
   const providerRecord=payment.localPreview&&payment.kind==='Printing'&&payment.state==='Succeeded'
   if(!payment.receiptId&&!providerRecord)throw new Error('The payment record is not ready yet. Check its status again.')
-  const path=providerRecord?`${admin?'admin':'user'}/payments/${encodeURIComponent(payment.paymentId)}/record/pdf`:payment.kind==='Printing'?`${admin?'admin/printing':'printing'}/receipts/${payment.receiptId}/pdf`:
+  const path=providerRecord?`${admin?'admin':'user'}/payments/${encodeURIComponent(payment.paymentId)}/record/pdf`:payment.kind==='Printing'?`${admin?'admin/printing':'printing'}/receipts/${payment.receiptId}/pdf`:payment.kind==='Other'?`${admin?'admin/':''}service-charges/receipts/${payment.receiptId}/pdf`:
     `${admin?'admin/':''}fines/receipts/${payment.receiptId}.pdf?download=1`
   const headers=new Headers({Accept:'application/pdf'}),token=getCsrfToken()
   if(token)headers.set('X-CSRF-Token',token)

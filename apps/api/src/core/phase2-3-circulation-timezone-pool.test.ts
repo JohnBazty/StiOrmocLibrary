@@ -132,9 +132,9 @@ test('HIGH-03: violationCategoriesService.create and update do not deadlock when
       activeConnections++
       return connection
     },
-    execute: async (sql: string, params: unknown[]) => {
+    execute: async (sql: string) => {
       if (activeConnections >= 1) throw new Error('POOL_SELF_DEADLOCK: pool.execute called while connection still checked out')
-      return connection.execute(sql, params)
+      return connection.execute(sql)
     },
   }
   const service = createViolationCategoriesService(singleConnectionPool as never)

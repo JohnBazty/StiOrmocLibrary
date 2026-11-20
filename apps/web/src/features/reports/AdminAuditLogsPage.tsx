@@ -70,17 +70,24 @@ function formatManilaDateTime(value: string) {
   }).format(d)
 }
 
-function escapeCsv(val: unknown) {
-  const s = String(val ?? '').replace(/\r?\n/g, ' ').trim()
+export function escapeCsv(val: unknown) {
+  const raw = String(val ?? '').replace(/\r?\n/g, ' ').trim()
+  const s = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw
   return /[",]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
-async function fetchJson<T>(url: string): Promise<T | null> {
+async function fetchJson<T>(url: string, throwOnHttpError = false): Promise<T | null> {
   const headers = new Headers({ Accept: 'application/json' })
   const token = getCsrfToken()
   if (token) headers.set('X-CSRF-Token', token)
   const res = await fetch(url, { headers, credentials: 'include' })
-  if (!res.ok) return null
+  if (!res.ok) {
+    if (throwOnHttpError && res.status !== 404) {
+      const errBody = (await res.json().catch(() => null)) as { message?: string } | null
+      throw new Error(errBody?.message || `Audit logs could not be loaded (HTTP ${res.status}).`)
+    }
+    return null
+  }
   const body = (await res.json().catch(() => null)) as { success?: boolean; data?: T } | null
   return body?.success && body.data ? body.data : null
 }
@@ -229,7 +236,7 @@ export function AdminAuditLogsPage() {
     setLoading(true)
     setError('')
     try {
-      const direct = await fetchJson<AuditLogResponse>('/api/v1/admin/reports/audit-logs')
+      const direct = await fetchJson<AuditLogResponse>('/api/v1/admin/reports/audit-logs', true)
       if (direct) {
         setAllData(direct)
       } else {

@@ -6,9 +6,9 @@ function asyncController(handler: (request: Request, response: Response) => Prom
   return async (request: Request, response: Response, next: NextFunction) => { try { await handler(request, response) } catch (error) { next(error) } }
 }
 function sessionUser(request: Request) {
-  return (request.session as typeof request.session & { user?: { id?: number; role?: string } }).user
+  return (request.session as typeof request.session & { user?: { id?: number; accountId?: number; role?: string } }).user as { id?: number; accountId?: number; role?: string } | undefined
 }
-function authenticatedUser(request: Request, response: Response) {
+function authenticatedUser(request: Request, response: Response): { id?: number; accountId?: number; role?: string } | undefined {
   return (response.locals.authenticatedUser as { id?: number; accountId?: number; role?: string } | undefined) ?? sessionUser(request)
 }
 
