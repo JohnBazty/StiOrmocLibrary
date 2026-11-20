@@ -184,11 +184,8 @@ export default function App() {
           <Route path="/staff/dashboard" element={<AppLayout><StaffDashboardPage /></AppLayout>} />
           <Route path="/staff/payments" element={<AppLayout><AdminPaymentsPage /></AppLayout>} />
           <Route path="/staff/circulation" element={<AppLayout><AdminCirculationMonitor /></AppLayout>} />
-          <Route path="/staff/reservations" element={<AppLayout><AdminReservationQueuePage /></AppLayout>} />
           <Route path="/staff/printing" element={<AppLayout><StaffPrintingQueuePage /></AppLayout>} />
           <Route path="/staff/attendance" element={<AppLayout><StaffAttendancePage /></AppLayout>} />
-          <Route path="/staff/announcements" element={<AppLayout><StaffAnnouncementsPage /></AppLayout>} />
-          <Route path="/staff/library-schedule" element={<AppLayout><LibrarySchedulePage /></AppLayout>} />
           <Route path="/staff/notifications" element={<AppLayout><WorkspaceNotificationsPage workspace="staff" /></AppLayout>} />
           <Route path="/staff/profile" element={<AppLayout><ProfileAvatarPage /></AppLayout>} />
         </Route>

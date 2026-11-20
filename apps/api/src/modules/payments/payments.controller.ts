@@ -73,7 +73,11 @@ export function createPaymentsController(service: ReturnType<typeof createPaymen
     adminCancel:handle((request,identity)=>localPaymentPreview ? localPaymentPreview.adminCheck(identity,request.params.id,true) : gateway!.cancel(identity,request.params.id,true)),
     adminCheck:handle((request,identity)=>localPaymentPreview ? localPaymentPreview.adminCheck(identity,request.params.id) : gateway!.adminCheck(identity,request.params.id)),
     read:handle((request,identity)=>localPaymentPreview ? localPaymentPreview.read(identity,request.params.id) : service.read(identity,request.params.id)),
-    list:handle((request,identity)=>localPaymentPreview ? localPaymentPreview.adminList(identity,request.query as Record<string,unknown>) : service.list(identity,request.query as Record<string,unknown>)),
+    list:handle((request,identity)=>{
+      const rawQuery = request.query as Record<string,unknown>
+      const query = identity.role === 'Staff' ? { ...rawQuery, kind: 'Printing' } : rawQuery
+      return localPaymentPreview ? localPaymentPreview.adminList(identity, query) : service.list(identity, query)
+    }),
     setFee:handle((request,identity)=>service.setFee(identity,request.body)),
   }
 }

@@ -7,7 +7,7 @@ export const libraryPermissionRoles = {
   'accounts.manage': ['Librarian', 'Admin'],
   'library.manage': ['Librarian'],
   'desk.operate': ['Librarian', 'Staff'],
-  'announcements.manage': ['Librarian', 'Staff'],
+  'announcements.manage': ['Librarian'],
   'self-service.use': ['Student', 'Faculty'],
 } satisfies Record<string, JwtRole[]>
 
