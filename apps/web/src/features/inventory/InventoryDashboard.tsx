@@ -13,6 +13,7 @@ import { inventoryApi, InventoryApiError } from './inventory-api'
 import type { InventoryCopy, InventoryFilters, InventoryPagination, InventoryRemovalTarget, InventorySummary, ThesisInventoryFilters, ThesisInventoryRow, ThesisInventorySummary } from './types'
 import { InventoryRemovalDialog } from './InventoryRemovalDialog'
 import { useConfirmSave } from '../../components/ConfirmSaveDialog'
+import { copyConditionsApi, type CopyCondition } from './copy-conditions-api'
 
 async function downloadBulkBarcodeSheet(
   entries: Array<{ id: number; title: string; accession: string; barcode: string; callNumber?: string | null; assetType: 'book' | 'research' }>,
@@ -115,6 +116,7 @@ const EMPTY_PAGINATION: InventoryPagination = { page: 1, limit: 25, total: 0, to
 const EMPTY_THESIS_SUMMARY: ThesisInventorySummary = { total_thesis_materials: 0, damaged_thesis_count: 0, lost_thesis_count: 0 }
 const DEFAULT_THESIS_FILTERS: ThesisInventoryFilters = { page: 1, limit: 25, query: '', conditionState: '', availabilityStatus: '', publicationYear: '' }
 type ConditionInput = 'good' | 'fair' | 'for_repair' | 'damaged' | 'lost'
+const BEHAVIOUR_INPUT: Record<CopyCondition['behavesAs'], ConditionInput> = { Good: 'good', Fair: 'fair', 'For Repair': 'for_repair', Damaged: 'damaged', Lost: 'lost' }
 type AuditableItem = {
   item_title: string
   accession_number: string
@@ -205,10 +207,12 @@ function InventoryActions({ accession, actions }: { accession: string; actions: 
   </>
 }
 
-function ConditionBadge({ condition }: { condition: string }) {
-  if (condition === 'Lost') return <span className="inline-flex items-center gap-1.5 rounded-full bg-[#0b5ea2] px-2.5 py-1 text-[11px] font-bold text-[#FFFFFF]"><XCircle size={13} /> Lost</span>
-  if (condition === 'Damaged' || condition === 'For Repair') return <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FFF200] px-2.5 py-1 text-[11px] font-bold text-[#0b5ea2] ring-1 ring-inset ring-[#0b5ea2]/20"><AlertTriangle size={13} /> {condition}</span>
-  return <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FFFFFF] px-2.5 py-1 text-[11px] font-bold text-[#0b5ea2] ring-1 ring-inset ring-[#0b5ea2]/25"><CheckCircle2 size={13} /> {condition}</span>
+function ConditionBadge({ condition, label }: { condition: string; label?: string | null }) {
+  // A library condition (e.g. "Water damage") shows its own name with its base condition's colour.
+  const text = label || condition
+  if (condition === 'Lost') return <span className="inline-flex items-center gap-1.5 rounded-full bg-[#0b5ea2] px-2.5 py-1 text-[11px] font-bold text-[#FFFFFF]"><XCircle size={13} /> {text}</span>
+  if (condition === 'Damaged' || condition === 'For Repair') return <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FFF200] px-2.5 py-1 text-[11px] font-bold text-[#0b5ea2] ring-1 ring-inset ring-[#0b5ea2]/20"><AlertTriangle size={13} /> {text}</span>
+  return <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FFFFFF] px-2.5 py-1 text-[11px] font-bold text-[#0b5ea2] ring-1 ring-inset ring-[#0b5ea2]/25"><CheckCircle2 size={13} /> {text}</span>
 }
 
 function AvailabilityBadge({ status }: { status: string }) {
@@ -231,21 +235,23 @@ function displayThesisAvailability(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
-function ConditionModal({ copy, onClose, onSaved, saveCondition, initialCondition = 'good' }: { copy: AuditableItem; onClose: () => void; onSaved: () => Promise<void>; saveCondition: (barcode: string, condition: ConditionInput) => Promise<unknown>; initialCondition?: ConditionInput }) {
+export function ConditionModal({ copy, onClose, onSaved, saveCondition, initialCondition = 'good', customConditions = [], saveCustom }: { copy: AuditableItem; onClose: () => void; onSaved: () => Promise<void>; saveCondition: (barcode: string, condition: ConditionInput) => Promise<unknown>; initialCondition?: ConditionInput; customConditions?: CopyCondition[]; saveCustom?: (barcode: string, conditionId: number) => Promise<unknown> }) {
   const [condition, setCondition] = useState<ConditionInput>(initialCondition)
+  const [customId, setCustomId] = useState<number | null>(null)
+  const custom = customConditions.find(option => option.conditionId === customId) ?? null
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { ask, dialog: confirmSave } = useConfirmSave()
   const persist = async () => {
     setSaving(true); setError(null)
-    try { await saveCondition(copy.barcode, condition); await onSaved(); onClose() }
+    try { if (custom && saveCustom) await saveCustom(copy.barcode, custom.conditionId); else await saveCondition(copy.barcode, condition); await onSaved(); onClose() }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to update this physical copy.') }
     finally { setSaving(false) }
   }
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (saving) return
-    ask(`Set the condition of ${copy.accession_number} to ${condition.replace('_', ' ')}.`, () => { void persist() })
+    ask(`Set the condition of ${copy.accession_number} to ${custom ? `${custom.name} (behaves like ${custom.behavesAs})` : condition.replace('_', ' ')}.`, () => { void persist() })
   }
   return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#0b5ea2]/55 p-4" role="dialog" aria-modal="true" aria-labelledby="condition-title">
     <form onSubmit={submit} className="w-full max-w-lg rounded-2xl bg-[#FFFFFF] shadow-2xl shadow-[#0b5ea2]/25">
@@ -254,7 +260,8 @@ function ConditionModal({ copy, onClose, onSaved, saveCondition, initialConditio
         <div className="rounded-xl bg-[#0b5ea2]/5 p-4 text-sm text-[#0b5ea2]"><p className="font-bold">{copy.item_title}</p><p className="mt-1 text-xs text-[#0b5ea2]/65">Accession {copy.accession_number} · Barcode {copy.barcode}</p><p className="mt-2 text-xs">Current: <strong>{copy.condition_status ?? copy.condition_state}</strong> · {copy.availability_status}</p></div>
 
     {error ? <div className="rounded-xl bg-[#FFF200] p-3 text-sm font-semibold text-[#0b5ea2]" role="alert">{error}</div> : null}
-        <fieldset><legend className="mb-2 text-sm font-bold text-[#0b5ea2]">New condition</legend><div className="grid grid-cols-2 gap-3">{(['good', 'fair', 'for_repair', 'damaged', 'lost'] as const).map((value) => <label key={value} className={cn('cursor-pointer rounded-xl border p-4 text-sm font-bold transition', condition === value ? 'border-[#0b5ea2] bg-[#FFF200] text-[#0b5ea2]' : 'border-[#0b5ea2]/15 bg-[#FFFFFF] text-[#0b5ea2]')}><input className="sr-only" type="radio" name="condition" value={value} checked={condition === value} onChange={() => setCondition(value)} />{value === 'lost' ? <XCircle className="mb-2" size={20} /> : value === 'damaged' || value === 'for_repair' ? <AlertTriangle className="mb-2" size={20} /> : <CheckCircle2 className="mb-2" size={20} />}<span className="capitalize">{value.replace('_', ' ')}</span></label>)}</div></fieldset>
+        <fieldset><legend className="mb-2 text-sm font-bold text-[#0b5ea2]">New condition</legend><div className="grid grid-cols-2 gap-3">{(['good', 'fair', 'for_repair', 'damaged', 'lost'] as const).map((value) => <label key={value} className={cn('cursor-pointer rounded-xl border p-4 text-sm font-bold transition', customId === null && condition === value ? 'border-[#0b5ea2] bg-[#FFF200] text-[#0b5ea2]' : 'border-[#0b5ea2]/15 bg-[#FFFFFF] text-[#0b5ea2]')}><input className="sr-only" type="radio" name="condition" value={value} checked={customId === null && condition === value} onChange={() => { setCondition(value); setCustomId(null) }} />{value === 'lost' ? <XCircle className="mb-2" size={20} /> : value === 'damaged' || value === 'for_repair' ? <AlertTriangle className="mb-2" size={20} /> : <CheckCircle2 className="mb-2" size={20} />}<span className="capitalize">{value.replace('_', ' ')}</span></label>)}</div></fieldset>
+        {customConditions.length ? <fieldset><legend className="mb-2 text-sm font-bold text-[#0b5ea2]">Library conditions</legend><div className="grid gap-2">{customConditions.map(option => <label key={option.conditionId} className={cn('flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-sm transition', customId === option.conditionId ? 'border-[#0b5ea2] bg-[#FFF200] text-[#0b5ea2]' : 'border-[#0b5ea2]/15 bg-[#FFFFFF] text-[#0b5ea2]')}><input type="radio" name="condition" className="mt-1" checked={customId === option.conditionId} onChange={() => { setCustomId(option.conditionId); setCondition(BEHAVIOUR_INPUT[option.behavesAs]) }} /><span><span className="block font-bold">{option.name}</span><span className="block text-xs opacity-75">behaves like {option.behavesAs}{option.description ? ` · ${option.description}` : ''}</span></span></label>)}</div></fieldset> : null}
         <div className="flex gap-3 rounded-xl border border-[#0b5ea2]/20 bg-[#FFF200]/40 p-3 text-xs leading-5 text-[#0b5ea2]"><ShieldAlert className="mt-0.5 shrink-0" size={17} /><p>{condition === 'lost' ? <>Lost is the only automatic exception: availability will be forced to <strong>Unavailable</strong> and this copy will leave reservation allocation.</> : <>Availability remains <strong>{copy.availability_status}</strong>. Use the separate availability control to change it manually.</>}</p></div>
       </div>
       <div className="flex justify-end gap-2 border-t border-[#0b5ea2]/15 p-5"><button type="button" onClick={onClose} disabled={saving} className="h-10 rounded-xl border border-[#0b5ea2]/20 px-4 text-sm font-bold text-[#0b5ea2] disabled:opacity-50">Cancel</button><button disabled={saving} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#0b5ea2] px-4 text-sm font-bold text-[#FFFFFF] disabled:opacity-50">{saving ? <RefreshCw className="animate-spin" size={15} /> : <ShieldAlert size={15} />}{saving ? 'Updating…' : 'Confirm override'}</button></div>
@@ -334,6 +341,9 @@ export function InventoryDashboard() {
   const [exportingPdf, setExportingPdf] = useState(false)
   const [moving, setMoving] = useState<{kind:'Book'|'Research/Thesis';copies:MovableCopy[]} | null>(null)
   const [selected, setSelected] = useState<InventoryCopy | null>(null)
+  const [customConditions, setCustomConditions] = useState<CopyCondition[]>([])
+  // Library-defined conditions for the condition picker; base conditions still work if this fails.
+  useEffect(() => { copyConditionsApi.list().then(rows => setCustomConditions(rows.filter(row => !row.isBase && row.isActive && row.behavesAs !== 'Lost'))).catch(() => setCustomConditions([])) }, [])
   const [lostTarget, setLostTarget] = useState<InventoryCopy | null>(null)
   const [availabilityTarget, setAvailabilityTarget] = useState<InventoryCopy | null>(null)
   const [selectedThesis, setSelectedThesis] = useState<ThesisInventoryRow | null>(null)
@@ -573,7 +583,7 @@ export function InventoryDashboard() {
       <ResponsiveTable><table className="w-full min-w-[1100px] text-left text-sm"><thead className="bg-[#0b5ea2] text-[11px] uppercase tracking-wider text-[#FFFFFF]"><tr><th className="w-10 px-3 py-3"><input type="checkbox" aria-label="Select all physical copies on this page" checked={allCopiesSelected} onChange={toggleAllCopies} className="h-4 w-4 rounded accent-[#FFF200]" /></th><th className="px-4 py-3">Item title</th><th className="px-4 py-3">Accession</th><th className="px-4 py-3">Barcode</th><th className="px-4 py-3">Shelf</th><th className="px-4 py-3">Condition</th><th className="px-4 py-3">Availability</th><th className="px-4 py-3">Last verified</th><th className="px-4 py-3">Action</th></tr></thead><tbody className="divide-y divide-[#0b5ea2]/10">
         {loading && copies.length === 0 ? <tr><td colSpan={9} className="px-5 py-14 text-center text-[#0b5ea2]/65"><RefreshCw className="mx-auto mb-3 animate-spin" size={22} />Loading physical inventory…</td></tr> : null}
         {!loading && copies.length === 0 ? <tr><td colSpan={9} className="px-5 py-14 text-center"><Barcode className="mx-auto text-[#0b5ea2]/45" size={28} /><p className="mt-3 font-bold text-[#0b5ea2]">No physical copies found</p></td></tr> : null}
-          {copies.map((copy) => { const activeCirculation = copy.availability_status === 'Borrowed' || copy.availability_status === 'Reserved'; const availabilityLocked = activeCirculation || copy.condition_status === 'Lost'; const removalLocked = activeCirculation || copy.condition_status !== 'Lost'; const removalTitle = activeCirculation ? 'Process the return or cancel the reservation before removing this copy.' : copy.condition_status !== 'Lost' ? 'Mark this copy as Lost before removing it.' : 'Remove this Lost copy from active inventory.'; return <tr key={copy.physical_copy_id} className="hover:bg-[#0b5ea2]/5"><td className="px-3 py-4"><input type="checkbox" aria-label={`Select ${copy.accession_number}`} checked={selectedCopyIds.has(copy.physical_copy_id)} onChange={() => toggleCopySelection(copy.physical_copy_id)} className="h-4 w-4 rounded accent-[#0b5ea2]" /></td><td className="px-4 py-4"><p className="font-bold text-[#0b5ea2]">{copy.item_title}</p><p className="mt-1 text-xs text-[#0b5ea2]/60">{copy.authors.join(', ') || copy.category_name || 'No author metadata'}</p></td><td className="px-4 py-4 font-mono text-xs font-bold text-[#0b5ea2]">{copy.accession_number}</td><td className="px-4 py-4 font-mono text-xs text-[#0b5ea2]/80"><p className="font-semibold">{copy.barcode}</p><button type="button" disabled={downloadingBarcodeId !== null} onClick={() => void downloadSingleBarcode(copy.physical_copy_id, copy.accession_number, 'book')} className="mt-1.5 inline-flex items-center gap-1 rounded-[4px] border border-[#0b5ea2]/25 bg-white px-2 py-0.5 font-sans text-[11px] font-semibold text-[#0b5ea2] hover:bg-[#0b5ea2]/10 disabled:opacity-50"><Download size={11} />{downloadingBarcodeId === `book-${copy.physical_copy_id}` ? 'Downloading…' : 'Download barcode'}</button></td><td className="px-4 py-4 text-[#0b5ea2]"><p className="font-bold">{copy.shelf_location} · C{copy.shelf_column} · R{copy.shelf_row}</p><p className="mt-1 font-mono text-[10px] text-[#0b5ea2]/60">{copy.call_number||'Call number pending'}</p><p className="mt-1 text-xs">Dewey: {copy.dewey_code??'Not assigned'}</p></td><td className="px-4 py-4"><ConditionBadge condition={copy.condition_status} /></td><td className="px-4 py-4"><AvailabilityBadge status={copy.availability_status} /></td><td className="px-4 py-4 text-xs text-[#0b5ea2]/70">{formatDate(copy.last_verified_at)}</td><td className="px-4 py-4"><InventoryActions accession={copy.accession_number} actions={[
+          {copies.map((copy) => { const activeCirculation = copy.availability_status === 'Borrowed' || copy.availability_status === 'Reserved'; const availabilityLocked = activeCirculation || copy.condition_status === 'Lost'; const removalLocked = activeCirculation || copy.condition_status !== 'Lost'; const removalTitle = activeCirculation ? 'Process the return or cancel the reservation before removing this copy.' : copy.condition_status !== 'Lost' ? 'Mark this copy as Lost before removing it.' : 'Remove this Lost copy from active inventory.'; return <tr key={copy.physical_copy_id} className="hover:bg-[#0b5ea2]/5"><td className="px-3 py-4"><input type="checkbox" aria-label={`Select ${copy.accession_number}`} checked={selectedCopyIds.has(copy.physical_copy_id)} onChange={() => toggleCopySelection(copy.physical_copy_id)} className="h-4 w-4 rounded accent-[#0b5ea2]" /></td><td className="px-4 py-4"><p className="font-bold text-[#0b5ea2]">{copy.item_title}</p><p className="mt-1 text-xs text-[#0b5ea2]/60">{copy.authors.join(', ') || copy.category_name || 'No author metadata'}</p></td><td className="px-4 py-4 font-mono text-xs font-bold text-[#0b5ea2]">{copy.accession_number}</td><td className="px-4 py-4 font-mono text-xs text-[#0b5ea2]/80"><p className="font-semibold">{copy.barcode}</p><button type="button" disabled={downloadingBarcodeId !== null} onClick={() => void downloadSingleBarcode(copy.physical_copy_id, copy.accession_number, 'book')} className="mt-1.5 inline-flex items-center gap-1 rounded-[4px] border border-[#0b5ea2]/25 bg-white px-2 py-0.5 font-sans text-[11px] font-semibold text-[#0b5ea2] hover:bg-[#0b5ea2]/10 disabled:opacity-50"><Download size={11} />{downloadingBarcodeId === `book-${copy.physical_copy_id}` ? 'Downloading…' : 'Download barcode'}</button></td><td className="px-4 py-4 text-[#0b5ea2]"><p className="font-bold">{copy.shelf_location} · C{copy.shelf_column} · R{copy.shelf_row}</p><p className="mt-1 font-mono text-[10px] text-[#0b5ea2]/60">{copy.call_number||'Call number pending'}</p><p className="mt-1 text-xs">Dewey: {copy.dewey_code??'Not assigned'}</p></td><td className="px-4 py-4"><ConditionBadge condition={copy.condition_status} label={copy.condition_detail} /></td><td className="px-4 py-4"><AvailabilityBadge status={copy.availability_status} /></td><td className="px-4 py-4 text-xs text-[#0b5ea2]/70">{formatDate(copy.last_verified_at)}</td><td className="px-4 py-4"><InventoryActions accession={copy.accession_number} actions={[
             { label: 'Download barcode PNG', description: 'Download Code-128 barcode image', onSelect: () => void downloadSingleBarcode(copy.physical_copy_id, copy.accession_number, 'book') },
             { label: 'View barcode & QR', description: 'Preview and print asset labels', onSelect: () => setAssetModalTarget({ kind: 'book', id: copy.physical_copy_id }) },
             { label: 'Move copies', description: 'Choose another shelf compartment', onSelect: () => setMoving({kind:'Book',copies:[{id:copy.physical_copy_id,accession:copy.accession_number,shelfLocation:copy.shelf_location,shelfColumn:copy.shelf_column,shelfRow:copy.shelf_row}]}) },
@@ -592,7 +602,7 @@ export function InventoryDashboard() {
     </SectionCard>
     </div>
     {moving ? <MoveCopiesDialog kind={moving.kind} copies={moving.copies} onClose={() => setMoving(null)} onMoved={async () => { await Promise.all([load(filters),loadThesis(thesisFilters)]) }} /> : null}
-    {selected ? <ConditionModal copy={selected} onClose={() => setSelected(null)} onSaved={() => load(filters)} saveCondition={inventoryApi.changeCondition} /> : null}
+    {selected ? <ConditionModal copy={selected} onClose={() => setSelected(null)} onSaved={() => load(filters)} saveCondition={inventoryApi.changeCondition} customConditions={customConditions} saveCustom={inventoryApi.changeConditionById} /> : null}
     {lostTarget ? <ConditionModal copy={lostTarget} initialCondition="lost" onClose={() => setLostTarget(null)} onSaved={() => load(filters)} saveCondition={inventoryApi.changeCondition} /> : null}
     {selectedThesis ? <ConditionModal copy={selectedThesis} onClose={() => setSelectedThesis(null)} onSaved={() => loadThesis(thesisFilters)} saveCondition={inventoryApi.auditThesis} /> : null}
     {availabilityTarget ? <AvailabilityConfirmationDialog copy={availabilityTarget} saving={availabilitySaving} error={availabilityError} onCancel={() => { if (!availabilitySaving) setAvailabilityTarget(null) }} onConfirm={() => void confirmAvailabilityChange()} /> : null}

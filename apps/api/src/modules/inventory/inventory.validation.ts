@@ -77,6 +77,14 @@ export function parseScanBody(body: unknown) {
 
 export function parseConditionBody(body: unknown) {
   const value = body && typeof body === 'object' ? body as Record<string, unknown> : {}
+  // A maintained condition (Library setup -> Book conditions) is chosen by its id.
+  if (value.condition_id !== undefined) {
+    const conditionId = Number(value.condition_id)
+    if (!Number.isSafeInteger(conditionId) || conditionId < 1) {
+      throw new HttpError(422, 'INVENTORY_VALIDATION_FAILED', 'condition_id is not valid.', { errors: { condition_id: 'Choose a listed condition.' } })
+    }
+    return { barcode: normalizeBarcode(value.barcode), conditionState: null, conditionId }
+  }
   const raw = typeof value.condition_state === 'string' ? value.condition_state.trim().toLowerCase() : ''
   const conditionState = CONDITION_INPUTS[raw]
   if (!conditionState) {
@@ -84,7 +92,7 @@ export function parseConditionBody(body: unknown) {
       errors: { condition_state: 'Select good, fair, for_repair, damaged, or lost.' },
     })
   }
-  return { barcode: normalizeBarcode(value.barcode), conditionState }
+  return { barcode: normalizeBarcode(value.barcode), conditionState, conditionId: null }
 }
 
 export function parseAvailabilityBody(body: unknown) {

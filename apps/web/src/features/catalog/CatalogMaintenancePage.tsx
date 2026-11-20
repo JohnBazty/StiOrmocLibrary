@@ -1,4 +1,4 @@
-import { BookOpen, CalendarClock, Clock, GraduationCap, MapPin, Printer, ShieldAlert, SlidersHorizontal } from 'lucide-react'
+import { BookOpen, CalendarClock, Clock, GraduationCap, MapPin, Printer, ShieldAlert, SlidersHorizontal, Wrench } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useConfirmSave } from '../../components/ConfirmSaveDialog'
@@ -8,6 +8,7 @@ import { CategoryManagementPage } from '../categories/CategoryManagementPage'
 import { AdminFinePoliciesPage } from '../fines/AdminFinePoliciesPage'
 import { UrgentAlertRules } from '../fines/UrgentAlertRules'
 import { ViolationRulesPanel } from '../fines/ViolationRulesPanel'
+import { CopyConditionsPanel } from '../inventory/CopyConditionsPanel'
 import { LibrarySchedulePage } from '../notifications/LibrarySchedulePage'
 import { PrintingServiceSetup } from '../printing/PrintingServiceSetup'
 import { LibraryCirculationSetupPanel } from '../reservations/LibraryCirculationSetupPanel'
@@ -26,6 +27,7 @@ const maintenanceTabs = [
   'reservations',
   'fine-rules',
   'violation-rules',
+  'conditions',
   'research-groups',
   'printing',
   'schedule',
@@ -45,6 +47,7 @@ const primarySetupSections = [
   { key: 'reservations', label: 'Reservations & renewals', icon: CalendarClock, hint: 'Expiry, waitlist cap & student renewals' },
   { key: 'fine-rules', label: 'Fine rules', icon: SlidersHorizontal, hint: 'Hourly, daily & maximum overdue penalty' },
   { key: 'violation-rules', label: 'Violation rules', icon: ShieldAlert, hint: 'Warnings, fines & urgent alert rules' },
+  { key: 'conditions', label: 'Book conditions', icon: Wrench, hint: 'Your own conditions & how each behaves' },
   { key: 'research-groups', label: 'Academic groups', icon: GraduationCap, hint: 'Research groups, programs & courses' },
   { key: 'printing', label: 'Printing settings', icon: Printer, hint: 'Paper rates & print service rules' },
   { key: 'schedule', label: 'Library hours', icon: Clock, hint: 'Operating schedule & closures' },
@@ -326,6 +329,8 @@ export function CatalogMaintenancePage() {
         <LibraryCirculationSetupPanel />
       ) : tab === 'fine-rules' ? (
         <AdminFinePoliciesPage embedded />
+      ) : tab === 'conditions' ? (
+        <CopyConditionsPanel />
       ) : tab === 'violation-rules' ? (
         <div className="space-y-5">
           <ViolationRulesPanel />

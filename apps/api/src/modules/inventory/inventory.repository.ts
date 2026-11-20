@@ -74,10 +74,12 @@ export async function listInventoryCopies(database: Pool, filters: InventoryList
                 FROM authors a WHERE a.title_id = t.title_id) AS authors,
              c.category_name, pc.accession_number, pc.barcode, pc.shelf_location, pc.shelf_column, pc.shelf_row, t.call_number,
              (SELECT code FROM dewey_classifications d WHERE d.classification_id=pc.dewey_classification_id) AS dewey_code,
-             pc.condition_status, pc.availability_status, pc.last_scanned_at, pc.row_version
+             pc.condition_status, pc.availability_status, pc.last_scanned_at, pc.row_version,
+             pc.condition_detail_id, cd.name AS condition_detail
         FROM physical_copies pc
         JOIN titles t ON t.title_id = pc.title_id
         LEFT JOIN categories c ON c.category_id = t.category_id
+        LEFT JOIN copy_conditions cd ON cd.condition_id = pc.condition_detail_id
         ${whereSql}
        ORDER BY COALESCE(pc.last_scanned_at, pc.created_at) DESC, pc.physical_copy_id DESC
        LIMIT ${filters.limit} OFFSET ${offset}`, parameters),

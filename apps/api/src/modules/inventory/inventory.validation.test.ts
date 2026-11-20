@@ -34,3 +34,8 @@ test('manual availability accepts only available and unavailable', () => {
   assert.equal(parseAvailabilityBody({ barcode: 'copy-42', availability_status: 'unavailable' }).availabilityStatus, 'Unavailable')
   assert.throws(() => parseAvailabilityBody({ barcode: 'copy-42', availability_status: 'borrowed' }), HttpError)
 })
+
+test('a condition can be chosen by its maintained condition id instead of a base name', () => {
+  assert.deepEqual(parseConditionBody({ barcode: 'BC-1', condition_id: 12 }), { barcode: 'BC-1', conditionState: null, conditionId: 12 })
+  assert.throws(() => parseConditionBody({ barcode: 'BC-1', condition_id: 'x' }), (error: unknown) => error instanceof HttpError && error.status === 422)
+})

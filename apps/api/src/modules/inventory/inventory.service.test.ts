@@ -248,3 +248,14 @@ test('damaged held copy with no spare copy returns the request to pending at the
   assert.match(release.sql, /pickup_deadline=NULL/)
   assert.ok(!calls.some((c) => c.sql.includes("reservation_status='approved'")))
 })
+
+test('a custom condition stores its base condition plus the custom detail; a base choice clears the detail', async () => {
+  const { database, state } = fakeDatabase()
+  const result = await overrideInventoryCondition('BC-42', 'Damaged', { userId: 1, label: 'Librarian' }, database, 31)
+  assert.equal(result.condition_status, 'Damaged')
+  assert.equal(result.condition_detail_id, 31)
+  assert.deepEqual(state.copyUpdates[0].slice(0, 3), ['Damaged', 31, 'Unavailable'])
+  const plain = fakeDatabase()
+  await overrideInventoryCondition('BC-42', 'Fair', { userId: 1, label: 'Librarian' }, plain.database)
+  assert.deepEqual(plain.state.copyUpdates[0].slice(0, 3), ['Fair', null, 'Available'])
+})

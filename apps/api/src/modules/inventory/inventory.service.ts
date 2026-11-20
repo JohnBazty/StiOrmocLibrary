@@ -51,6 +51,8 @@ export async function overrideInventoryCondition(
   conditionState: InventoryCondition,
   actor: InventoryActor,
   database: Pool = db,
+  /** A custom condition (copy_conditions) that behaves as conditionState; null for a base condition. */
+  conditionDetailId: number | null = null,
 ) {
   const connection = await database.getConnection()
   try {
@@ -79,9 +81,9 @@ export async function overrideInventoryCondition(
       : restored ? 'Available' : copy.availability_status
     await connection.execute(`
       UPDATE physical_copies
-         SET condition_status = ?, availability_status = ?, last_scanned_at = NOW(),
+         SET condition_status = ?, condition_detail_id = ?, availability_status = ?, last_scanned_at = NOW(),
              row_version = row_version + 1, updated_at = NOW()
-       WHERE physical_copy_id = ?`, [conditionState, nextAvailability, copy.physical_copy_id])
+       WHERE physical_copy_id = ?`, [conditionState, conditionDetailId, nextAvailability, copy.physical_copy_id])
 
     let releasedReservations = 0
     if (nextAvailability !== copy.availability_status) await synchronizeLegacyAvailability(connection, copy.material_id, nextAvailability as 'Available' | 'Unavailable')
@@ -102,6 +104,7 @@ export async function overrideInventoryCondition(
       accession_number: copy.accession_number,
       barcode: copy.barcode,
       condition_status: conditionState,
+      condition_detail_id: conditionDetailId,
       availability_status: nextAvailability,
       availability_preserved: nextAvailability === copy.availability_status,
       reservations_blocked: isLost || unusable,
