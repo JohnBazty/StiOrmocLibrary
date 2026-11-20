@@ -7,11 +7,12 @@ export function readHostedPaymentConfig(settings: Record<string, string | undefi
   const secretKey = settings.XENDIT_SECRET_KEY?.trim() ?? ''
   const webhookToken = settings.XENDIT_WEBHOOK_TOKEN?.trim() ?? ''
   if (!/^xnd_development_[A-Za-z0-9_-]{20,}$/.test(secretKey) || !/^[A-Za-z0-9_-]{24,}$/.test(webhookToken)) throw new Error('Hosted payment credentials are invalid.')
-  if (settings.WEB_ORIGIN !== 'https://sti-ormoc-smart-library.vercel.app') throw new Error('Hosted payment origin is invalid.')
+  const webOrigin = settings.WEB_ORIGIN?.trim().replace(/\/+$/, '') ?? ''
+  if (webOrigin !== 'https://sti-ormoc-smart-library.vercel.app') throw new Error('Hosted payment origin is invalid.')
   const databaseUrl = settings.DATABASE_URL ?? ''
   let database: URL
   try { database = new URL(databaseUrl) } catch { throw new Error('Hosted payment database is invalid.') }
   if (!['postgres:', 'postgresql:'].includes(database.protocol)) throw new Error('Hosted payment database is invalid.')
   return Object.freeze({ enabled: true, mode: 'test', secretKey, webhookToken, databaseUrl,
-    apiOrigin: 'https://api.xendit.co', webhookUrl: null, returnUrl: settings.WEB_ORIGIN + '/payments/result' })
+    apiOrigin: 'https://api.xendit.co', webhookUrl: null, returnUrl: webOrigin + '/payments/result' })
 }

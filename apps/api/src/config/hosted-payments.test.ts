@@ -12,6 +12,9 @@ test('hosted checkout requires explicit practice mode, approved origin and devel
   assert.ok(config.enabled)
   assert.equal(config.mode, 'test')
   assert.equal(config.returnUrl, settings.WEB_ORIGIN + '/payments/result')
+  const trailingSlash = readHostedPaymentConfig({ ...settings, WEB_ORIGIN: settings.WEB_ORIGIN + '/' })
+  assert.ok(trailingSlash.enabled)
+  assert.equal(trailingSlash.returnUrl, settings.WEB_ORIGIN + '/payments/result')
   for (const changes of [{ XENDIT_ENABLED: 'true' }, { XENDIT_MODE: 'live' }, { XENDIT_SECRET_KEY: 'xnd_production_' + 'a'.repeat(30) },
     { WEB_ORIGIN: 'https://unapproved.invalid' }, { DATABASE_URL: 'https://unapproved.invalid' }, { XENDIT_WEBHOOK_TOKEN: '' }]) {
     assert.throws(() => readHostedPaymentConfig({ ...settings, ...changes }))
