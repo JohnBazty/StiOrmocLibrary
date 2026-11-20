@@ -1,9 +1,9 @@
-import { RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 import { Button, NoticeBanner, SectionCard, StatusBadge } from '../../components/ui'
 import { UnsavedGuard } from '../../components/UnsavedChanges'
 import { attendanceApi, type LibraryEvent, type OperationalState } from './attendance-api'
+import { RefreshButton } from '../../components/RefreshButton'
 
 const time = (v: string | null) =>
   v
@@ -271,9 +271,7 @@ export function LibraryOperationsPanel({
             {state?.state ?? 'Loading…'} · {state?.current ?? '—'} seats occupied · {state?.serviceVisits ?? '—'} printing visits
           </p>
         </div>
-        <Button variant="secondary" size="sm" onClick={() => void load()} disabled={busy}>
-          <RefreshCw size={14} aria-hidden="true" /> Refresh operations
-        </Button>
+        <RefreshButton label="Refresh operations" onRefresh={() => load()} variant="secondary" size="sm" disabled={busy} />
       </div>
 
       {error ? (

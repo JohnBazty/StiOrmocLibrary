@@ -14,6 +14,7 @@ import { MoneyOutDialog, MoneyOutSummary } from './RefundReview'
 import { SchoolBankManager } from './SchoolBankManager'
 import { useLibraryFunds } from './useLibraryFunds'
 import { WithdrawalReview } from './WithdrawalReview'
+import { RefreshButton } from '../../components/RefreshButton'
 
 export function LibraryFundsPage() {
   const { data, error, setError, refreshing, refresh, refreshAfterChange } = useLibraryFunds()
@@ -70,9 +71,7 @@ export function LibraryFundsPage() {
         title="Library funds"
         description="Track counter and online collections, manage approved school-bank accounts, and review payouts or refunds."
         action={
-          <Button variant="secondary" disabled={busy || refreshing} onClick={() => void action()}>
-            <RefreshCw size={15} aria-hidden="true" /> Refresh funds
-          </Button>
+          <RefreshButton label="Refresh funds" onRefresh={() => action()} variant="secondary" disabled={busy || refreshing} />
         }
       />
 

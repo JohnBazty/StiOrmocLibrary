@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { Button, NoticeBanner, PageHeader, SectionCard, StatCard, StatusBadge } from '../../components/ui'
 import { getCsrfToken } from '../auth/auth-storage'
+import { RefreshButton } from '../../components/RefreshButton'
 
 export type AuditLogCategory =
   | 'All'
@@ -337,9 +338,7 @@ export function AdminAuditLogsPage() {
         description="Unified chronological audit trail tracking all circulation transactions, catalog and inventory updates, policy changes, account actions, printing jobs, and QR attendance."
         action={
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" disabled={loading} onClick={() => void load()}>
-              <RefreshCw size={15} /> Refresh logs
-            </Button>
+            <RefreshButton label="Refresh logs" onRefresh={() => load()} variant="secondary" disabled={loading} />
             <Button variant="secondary" disabled={loading || !filteredItems.length} onClick={exportAuditCsv}>
               <Download size={15} /> Export audit CSV
             </Button>

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { SelectedFilePreview } from '../../components/SelectedFilePreview'
 import { useSearchParams } from 'react-router-dom'
-import { ImageUp, MapPin, RefreshCw } from 'lucide-react'
+import { ImageUp, MapPin } from 'lucide-react'
 import { Button, PageHeader, SectionCard } from '../../components/ui'
 import { getCsrfToken, getCurrentIdentity } from '../auth/auth-storage'
+import { RefreshButton } from '../../components/RefreshButton'
 
 type FloorImage = { imageUrl: string | null; originalName: string; uploadedAt: string; uploadedBy: string } | null
 type Location = { title: string; shelfLabel: string; accession: string; callNumber: string | null } | null
@@ -75,7 +76,7 @@ export function FloorPlanImagePage() {
   }
 
   return <>
-    <PageHeader eyebrow="Library guide" title="Library floor plan" description="View the library image and use the shelf label to find a book." action={<Button variant="secondary" disabled={loading || uploading} onClick={() => void load()}><RefreshCw size={16} /> Refresh</Button>} />
+    <PageHeader eyebrow="Library guide" title="Library floor plan" description="View the library image and use the shelf label to find a book." action={<RefreshButton onRefresh={() => load()} variant="secondary" disabled={loading || uploading} />} />
     {message ? <p role={message.error ? 'alert' : 'status'} data-tone={message.error ? 'error' : 'success'} className="mb-4 rounded-xl px-4 py-3 text-sm font-semibold">{message.text}</p> : null}
     {titleId ? <SectionCard className="mb-5 p-5"><div className="flex items-start gap-3"><MapPin className="shrink-0 text-[#0b5ea2]" /><div><h2 className="font-bold text-[#0b5ea2]">{location?.title ?? 'Book location'}</h2><p className="mt-1 text-lg font-black text-[#0b5ea2]">Shelf: {loading ? 'Loading…' : location?.shelfLabel || 'Location not recorded'}</p>{location?.accession ? <p className="text-sm text-[#0b5ea2]/70">Accession {location.accession}{location.callNumber ? ` · Call number ${location.callNumber}` : ''}</p> : null}</div></div></SectionCard> : null}
     {canUpload ? <SectionCard className="mb-5 space-y-4 p-5"><h2 className="font-bold text-[#0b5ea2]">Publish a floor plan image</h2><p className="mt-1 text-sm text-[#0b5ea2]/70">Choose a PNG, JPEG, or WebP image up to 4 MB. Check the preview, then publish. The previous image remains in storage history.</p><label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#0b5ea2] px-4 py-2.5 text-sm font-bold text-white"><ImageUp size={18} />{uploading ? 'Uploading…' : 'Choose image'}<input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" disabled={uploading} onChange={event => selectFile(event.target.files?.[0] ?? null)} /></label><SelectedFilePreview file={file} onRemove={clearFile} disabled={uploading} />{file ? <Button disabled={uploading} onClick={() => void upload()}>{uploading ? 'Publishing…' : 'Publish image'}</Button> : null}</SectionCard> : null}

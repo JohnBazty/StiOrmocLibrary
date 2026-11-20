@@ -15,6 +15,7 @@ import { validateBookCartAddition } from '../catalog/book-cart'
 import { useBookCart } from '../catalog/book-cart-store'
 import type { BookCatalogItem } from '../catalog/book-catalog-types'
 import type { AuthRole } from '../auth/auth-storage'
+import { RefreshButton } from '../../components/RefreshButton'
 
 const peso=(value:number)=>new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP'}).format(value)
 const first=(name:string)=>name.trim().split(/\s+/)[0]||'Library user'
@@ -46,7 +47,7 @@ export function UserDashboardPage(){
   const recommendationsPanel=<SectionCard className="mb-5 p-5">
     <div className="mb-4 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-wider text-[#0b5ea2]/45">Recommended for {data.user.program??'you'}</p><h2 className="mt-1 font-display text-lg font-bold text-[#0b5ea2]">Available to borrow</h2></div><Link to={`${prefix}/library`}><CardLink>View all</CardLink></Link></div>
     {data.recommendations.length?<div className="grid gap-5 sm:grid-cols-3">{data.recommendations.map(book=><article key={book.id} className="flex min-w-0 flex-col"><div className="flex justify-center"><BookCoverThumbnail title={book.title} coverImagePath={book.coverPath} className="h-48 w-32 rounded-xl border border-[#0b5ea2]/15 shadow-[0_6px_16px_rgba(0,51,153,0.12)] sm:h-56 sm:w-40"/></div><p className="mt-2 line-clamp-2 text-xs font-bold text-[#0b5ea2]">{book.title}</p><p className="mt-0.5 truncate text-[11px] text-[#0b5ea2]/45">{book.author}</p><p className="mt-1 text-[10px] font-semibold text-[#0b5ea2]/65">{book.availableCopies} available</p><div className="mt-auto grid grid-cols-2 gap-2 pt-3"><button type="button" onClick={()=>setSelectedTitleId(book.id)} className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] px-2 text-[11px] font-bold text-[#0b5ea2]"><Eye size={14}/>View details</button><button type="button" disabled={cartIds.has(book.id)||borrowingTitleId===book.id} onClick={()=>void borrowRecommendation(book.id)} className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl bg-[#0b5ea2] px-2 text-[11px] font-bold text-[#FFFFFF] disabled:opacity-50"><ShoppingBag size={14}/>{cartIds.has(book.id)?'In cart':borrowingTitleId===book.id?'Adding…':'Borrow'}</button></div></article>)}</div>:<Empty text="No available recommendations right now."/>}
-    <div className="mt-5 flex flex-wrap gap-3 border-t border-[#0b5ea2]/10 pt-4"><Link to={`${prefix}/library`}><Button><Search size={16}/>Browse catalog</Button></Link><Link to={`${prefix}/cart`}><Button variant="secondary"><ShoppingBag size={16}/>Borrow cart ({cart.length})</Button></Link><Button variant="secondary" onClick={()=>void load()}><RotateCcw size={16}/>Refresh dashboard</Button></div>
+    <div className="mt-5 flex flex-wrap gap-3 border-t border-[#0b5ea2]/10 pt-4"><Link to={`${prefix}/library`}><Button><Search size={16}/>Browse catalog</Button></Link><Link to={`${prefix}/cart`}><Button variant="secondary"><ShoppingBag size={16}/>Borrow cart ({cart.length})</Button></Link><RefreshButton label="Refresh dashboard" onRefresh={() => load()} variant="secondary" /></div>
   </SectionCard>
   return <>
     <DashboardQrPass />

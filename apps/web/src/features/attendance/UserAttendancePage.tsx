@@ -1,10 +1,11 @@
 import { useAttendanceRefresh } from './attendance-updates'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
-import { Clock3, Download, LibraryBig, QrCode, RefreshCw } from 'lucide-react'
+import { Clock3, Download, LibraryBig, QrCode } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Button, PageHeader, SectionCard, StatCard } from '../../components/ui'
 import { formatManilaTime12, formatPhDate } from '../notifications/LibrarySchedulePage'
 import { attendanceApi, type AttendancePass } from './attendance-api'
+import { RefreshButton } from '../../components/RefreshButton'
 
 export function UserAttendancePage() {
   const [pass,setPass]=useState<AttendancePass|null>(null)
@@ -18,7 +19,7 @@ export function UserAttendancePage() {
   useEffect(()=>()=>{if(qrUrl)URL.revokeObjectURL(qrUrl)},[qrUrl])
   const download=async()=>{if(!pass)return;setDownloading(true);setError('');try{await attendanceApi.downloadPass(pass.profile.schoolId)}catch(e){setError(e instanceof Error?e.message:'Unable to download your QR code.')}finally{setDownloading(false)}}
   return <>
-    <PageHeader eyebrow="My account" title="My permanent library QR" description="Use this same QR for library entry and desk services. It stays the same when you sign out and sign in again. Save it on your phone for offline display." action={<Button variant="secondary" onClick={()=>void load()} disabled={loading}><RefreshCw size={15}/>Refresh</Button>}/>
+    <PageHeader eyebrow="My account" title="My permanent library QR" description="Use this same QR for library entry and desk services. It stays the same when you sign out and sign in again. Save it on your phone for offline display." action={<RefreshButton onRefresh={() => load()} variant="secondary" disabled={loading} />}/>
     <p className="mb-5 text-sm opacity-70">Every student roster upload replaces QR codes, including identical files. Refresh and save your new QR; old codes stop working. Keep this account open when your QR is scanned. Your entry or exit confirmation appears automatically on any portal page.</p>
     {error?<div className="mb-4 rounded-xl bg-[#FFF200] p-3 text-sm font-bold text-[#0b5ea2]">{error}</div>:null}
     {loading&&!pass?<SectionCard className="p-10 text-center font-semibold">Preparing your permanent attendance pass…</SectionCard>:pass?<div className="grid gap-5 lg:grid-cols-[370px_1fr]">

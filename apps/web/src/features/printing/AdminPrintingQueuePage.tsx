@@ -1,4 +1,4 @@
-import { Clock3, Download, Eye, PackageCheck, Printer, RefreshCw, Search, WalletCards, X } from 'lucide-react'
+import { Clock3, Download, Eye, PackageCheck, Printer, Search, WalletCards, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ExportMenu } from '../../components/ExportMenu'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
@@ -29,6 +29,7 @@ import {
   type PrintingReceipt,
   type PrintSummary,
 } from './printing-api'
+import { RefreshButton } from '../../components/RefreshButton'
 
 function totalSheets(row: PrintRequest): number {
   const sheets = Number(row.total_sheets)
@@ -244,9 +245,7 @@ export function AdminPrintingQueuePage() {
               Online payments
             </a>
             {section !== 'retention' ? (
-              <Button variant="secondary" onClick={() => void load()}>
-                <RefreshCw size={15} aria-hidden="true" /> Refresh
-              </Button>
+              <RefreshButton onRefresh={() => load()} variant="secondary" />
             ) : null}
             {section !== 'retention' ? (
               <ExportMenu

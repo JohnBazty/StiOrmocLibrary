@@ -1,8 +1,9 @@
-import { AlertTriangle, CheckCircle2, CircleDollarSign, Clock, RefreshCw, ShieldAlert, SlidersHorizontal } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, CircleDollarSign, Clock, ShieldAlert, SlidersHorizontal } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { Button, NoticeBanner, PageHeader, SectionCard, StatCard, StatusBadge } from '../../components/ui'
 import { finePoliciesApi, FinePolicyError, type FinePolicyInput, type FinePolicyList, type FinePolicyVersion } from './fine-policies-api'
+import { RefreshButton } from '../../components/RefreshButton'
 
 const field = 'h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/15 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
 const CAP_CEILING = 500
@@ -200,7 +201,7 @@ export function AdminFinePoliciesPage({ embedded = false }: { embedded?: boolean
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" disabled={busy} onClick={() => void load()}><RefreshCw size={16} />Refresh</Button>
+            <RefreshButton onRefresh={() => load()} variant="secondary" disabled={busy} />
             <Button disabled={busy || !data} onClick={openForm}><SlidersHorizontal size={16} />Change fine rules</Button>
           </div>
         </div>
@@ -211,7 +212,7 @@ export function AdminFinePoliciesPage({ embedded = false }: { embedded?: boolean
           description="Configure hourly due-date rates, daily overdue rates, and the maximum fine cap for borrowed books."
           action={(
             <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" disabled={busy} onClick={() => void load()}><RefreshCw size={16} />Refresh</Button>
+              <RefreshButton onRefresh={() => load()} variant="secondary" disabled={busy} />
               <Button disabled={busy || !data} onClick={openForm}><SlidersHorizontal size={16} />Change fine rules</Button>
             </div>
           )}

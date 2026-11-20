@@ -4,6 +4,7 @@ import { Button, SectionCard } from '../../components/ui'
 import { getCsrfToken } from '../auth/auth-storage'
 import { RefreshCw } from 'lucide-react'
 import { ExportMenu } from '../../components/ExportMenu'
+import { RefreshButton } from '../../components/RefreshButton'
 
 export const reportChoices = [
   ['holdings','Book and research holdings'],['circulation','Take-home borrowing'],['returns','Returned books'],['requests','Book requests and pickups'],
@@ -41,7 +42,7 @@ export function OperationalReports(){
   }
   const snapshot=['holdings','supplies','clearance'].includes(draft.kind)
   return <SectionCard className="space-y-5 p-4 sm:p-6">
-    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl font-bold">Live records and exports</h2><p className="mt-2 text-sm opacity-70">Choose a report and apply filters. Exports include every matching row, not just the preview page. Dates and attendance use Asia/Manila.</p></div><Button variant="secondary" disabled={loading} onClick={()=>setRevision(value=>value+1)}><RefreshCw size={16}/>Refresh</Button></div>
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl font-bold">Live records and exports</h2><p className="mt-2 text-sm opacity-70">Choose a report and apply filters. Exports include every matching row, not just the preview page. Dates and attendance use Asia/Manila.</p></div><RefreshButton onRefresh={()=>setRevision(value=>value+1)} variant="secondary" disabled={loading} /></div>
     <form onSubmit={apply} className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-3">
       <label className="space-y-1 text-sm font-semibold">Report<select aria-label="Report type" className={field} value={draft.kind} onChange={e=>setDraft({...draft,kind:e.target.value,status:'',dateBasis:'recorded',borrower:'',service:'',program:'',department:''})}>{reportChoices.map(([key,title])=><option key={key} value={key}>{title}</option>)}</select></label>
       <label className="space-y-1 text-sm font-semibold">Reporting period<select aria-label="Reporting period" disabled={snapshot} className={field} value={snapshot?'all':draft.period} onChange={e=>setDraft({...draft,period:e.target.value})}><option value="all">All recorded dates</option><option value="custom">Date range</option><option value="semester">Semester</option></select></label>

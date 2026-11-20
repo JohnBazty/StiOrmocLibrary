@@ -2,13 +2,14 @@ import {OwnershipTransferAction} from './OwnershipTransferAction'
 import {FacultyDepartment} from './FacultyDepartment'
 import { UserAccountTotals } from './UserAccountTotals'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
-import { BadgeCheck, RefreshCw, Search, UserCheck, Users, X } from 'lucide-react'
+import { BadgeCheck, Search, UserCheck, Users, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button, PageHeader, SectionCard, StatCard } from '../../components/ui'
 import { getCurrentIdentity } from '../auth/auth-storage'
 import { StaffAccountForm } from './StaffAccountForm'
 import { SignInAccessPanel } from './SignInAccessPanel'
 import { usersApi, type AccountStatus, type ActiveUser, type DirectoryUser, type Pagination, type UserDetail, type UserFilters, type UserSummary } from './users-api'
+import { RefreshButton } from '../../components/RefreshButton'
 
 const field = 'h-10 w-full rounded-xl border border-[#0b5ea2]/20 bg-white px-3 text-sm text-[#0b5ea2] outline-none focus:border-[#0b5ea2]'
 const initial: UserFilters = { q: '', role: '', program: '', clearance: '', status: 'Active', page: 1, limit: 25 }
@@ -87,7 +88,7 @@ export function AdminUsersPage() {
       {canManage && <a href={`/${role === 'Admin' ? 'admin' : 'librarian'}/users/faculty-enrollment`} className="inline-flex items-center rounded-xl border border-current/20 px-4 py-2 text-sm font-semibold">Faculty enrollment</a>}
       {role==='Librarian'&&<OwnershipTransferAction/>}
       {canManage && <Button onClick={() => { setNotice(''); setStaffSetup(true) }}>Set up Staff account</Button>}
-      <Button variant="secondary" onClick={() => setRefresh(value => value + 1)}><RefreshCw size={15} /> Refresh</Button>
+      <RefreshButton onRefresh={() => setRefresh(value => value + 1)} variant="secondary" />
     </div>} />
     {error && <p role="alert" className="mb-4 rounded-xl bg-[#FFF200] p-3 text-sm font-bold text-[#0b5ea2]">{error}</p>}
     {notice && <p role="status" className="mb-4 rounded-xl border border-[#0b5ea2]/20 p-3 text-sm font-bold text-[#0b5ea2]">{notice}</p>}

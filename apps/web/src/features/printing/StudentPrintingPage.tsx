@@ -6,7 +6,7 @@ import { PrintingInvoice } from './PrintingInvoice'
 import { PaymentAction } from '../payments/PaymentAction'
 import {paymentsApi} from '../payments/payments-api'
 import {paymentResultPath} from '../payments/payment-navigation'
-import { CheckCircle2, FileText, RefreshCw } from 'lucide-react'
+import { CheckCircle2, FileText } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { PrintRequestForm } from './PrintRequestForm'
 import { PrintAnalysisSummary } from './PrintAnalysisSummary'
@@ -14,6 +14,7 @@ import { PrintingDialog } from './PrintingDialog'
 import { DocumentPreview } from './DocumentPreview'
 import { Button, PageHeader, SectionCard, StatusBadge } from '../../components/ui'
 import { printingApi, type PricingRule, type PrintRequest, type ServiceStatus } from './printing-api'
+import { RefreshButton } from '../../components/RefreshButton'
 
 export function StudentPrintingPage(){
   const [service,setService]=useState<ServiceStatus|null>(null)
@@ -44,7 +45,7 @@ export function StudentPrintingPage(){
   const cancel=async(id:number)=>{setError('');try{await printingApi.cancel(id);await load()}catch(e){setError(e instanceof Error?e.message:'Unable to cancel request.')}}
 
   return <>
-    <PageHeader eyebrow="Online service" title="Printing service" action={<Button variant="secondary" onClick={()=>{void load();setQuoteRefresh(v=>v+1)}}><RefreshCw size={15}/>Refresh</Button>}/>
+    <PageHeader eyebrow="Online service" title="Printing service" action={<RefreshButton onRefresh={()=>{void load();setQuoteRefresh(v=>v+1)}} variant="secondary" />}/>
     {error&&<div role="alert" className="mb-4 rounded-xl bg-red-700 p-3 text-sm font-bold text-white">{error}</div>}
     {success&&<div role="status" data-tone="success" className="mb-4 flex gap-2 rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-900"><CheckCircle2 size={17}/>{success}</div>}
     <div className="grid gap-5 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">

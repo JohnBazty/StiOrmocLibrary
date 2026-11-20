@@ -1,9 +1,10 @@
 import { useLiveQuery } from '../../hooks/useLiveQuery'
 import { fetchAdminNotifications, type AdminNotice as Notice } from './admin-notifications-api'
-import { RefreshCw, UserRound } from 'lucide-react'
+import { UserRound } from 'lucide-react'
 
 import { Link } from 'react-router-dom'
 import { Button, PageHeader, SectionCard } from '../../components/ui'
+import { RefreshButton } from '../../components/RefreshButton'
 
 const date = (value: string) => new Date(value).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
 
@@ -23,7 +24,7 @@ export function AdminNotificationsPage() {
   const query=useLiveQuery('admin-notifications',fetchAdminNotifications)
   const inbox=query.data,error=query.error?.message??'',loading=query.loading,load=query.refresh
   return <>
-    <PageHeader eyebrow="Accounts" title="Admin notifications" description="Lost-book reports, staff account setup, and account changes." action={<Button variant="secondary" disabled={loading} onClick={() => void load()}><RefreshCw size={16} /> Refresh</Button>} />
+    <PageHeader eyebrow="Accounts" title="Admin notifications" description="Lost-book reports, staff account setup, and account changes." action={<RefreshButton onRefresh={() => load()} variant="secondary" disabled={loading} />} />
     {error ? <p role="alert" className="mb-5 rounded-xl bg-[#FFF200] p-4 font-bold text-[#0b5ea2]">{error}</p> : null}
     {!inbox && loading ? <p role="status" className="rounded-xl border border-[#0b5ea2]/15 p-5 text-sm text-[#0b5ea2]/70 dark:border-white/15 dark:text-white/70">Loading Admin notifications…</p> : null}
     {inbox ? <>

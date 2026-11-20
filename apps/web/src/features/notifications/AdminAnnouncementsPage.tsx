@@ -1,9 +1,10 @@
-import { AlertTriangle, Megaphone, RefreshCw, Send } from 'lucide-react'
+import { AlertTriangle, Megaphone, Send } from 'lucide-react'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Button, PageHeader, SectionCard, StatusBadge } from '../../components/ui'
 import { notificationApi } from './notification-api'
 import type { Announcement } from './types'
 import { UnsavedGuard } from '../../components/UnsavedChanges'
+import { RefreshButton } from '../../components/RefreshButton'
 
 const input = 'h-11 w-full rounded-xl border border-[#0b5ea2]/20 bg-white px-3 text-sm text-[#0b5ea2] outline-none focus:ring-4 focus:ring-[#0b5ea2]/10'
 function format(value: string | null) { if (!value) return '—'; const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) }
@@ -26,7 +27,7 @@ export function AdminAnnouncementsPage() {
     finally { setBusy(false) }
   }
   return <>
-    <PageHeader eyebrow="Library communication" title="Announcements" description="Librarians and Staff can publish messages to every active library-system user." action={<Button variant="secondary" onClick={() => void load()}><RefreshCw size={16} /> Refresh</Button>} />
+    <PageHeader eyebrow="Library communication" title="Announcements" description="Librarians and Staff can publish messages to every active library-system user." action={<RefreshButton onRefresh={() => load()} variant="secondary" />} />
     {error ? <div role="alert" className="mb-5 flex gap-2 rounded-xl bg-[#FFF200] p-4 font-bold text-[#0b5ea2]"><AlertTriangle size={18} />{error}</div> : null}
     {notice ? <div role="status" className="mb-5 rounded-xl bg-[#0b5ea2] p-4 font-bold text-white">{notice}</div> : null}
     <div className="grid gap-5 xl:grid-cols-[.75fr_1.25fr]">

@@ -5,6 +5,7 @@ import { getCurrentIdentity } from '../auth/auth-storage'
 import { circulationApi } from './circulation-api'
 import type { DamageCaseDetail, DamageCaseListItem, DamageDisposition } from './types'
 import { useConfirmSave } from '../../components/ConfirmSaveDialog'
+import { RefreshButton } from '../../components/RefreshButton'
 
 const STATUSES = ['all', 'Open', 'Under Investigation', 'Reopened', 'Resolved', 'Dismissed'] as const
 const DECISIONS: Array<[DamageDisposition, string]> = [
@@ -131,7 +132,7 @@ export function DamageCasesPanel() {
   return <SectionCard className="mt-5 overflow-hidden">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#003399]/10 p-5 dark:border-white/10">
       <h2 className="text-lg font-bold">Book follow-ups</h2>
-      <div className="flex flex-wrap items-center gap-3"><label className="text-xs font-semibold">Case status<select value={status} onChange={(event) => { setStatus(event.target.value as typeof status); setPage(1); setOpenId(null) }} className="ml-2 min-h-10 rounded-xl border border-[#003399]/15 bg-white px-2 text-sm text-[#003399] dark:border-white/20 dark:bg-white/5 dark:text-white">{STATUSES.map((value) => <option key={value} value={value}>{value === 'all' ? 'All cases' : value}</option>)}</select></label><Button variant="secondary" onClick={() => void load()}>Refresh follow-ups</Button></div>
+      <div className="flex flex-wrap items-center gap-3"><label className="text-xs font-semibold">Case status<select value={status} onChange={(event) => { setStatus(event.target.value as typeof status); setPage(1); setOpenId(null) }} className="ml-2 min-h-10 rounded-xl border border-[#003399]/15 bg-white px-2 text-sm text-[#003399] dark:border-white/20 dark:bg-white/5 dark:text-white">{STATUSES.map((value) => <option key={value} value={value}>{value === 'all' ? 'All cases' : value}</option>)}</select></label><RefreshButton label="Refresh follow-ups" onRefresh={() => load()} variant="secondary" /></div>
     </div>
     {error ? <p role="alert" className="auth-error m-5 rounded-xl px-3 py-2 text-sm">{error}</p> : null}
     {!items ? (error ? null : <p role="status" className="p-8 text-center text-sm opacity-65">Loading book follow-ups…</p>) : items.length ? <div className="divide-y divide-[#003399]/10 dark:divide-white/10">{items.map((item) => <article key={item.caseId}>

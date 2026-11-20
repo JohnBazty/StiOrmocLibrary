@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Button, NoticeBanner, SectionCard } from '../../components/ui'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
+import { RefreshButton } from '../../components/RefreshButton'
 
 type Case = {
   key: string
@@ -48,9 +49,7 @@ export function UrgentCases({ onCount }: { onCount?: (count: number) => void } =
     <SectionCard className="my-5 overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--sl-border)] px-5 py-4">
         <h2 className="font-display text-base font-semibold text-[var(--sl-text-header)]">Urgent library cases</h2>
-        <Button variant="secondary" size="sm" onClick={() => void load()}>
-          Refresh
-        </Button>
+        <RefreshButton onRefresh={() => load()} variant="secondary" size="sm" />
       </div>
 
       <div className="p-5">

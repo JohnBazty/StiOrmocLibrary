@@ -1,6 +1,6 @@
 import {DeviceNotifications} from './DeviceNotifications'
 import { useLiveQuery } from '../../hooks/useLiveQuery'
-import { AlertTriangle, CheckCircle2, RefreshCw, Trash2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, PageHeader, SectionCard } from '../../components/ui'
@@ -8,6 +8,7 @@ import { formatManilaTime12 } from './LibrarySchedulePage'
 import { notificationApi } from './notification-api'
 import { formatNotificationDate, notificationIcon, notificationRoute, notificationsUpdated } from './notification-display'
 import type { NotificationItem } from './types'
+import { RefreshButton } from '../../components/RefreshButton'
 
 const days = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
@@ -50,7 +51,7 @@ export function NotificationCenterPage({ workspace }: { workspace?: 'admin' | 'l
     finally { setBusy(false) }
   }
   return <>
-    <PageHeader eyebrow="Activity center" title={workspace === 'staff' ? 'Staff notifications' : workspace ? 'Admin notifications' : 'Notifications'} description={workspace ? 'Your library alerts, updates and announcements. Open a notification to review its details.' : 'Due reminders, reservation updates, printing progress, schedules, and announcements.'} action={<div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={() => void load()}><RefreshCw size={16} /> Refresh</Button><Button disabled={busy || !data?.unreadCount} onClick={() => void readAll()}><CheckCircle2 size={16} /> Mark all read</Button><Button variant="secondary" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700" disabled={busy || !data?.items.length} onClick={() => setShowDeleteAllConfirm(true)}><Trash2 size={16}/> Delete all</Button></div>} />
+    <PageHeader eyebrow="Activity center" title={workspace === 'staff' ? 'Staff notifications' : workspace ? 'Admin notifications' : 'Notifications'} description={workspace ? 'Your library alerts, updates and announcements. Open a notification to review its details.' : 'Due reminders, reservation updates, printing progress, schedules, and announcements.'} action={<div className="flex flex-wrap gap-2"><RefreshButton onRefresh={() => load()} variant="secondary" /><Button disabled={busy || !data?.unreadCount} onClick={() => void readAll()}><CheckCircle2 size={16} /> Mark all read</Button><Button variant="secondary" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700" disabled={busy || !data?.items.length} onClick={() => setShowDeleteAllConfirm(true)}><Trash2 size={16}/> Delete all</Button></div>} />
     <DeviceNotifications/>
     {error ? <div role="alert" className="mb-5 flex gap-2 rounded-xl bg-[#FFF200] p-4 font-bold text-[#0b5ea2]"><AlertTriangle size={18} />{error}</div> : null}
     {!workspace ? <div className="mb-5 grid gap-4 xl:grid-cols-[1fr_1.5fr]">
