@@ -21,19 +21,20 @@ it('uses the requested order as visible sections, with only Books, Accounts and 
   ['Floor plan','/librarian/floor-plan'],
   ['Announcements','/librarian/announcements'],
  ])
- expect(within(section('File maintenance')).getByRole('link',{name:'Print supplies'}).getAttribute('href')).toBe('/librarian/supplies')
+ // Print supplies is archived; paper sizes and prices live in Library setup -> Printing settings.
+ expect(screen.queryByRole('link',{name:'Print supplies'})).toBeNull()
  expect(screen.queryByRole('link',{name:'Maintenance'})).toBeNull()
  expect(within(section('My account')).getByRole('link',{name:'Notifications'}).getAttribute('href')).toBe('/librarian/notifications')
- for(const name of ['Borrow & return','Book queue','Printing queue','Attendance','Clearance','Reports','Floor plan','Library setup','Print supplies','Announcements']){
+ for(const name of ['Borrow & return','Book queue','Printing queue','Attendance','Clearance','Reports','Floor plan','Library setup','Announcements']){
   expect(within(menu).getByRole('link',{name}).closest('details')).toBeNull()
  }
  expect(within(menu).queryByRole('link',{name:'Account overview'})).toBeNull()
  const accounts=group('Accounts',section('File maintenance'))
  expect(within(accounts).getAllByRole('link',{hidden:true}).map(link=>link.textContent)).toEqual(['Users','Student QR roster'])
  const routes=librarianNav.map(item=>item.to)
- expect(routes).toHaveLength(24)
- expect(new Set(routes).size).toBe(24)
- expect(routes.map(route=>route.replace('/librarian/','')).sort()).toEqual(['audit-logs','borrowing-policies','dashboard','reports','book-archive','categories','circulation','reservations','fines','payments','funds','maintenance','inventory','floor-plan','printing','supplies','attendance','clearance','announcements','users','student-qr-roster','catalog','notifications','profile'].sort())
+ expect(routes).toHaveLength(23)
+ expect(new Set(routes).size).toBe(23)
+ expect(routes.map(route=>route.replace('/librarian/','')).sort()).toEqual(['audit-logs','borrowing-policies','dashboard','reports','book-archive','categories','circulation','reservations','fines','payments','funds','maintenance','inventory','floor-plan','printing','attendance','clearance','announcements','users','student-qr-roster','catalog','notifications','profile'].sort())
 })
 
 it('opens only the active payment branch and highlights the current page',()=>{

@@ -10,6 +10,7 @@ import { UrgentAlertRules } from '../fines/UrgentAlertRules'
 import { ViolationRulesPanel } from '../fines/ViolationRulesPanel'
 import { LibrarySchedulePage } from '../notifications/LibrarySchedulePage'
 import { PrintingServiceSetup } from '../printing/PrintingServiceSetup'
+import { PrintingPaperSettings } from '../printing/PrintingPaperSettings'
 import { LibraryCirculationSetupPanel } from '../reservations/LibraryCirculationSetupPanel'
 import { ShelfManagementPage } from '../shelves/ShelfManagement'
 import { BookCoversPage } from './BookCoversPage'
@@ -336,7 +337,10 @@ export function CatalogMaintenancePage() {
       ) : tab === 'research-groups' ? (
         <ResearchGroupsPanel />
       ) : tab === 'printing' ? (
-        <PrintingServiceSetup />
+        <div className="space-y-5">
+          <PrintingServiceSetup />
+          <PrintingPaperSettings />
+        </div>
       ) : tab === 'schedule' ? (
         <LibrarySchedulePage manage embedded />
       ) : tab === 'books' ? (
