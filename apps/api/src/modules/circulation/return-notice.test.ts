@@ -55,6 +55,7 @@ function returnFake(options: Options = {}) {
       }
       if (sql.includes('INSERT INTO admin_notifications')) { state.adminNotices += 1; return [{ affectedRows: 1 }] }
       if (sql.includes('FROM borrowing_policy_versions')) return [[]] // no returning window set
+      if (sql.includes('SELECT user_role FROM users WHERE user_id=?')) return [[{ user_role: 'Student' }]] // students are fined
       throw new Error(`Unexpected SQL: ${sql}`)
     },
   }

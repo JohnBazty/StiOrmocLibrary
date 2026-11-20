@@ -150,9 +150,9 @@ test('paper-log rules: students only, warnings must exist, dated before today, i
   const { pg, service } = await setup()
   try {
     const paper = { ...input, incidentAt: '2025-06-01T03:00:00Z', fromPaperLog: true }
-    await assert.rejects(service.preview(librarian, { ...paper, schoolId: 'FAC-TEST' }), { code: 'CONDUCT_PAPER_FACULTY' })
+    // Faculty get warnings (never fines), so their earlier paper-log warnings can be copied too.
     const faculty = await service.standing(librarian, { schoolId: 'FAC-TEST', category: 'Noise' })
-    assert.equal(faculty.paperLogAllowed, false)
+    assert.equal(faculty.paperLogAllowed, true)
     await pg.exec("UPDATE violation_categories SET warnings_before_fine=0 WHERE name='Other conduct'")
     await assert.rejects(service.preview(librarian, { ...paper, category: 'Other conduct' }), { code: 'CONDUCT_PAPER_LOG_NO_WARNINGS' })
     assert.equal((await service.standing(librarian, { schoolId: 'STU-TEST', category: 'Other conduct' })).paperLogAllowed, false)
@@ -193,18 +193,21 @@ test('record locks the acting account without blocking foreign-key checks on it'
   } finally { await resetConductTestDb(pg) }
 })
 
-test('faculty go straight to the category fine and see no warnings left', async () => {
+test('faculty are never fined for a violation: their warnings stop at a final warning', async () => {
   const { pg, service } = await setup()
   try {
-    const result = await save(service, { ...input, schoolId: 'FAC-TEST' })
-    assert.equal(result.preview.action, 'Fine')
-    assert.equal(result.preview.amount, 50)
-    assert.equal(result.saved.action, 'Fine issued')
-    const own = await service.ownStanding({ accountId: 4, role: 'Faculty' })
-    assert.ok(own.every(c => c.warningsLeft === 0))
+    const steps: string[] = []
+    for (let offense = 0; offense < 4; offense++) {
+      const result = await save(service, { ...input, schoolId: 'FAC-TEST', incidentAt: new Date(Date.now() - (4 - offense) * 60_000).toISOString() })
+      assert.equal(result.preview.amount, null)
+      steps.push(String(result.preview.action))
+    }
+    assert.ok(!steps.includes('Fine'), steps.join(', '))
+    assert.equal(steps.at(-1), 'Final warning')
+    const fines = (await pg.query<{ n: number }>("SELECT COUNT(*)::int AS n FROM fines f JOIN users u ON u.user_id=f.user_id WHERE u.school_id='FAC-TEST'")).rows[0].n
+    assert.equal(fines, 0)
   } finally { await resetConductTestDb(pg) }
 })
-
 test('a student sees warnings left per category, retired categories only when they hold history', async () => {
   const { pg, service } = await setup()
   try {

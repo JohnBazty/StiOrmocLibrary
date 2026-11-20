@@ -38,6 +38,8 @@ function mapVersion(row: RowDataPacket, materialRules: BorrowingPolicyMaterialRu
     returnClosesAt: row.return_closes_at ? sqlTime(row.return_closes_at).slice(0, 5) : null,
     maxRenewals: Number(row.max_renewals),
     renewalExtensionDays: Number(row.renewal_extension_days),
+    facultyMaxRenewals: row.faculty_max_renewals == null ? null : Number(row.faculty_max_renewals),
+    facultyRenewalExtensionDays: row.faculty_renewal_extension_days == null ? null : Number(row.faculty_renewal_extension_days),
     studentMaxActiveReservations: Number(row.student_max_active_reservations),
     facultyMaxActiveReservations: row.faculty_max_active_reservations === null || row.faculty_max_active_reservations === undefined
       ? null
@@ -128,8 +130,9 @@ export function createBorrowingPolicyRepository(database: Pool = db) {
            max_renewals, renewal_extension_days, student_max_active_reservations, faculty_max_active_reservations,
            block_renewal_if_overdue, block_renewal_if_unpaid_fines, block_renewal_if_reserved,
            long_overdue_after_days, change_reason, created_by_user_id,
-           borrow_opens_at, borrow_closes_at, return_opens_at, return_closes_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           borrow_opens_at, borrow_closes_at, return_opens_at, return_closes_at,
+           faculty_max_renewals, faculty_renewal_extension_days
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           input.effectiveOn,
           input.studentMaxActiveBooks,
@@ -150,6 +153,8 @@ export function createBorrowingPolicyRepository(database: Pool = db) {
           input.borrowClosesAt,
           input.returnOpensAt,
           input.returnClosesAt,
+          input.facultyMaxRenewals,
+          input.facultyRenewalExtensionDays,
         ],
       )
       const versionId = Number(insert.insertId)

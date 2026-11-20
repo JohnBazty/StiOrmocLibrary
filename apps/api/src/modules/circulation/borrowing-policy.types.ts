@@ -15,6 +15,9 @@ export type BorrowingPolicyVersion = {
   dueTimeCutoff: string
   maxRenewals: number
   renewalExtensionDays: number
+  /** Faculty renewals: null limit = no limit; null extension = same as students. */
+  facultyMaxRenewals: number | null
+  facultyRenewalExtensionDays: number | null
   studentMaxActiveReservations: number
   facultyMaxActiveReservations: number | null
   blockRenewalIfOverdue: boolean
@@ -42,6 +45,8 @@ export type PublishBorrowingPolicyInput = {
   dueTimeCutoff: string
   maxRenewals: number
   renewalExtensionDays: number
+  facultyMaxRenewals: number | null
+  facultyRenewalExtensionDays: number | null
   studentMaxActiveReservations: number
   facultyMaxActiveReservations: number | null
   blockRenewalIfOverdue: boolean
@@ -67,6 +72,17 @@ export function roleReservationLimit(policy: BorrowingPolicyVersion, role: strin
   if (role === 'Student') return policy.studentMaxActiveReservations
   if (role === 'Faculty') return policy.facultyMaxActiveReservations
   return null
+}
+
+/** Renewal limit for the borrower's role; null means no limit (faculty by default). */
+export function roleMaxRenewals(policy: BorrowingPolicyVersion, role: string | null | undefined): number | null {
+  if (role === 'Faculty') return policy.facultyMaxRenewals ?? null
+  return policy.maxRenewals
+}
+
+export function roleRenewalExtensionDays(policy: BorrowingPolicyVersion, role: string | null | undefined): number {
+  if (role === 'Faculty') return policy.facultyRenewalExtensionDays ?? policy.renewalExtensionDays
+  return policy.renewalExtensionDays
 }
 
 export function isMaterialBorrowable(policy: BorrowingPolicyVersion, materialType: string | null | undefined): boolean {

@@ -107,3 +107,16 @@ it('the Pickup window shortcut lands on the pickup window field', async () => {
   expect(scroll).toHaveBeenCalled()
   window.history.replaceState(null, '', '/')
 })
+
+it('switches to the Faculty tab to save a separate faculty waiting-list limit', async () => {
+  api.settings.mockResolvedValue({ ...defaults, facultyWaitingExpiryDays: null })
+  api.saveSettings.mockResolvedValue({ ...defaults, facultyWaitingExpiryDays: 30 })
+  render(<ReservationSettingsPanel />)
+  await screen.findByLabelText('Pickup window (days)')
+  fireEvent.click(screen.getByRole('tab', { name: 'Faculty' }))
+  const facultyInput = screen.getByLabelText('Faculty waiting-list limit (days)') as HTMLInputElement
+  expect(facultyInput.value).toBe('')
+  fireEvent.change(facultyInput, { target: { value: '30' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save faculty waiting-list limit' }))
+  await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith({ facultyWaitingExpiryDays: '30' }))
+})

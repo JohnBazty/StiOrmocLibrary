@@ -18,6 +18,8 @@ export const LEGACY_BORROWING_POLICY: BorrowingPolicyVersion = {
   dueTimeCutoff: '08:59:00',
   maxRenewals: 1,
   renewalExtensionDays: 1,
+  facultyMaxRenewals: null,
+  facultyRenewalExtensionDays: null,
   studentMaxActiveReservations: 2,
   facultyMaxActiveReservations: null,
   blockRenewalIfOverdue: true,

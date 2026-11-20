@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { db, type Pool, type PoolConnection, type RowDataPacket, type ResultSetHeader } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
-import { conductAction } from './conduct-policy.ts'
+import { conductAction, facultyConductAction } from './conduct-policy.ts'
 import { refreshClearance, type FineActor } from './fines.service.ts'
 
 function text(value: unknown, label: string, min: number, max: number) {
@@ -43,13 +43,13 @@ export function createConductService(database: Pool = db) {
     // Saved lifetime reviews from before this change keep counting so nobody's history is reset.
     const earlier=Number(reviews[0]?.prior_warnings??0)
     const warningsUsed=history.length+earlier
-    const warningsBeforeFine=isFaculty?0:Number(category.warnings_before_fine)
-    const action=conductAction(warningsUsed,warningsBeforeFine)
+    // Faculty are never fined (revisions 2026-11-20): they get the same warnings, ending at a final warning.
+    const warningsBeforeFine=Number(category.warnings_before_fine)
+    const action=isFaculty?facultyConductAction(warningsUsed,warningsBeforeFine):conductAction(warningsUsed,warningsBeforeFine)
     // A paper log only back-fills warnings from before the system, so it can never touch the fine step or follow system records.
     const [recorded]=await ex.execute<RowDataPacket[]>("SELECT COUNT(*) AS count FROM conduct_incidents WHERE user_id=? AND category=? AND voided_at IS NULL AND source='Recorded'",[user.user_id,categoryName])
     const [latestPaper]=await ex.execute<RowDataPacket[]>("SELECT MAX(incident_at) AS latest FROM conduct_incidents WHERE user_id=? AND category=? AND voided_at IS NULL AND source='Paper log'",[user.user_id,categoryName])
-    const block=isFaculty?{status:422,code:'CONDUCT_PAPER_FACULTY',message:'Faculty go straight to a fine, so there is no earlier warning to copy from the paper log.'}
-      :warningsBeforeFine===0?{status:422,code:'CONDUCT_PAPER_LOG_NO_WARNINGS',message:'This category has no warnings, so there is nothing to copy from the paper log.'}
+    const block=warningsBeforeFine===0?{status:422,code:'CONDUCT_PAPER_LOG_NO_WARNINGS',message:'This category has no warnings, so there is nothing to copy from the paper log.'}
       :Number(recorded[0].count)>0?{status:422,code:'CONDUCT_PAPER_LOG_AFTER_RECORDS',message:'Paper-log entries must come before the first record made in the system.'}
       :action==='Fine'?{status:409,code:'CONDUCT_PAPER_LOG_FINE_STEP',message:'This person is already at the fine step. Paper-log entries only add earlier warnings.'}
       :null
@@ -80,8 +80,8 @@ export function createConductService(database: Pool = db) {
         (SELECT COUNT(*) FROM conduct_incidents i WHERE i.user_id=? AND i.category=c.name AND i.voided_at IS NULL)+COALESCE((SELECT s.prior_warnings FROM conduct_students s WHERE s.user_id=? AND s.category=c.name),0) AS used
         FROM violation_categories c ORDER BY c.sort_order,c.name`,[users[0].user_id,users[0].user_id])
       return rows.filter(r=>r.is_active||Number(r.used)>0).map(r=>{
-        const warningsBeforeFine=isFaculty?0:Number(r.warnings_before_fine);const warningsUsed=Number(r.used)
-        return {category:String(r.name),warningsUsed,warningsBeforeFine,warningsLeft:Math.max(0,warningsBeforeFine-warningsUsed),fineAmount:Number(r.fine_amount)}
+        const warningsBeforeFine=Number(r.warnings_before_fine);const warningsUsed=Number(r.used)
+        return {category:String(r.name),warningsUsed,warningsBeforeFine,warningsLeft:Math.max(0,warningsBeforeFine-warningsUsed),fineAmount:isFaculty?0:Number(r.fine_amount)}
       })
     },
     async record(actor: FineActor, body: unknown) {

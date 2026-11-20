@@ -150,6 +150,9 @@ export function validatePublishBorrowingPolicy(body: unknown): PublishBorrowingP
     dueTimeCutoff: requireCutoff(input.dueTimeCutoff ?? input.due_time_cutoff),
     maxRenewals: requirePositiveInt(input.maxRenewals ?? input.max_renewals, 'maxRenewals', 0, 10),
     renewalExtensionDays: requirePositiveInt(input.renewalExtensionDays ?? input.renewal_extension_days, 'renewalExtensionDays', 1, 60),
+    // Faculty renewals: blank limit = no limit; blank extension = same as students.
+    facultyMaxRenewals: optionalUnlimitedInt(input.facultyMaxRenewals ?? input.faculty_max_renewals, 'facultyMaxRenewals', 0, 50),
+    facultyRenewalExtensionDays: optionalUnlimitedInt(input.facultyRenewalExtensionDays ?? input.faculty_renewal_extension_days, 'facultyRenewalExtensionDays', 1, 120),
     studentMaxActiveReservations: requirePositiveInt(
       input.studentMaxActiveReservations ?? input.student_max_active_reservations,
       'studentMaxActiveReservations',

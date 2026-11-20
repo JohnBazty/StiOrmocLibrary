@@ -15,6 +15,8 @@ export type BorrowingPolicyVersion = {
   dueCutoffLabel: string
   maxRenewals: number
   renewalExtensionDays: number
+  facultyMaxRenewals?: number | null
+  facultyRenewalExtensionDays?: number | null
   studentMaxActiveReservations: number
   facultyMaxActiveReservations: number | null
   blockRenewalIfOverdue: boolean
@@ -46,6 +48,8 @@ export type PublishBorrowingPolicyInput = {
   dueTimeCutoff: string
   maxRenewals: number
   renewalExtensionDays: number
+  facultyMaxRenewals?: number | null
+  facultyRenewalExtensionDays?: number | null
   studentMaxActiveReservations: number
   facultyMaxActiveReservations: number | null
   blockRenewalIfOverdue: boolean

@@ -1,3 +1,4 @@
+import { isFineExemptRole } from '../fines/fine-exemption.ts'
 import type { Pool, RowDataPacket } from '../../config/db.js'
 import {openLongOverdueCaseInTransaction} from './circulation-case.service.ts'
 import { localTimestamp, manilaDate } from '../attendance/attendance-intervals.ts'
@@ -19,7 +20,7 @@ export async function escalateOverdueTransactions(database: Pool = db, now: Date
   try {
     await connection.beginTransaction()
     const [rows] = await connection.execute<RowDataPacket[]>(
-      `SELECT bt.transaction_id, bt.user_id, ${"(bt.due_at AT TIME ZONE 'Asia/Manila') AS due_at"}, bt.due_at::text AS due_at_key, bt.physical_copy_id, bt.borrowing_policy_version_id, bp.long_overdue_after_days, COALESCE(t.title, m.title) AS title
+      `SELECT bt.transaction_id, bt.user_id, (SELECT u.user_role FROM users u WHERE u.user_id=bt.user_id) AS borrower_role, ${"(bt.due_at AT TIME ZONE 'Asia/Manila') AS due_at"}, bt.due_at::text AS due_at_key, bt.physical_copy_id, bt.borrowing_policy_version_id, bp.long_overdue_after_days, COALESCE(t.title, m.title) AS title
          FROM borrow_transactions bt
          INNER JOIN materials m ON m.material_id = bt.material_id
          LEFT JOIN borrowing_policy_versions bp ON bp.borrowing_policy_version_id=bt.borrowing_policy_version_id
@@ -51,7 +52,8 @@ export async function escalateOverdueTransactions(database: Pool = db, now: Date
           [loan.user_id, loan.transaction_id, `${loan.title} passed its recorded return deadline.`],
         )
       }
-      if (charge.amount > 0) {
+      // Faculty loans still turn Overdue, but faculty are never fined.
+      if (charge.amount > 0 && !isFineExemptRole(loan.borrower_role)) {
         await connection.execute(
           `INSERT INTO fines
              (transaction_id, user_id, fine_type, fine_amount, payment_status, calculation_basis, overdue_units, rate_applied, maximum_cap_applied, notes, updated_at)

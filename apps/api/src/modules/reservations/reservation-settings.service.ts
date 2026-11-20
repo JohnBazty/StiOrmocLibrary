@@ -4,15 +4,27 @@ import { HttpError } from '../../core/http-error.ts'
 import { requireLibraryActor } from '../../core/library-permissions.ts'
 
 type Query = Pick<PoolConnection, 'execute'>
-export type ReservationSettings = { pickupWindowDays: number; waitingExpiryDays: number | null; waitingExpirySavedAt: Date | null }
+export type ReservationSettings = { pickupWindowDays: number; waitingExpiryDays: number | null; waitingExpirySavedAt: Date | null; facultyWaitingExpiryDays?: number | null; facultyWaitingExpirySavedAt?: Date | null }
+
+/** Waiting-list limit for a role: students use waitingExpiryDays; faculty their own (null = never expire). */
+export function roleWaitingExpiryDays(settings: ReservationSettings, role: string | null | undefined) {
+  return role === 'Faculty' ? settings.facultyWaitingExpiryDays ?? null : settings.waitingExpiryDays
+}
+
+/** The settings as the given role's waiting-list limit sees them. */
+export function settingsForRole(settings: ReservationSettings, role: string | null | undefined): ReservationSettings {
+  return role === 'Faculty' ? { ...settings, waitingExpiryDays: settings.facultyWaitingExpiryDays ?? null, waitingExpirySavedAt: settings.facultyWaitingExpirySavedAt ?? null } : settings
+}
 export type ReservationSettingsView = {
   pickupWindowDays: number; pickupWindowChangedBy: string | null; pickupWindowChangedAt: string | null
   waitingExpiryDays: number | null; waitingExpiryChangedBy: string | null; waitingExpiryChangedAt: string | null
+  /** Faculty waiting-list limit in days; null = faculty requests do not expire. */
+  facultyWaitingExpiryDays?: number | null
 }
-export type ReservationSettingsUpdate = { pickupWindowDays?: number; waitingExpiryDays?: number | null }
+export type ReservationSettingsUpdate = { pickupWindowDays?: number; waitingExpiryDays?: number | null; facultyWaitingExpiryDays?: number | null }
 
-export const DEFAULT_RESERVATION_SETTINGS: ReservationSettings = Object.freeze({ pickupWindowDays: 1, waitingExpiryDays: null, waitingExpirySavedAt: null })
-const DEFAULT_VIEW: ReservationSettingsView = Object.freeze({ pickupWindowDays: 1, pickupWindowChangedBy: null, pickupWindowChangedAt: null, waitingExpiryDays: null, waitingExpiryChangedBy: null, waitingExpiryChangedAt: null })
+export const DEFAULT_RESERVATION_SETTINGS: ReservationSettings = Object.freeze({ pickupWindowDays: 1, waitingExpiryDays: null, waitingExpirySavedAt: null, facultyWaitingExpiryDays: null, facultyWaitingExpirySavedAt: null })
+const DEFAULT_VIEW: ReservationSettingsView = Object.freeze({ pickupWindowDays: 1, pickupWindowChangedBy: null, pickupWindowChangedAt: null, waitingExpiryDays: null, waitingExpiryChangedBy: null, waitingExpiryChangedAt: null, facultyWaitingExpiryDays: null })
 const PICKUP_MESSAGE = 'Enter a whole number of days from 1 to 7.'
 const WAITING_MESSAGE = 'Leave blank to turn off, or enter a whole number of days from 7 to 90.'
 
@@ -44,13 +56,15 @@ async function tablePresent(q: Query) {
 
 export async function readReservationSettings(q: Query): Promise<ReservationSettings> {
   if (!await tablePresent(q)) return DEFAULT_RESERVATION_SETTINGS
-  const [rows] = await q.execute<RowDataPacket[]>('SELECT pickup_window_days, waiting_expiry_days, waiting_expiry_saved_at FROM reservation_settings WHERE settings_id = 1')
+  const [rows] = await q.execute<RowDataPacket[]>('SELECT * FROM reservation_settings WHERE settings_id = 1')
   const row = rows[0]
   if (!row) return DEFAULT_RESERVATION_SETTINGS
   return {
     pickupWindowDays: Number(row.pickup_window_days),
     waitingExpiryDays: row.waiting_expiry_days == null ? null : Number(row.waiting_expiry_days),
     waitingExpirySavedAt: row.waiting_expiry_saved_at == null ? null : new Date(row.waiting_expiry_saved_at),
+    facultyWaitingExpiryDays: row.faculty_waiting_expiry_days == null ? null : Number(row.faculty_waiting_expiry_days),
+    facultyWaitingExpirySavedAt: row.faculty_waiting_expiry_saved_at == null ? null : new Date(row.faculty_waiting_expiry_saved_at),
   }
 }
 
@@ -65,7 +79,8 @@ export function parseReservationSettingsUpdate(body: unknown): ReservationSettin
   const input = body && typeof body === 'object' && !Array.isArray(body) ? body as Record<string, unknown> : {}
   const hasPickup = Object.hasOwn(input, 'pickupWindowDays')
   const hasWaiting = Object.hasOwn(input, 'waitingExpiryDays')
-  if (!hasPickup && !hasWaiting) throw new HttpError(422, 'RESERVATION_SETTINGS_INVALID', 'Choose a setting to save.')
+  const hasFacultyWaiting = Object.hasOwn(input, 'facultyWaitingExpiryDays')
+  if (!hasPickup && !hasWaiting && !hasFacultyWaiting) throw new HttpError(422, 'RESERVATION_SETTINGS_INVALID', 'Choose a setting to save.')
   const update: ReservationSettingsUpdate = {}
   if (hasPickup) {
     const days = wholeDays(input.pickupWindowDays, 1, 7)
@@ -79,6 +94,13 @@ export function parseReservationSettingsUpdate(body: unknown): ReservationSettin
     if (!off && days == null) throw invalid('waitingExpiryDays', WAITING_MESSAGE)
     update.waitingExpiryDays = days
   }
+  if (hasFacultyWaiting) {
+    const value = input.facultyWaitingExpiryDays
+    const off = value === null || (typeof value === 'string' && value.trim() === '')
+    const days = off ? null : wholeDays(value, 7, 180)
+    if (!off && days == null) throw invalid('facultyWaitingExpiryDays', 'Enter 7 to 180 days, or leave it empty so faculty requests do not expire.')
+    update.facultyWaitingExpiryDays = days
+  }
   return update
 }
 
@@ -87,7 +109,7 @@ const iso = (value: unknown) => value == null ? null : new Date(value as string)
 export function createReservationSettingsService(database: Pool = db, clock = () => new Date()) {
   async function read(): Promise<ReservationSettingsView> {
     if (!await tablePresent(database)) return DEFAULT_VIEW
-    const [rows] = await database.execute<RowDataPacket[]>(`SELECT s.pickup_window_days, s.pickup_window_changed_at, s.waiting_expiry_days, s.waiting_expiry_saved_at,
+    const [rows] = await database.execute<RowDataPacket[]>(`SELECT s.*,
       COALESCE(pu.full_name, pa.school_id) AS pickup_by, COALESCE(wu.full_name, wa.school_id) AS waiting_by
       FROM reservation_settings s
       LEFT JOIN accounts pa ON pa.account_id = s.pickup_window_changed_by LEFT JOIN users pu ON pu.user_id = pa.user_id
@@ -102,6 +124,7 @@ export function createReservationSettingsService(database: Pool = db, clock = ()
       waitingExpiryDays: row.waiting_expiry_days == null ? null : Number(row.waiting_expiry_days),
       waitingExpiryChangedBy: row.waiting_by ?? null,
       waitingExpiryChangedAt: iso(row.waiting_expiry_saved_at),
+      facultyWaitingExpiryDays: row.faculty_waiting_expiry_days == null ? null : Number(row.faculty_waiting_expiry_days),
     }
   }
 
@@ -127,6 +150,12 @@ export function createReservationSettingsService(database: Pool = db, clock = ()
           ON CONFLICT (settings_id) DO UPDATE SET waiting_expiry_days = EXCLUDED.waiting_expiry_days,
           waiting_expiry_changed_by = EXCLUDED.waiting_expiry_changed_by, waiting_expiry_saved_at = EXCLUDED.waiting_expiry_saved_at`,
         [update.waitingExpiryDays, actorAccountId, now])
+      }
+      if (update.facultyWaitingExpiryDays !== undefined) {
+        await q.execute(`INSERT INTO reservation_settings (settings_id, faculty_waiting_expiry_days, faculty_waiting_expiry_changed_by, faculty_waiting_expiry_saved_at) VALUES (1, ?, ?, ?)
+          ON CONFLICT (settings_id) DO UPDATE SET faculty_waiting_expiry_days = EXCLUDED.faculty_waiting_expiry_days,
+          faculty_waiting_expiry_changed_by = EXCLUDED.faculty_waiting_expiry_changed_by, faculty_waiting_expiry_saved_at = EXCLUDED.faculty_waiting_expiry_saved_at`,
+        [update.facultyWaitingExpiryDays, actorAccountId, now])
       }
       await q.commit()
     } catch (error) { await q.rollback(); throw error } finally { q.release() }
