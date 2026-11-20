@@ -10,7 +10,7 @@ import { positiveId, validateMove } from './reservation.validation.ts'
 import { recordRequestEvent, requestEventStatus, requestLabels, requestInstructions } from './book-request-events.ts'
 import { loadOpeningHours, pickupDeadline, nextCloseAfter } from './pickup-deadline.ts'
 import { notifyLibrarians } from '../notifications/library-alerts.ts'
-import { dayCount, readReservationSettings, waitingExpiryCutoff } from './reservation-settings.service.ts'
+import { dayCount, readReservationSettings, waitingExpiryCutoff, settingsForRole } from './reservation-settings.service.ts'
 import { requireScheduledPickup } from './borrowing-schedule-calendar.ts'
 
 const active = "('pending','approved','ready_for_pickup')"
@@ -195,10 +195,17 @@ export async function releaseLostCopyHolds(q: PoolConnection,physicalCopyId:numb
 
 /** Waiting-list limit (SPEC R4). The caller holds the shared circulation lock, so Mark ready and allocation cannot race this. */
 async function expireWaiting(q: PoolConnection,now:Date,limit:number) {
-  const cutoff=waitingExpiryCutoff(now,await readReservationSettings(q))
+  // Students and faculty each have their own waiting-list limit (revisions 2026-11-20).
+  const settings=await readReservationSettings(q)
+  let expired=0
+  for(const role of ['Student','Faculty'] as const) expired+=await expireWaitingFor(q,now,limit,role,waitingExpiryCutoff(now,settingsForRole(settings,role)))
+  return expired
+}
+async function expireWaitingFor(q: PoolConnection,now:Date,limit:number,role:'Student'|'Faculty',cutoff:Date|null) {
   if(!cutoff) return 0
   const [rows]=await q.execute<RowDataPacket[]>(`SELECT * FROM reservations WHERE request_kind='Reservation' AND reservation_status IN ('pending','approved')
     AND assigned_physical_copy_id IS NULL AND reserved_at<=(?::timestamptz AT TIME ZONE 'Asia/Manila')
+    AND (SELECT u.user_role FROM users u WHERE u.user_id=reservations.user_id) ${role==='Faculty'?"='Faculty'":"IS DISTINCT FROM 'Faculty'"}
     -- A copy freed since the last allocation run goes to this queue first; advanceWaiting assigns it.
     AND NOT EXISTS (SELECT 1 FROM physical_copies pc WHERE pc.title_id=reservations.book_title_id AND pc.lifecycle_status='Active'
       AND pc.availability_status='Available' AND pc.condition_status NOT IN ('Lost','Damaged','For Repair'))

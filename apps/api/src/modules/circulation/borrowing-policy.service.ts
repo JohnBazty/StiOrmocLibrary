@@ -44,6 +44,8 @@ function toDto(version: BorrowingPolicyVersion, status: BorrowingPolicyDerivedSt
     dueCutoffLabel: formatDueCutoffLabel(version.dueTimeCutoff),
     maxRenewals: version.maxRenewals,
     renewalExtensionDays: version.renewalExtensionDays,
+    facultyMaxRenewals: version.facultyMaxRenewals,
+    facultyRenewalExtensionDays: version.facultyRenewalExtensionDays,
     studentMaxActiveReservations: version.studentMaxActiveReservations,
     facultyMaxActiveReservations: version.facultyMaxActiveReservations,
     blockRenewalIfOverdue: version.blockRenewalIfOverdue,

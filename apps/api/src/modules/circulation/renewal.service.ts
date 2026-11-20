@@ -1,3 +1,4 @@
+import { roleMaxRenewals, roleRenewalExtensionDays } from './borrowing-policy.types.ts'
 import type { Pool, PoolConnection } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
@@ -76,7 +77,8 @@ function evaluateBlockers(
   if (!policy) {
     blockers.push(blocker('RENEWAL_POLICY_UNAVAILABLE'))
   } else {
-    if (loan.renewalCount >= policy.maxRenewals) blockers.push(blocker('RENEWAL_LIMIT_REACHED'))
+    const maxRenewals = roleMaxRenewals(policy, loan.borrowerRole)
+    if (maxRenewals !== null && loan.renewalCount >= maxRenewals) blockers.push(blocker('RENEWAL_LIMIT_REACHED'))
     if (!isMaterialBorrowable(policy, loan.materialType)) blockers.push(blocker('RENEWAL_MATERIAL_NOT_ELIGIBLE'))
   }
   if (['Lost', 'Damaged', 'For Repair'].includes(loan.copyCondition ?? '') || loan.copyLifecycleStatus === 'Archived') {
@@ -205,7 +207,7 @@ export function createRenewalService(database: Pool = db, clock: () => Date = ()
         const {openDays,closedDates} = await repository.loadOperatingCalendar(loan.dueAt, executor)
         proposedDueAt = extendRecordedLoanDeadline(
           loan.dueAt,
-          policy.renewalExtensionDays,
+          roleRenewalExtensionDays(policy, loan.borrowerRole),
           openDays,
           closedDates,
         )

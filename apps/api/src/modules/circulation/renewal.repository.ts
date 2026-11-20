@@ -27,6 +27,8 @@ export interface RenewalLoan {
   renewalCount: number
   status: string
   userAccountStatus: string
+  /** Borrower role, for role-specific renewal rules. */
+  borrowerRole?: string | null
   normalizedAccountStatus: string | null
   materialType: string
   titleId: number | null
@@ -110,6 +112,7 @@ function mapLoan(row: RowDataPacket | undefined): RenewalLoan | null {
     renewalCount: Number(row.renewal_count ?? 0),
     status: String(row.transaction_status),
     userAccountStatus: String(row.user_account_status),
+    borrowerRole: row.borrower_role ? String(row.borrower_role) : null,
     normalizedAccountStatus: row.normalized_account_status ? String(row.normalized_account_status) : null,
     materialType: String(row.material_type),
     titleId: row.title_id ? Number(row.title_id) : null,
@@ -189,7 +192,7 @@ export function createRenewalRepository(database: Pool = db, options: { previewC
                 (bt.borrowed_at AT TIME ZONE 'Asia/Manila') AS borrowed_at,
                 (bt.due_at AT TIME ZONE 'Asia/Manila') AS due_at,
                 (bt.initial_due_at AT TIME ZONE 'Asia/Manila') AS initial_due_at,
-                bt.renewal_count, bt.transaction_status, u.account_status AS user_account_status,
+                bt.renewal_count, bt.transaction_status, u.account_status AS user_account_status, u.user_role AS borrower_role,
                 a.account_status AS normalized_account_status, m.material_type,
                 pc.title_id, pc.condition_status, pc.lifecycle_status AS copy_lifecycle_status,
                 t.lifecycle_status AS title_lifecycle_status, COALESCE(t.title, m.title) AS title

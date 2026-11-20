@@ -64,3 +64,23 @@ it('shows a publish error inside the dialog and leaves confirm mode when a field
   fireEvent.click(form.getByRole('button', { name: 'Confirm publish' }))
   expect((await form.findByRole('alert')).textContent).toContain('Effective date cannot be in the past.')
 })
+
+it('separates Student and Faculty tabs in the policy editor and publishes faculty renewal rules', async () => {
+  vi.mocked(borrowingPoliciesApi.publish).mockResolvedValue({ ...active, versionId: 2, displayName: 'Policy v2', facultyMaxRenewals: 5, facultyRenewalExtensionDays: 7 })
+  const { dialog } = await openForm()
+  const form = within(dialog)
+  fireEvent.click(form.getByRole('tab', { name: 'Faculty' }))
+  fireEvent.change(form.getByLabelText(/Faculty max renewals/i), { target: { value: '5' } })
+  fireEvent.change(form.getByLabelText(/Faculty renewal extension days/i), { target: { value: '7' } })
+  fireEvent.change(form.getByLabelText('Change reason'), { target: { value: 'Set separate faculty renewal rules for next term' } })
+  fireEvent.click(form.getByRole('button', { name: 'Review and continue' }))
+  expect(form.getByText('Faculty max renewals: Unlimited → 5')).toBeTruthy()
+  expect(form.getByText('Faculty renewal extension: Same as students → 7')).toBeTruthy()
+  fireEvent.click(form.getByRole('button', { name: 'Confirm publish' }))
+  await screen.findByText(/Policy v2 published/)
+  expect(borrowingPoliciesApi.publish).toHaveBeenCalledWith(expect.objectContaining({
+    facultyMaxRenewals: 5,
+    facultyRenewalExtensionDays: 7,
+    facultyMaxActiveBooks: null,
+  }))
+})

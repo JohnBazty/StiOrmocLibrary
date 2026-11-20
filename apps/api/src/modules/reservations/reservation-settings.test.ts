@@ -158,7 +158,7 @@ test('every save of the waiting-list limit records the save time and librarian; 
   const first = await request(app).put('/settings').send({ waitingExpiryDays: 14 })
   assert.equal(first.status, 200)
   assert.deepEqual(first.body.data, { pickupWindowDays: 1, pickupWindowChangedBy: null, pickupWindowChangedAt: null,
-    waitingExpiryDays: 14, waitingExpiryChangedBy: 'Lia Librarian', waitingExpiryChangedAt: T0.toISOString() })
+    waitingExpiryDays: 14, waitingExpiryChangedBy: 'Lia Librarian', waitingExpiryChangedAt: T0.toISOString(), facultyWaitingExpiryDays: null })
   const later = new Date(T0.getTime() + 3600_000)
   now = later
   await request(app).put('/settings').send({ waitingExpiryDays: 14 })
@@ -178,7 +178,7 @@ test('a fresh 043 database reports window 1, limit off and Default for both sett
   const app = routeApp(createReservationSettingsService(pool, () => T0), LIBRARIAN, 'Librarian')
   const response = await request(app).get('/settings')
   assert.deepEqual(response.body.data, { pickupWindowDays: 1, pickupWindowChangedBy: null, pickupWindowChangedAt: null,
-    waitingExpiryDays: null, waitingExpiryChangedBy: null, waitingExpiryChangedAt: null })
+    waitingExpiryDays: null, waitingExpiryChangedBy: null, waitingExpiryChangedAt: null, facultyWaitingExpiryDays: null })
   assert.deepEqual(await readReservationSettings(pool), DEFAULT_RESERVATION_SETTINGS)
   await pg.close()
 })
@@ -272,4 +272,11 @@ test('a save takes the circulation lock before writing, so it cannot race the ex
   const writeAt = sqls.findIndex((sql) => /INSERT INTO reservation_settings/.test(sql))
   assert.ok(lockAt >= 0 && lockAt < writeAt, `lock at ${lockAt}, write at ${writeAt}`)
   await pg.close()
+})
+
+test('the faculty waiting-list limit is its own setting: 7 to 180 days, or empty so faculty requests never expire', async () => {
+  const { parseReservationSettingsUpdate } = await import('./reservation-settings.service.ts')
+  assert.deepEqual(parseReservationSettingsUpdate({ facultyWaitingExpiryDays: 30 }), { facultyWaitingExpiryDays: 30 })
+  assert.deepEqual(parseReservationSettingsUpdate({ facultyWaitingExpiryDays: '' }), { facultyWaitingExpiryDays: null })
+  assert.throws(() => parseReservationSettingsUpdate({ facultyWaitingExpiryDays: 3 }))
 })

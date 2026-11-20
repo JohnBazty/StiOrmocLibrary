@@ -4,7 +4,7 @@ import { getCsrfToken } from '../auth/auth-storage'
 export class ReservationApiError extends Error {
   constructor(message: string, public code: string) { super(message) }
 }
-export type ReservationSettingsView = { pickupWindowDays: number; pickupWindowChangedBy: string | null; pickupWindowChangedAt: string | null; waitingExpiryDays: number | null; waitingExpiryChangedBy: string | null; waitingExpiryChangedAt: string | null }
+export type ReservationSettingsView = { pickupWindowDays: number; pickupWindowChangedBy: string | null; pickupWindowChangedAt: string | null; waitingExpiryDays: number | null; waitingExpiryChangedBy: string | null; waitingExpiryChangedAt: string | null; facultyWaitingExpiryDays?: number | null }
 let csrfToken: string | null = null
 
 export async function reservationRequest<T>(url: string, options: RequestInit = {}) {
@@ -43,6 +43,6 @@ export const reservationApi = {
   moveInQueue: (reservationId: number, direction: 'up' | 'down', reason: string) => request(`/api/v1/admin/reservations/${reservationId}/move`, { method: 'POST', body: JSON.stringify({ direction, reason }) }),
   mine: () => request<RequestHistoryItem[]>('/api/v1/reservations'),
   settings: () => request<ReservationSettingsView>('/api/v1/admin/reservation-settings'),
-  saveSettings: (body: { pickupWindowDays?: string; waitingExpiryDays?: string }) => request<ReservationSettingsView>('/api/v1/admin/reservation-settings', { method: 'PUT', body: JSON.stringify(body) }),
+  saveSettings: (body: { pickupWindowDays?: string; waitingExpiryDays?: string; facultyWaitingExpiryDays?: string }) => request<ReservationSettingsView>('/api/v1/admin/reservation-settings', { method: 'PUT', body: JSON.stringify(body) }),
   cancelMine: (reservationId: number) => request(`/api/v1/reservations/${reservationId}/cancel`, { method: 'PUT' }),
 }

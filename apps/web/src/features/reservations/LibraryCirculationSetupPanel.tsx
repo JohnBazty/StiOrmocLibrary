@@ -39,6 +39,8 @@ function draftFromPolicy(version: BorrowingPolicyVersion | null): PublishBorrowi
     dueTimeCutoff: (version?.dueTimeCutoff ?? '08:59:00').slice(0, 5),
     maxRenewals: version?.maxRenewals ?? 1,
     renewalExtensionDays: version?.renewalExtensionDays ?? 1,
+    facultyMaxRenewals: version?.facultyMaxRenewals ?? null,
+    facultyRenewalExtensionDays: version?.facultyRenewalExtensionDays ?? null,
     studentMaxActiveReservations: version?.studentMaxActiveReservations ?? 2,
     facultyMaxActiveReservations: version?.facultyMaxActiveReservations ?? null,
     blockRenewalIfOverdue: version?.blockRenewalIfOverdue ?? true,
@@ -60,6 +62,7 @@ export function LibraryCirculationSetupPanel() {
   const [policyError, setPolicyError] = useState('')
   const [policyNotice, setPolicyNotice] = useState('')
   const [confirmingPolicy, setConfirmingPolicy] = useState(false)
+  const [policyRoleTab, setPolicyRoleTab] = useState<'Student' | 'Faculty'>('Student')
 
   const [loans, setLoans] = useState<CirculationMonitorData['items']>([])
   const [loansBusy, setLoansBusy] = useState(false)
@@ -128,6 +131,12 @@ export function LibraryCirculationSetupPanel() {
     }
     if (draft.maxRenewals > 0 && draft.renewalExtensionDays > draft.borrowingDays * 3) {
       return `Renewal extension (${draft.renewalExtensionDays} days) cannot exceed 3× the standard borrowing period (${draft.borrowingDays * 3} days).`
+    }
+    if (draft.facultyMaxRenewals != null && (!Number.isInteger(draft.facultyMaxRenewals) || draft.facultyMaxRenewals < 0 || draft.facultyMaxRenewals > 50)) {
+      return 'Faculty max renewals must be between 0 and 50, or left blank for unlimited.'
+    }
+    if (draft.facultyRenewalExtensionDays != null && (!Number.isInteger(draft.facultyRenewalExtensionDays) || draft.facultyRenewalExtensionDays < 1 || draft.facultyRenewalExtensionDays > 120)) {
+      return 'Faculty renewal extension days must be between 1 and 120, or left blank to match students.'
     }
     if (!Number.isInteger(draft.longOverdueAfterDays) || draft.longOverdueAfterDays < draft.borrowingDays || draft.longOverdueAfterDays > 365) {
       return `Long-overdue escalation threshold must be at least ${draft.borrowingDays} day(s) and at most 365 days.`
@@ -279,70 +288,123 @@ export function LibraryCirculationSetupPanel() {
         {policyError ? <NoticeBanner tone="error" className="mb-4">{policyError}</NoticeBanner> : null}
         {policyNotice ? <NoticeBanner tone="success" className="mb-4">{policyNotice}</NoticeBanner> : null}
 
+        <div role="tablist" aria-label="Waitlist and renewal policy role" className="mb-4 inline-flex gap-1 rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
+          {(['Student', 'Faculty'] as const).map((role) => (
+            <button
+              key={role}
+              type="button"
+              role="tab"
+              aria-selected={policyRoleTab === role}
+              onClick={() => setPolicyRoleTab(role)}
+              className={`rounded-lg px-3.5 py-2 text-sm font-semibold transition ${policyRoleTab === role ? 'bg-[#0b5ea2] text-white shadow-xs' : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'}`}
+            >
+              {role}
+            </button>
+          ))}
+        </div>
+
         <form onSubmit={saveWaitlistAndRenewalRules} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <label className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
-            Student waitlist &amp; reservation limit (1–20)
-            <input
-              required
-              type="number"
-              min={1}
-              max={20}
-              value={draft.studentMaxActiveReservations}
-              onChange={(event) => updateDraft({ studentMaxActiveReservations: Number(event.target.value) })}
-              className={`${fieldClass} mt-1.5`}
-            />
-            <span className="mt-1 block text-[11px] font-normal normal-case text-slate-500">
-              Maximum queued + ready reservations a student can hold at once.
-            </span>
-          </label>
+          {policyRoleTab === 'Student' ? (
+            <>
+              <label className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
+                Student waitlist &amp; reservation limit (1–20)
+                <input
+                  required
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={draft.studentMaxActiveReservations}
+                  onChange={(event) => updateDraft({ studentMaxActiveReservations: Number(event.target.value) })}
+                  className={`${fieldClass} mt-1.5`}
+                />
+                <span className="mt-1 block text-[11px] font-normal normal-case text-slate-500">
+                  Maximum queued + ready reservations a student can hold at once.
+                </span>
+              </label>
 
-          <label className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
-            Faculty waitlist &amp; reservation limit
-            <input
-              type="number"
-              min={1}
-              max={100}
-              placeholder="Unlimited"
-              value={draft.facultyMaxActiveReservations ?? ''}
-              onChange={(event) => updateDraft({ facultyMaxActiveReservations: event.target.value === '' ? null : Number(event.target.value) })}
-              className={`${fieldClass} mt-1.5`}
-            />
-            <span className="mt-1 block text-[11px] font-normal normal-case text-slate-500">
-              Leave blank for unlimited faculty waitlist requests (or set 1–100).
-            </span>
-          </label>
+              <label className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
+                Max renewals per borrowed book (0–10)
+                <input
+                  required
+                  type="number"
+                  min={0}
+                  max={10}
+                  value={draft.maxRenewals}
+                  onChange={(event) => updateDraft({ maxRenewals: Number(event.target.value) })}
+                  className={`${fieldClass} mt-1.5`}
+                />
+                <span className="mt-1 block text-[11px] font-normal normal-case text-slate-500">
+                  Set to 0 to disable student renewals, or 1–10 renewals per checkout.
+                </span>
+              </label>
 
-          <label className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
-            Max renewals per borrowed book (0–10)
-            <input
-              required
-              type="number"
-              min={0}
-              max={10}
-              value={draft.maxRenewals}
-              onChange={(event) => updateDraft({ maxRenewals: Number(event.target.value) })}
-              className={`${fieldClass} mt-1.5`}
-            />
-            <span className="mt-1 block text-[11px] font-normal normal-case text-slate-500">
-              Set to 0 to disable student renewals, or 1–10 renewals per checkout.
-            </span>
-          </label>
+              <label className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
+                Renewal extension days (1–60)
+                <input
+                  required
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={draft.renewalExtensionDays}
+                  onChange={(event) => updateDraft({ renewalExtensionDays: Number(event.target.value) })}
+                  className={`${fieldClass} mt-1.5`}
+                />
+                <span className="mt-1 block text-[11px] font-normal normal-case text-slate-500">
+                  Operating days added to the due date each time a student renews a book.
+                </span>
+              </label>
+            </>
+          ) : (
+            <>
+              <label className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
+                Faculty waitlist &amp; reservation limit
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  placeholder="Unlimited"
+                  value={draft.facultyMaxActiveReservations ?? ''}
+                  onChange={(event) => updateDraft({ facultyMaxActiveReservations: event.target.value === '' ? null : Number(event.target.value) })}
+                  className={`${fieldClass} mt-1.5`}
+                />
+                <span className="mt-1 block text-[11px] font-normal normal-case text-slate-500">
+                  Leave blank for unlimited faculty waitlist requests (or set 1–100).
+                </span>
+              </label>
 
-          <label className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
-            Renewal extension days (1–60)
-            <input
-              required
-              type="number"
-              min={1}
-              max={60}
-              value={draft.renewalExtensionDays}
-              onChange={(event) => updateDraft({ renewalExtensionDays: Number(event.target.value) })}
-              className={`${fieldClass} mt-1.5`}
-            />
-            <span className="mt-1 block text-[11px] font-normal normal-case text-slate-500">
-              Operating days added to the due date each time a book is renewed.
-            </span>
-          </label>
+              <label className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
+                Faculty max renewals (0–50)
+                <input
+                  type="number"
+                  min={0}
+                  max={50}
+                  placeholder="Unlimited"
+                  value={draft.facultyMaxRenewals ?? ''}
+                  onChange={(event) => updateDraft({ facultyMaxRenewals: event.target.value === '' ? null : Number(event.target.value) })}
+                  className={`${fieldClass} mt-1.5`}
+                />
+                <span className="mt-1 block text-[11px] font-normal normal-case text-slate-500">
+                  Leave blank for unlimited faculty renewals, or set 0–50 per checkout.
+                </span>
+              </label>
+
+              <label className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
+                Faculty renewal extension days (1–120)
+                <input
+                  type="number"
+                  min={1}
+                  max={120}
+                  placeholder={`Same as students (${draft.renewalExtensionDays})`}
+                  value={draft.facultyRenewalExtensionDays ?? ''}
+                  onChange={(event) => updateDraft({ facultyRenewalExtensionDays: event.target.value === '' ? null : Number(event.target.value) })}
+                  className={`${fieldClass} mt-1.5`}
+                />
+                <span className="mt-1 block text-[11px] font-normal normal-case text-slate-500">
+                  Leave blank to match student extension days, or set 1–120 operating days.
+                </span>
+              </label>
+            </>
+          )}
 
           <label className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
             Long-overdue threshold (days)

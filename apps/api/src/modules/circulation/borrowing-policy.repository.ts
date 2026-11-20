@@ -34,6 +34,8 @@ function mapVersion(row: RowDataPacket, materialRules: BorrowingPolicyMaterialRu
     dueTimeCutoff: sqlTime(row.due_time_cutoff),
     maxRenewals: Number(row.max_renewals),
     renewalExtensionDays: Number(row.renewal_extension_days),
+    facultyMaxRenewals: row.faculty_max_renewals == null ? null : Number(row.faculty_max_renewals),
+    facultyRenewalExtensionDays: row.faculty_renewal_extension_days == null ? null : Number(row.faculty_renewal_extension_days),
     studentMaxActiveReservations: Number(row.student_max_active_reservations),
     facultyMaxActiveReservations: row.faculty_max_active_reservations === null || row.faculty_max_active_reservations === undefined
       ? null
@@ -123,8 +125,8 @@ export function createBorrowingPolicyRepository(database: Pool = db) {
            effective_on, student_max_active_books, faculty_max_active_books, borrowing_days, due_time_cutoff,
            max_renewals, renewal_extension_days, student_max_active_reservations, faculty_max_active_reservations,
            block_renewal_if_overdue, block_renewal_if_unpaid_fines, block_renewal_if_reserved,
-           long_overdue_after_days, change_reason, created_by_user_id
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           long_overdue_after_days, change_reason, created_by_user_id, faculty_max_renewals, faculty_renewal_extension_days
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           input.effectiveOn,
           input.studentMaxActiveBooks,
@@ -141,6 +143,8 @@ export function createBorrowingPolicyRepository(database: Pool = db) {
           input.longOverdueAfterDays,
           input.changeReason,
           createdByUserId,
+          input.facultyMaxRenewals,
+          input.facultyRenewalExtensionDays,
         ],
       )
       const versionId = Number(insert.insertId)
