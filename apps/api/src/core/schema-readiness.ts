@@ -53,7 +53,7 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   announcements: ['announcement_id', 'title', 'message_body', 'priority', 'announcement_status', 'publish_at', 'created_by_user_id'],
   announcement_revisions: ['announcement_revision_id', 'announcement_id', 'revision_number', 'changed_by_user_id'],
   clearance_overrides: ['clearance_override_id', 'user_id', 'override_status', 'reason', 'applied_by_user_id', 'revoked_at'],
-  lost_book_reports: ['lost_book_report_id', 'transaction_id', 'user_id', 'report_status', 'replacement_charge', 'payment_status', 'quotation_id', 'charge_resolution', 'resolution_reason'],
+  lost_book_reports: ['lost_book_report_id', 'transaction_id', 'user_id', 'report_status', 'replacement_charge', 'payment_status', 'quotation_id', 'charge_resolution', 'resolution_reason', 'replacement_received_at'],
   book_quotations: ['quotation_id', 'title_id', 'storage_path', 'quoted_amount', 'created_at'],
   scheduled_job_state: ['job_name', 'lease_token', 'lease_expires_at', 'last_success_at', 'last_failure_at', 'last_outcome', 'progress_cursor'],
   scheduled_job_runs: ['run_id', 'job_name', 'started_at', 'finished_at', 'outcome', 'result_json'],

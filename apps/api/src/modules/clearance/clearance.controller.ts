@@ -24,6 +24,7 @@ export const clearanceController = {
   reportLost: handle(async (request, response) => { response.status(201).json({ success: true, data: await clearanceService.reportLost(actor(response), request.params.transactionId) }) }),
   decideLost: handle(async (request, response) => { response.json({ success: true, data: await clearanceService.decideLost(actor(response), request.params.reportId, request.body) }) }),
   resolveLost: handle(async (request, response) => { response.json({ success: true, data: await clearanceService.resolveLost(actor(response), request.params.reportId, request.body) }) }),
+  replaceLost: handle(async (request, response) => { response.json({ success: true, message: 'Replacement copy received.', data: await clearanceService.replaceLostCopy(actor(response), request.params.reportId) }) }),
   settleLost: handle(async (request, response) => { response.json({ success: true, data: await clearanceService.settleLostCharge(actor(response), request.params.reportId) }) }),
   exportCsv: handle(async (_request, response) => {
     const items = await clearanceService.exportRows(actor(response))

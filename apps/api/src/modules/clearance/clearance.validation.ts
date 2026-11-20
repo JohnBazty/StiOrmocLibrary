@@ -33,8 +33,13 @@ export function validateLostDecision(body: unknown) {
   const replacementCharge = input.replacement_charge === undefined || input.replacement_charge === null || input.replacement_charge === ''
     ? null : Number(input.replacement_charge)
   if (!['Confirmed', 'Rejected'].includes(status)) throw new HttpError(422, 'LOST_BOOK_DECISION_INVALID', 'Choose Confirmed or Rejected.')
-  if (status === 'Confirmed' && replacementCharge !== null && (!Number.isFinite(replacementCharge) || replacementCharge <= 0 || replacementCharge > 1_000_000)) {
-    throw new HttpError(422, 'LOST_BOOK_CHARGE_INVALID', 'The replacement charge must be a positive amount.')
+  // Pay the book price (the librarian enters or confirms it) or bring a replacement copy of the same book.
+  const resolution = input.resolution === undefined || input.resolution === null || input.resolution === '' ? 'Pay' : String(input.resolution)
+  if (!['Pay', 'Replace'].includes(resolution)) throw new HttpError(422, 'LOST_BOOK_RESOLUTION_INVALID', 'Choose Pay book price or Replace copy.')
+  const rawPrice = input.book_price ?? input.bookPrice
+  const bookPrice = rawPrice === undefined || rawPrice === null || rawPrice === '' ? replacementCharge : Number(rawPrice)
+  if (status === 'Confirmed' && resolution === 'Pay' && bookPrice !== null && (!Number.isFinite(bookPrice) || bookPrice <= 0 || bookPrice > 1_000_000)) {
+    throw new HttpError(422, 'LOST_BOOK_CHARGE_INVALID', 'Enter the book price as a positive amount.')
   }
-  return { status: status as 'Confirmed' | 'Rejected', notes: notes || null, replacementCharge }
+  return { status: status as 'Confirmed' | 'Rejected', notes: notes || null, replacementCharge, resolution: resolution as 'Pay' | 'Replace', bookPrice: bookPrice === null ? null : Math.round(bookPrice * 100) / 100 }
 }

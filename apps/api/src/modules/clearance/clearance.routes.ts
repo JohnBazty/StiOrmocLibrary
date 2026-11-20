@@ -21,5 +21,6 @@ adminClearanceV1Router.patch('/lost-books/:reportId', requireJwtRoles('Librarian
 adminClearanceV1Router.patch('/lost-books/:reportId/resolution', requireJwtRoles('Librarian'), clearanceController.resolveLost)
 adminClearanceV1Router.post('/lost-books/loans/:transactionId/report', requireJwtRoles('Librarian'), clearanceController.reportLost)
 adminClearanceV1Router.patch('/lost-books/:reportId/payment', requireJwtRoles('Librarian'), clearanceController.settleLost)
+adminClearanceV1Router.patch('/lost-books/:reportId/replacement', requireJwtRoles('Librarian'), clearanceController.replaceLost)
 
 export const clearanceRouter = Router()

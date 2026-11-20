@@ -15,6 +15,8 @@ import { UnsavedGuard } from '../../components/UnsavedChanges'
 import { getCsrfToken } from '../auth/auth-storage'
 import { usePaymentUpdates } from '../payments/payment-updates'
 import { clearanceApi } from './clearance-api'
+import { ConfirmLossDialog, type LossChoice } from './ConfirmLossDialog'
+import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 import { ClearanceScheduleEditor } from './ClearanceScheduleEditor'
 import type { ClearanceList, ClearanceRecord } from './types'
 import { RefreshButton } from '../../components/RefreshButton'
@@ -74,6 +76,8 @@ export function AdminClearancePage() {
   const [error, setError] = useState('')
   const [modalError, setModalError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [confirmLoss, setConfirmLoss] = useState<ClearanceRecord['lostBooks'][number] | null>(null)
+  const { ask, dialog: confirmSave } = useConfirmSave()
   const [overrideFormOpen, setOverrideFormOpen] = useState(false)
   const [revocationFormOpen, setRevocationFormOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -172,32 +176,32 @@ export function AdminClearancePage() {
     }
   }
 
-  async function decide(
-    reportId: number,
-    status: 'Confirmed' | 'Rejected',
-    quotedAmount: number | null,
-    titlePrice: number | null,
-  ) {
-    if (
-      status === 'Confirmed' &&
-      !window.confirm(
-        titlePrice
-          ? `Confirm this loss and charge the book price of ${money(titlePrice)}? No extra fee is added.`
-          : quotedAmount
-            ? `Confirm this loss and charge the supplier quotation amount of ${money(quotedAmount)}?`
-            : 'Confirm this loss with no charge yet? Staff can record a quotation or record a documented non-monetary resolution later.',
-      )
-    ) {
-      return
-    }
+  async function decide(reportId: number, status: 'Confirmed' | 'Rejected', choice?: LossChoice) {
     setBusy(true)
     setModalError('')
     try {
-      await clearanceApi.decideLost(reportId, status, status === 'Confirmed' ? titlePrice ?? quotedAmount : null)
+      await clearanceApi.decideLost(reportId, status, status === 'Confirmed' ? choice : undefined)
+      setConfirmLoss(null)
       if (selected) await open(selected.student.userId)
       await load()
     } catch (cause) {
       const msg = cause instanceof Error ? cause.message : 'The lost-book report could not be updated.'
+      setModalError(msg)
+      setError(msg)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function replaceCopy(reportId: number) {
+    setBusy(true)
+    setModalError('')
+    try {
+      await clearanceApi.replaceLost(reportId)
+      if (selected) await open(selected.student.userId)
+      await load()
+    } catch (cause) {
+      const msg = cause instanceof Error ? cause.message : 'The replacement copy could not be recorded.'
       setModalError(msg)
       setError(msg)
     } finally {
@@ -626,6 +630,10 @@ export function AdminClearancePage() {
                                 ? 'No charge'
                                 : resolution === 'Awaiting Quotation'
                                   ? 'Awaiting quotation'
+                                  : resolution === 'Awaiting Replacement'
+                                    ? 'Waiting for replacement copy'
+                                    : resolution === 'Replaced'
+                                      ? 'Replaced'
                                   : money(item.replacementCharge)}
                           </strong>
                         </div>
@@ -636,14 +644,7 @@ export function AdminClearancePage() {
                               <Button
                                 size="sm"
                                 disabled={busy || !item.chargeResolution}
-                                onClick={() =>
-                                  void decide(
-                                    item.lostBookReportId,
-                                    'Confirmed',
-                                    item.quotedAmount,
-                                    item.titlePrice ?? null,
-                                  )
-                                }
+                                onClick={() => { setModalError(''); setConfirmLoss(item) }}
                               >
                                 Confirm loss
                               </Button>
@@ -651,14 +652,7 @@ export function AdminClearancePage() {
                                 size="sm"
                                 variant="secondary"
                                 disabled={busy}
-                                onClick={() =>
-                                  void decide(
-                                    item.lostBookReportId,
-                                    'Rejected',
-                                    item.quotedAmount,
-                                    item.titlePrice ?? null,
-                                  )
-                                }
+                                onClick={() => void decide(item.lostBookReportId, 'Rejected')}
                               >
                                 Reject report
                               </Button>
@@ -697,6 +691,16 @@ export function AdminClearancePage() {
                                 </Button>
                               ) : null}
                             </>
+                          ) : null}
+
+                          {item.status === 'Confirmed' && resolution === 'Awaiting Replacement' ? (
+                            <Button
+                              size="sm"
+                              disabled={busy}
+                              onClick={() => ask(`Put the replacement copy of ${item.title} on the shelf under the lost copy's barcode and close this report.`, () => { void replaceCopy(item.lostBookReportId) })}
+                            >
+                              Replace copy
+                            </Button>
                           ) : null}
 
                           {item.status === 'Confirmed' && resolution === 'Awaiting Quotation' ? (
@@ -887,6 +891,17 @@ export function AdminClearancePage() {
           </div>
         </LumoDialog>
       ) : null}
+      {confirmLoss ? (
+        <ConfirmLossDialog
+          title={confirmLoss.title}
+          suggestedPrice={confirmLoss.titlePrice ?? confirmLoss.quotedAmount ?? null}
+          busy={busy}
+          error={modalError}
+          onCancel={() => setConfirmLoss(null)}
+          onConfirm={choice => void decide(confirmLoss.lostBookReportId, 'Confirmed', choice)}
+        />
+      ) : null}
+      {confirmSave}
     </>
   )
 }
