@@ -31,6 +31,15 @@ describe('BookLabelSheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Print labels' }))
     expect(print).toHaveBeenCalledOnce()
   })
+
+  it('prints a barcode-only label for newly added books', () => {
+    const barcodeOnly = { ...batch, copies: batch.copies.map(({ qrCodeData: _qr, ...copy }) => copy) }
+    render(<BookLabelSheet batch={barcodeOnly} onClose={() => undefined} />)
+    expect(screen.queryAllByTestId(/label-qr-/)).toHaveLength(0)
+    expect(screen.queryByRole('button', { name: 'Download QR Code PNG' })).toBeNull()
+    expect(screen.getAllByTestId(/label-barcode-/)).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: 'Download Barcode PNG' })).toHaveLength(2)
+  })
 })
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })

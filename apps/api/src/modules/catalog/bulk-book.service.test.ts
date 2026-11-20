@@ -40,7 +40,9 @@ test('creates two isolated copies under one title with consecutive institutional
   assert.deepEqual(result.copies.map((copy) => copy.accessionNumber), ['STI-ACC-2026-000142', 'STI-ACC-2026-000143'])
   assert.ok(result.copies.every((copy) => copy.titleId === 44))
   assert.equal(state.materialInserts, 2); assert.equal(state.copyInserts, 2); assert.equal(state.commits, 1); assert.equal(state.rollbacks, 0)
-  assert.match(String(state.copyParameters[0][3]), /^data:image\/png;base64,STIORMOC/)
+  // Adding books generates a barcode only; no QR code is stored or returned.
+  assert.equal(state.copyParameters[0][3], null)
+  assert.ok(result.copies.every((copy) => !('qrCodeData' in copy) && String(copy.barcodeImageData).startsWith('data:image/svg+xml;base64,')))
 })
 
 test('rejects a copy location that staff have not configured', async () => {

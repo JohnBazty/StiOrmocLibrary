@@ -98,7 +98,7 @@ export async function reserveBarcodeSequence(connection: PoolConnection, year: n
 }
 
 export async function insertGeneratedBookCopy(connection: PoolConnection, input: BulkBookInput, titleId: number, copy: {
-  barcode: string; accessionNumber: string; qrCodeData: string
+  barcode: string; accessionNumber: string; qrCodeData: string | null
 }) {
   const [material] = await connection.execute<ResultSetHeader>(
     `INSERT INTO materials

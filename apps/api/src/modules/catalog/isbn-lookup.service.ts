@@ -103,6 +103,13 @@ async function fetchJson(fetcher: Fetcher, url: URL, timeoutMs: number) {
   } finally { clearTimeout(timeout) }
 }
 
+const GOOGLE_COVER_HOSTS = new Set(['books.google.com', 'books.googleusercontent.com'])
+const COVER_HOSTS = new Set([...GOOGLE_COVER_HOSTS, 'covers.openlibrary.org', 'archive.org'])
+/** Open Library serves covers from the Internet Archive: archive.org, then an iaNNNN mirror. */
+export function coverHostAllowed(hostname: string) {
+  return COVER_HOSTS.has(hostname) || /^ia\d{1,6}\.(?:us\.)?archive\.org$/.test(hostname)
+}
+
 export function createIsbnLookupService(options: {
   repository?: IsbnLookupRepository
   fetcher?: Fetcher
@@ -181,12 +188,12 @@ export function createIsbnLookupService(options: {
   /** Reads one cover image; null unless it is a real JPEG, PNG or WebP within the cover size limit. */
   async function readCover(url: URL) {
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    // A cover is a few redirects plus an image download, slower than a metadata lookup.
+    const timeout = setTimeout(() => controller.abort(), Math.min(10_000, Math.max(8_000, timeoutMs * 2)))
     try {
-      const allowed=new Set(['books.google.com','books.googleusercontent.com','covers.openlibrary.org'])
       let current=url,response:Response|undefined
-      for(let hop=0;hop<4;hop++){
-        if(current.protocol!=='https:'||!allowed.has(current.hostname)||current.username||current.password||current.port)return null
+      for(let hop=0;hop<5;hop++){
+        if(current.protocol!=='https:'||!coverHostAllowed(current.hostname)||current.username||current.password||current.port)return null
         response=await fetcher(current,{headers:{Accept:'image/jpeg,image/png,image/webp','User-Agent':'STI-Ormoc-SmartLib/0.1'},signal:controller.signal,redirect:'manual'})
         if(![301,302,303,307,308].includes(response.status))break
         const location=response.headers.get('location');void response.body?.cancel().catch(()=>undefined)
@@ -220,8 +227,8 @@ export function createIsbnLookupService(options: {
     if (typeof thumbnail !== 'string') return null
     let image: URL
     try { image = new URL(thumbnail) } catch { return null }
-    // Only Google's own cover host; never a URL that points anywhere else.
-    if (image.hostname !== 'books.google.com' || image.username || image.password) return null
+    // Only Google's own cover hosts; never a URL that points anywhere else.
+    if (!GOOGLE_COVER_HOSTS.has(image.hostname) || image.username || image.password) return null
     image.protocol = 'https:'
     image.port = ''
     image.searchParams.delete('edge')

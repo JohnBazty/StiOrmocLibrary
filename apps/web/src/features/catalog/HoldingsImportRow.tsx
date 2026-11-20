@@ -1,5 +1,4 @@
 import {ImportDuplicateComparison} from './ImportDuplicateComparison'
-import {RequiredBookInformation} from './RequiredBookInformation'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../../components/ui'
 import { catalogInput } from './CatalogDetailsPanel'
@@ -21,10 +20,8 @@ export function HoldingsImportRow({ row, options, batch, disabled, onSaved, onWo
   const [edit, setEdit] = useState<ImportRow>(()=>withDewey(row))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [checked, setChecked] = useState(false)
-  useEffect(() => { setEdit(withDewey(row)); setError(''); setChecked(false) }, [row])
-  // An edit after ticking means the values changed since they were checked, so the tick is asked for again.
-  const change = (field: string, value: unknown) => { setChecked(false); setEdit(current => ({ ...current, data: { ...current.data, [field]: value } })) }
+  useEffect(() => { setEdit(withDewey(row)); setError('') }, [row])
+  const change = (field: string, value: unknown) => { setEdit(current => ({ ...current, data: { ...current.data, [field]: value } })) }
   const imported = row.status === 'Imported'
   const label = importRowLabel(row)
   const shelves = options.locations.map(managedShelfFromOption)
@@ -44,7 +41,7 @@ export function HoldingsImportRow({ row, options, batch, disabled, onSaved, onWo
     if (['new', 'add'].includes(choice) && !placementFits(shelves, placement, Number(edit.data.copies))) { setError('Choose a configured compartment with enough space for these copies.'); return false }
     const effectiveDecision = choice === 'reuse' && !resolvedReuseId ? 'skip' : choice
     setBusy(true); setError(''); onClearError(); onWorking(true)
-    try { await enhancedCatalog.review({ ...edit, reuseRowId: resolvedReuseId, data: { ...edit.data, locationId: shelves.find(item => item.label === placement.shelfLocation)?.id, shelfColumn: placement.shelfColumn, shelfRow: placement.shelfRow }, decision: effectiveDecision, lookupChecked: checked }); await onSaved(); return true }
+    try { await enhancedCatalog.review({ ...edit, reuseRowId: resolvedReuseId, data: { ...edit.data, locationId: shelves.find(item => item.label === placement.shelfLocation)?.id, shelfColumn: placement.shelfColumn, shelfRow: placement.shelfRow }, decision: effectiveDecision, lookupChecked: needsLookupCheck(row) }); await onSaved(); return true }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'These changes could not be saved. Please try again.'); return false }
     finally { setBusy(false); onWorking(false) }
   }
@@ -52,7 +49,7 @@ export function HoldingsImportRow({ row, options, batch, disabled, onSaved, onWo
     targetTitleId: ['add', 'link'].includes(decision) && row.matches.filter(match => match.status === 'Active').length === 1 ? Number(row.matches.find(match => match.status === 'Active')!.id) : current.targetTitleId,
   }))
   // Unsaved edits in this book: leaving asks Save changes (this book's own save, with its checks) or Discard changes.
-  const changed = !imported && (checked || JSON.stringify(edit.data) !== JSON.stringify(withDewey(row).data) || (edit.decision ?? null) !== (row.decision ?? null))
+  const changed = !imported && (JSON.stringify(edit.data) !== JSON.stringify(withDewey(row).data) || (edit.decision ?? null) !== (row.decision ?? null))
   const dirtyCallback=useRef(onDirtyChange);dirtyCallback.current=onDirtyChange
   useEffect(()=>{dirtyCallback.current?.(changed)},[changed])
   useEffect(()=>()=>dirtyCallback.current?.(false),[])
@@ -69,14 +66,13 @@ export function HoldingsImportRow({ row, options, batch, disabled, onSaved, onWo
         {row.data.lookupFilled && Object.keys(row.data.lookupFilled).length ? <section aria-label="Details filled from the book lookup" className="rounded-xl border border-[#0b5ea2]/20 bg-[#0b5ea2]/5 p-3 text-sm dark:border-white/20 dark:bg-white/5">
           <p className="font-semibold">Filled from the book lookup — check before saving:</p>
           <ul className="mt-1 list-inside list-disc">{Object.entries(row.data.lookupFilled).map(([field, filled]) => <li key={field}>{importFieldNames[field] ?? field}: “{filled.value}” <span className="text-xs opacity-75">(from {lookupSourceName(filled.source)})</span></li>)}</ul>
-          {needsLookupCheck(row) ? <label className="mt-2 flex items-start gap-2 font-semibold"><input type="checkbox" checked={checked} disabled={disabled || busy} onChange={event => setChecked(event.target.checked)} className="mt-1" />I checked the details filled from the book lookup and corrected any that are wrong.</label> : <p className="mt-1 text-xs opacity-75">Checked.</p>}
+          <p className="mt-1 text-xs opacity-75">Saving this book confirms these details.</p>
         </section> : null}
         <fieldset disabled={disabled || busy} className="space-y-4">
           <label className="block text-sm font-semibold">{row.matches.length || row.overlaps.length ? 'What should happen to this book?' : 'Include this book?'}<select className={catalogInput} value={choice} onChange={event => choose(event.target.value)}><option value="">Choose an answer</option>{!row.matches.length ? <option value="new">Add as a new book</option> : null}{row.matches.some(match => match.status === 'Active') ? <><option value="add">Add extra copies to an existing book</option><option value="link">Already recorded — add no copies</option></> : null}{row.overlaps.length ? <option value="reuse">Same copies listed earlier in this file — add no copies</option> : null}<option value="skip">Leave this book out</option></select></label>
           {['add', 'link'].includes(choice) ? <label className="block text-sm">Which library book?<select className={catalogInput} value={edit.targetTitleId ?? ''} onChange={event => setEdit(current => ({ ...current, targetTitleId: Number(event.target.value) || null }))}><option value="">Choose the matching book</option>{row.matches.filter(match => match.status === 'Active').map(match => <option key={match.id} value={match.id}>{match.title} · {match.author}</option>)}</select></label> : null}
           {choice === 'reuse' && eligibleEarlierOverlaps.length > 0 ? <label className="block text-sm">Which earlier entry lists these copies?<select className={catalogInput} value={edit.reuseRowId ?? ''} onChange={event => setEdit(current => ({ ...current, reuseRowId: Number(event.target.value) || null }))}><option value="">Choose a reviewed entry</option>{eligibleEarlierOverlaps.map(previous => <option key={previous.id} value={previous.id}>{previous.data.title} — {previous.sheet}, line {previous.sourceRow}</option>)}</select></label> : choice === 'reuse' ? <p className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">No earlier reviewed entry is saved yet for this duplicate. Saving this choice will exclude this duplicate row so no copies are added.</p> : null}
           {choice !== 'skip' ? <>
-            <RequiredBookInformation draft={{title:edit.data.title,author:edit.data.author,isbn:edit.data.isbn}} disabled={disabled||busy} onApply={patch=>{setChecked(false);setEdit(current=>({...current,data:{...current.data,title:current.data.title.trim()?current.data.title:patch.title??current.data.title,author:current.data.author.trim()?current.data.author:patch.author??current.data.author}}))}}/>
             {['new', 'add'].includes(choice) && edit.data.categoryName && !edit.data.categoryId ? <ImportReferenceSuggestions label="Category" source={edit.data.categoryName} choices={bookCategories} onChoose={item => change('categoryId', Number(item.id))} /> : null}
             {['new', 'add'].includes(choice) && edit.data.shelfLocation && !edit.data.location ? <ImportReferenceSuggestions label="Shelf" source={edit.data.shelfLocation} choices={options.locations.filter(item => item.status === 'Active')} onChoose={item => change('location', item.name)} /> : null}
             <div className="grid gap-3 sm:grid-cols-2">{(['title', 'author', 'copies'] as const).filter(field => field !== 'copies' || ['new', 'add'].includes(choice)).map(field => <label key={field} className="text-sm">{field === 'copies' && choice === 'add' ? 'Extra copies to add (not the library total)' : importFieldNames[field]}<input className={catalogInput} inputMode={field === 'copies' ? 'numeric' : undefined} value={edit.data[field]} onChange={event => change(field, event.target.value)} /></label>)}{['new', 'add'].includes(choice) ? <><label className="text-sm">Category<select className={catalogInput} value={edit.data.categoryId ?? ''} onChange={event => change('categoryId', Number(event.target.value) || null)}><option value="">Choose category</option>{bookCategories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><ShelfPlacementFields shelves={shelves} value={placement} label="Shelf" quantity={Number(edit.data.copies)} onChange={value => { setChecked(false); setEdit(current => ({ ...current, data: { ...current.data, location: value.shelfLocation, locationId: value.locationId, shelfColumn: value.shelfColumn, shelfRow: value.shelfRow } })) }} /></> : null}</div>
@@ -84,7 +80,7 @@ export function HoldingsImportRow({ row, options, batch, disabled, onSaved, onWo
             <details className="rounded-xl border border-[#0b5ea2]/10 p-3 dark:border-white/15"><summary className="cursor-pointer text-sm font-semibold">More book details (optional)</summary><div className="mt-3 grid gap-3 sm:grid-cols-2">{(['isbn', 'edition', 'publisher', 'publicationYear', 'copyrightYear', 'pages', 'volumes', 'missingCopies', 'callNumber', 'fundSource', 'fundDetail', 'costPhp', 'receivedOn', 'remarks'] as const).map(field => <label key={field} className="text-sm">{importFieldNames[field]}<input className={catalogInput} value={edit.data[field] ?? ''} onChange={event => change(field, event.target.value)} /></label>)}{(['accessions', 'barcodes'] as const).map(field => <label key={field} className="text-sm">{importFieldNames[field]}<textarea className={catalogInput} rows={2} value={edit.data[field]} onChange={event => change(field, event.target.value)} /><span className="text-xs opacity-60">One per copy; separate with semicolons or new lines.</span></label>)}<label className="text-sm">Program<select className={catalogInput} value={edit.data.programId ?? ''} onChange={event => change('programId', Number(event.target.value) || null)}><option value="">Not assigned</option>{options.programs.filter(program => program.status === 'Active').map(program => <option key={program.id} value={program.id}>{program.name}</option>)}</select></label></div><label className="mt-4 flex items-start gap-2 text-sm"><input type="checkbox" checked={edit.data.generateAccessions} onChange={event => change('generateAccessions', event.target.checked)} className="mt-1" />Replace the accession numbers in this file with newly generated numbers.</label></details>
           </> : null}
           {error ? <p role="alert" className="auth-error rounded-xl p-3 text-sm">{error}</p> : null}
-          <Button disabled={busy || !choice || (choice!=='skip'&&Boolean(edit.data.dewey?.code&&!edit.data.dewey.reviewed)) || (needsLookupCheck(row) && choice !== 'skip' && !checked)} onClick={() => void save()}>{busy ? 'Saving…' : choice === 'skip' ? 'Leave this book out' : 'Save this choice'}</Button>{changed&&<Button variant="secondary" disabled={disabled||busy} onClick={()=>{setEdit(withDewey(row));setChecked(false);setError('')}}>Discard unsaved edits</Button>}
+          <Button disabled={busy || !choice || (choice!=='skip'&&Boolean(edit.data.dewey?.code&&!edit.data.dewey.reviewed))} onClick={() => void save()}>{busy ? 'Saving…' : choice === 'skip' ? 'Leave this book out' : 'Save this choice'}</Button>{changed&&<Button variant="secondary" disabled={disabled||busy} onClick={()=>{setEdit(withDewey(row));setChecked(false);setError('')}}>Discard unsaved edits</Button>}
         </fieldset>
       </>}
     </div>

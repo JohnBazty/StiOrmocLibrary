@@ -34,14 +34,14 @@ export function BookLabelSheet({ batch, onClose }: { batch: BulkBookResult; onCl
     {error ? <div role="alert" className="mx-4 mt-4 rounded-xl bg-[#FFF200] p-3 text-sm font-semibold text-[#0b5ea2]">{error}</div> : null}
     <div id="book-label-sheet" className="grid gap-4 p-4 xl:grid-cols-2">{batch.copies.map((copy) => <article key={copy.physicalCopyId} className="smartlib-print-label rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] p-3">
       <div className="flex items-center gap-4 bg-[#FFFFFF] p-4">
-        <div className="flex aspect-square w-[34%] min-w-[130px] items-center justify-center rounded-lg border border-[#0b5ea2]/20 bg-[#FFFFFF] p-2">
+        {copy.qrCodeData ? <div className="flex aspect-square w-[34%] min-w-[130px] items-center justify-center rounded-lg border border-[#0b5ea2]/20 bg-[#FFFFFF] p-2">
           <AssetCodeCanvas canvasId={`label-qr-${copy.physicalCopyId}`} dataUri={copy.qrCodeData} kind="QR code" testId={`label-qr-${copy.physicalCopyId}`} />
-        </div>
+        </div> : null}
         <div className="flex min-h-[150px] min-w-0 flex-1 flex-col items-center justify-center rounded-lg border border-[#0b5ea2]/20 bg-[#FFFFFF] px-4 py-3">
           <AssetCodeCanvas canvasId={`label-barcode-${copy.physicalCopyId}`} dataUri={copy.barcodeImageData} kind="Barcode" testId={`label-barcode-${copy.physicalCopyId}`} heading="STI COLLEGE ORMOC" footer={copy.barcode} />
         </div>
       </div>
-      <div className="smartlib-no-print grid gap-2 px-4 pb-3 sm:grid-cols-2"><button type="button" disabled={downloading !== null} onClick={() => void download(copy.physicalCopyId, 'qr')} className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-[#FFF200] px-3 text-xs font-bold text-[#0b5ea2] disabled:opacity-50"><Download size={14} />{downloading === `${copy.physicalCopyId}-qr` ? 'Downloading…' : 'Download QR Code PNG'}</button><button type="button" disabled={downloading !== null} onClick={() => void download(copy.physicalCopyId, 'barcode')} className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-[#0b5ea2] px-3 text-xs font-bold text-[#FFFFFF] disabled:opacity-50"><Download size={14} />{downloading === `${copy.physicalCopyId}-barcode` ? 'Downloading…' : 'Download Barcode PNG'}</button></div>
+      <div className={`smartlib-no-print grid gap-2 px-4 pb-3 ${copy.qrCodeData ? 'sm:grid-cols-2' : ''}`}>{copy.qrCodeData ? <button type="button" disabled={downloading !== null} onClick={() => void download(copy.physicalCopyId, 'qr')} className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-[#FFF200] px-3 text-xs font-bold text-[#0b5ea2] disabled:opacity-50"><Download size={14} />{downloading === `${copy.physicalCopyId}-qr` ? 'Downloading…' : 'Download QR Code PNG'}</button> : null}<button type="button" disabled={downloading !== null} onClick={() => void download(copy.physicalCopyId, 'barcode')} className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-[#0b5ea2] px-3 text-xs font-bold text-[#FFFFFF] disabled:opacity-50"><Download size={14} />{downloading === `${copy.physicalCopyId}-barcode` ? 'Downloading…' : 'Download Barcode PNG'}</button></div>
       <div className="flex flex-wrap justify-between gap-2 border-t border-[#0b5ea2]/15 px-4 py-2 text-[10px] font-semibold text-[#0b5ea2]"><span>{copy.accessionNumber}</span><span>{copy.shelfLocation}</span></div>
     </article>)}</div>
   </section>

@@ -238,3 +238,28 @@ test('cover redirects stay on approved HTTPS hosts and oversized streams stop at
  const oversized=createIsbnLookupService({repository:titleRepository(),googleApiKey:'',fetcher:(async(input)=>String(input).startsWith('https://www.googleapis.com/')?json({}):new Response(stream,{headers:{'content-type':'image/jpeg'}})) as typeof fetch})
  await assert.rejects(oversized.cover(validIsbn),{status:404});assert.equal(cancelled,true);assert.ok(pulls<=5)
 })
+
+test('Open Library covers that redirect to the Internet Archive are fetched; other archive look-alikes are not', async () => {
+  const calls: string[] = []
+  const hops: Record<string, string> = {
+    [`https://covers.openlibrary.org/b/isbn/${validIsbn}-L.jpg?default=false`]: 'https://archive.org/download/l_covers_0012/l_covers_0012_34.zip/12345-L.jpg',
+    'https://archive.org/download/l_covers_0012/l_covers_0012_34.zip/12345-L.jpg': 'https://ia800505.us.archive.org/view_archive.php?archive=/x/l_covers_0012_34.zip&file=12345-L.jpg',
+  }
+  const service = createIsbnLookupService({ repository: titleRepository(), googleApiKey: '', fetcher: (async (input) => {
+    const url = String(input); calls.push(url)
+    if (url.startsWith('https://www.googleapis.com/')) return json({})
+    if (hops[url]) return new Response(null, { status: 302, headers: { location: hops[url] } })
+    return image(JPEG)
+  }) as typeof fetch })
+  const cover = await service.cover(validIsbn)
+  assert.equal(cover.contentType, 'image/jpeg')
+  assert.ok(calls.some(url => url.startsWith('https://ia800505.us.archive.org/')))
+
+  const spoof = createIsbnLookupService({ repository: titleRepository(), googleApiKey: '', fetcher: (async (input) => {
+    const url = String(input)
+    if (url.startsWith('https://www.googleapis.com/')) return json({})
+    if (url.startsWith('https://covers.openlibrary.org/')) return new Response(null, { status: 302, headers: { location: 'https://archive.org.example.net/x.jpg' } })
+    return image(JPEG)
+  }) as typeof fetch })
+  await assert.rejects(spoof.cover(validIsbn), { status: 404 })
+})

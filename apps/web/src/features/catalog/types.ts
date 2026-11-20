@@ -51,7 +51,8 @@ export type AdminBookAsset = {
   accessionNumber: string
   barcode: string
   shelfLocation: string
-  qrCodeData: string
+  /** Absent for new books: their labels are barcode only. */
+  qrCodeData?: string | null
   barcodeImageData: string
 }
 
@@ -69,7 +70,7 @@ export type GeneratedBookLabel = {
   shelfRow?: number
   accessionNumber: string
   barcode: string
-  qrCodeData: string
+  qrCodeData?: string | null
   barcodeImageData: string
 }
 

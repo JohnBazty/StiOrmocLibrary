@@ -326,7 +326,7 @@ describe('Fill missing details from the book lookup', () => {
   expect(api.fillFromLookup).not.toHaveBeenCalled()
  })
 
- it('a filled row shows its source and saves only after the checked tick', async () => {
+ it('a filled row shows its source and saves without a separate check box', async () => {
   api.batch.mockResolvedValue({ ...initial, rows: [filled(), row(2)] })
   await upload()
   const openRow = screen.getByText('Needs a lookup check').closest('details')!
@@ -337,8 +337,7 @@ describe('Fill missing details from the book lookup', () => {
   const choice = within(details).getByLabelText('Include this book?') as HTMLSelectElement
   fireEvent.change(choice, { target: { value: 'new' } })
   const save = within(details).getByRole('button', { name: 'Save this choice' }) as HTMLButtonElement
-  expect(save.disabled).toBe(true)
-  fireEvent.click(within(filledRow).getByRole('checkbox'))
+  expect(within(filledRow).queryByRole('checkbox')).toBeNull()
   expect(save.disabled).toBe(false)
   fireEvent.click(save)
   await waitFor(() => expect(api.review).toHaveBeenCalledWith(expect.objectContaining({ decision: 'new', lookupChecked: true })))
