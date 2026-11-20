@@ -20,6 +20,7 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   conduct_students: ['user_id','category','prior_warnings','reviewed_at'],
   conduct_incidents: ['incident_id','user_id','category','action','fine_id','request_key','payload_hash','voided_at','source'],
   violation_categories: ['category_id','name','warnings_before_fine','fine_amount','is_active','sort_order'],
+  violation_settings: ['settings_id','max_fine'],
   conduct_events: ['event_id','incident_id','event_type','reason'],
   research_academic_groups: ['research_group_id','department','program','year_level','is_active','row_version'],
   research_group_events: ['research_group_event_id','actor_account_id','details'],

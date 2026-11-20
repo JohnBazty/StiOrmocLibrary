@@ -7,7 +7,7 @@ import { requireLibraryPermission } from '../auth/jwt-auth.middleware.ts'
 import { after } from 'node:test'
 import { readFileSync } from 'node:fs'
 import { createConductTestDb, resetConductTestDb } from './conduct-test-db.ts'
-import { validateViolationCategory } from './violation-categories.validation.ts'
+import { validateViolationCategory, validateMaxFine } from './violation-categories.validation.ts'
 import { createViolationCategoriesService } from './violation-categories.service.ts'
 import { createViolationCategoriesRouter } from './violation-categories.routes.ts'
 
@@ -149,21 +149,51 @@ test('migration 074 starts with a lock timeout and drops the old category checks
   assert.match(sql, /CREATE UNIQUE INDEX[^;]*lower\(name\)/i)
 })
 
-test('migration 075 limits the stored fine to four digits', async () => {
+test('migrations 075 and 076: the database keeps only a hard ceiling, the library limit lives in violation_settings', async () => {
   const sql = readFileSync(new URL('../../../../../database/supabase/075_violation_fine_four_digits.sql', import.meta.url), 'utf8')
   assert.match(sql.replace(/^(--.*\r?\n)+/, ''), /^SET LOCAL lock_timeout = '5s';/)
   assert.doesNotMatch(sql, /DROP CONSTRAINT IF EXISTS/i)
   const { pg } = await database()
   try {
     await pg.exec("INSERT INTO violation_categories(name,fine_amount) VALUES('Four digits',9999.99)")
-    await assert.rejects(pg.exec("INSERT INTO violation_categories(name,fine_amount) VALUES('Five digits',10000)"), /check/i)
+    await pg.exec("INSERT INTO violation_categories(name,fine_amount) VALUES('Five digits',10000)")
+    await assert.rejects(pg.exec("INSERT INTO violation_categories(name,fine_amount) VALUES('Seven digits',1000000)"), /check/i)
+    assert.equal(Number((await pg.query<{ max_fine: string }>('SELECT max_fine FROM violation_settings')).rows[0].max_fine), 9999.99)
+    await assert.rejects(pg.exec('INSERT INTO violation_settings(settings_id,max_fine) VALUES(2,100)'), /check|duplicate|unique/i)
+    await assert.rejects(pg.exec('UPDATE violation_settings SET max_fine=1000000'), /check/i)
+  } finally { await resetConductTestDb(pg) }
+})
+
+test('the highest allowed fine is a setting: custom limit in validation, stale and too-low changes refused', async () => {
+  assert.equal(validateViolationCategory({ ...valid, fineAmount: '10000' }, false, 10_000).fineAmount, 10_000)
+  fieldError(() => validateViolationCategory({ ...valid, fineAmount: '10000.01' }, false, 10_000), 'fineAmount')
+  assert.equal(validateMaxFine('10000'), 10_000)
+  for (const bad of [0, -1, '1.234', 'abc', 1_000_000, null, '']) fieldError(() => validateMaxFine(bad), 'maxFine')
+  const { pg, pool } = await database()
+  try {
+    const service = createViolationCategoriesService(pool)
+    const first = await service.getSettings()
+    assert.equal(first.maxFine, 9999.99)
+    await assert.rejects(service.create(1, { ...valid, fineAmount: '10000' }), { status: 422 })
+    const raised = await service.saveSettings(1, { maxFine: '10000', updatedAt: first.updatedAt })
+    assert.equal(raised.maxFine, 10_000)
+    await assert.rejects(service.saveSettings(1, { maxFine: '20000', updatedAt: first.updatedAt }), { status: 409, code: 'VIOLATION_SETTINGS_STALE' })
+    await assert.rejects(service.saveSettings(1, { maxFine: '20000' }), { status: 422 })
+    await assert.rejects(service.saveSettings(0, { maxFine: '20000', updatedAt: raised.updatedAt }), { code: 'VIOLATION_CATEGORY_LOGIN' })
+    const big = await service.create(1, { ...valid, fineAmount: '10000' })
+    assert.equal(big.fineAmount, 10_000)
+    await assert.rejects(service.update(1, big.categoryId, { fineAmount: 10_001, updatedAt: big.updatedAt }), { status: 422 })
+    await assert.rejects(service.saveSettings(1, { maxFine: '5000', updatedAt: raised.updatedAt }), { status: 422, code: 'VIOLATION_SETTINGS_BELOW_EXISTING' })
+    assert.equal((await service.getSettings()).maxFine, 10_000)
+    const notes = (await pg.query<{ message_title: string }>("SELECT message_title FROM admin_notifications WHERE message_title='Highest violation fine changed'")).rows
+    assert.equal(notes.length, 1)
   } finally { await resetConductTestDb(pg) }
 })
 
 test('only the Librarian role reaches the routes, including delete', async () => {
   for (const role of ['Admin', 'Librarian', 'Staff', 'Student', 'Faculty']) {
     let calls = 0
-    const service = { list: async () => { calls++; return [] }, create: async () => { calls++; return { categoryId: 1 } }, update: async () => { calls++; return { categoryId: 1 } }, remove: async () => { calls++; return { deleted: true } } }
+    const service = { list: async () => { calls++; return [] }, create: async () => { calls++; return { categoryId: 1 } }, update: async () => { calls++; return { categoryId: 1 } }, remove: async () => { calls++; return { deleted: true } }, getSettings: async () => { calls++; return { maxFine: 9999.99 } }, saveSettings: async () => { calls++; return { maxFine: 10000 } } }
     const app = express()
     app.use(express.json())
     app.use((_req, res, next) => { res.locals.authenticatedUser = { accountId: 1, role }; next() })
@@ -175,7 +205,9 @@ test('only the Librarian role reaches the routes, including delete', async () =>
     const removed = await request(app).delete('/violation-categories/1')
     assert.equal(removed.status, allowed ? 200 : 403)
     if (allowed) assert.deepEqual(removed.body, { success: true, message: 'Violation category deleted.', data: { deleted: true } })
-    assert.equal(calls, allowed ? 4 : 0)
+    assert.equal((await request(app).get('/violation-categories/settings')).status, allowed ? 200 : 403)
+    assert.equal((await request(app).put('/violation-categories/settings').send({})).status, allowed ? 200 : 403)
+    assert.equal(calls, allowed ? 6 : 0)
   }
 })
 

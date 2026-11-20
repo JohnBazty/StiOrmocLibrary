@@ -1,6 +1,6 @@
 import { db, type Pool, type PoolConnection, type RowDataPacket } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
-import { validateViolationCategory } from './violation-categories.validation.ts'
+import { validateMaxFine, validateViolationCategory } from './violation-categories.validation.ts'
 
 // Microsecond text, so the version a client sends back compares exactly (a JS Date would round it).
 const COLUMNS = `to_char(c.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS version,c.category_id,c.name,c.description,c.warnings_before_fine,c.fine_amount,c.is_active,c.sort_order,c.updated_at,
@@ -44,7 +44,39 @@ export function createViolationCategoriesService(database: Pool = db) {
   }
   const duplicate = () => new HttpError(409, 'VIOLATION_CATEGORY_DUPLICATE', 'A category with this name already exists.', { errors: { name: 'A category with this name already exists.' } })
 
+  // Read under FOR SHARE so the limit cannot change between this check and the save.
+  async function readSettings(executor: Pool | PoolConnection, lock: '' | 'FOR SHARE' | 'FOR UPDATE' = '') {
+    const [rows] = await executor.execute<RowDataPacket[]>(`SELECT max_fine,to_char(updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS version FROM violation_settings WHERE settings_id=1 ${lock}`, [])
+    if (!rows[0]) throw new HttpError(503, 'VIOLATION_SETTINGS_MISSING', 'The violation settings are not set up yet. Ask the administrator to apply the latest database update.')
+    return { maxFine: Number(rows[0].max_fine), updatedAt: String(rows[0].version) }
+  }
+  const peso = (n: number) => `PHP ${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
   return {
+    getSettings: () => readSettings(database),
+
+    async saveSettings(actor: unknown, body: unknown) {
+      const account = accountId(actor)
+      const maxFine = validateMaxFine((body as { maxFine?: unknown } | null)?.maxFine)
+      const sent = (body as { updatedAt?: unknown } | null)?.updatedAt
+      if (typeof sent !== 'string' || !sent) throw new HttpError(422, 'VIOLATION_CATEGORY_INVALID', 'Reload the rules and try again.', { errors: { updatedAt: 'Reload the rules and try again.' } })
+      const connection = await database.getConnection()
+      try {
+        await connection.beginTransaction()
+        const current = await readSettings(connection, 'FOR UPDATE')
+        if (current.updatedAt !== sent) throw new HttpError(409, 'VIOLATION_SETTINGS_STALE', 'The highest fine was changed by someone else. Reload the rules and try again.')
+        const [over] = await connection.execute<RowDataPacket[]>('SELECT name,fine_amount FROM violation_categories WHERE fine_amount>? ORDER BY fine_amount DESC LIMIT 1', [maxFine])
+        if (over[0]) {
+          const message = `${over[0].name} is set to ${peso(Number(over[0].fine_amount))}, above ${peso(maxFine)}. Lower that fine first.`
+          throw new HttpError(422, 'VIOLATION_SETTINGS_BELOW_EXISTING', message, { errors: { maxFine: message } })
+        }
+        await connection.execute('UPDATE violation_settings SET max_fine=?,updated_by_account_id=?,updated_at=NOW() WHERE settings_id=1', [maxFine, account])
+        await note(connection, account, 'Highest violation fine changed', `Violation fines may now be up to ${peso(maxFine)} (was ${peso(current.maxFine)}).`)
+        await connection.commit()
+        return await readSettings(database)
+      } catch (error) { await rollbackQuietly(connection); throw error } finally { connection.release() }
+    },
+
     async list() {
       const [rows] = await database.execute<RowDataPacket[]>(`SELECT ${COLUMNS} FROM violation_categories c ORDER BY c.sort_order,c.name`, [])
       return rows.map(toDto)
@@ -52,10 +84,10 @@ export function createViolationCategoriesService(database: Pool = db) {
 
     async create(actor: unknown, body: unknown) {
       const account = accountId(actor)
-      const input = validateViolationCategory(body)
       const connection = await database.getConnection()
       try {
         await connection.beginTransaction()
+        const input = validateViolationCategory(body, false, (await readSettings(connection, 'FOR SHARE')).maxFine)
         if (await duplicateExists(connection, input.name, 0)) throw duplicate()
         // Concurrent creates can both pass the check above; the lower(name) unique index decides.
         const [sort] = await connection.execute<RowDataPacket[]>('SELECT COALESCE(MAX(sort_order),0)+1 AS next FROM violation_categories', [])
@@ -74,12 +106,12 @@ export function createViolationCategoriesService(database: Pool = db) {
       const account = accountId(actor)
       const id = Number(target)
       if (!Number.isSafeInteger(id) || id < 1) throw new HttpError(422, 'VIOLATION_CATEGORY_INVALID', 'Choose a valid category.')
-      const patch = validateViolationCategory(body, true)
       const sent = (body as { updatedAt?: unknown } | null)?.updatedAt
       if (typeof sent !== 'string' || !sent) throw new HttpError(422, 'VIOLATION_CATEGORY_INVALID', 'Reload the rules and try again.', { errors: { updatedAt: 'Reload the rules and try again.' } })
       const connection = await database.getConnection()
       try {
         await connection.beginTransaction()
+        const patch = validateViolationCategory(body, true, (await readSettings(connection, 'FOR SHARE')).maxFine)
         const [locked] = await connection.execute<RowDataPacket[]>('SELECT category_id FROM violation_categories WHERE category_id=? FOR UPDATE', [id])
         if (!locked[0]) throw new HttpError(404, 'VIOLATION_CATEGORY_NOT_FOUND', 'Violation category not found.')
         const before = (await fetchOne(connection, id))!

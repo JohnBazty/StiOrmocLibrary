@@ -1,13 +1,14 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ViolationRulesPanel } from './ViolationRulesPanel'
 import { describeCategory, ViolationCategoryError, violationCategoriesApi, type ViolationCategory } from './violation-categories-api'
 
 vi.mock('./violation-categories-api', async original => ({
   ...(await original<typeof import('./violation-categories-api')>()),
-  violationCategoriesApi: { list: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() },
+  violationCategoriesApi: { list: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), getSettings: vi.fn(), saveSettings: vi.fn() },
 }))
 afterEach(() => { cleanup(); vi.clearAllMocks() })
+beforeEach(() => { vi.mocked(violationCategoriesApi.getSettings).mockResolvedValue({ maxFine: 9999.99, updatedAt: 's1' }) })
 
 const noise: ViolationCategory = { categoryId: 1, name: 'Noise', description: 'Loud talking', warningsBeforeFine: 2, fineAmount: 50, isActive: true, sortOrder: 1, used: true, updatedAt: 'v-noise' }
 const food: ViolationCategory = { categoryId: 2, name: 'Eating or food', description: null, warningsBeforeFine: 1, fineAmount: 75.5, isActive: false, sortOrder: 2, used: false, updatedAt: 'v-food' }
@@ -109,6 +110,48 @@ it('limits the fine to four digits, before saving', async () => {
   fireEvent.change(within(dialog).getByLabelText('Fine amount (PHP)'), { target: { value: '9999.99' } })
   fireEvent.click(within(dialog).getByRole('button', { name: 'Save category' }))
   await waitFor(() => expect(api.create).toHaveBeenCalledWith({ name: 'Phone use', description: '', warningsBeforeFine: 2, fineAmount: '9999.99' }))
+})
+
+it('lets the library change the highest fine, and the category form follows the new limit', async () => {
+  api.list.mockResolvedValue([noise])
+  api.saveSettings.mockResolvedValue({ maxFine: 10000, updatedAt: 's2' })
+  api.create.mockResolvedValue({ ...noise, categoryId: 3, name: 'Theft', used: false })
+  render(<ViolationRulesPanel />)
+  await screen.findByText('Noise')
+  expect(screen.getByText('Highest fine allowed: PHP 9,999.99')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Change limit' }))
+  const dialog = screen.getByRole('dialog', { name: 'Highest fine allowed' })
+  const input = within(dialog).getByLabelText('Highest fine (PHP)')
+  for (const bad of ['0', '1000000', 'abc']) {
+    fireEvent.change(input, { target: { value: bad } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save limit' }))
+    expect(within(dialog).getByText('Enter a peso amount above 0 and up to 999,999.99, with at most 2 decimals.')).toBeTruthy()
+  }
+  expect(api.saveSettings).not.toHaveBeenCalled()
+  fireEvent.change(input, { target: { value: '10000' } })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Save limit' }))
+  await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith({ maxFine: '10000', updatedAt: 's1' }))
+  expect(await screen.findByText('Highest fine allowed: PHP 10,000.00')).toBeTruthy()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Add category' }))
+  const add = screen.getByRole('dialog', { name: 'Add violation category' })
+  expect(within(add).getByText('Up to PHP 10,000.00')).toBeTruthy()
+  fireEvent.change(within(add).getByLabelText('Category name'), { target: { value: 'Theft' } })
+  fireEvent.change(within(add).getByLabelText('Fine amount (PHP)'), { target: { value: '10000' } })
+  fireEvent.click(within(add).getByRole('button', { name: 'Save category' }))
+  await waitFor(() => expect(api.create).toHaveBeenCalledWith({ name: 'Theft', description: '', warningsBeforeFine: 2, fineAmount: '10000' }))
+})
+
+it('shows the server reason when the limit cannot go that low', async () => {
+  api.list.mockResolvedValue([noise])
+  api.saveSettings.mockRejectedValue(new ViolationCategoryError('Noise is set to PHP 9,000.00, above PHP 5,000.00. Lower that fine first.', { maxFine: 'Noise is set to PHP 9,000.00, above PHP 5,000.00. Lower that fine first.' }))
+  render(<ViolationRulesPanel />)
+  await screen.findByText('Noise')
+  fireEvent.click(screen.getByRole('button', { name: 'Change limit' }))
+  const dialog = screen.getByRole('dialog', { name: 'Highest fine allowed' })
+  fireEvent.change(within(dialog).getByLabelText('Highest fine (PHP)'), { target: { value: '5000' } })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Save limit' }))
+  expect(await within(dialog).findByText(/Lower that fine first/)).toBeTruthy()
 })
 
 it('deletes an unused category only after a plain confirmation', async () => {

@@ -1,8 +1,10 @@
 import { HttpError } from '../../core/http-error.ts'
 import { MAX_WARNINGS_BEFORE_FINE } from './conduct-policy.ts'
 
-/** Four digits: a violation fine is never more than PHP 9,999.99. Migration 075 enforces the same limit in the database. */
+/** Default highest fine; the library changes it in Library setup (violation_settings). */
 export const MAX_VIOLATION_FINE = 9999.99
+/** Hard ceiling the database enforces whatever the setting says. */
+export const HARD_MAX_VIOLATION_FINE = 999999.99
 
 export type ViolationCategoryInput = {
   name: string
@@ -37,25 +39,31 @@ function warnings(value: unknown) {
   return number
 }
 
-function amount(value: unknown) {
+function money(value: unknown, field: string, max: number) {
   const text = typeof value === 'number' ? String(value) : typeof value === 'string' ? value.trim() : ''
-  if (!/^\d{1,4}(\.\d{1,2})?$/.test(text)) fail('fineAmount', `Enter a peso amount above 0 and up to ${MAX_VIOLATION_FINE.toFixed(2)}, with at most 2 decimals.`)
+  const message = `Enter a peso amount above 0 and up to ${max.toFixed(2)}, with at most 2 decimals.`
+  if (!/^\d{1,6}(\.\d{1,2})?$/.test(text)) fail(field, message)
   const parsed = Number(text)
-  if (parsed <= 0 || parsed > MAX_VIOLATION_FINE) fail('fineAmount', `Enter a fine above PHP 0 and up to PHP ${MAX_VIOLATION_FINE.toFixed(2)}.`)
+  if (parsed <= 0 || parsed > max) fail(field, message)
   return parsed
 }
 
+/** The highest fine any category may have. */
+export function validateMaxFine(value: unknown) {
+  return money(value, 'maxFine', HARD_MAX_VIOLATION_FINE)
+}
+
 /** Full input for a new category, or only the fields sent for an edit (`partial`). */
-export function validateViolationCategory(body: unknown, partial: true): ViolationCategoryPatch
-export function validateViolationCategory(body: unknown, partial?: false): ViolationCategoryInput & { isActive?: boolean }
-export function validateViolationCategory(body: unknown, partial = false): ViolationCategoryPatch {
+export function validateViolationCategory(body: unknown, partial: true, maxFine?: number): ViolationCategoryPatch
+export function validateViolationCategory(body: unknown, partial?: false, maxFine?: number): ViolationCategoryInput & { isActive?: boolean }
+export function validateViolationCategory(body: unknown, partial = false, maxFine = MAX_VIOLATION_FINE): ViolationCategoryPatch {
   const input = (body && typeof body === 'object' && !Array.isArray(body) ? body : {}) as Record<string, unknown>
   const has = (key: string) => input[key] !== undefined
   const result: ViolationCategoryPatch = {}
   if (!partial || has('name')) result.name = name(input.name)
   if (!partial || has('description')) result.description = description(input.description)
   if (!partial || has('warningsBeforeFine')) result.warningsBeforeFine = warnings(input.warningsBeforeFine)
-  if (!partial || has('fineAmount')) result.fineAmount = amount(input.fineAmount)
+  if (!partial || has('fineAmount')) result.fineAmount = money(input.fineAmount, 'fineAmount', maxFine)
   if (has('isActive')) {
     if (typeof input.isActive !== 'boolean') fail('isActive', 'Choose active or retired.')
     result.isActive = input.isActive

@@ -4,11 +4,12 @@ import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { Button, FormField, LumoDialog, NoticeBanner, SectionCard, StatusBadge } from '../../components/ui'
 import {
   describeCategory,
-  MAX_VIOLATION_FINE_LABEL,
+  formatFine,
   ViolationCategoryError,
   violationCategoriesApi,
   type ViolationCategory,
   type ViolationCategoryInput,
+  type ViolationSettings,
 } from './violation-categories-api'
 
 type Draft = { name: string; description: string; warningsBeforeFine: string; fineAmount: string }
@@ -16,7 +17,10 @@ type Errors = Partial<Record<keyof Draft, string>>
 
 const emptyDraft: Draft = { name: '', description: '', warningsBeforeFine: '2', fineAmount: '' }
 const NAME_ERROR = 'Enter a category name of 2 to 80 characters.'
-const AMOUNT_ERROR = `Enter a peso amount above 0 and up to ${MAX_VIOLATION_FINE_LABEL}, with at most 2 decimals.`
+const HARD_MAX_FINE = 999999.99
+const DEFAULT_MAX_FINE = 9999.99
+const amountError = (max: number) => `Enter a peso amount above 0 and up to ${formatFine(max)}, with at most 2 decimals.`
+const validAmount = (text: string, max: number) => /^\d{1,6}(\.\d{1,2})?$/.test(text) && Number(text) > 0 && Number(text) <= max
 
 const fromCategory = (category: ViolationCategory): Draft => ({
   name: category.name,
@@ -25,13 +29,12 @@ const fromCategory = (category: ViolationCategory): Draft => ({
   fineAmount: category.fineAmount.toFixed(2),
 })
 
-function validate(draft: Draft): Errors {
+function validate(draft: Draft, maxFine: number): Errors {
   const errors: Errors = {}
   const name = draft.name.trim()
   if (name.length < 2 || name.length > 80) errors.name = NAME_ERROR
   if (draft.description.trim().length > 300) errors.description = 'Keep the description to 300 characters or less.'
-  const amount = draft.fineAmount.trim()
-  if (!/^\d{1,4}(\.\d{1,2})?$/.test(amount) || Number(amount) <= 0) errors.fineAmount = AMOUNT_ERROR
+  if (!validAmount(draft.fineAmount.trim(), maxFine)) errors.fineAmount = amountError(maxFine)
   return errors
 }
 
@@ -45,10 +48,16 @@ export function ViolationRulesPanel() {
   const [formError, setFormError] = useState('')
   const [busy, setBusy] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [settings, setSettings] = useState<ViolationSettings>({ maxFine: DEFAULT_MAX_FINE, updatedAt: '' })
+  const [limitOpen, setLimitOpen] = useState(false)
+  const [limitDraft, setLimitDraft] = useState('')
+  const [limitError, setLimitError] = useState('')
 
   const load = useCallback(async () => {
     try {
-      setItems(await violationCategoriesApi.list())
+      const [list, limit] = await Promise.all([violationCategoriesApi.list(), violationCategoriesApi.getSettings()])
+      setItems(list)
+      setSettings(limit)
       setError('')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Violation rules are unavailable.')
@@ -85,7 +94,7 @@ export function ViolationRulesPanel() {
   function save(event: FormEvent) {
     event.preventDefault()
     if (!editing || busy) return
-    const found = validate(draft)
+    const found = validate(draft, settings.maxFine)
     setErrors(found)
     if (Object.keys(found).length) return
     const input: ViolationCategoryInput = {
@@ -101,6 +110,26 @@ export function ViolationRulesPanel() {
     if (input.fineAmount !== before.fineAmount) changed.fineAmount = input.fineAmount
     if (!Object.keys(changed).length) return setEditing(null)
     void run(() => violationCategoriesApi.update(editing.categoryId, { ...changed, updatedAt: editing.updatedAt }), `${editing.name} saved. New violations use the new rule; fines already issued keep their amount.`)
+  }
+
+  async function saveLimit(event: FormEvent) {
+    event.preventDefault()
+    if (busy) return
+    const text = limitDraft.trim()
+    if (!validAmount(text, HARD_MAX_FINE)) return setLimitError(amountError(HARD_MAX_FINE))
+    setBusy(true)
+    setLimitError('')
+    try {
+      const saved = await violationCategoriesApi.saveSettings({ maxFine: text, updatedAt: settings.updatedAt })
+      setSettings(saved)
+      setLimitOpen(false)
+      setNotice(`Highest fine is now PHP ${formatFine(saved.maxFine)}.`)
+    } catch (cause) {
+      setLimitError(cause instanceof Error ? cause.message : 'The limit could not be saved.')
+      void load()
+    } finally {
+      setBusy(false)
+    }
   }
 
   const set = (key: keyof Draft) => (event: { target: { value: string } }) => {
@@ -121,6 +150,10 @@ export function ViolationRulesPanel() {
         <Button onClick={() => open('new')}>
           <Plus size={16} aria-hidden="true" /> Add category
         </Button>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--sl-border)] bg-[var(--sl-bg-subtle)] px-5 py-2.5 text-sm">
+        <span className="font-semibold text-[var(--sl-text-header)]">Highest fine allowed: PHP {formatFine(settings.maxFine)}</span>
+        <Button size="sm" variant="secondary" onClick={() => { setLimitDraft(String(settings.maxFine)); setLimitError(''); setLimitOpen(true) }}>Change limit</Button>
       </div>
       <div className="p-5">
         {notice ? <NoticeBanner tone="success">{notice}</NoticeBanner> : null}
@@ -197,7 +230,7 @@ export function ViolationRulesPanel() {
                   {[0, 1, 2, 3].map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
               </FormField>
-              <FormField id="vc-amount" label="Fine amount (PHP)" required error={errors.fineAmount} helperText={`Up to PHP ${MAX_VIOLATION_FINE_LABEL}`}>
+              <FormField id="vc-amount" label="Fine amount (PHP)" required error={errors.fineAmount} helperText={`Up to PHP ${formatFine(settings.maxFine)}`}>
                 <input id="vc-amount" className="sl-input" inputMode="decimal" value={draft.fineAmount} onChange={set('fineAmount')} maxLength={7}
                   aria-invalid={Boolean(errors.fineAmount)} aria-describedby={errors.fineAmount ? 'vc-amount-error' : undefined} />
               </FormField>
@@ -226,6 +259,22 @@ export function ViolationRulesPanel() {
             </div>
           </form>
           )}
+        </LumoDialog>
+      ) : null}
+      {limitOpen ? (
+        <LumoDialog title="Highest fine allowed" busy={busy} onClose={() => { if (!busy) setLimitOpen(false) }}
+          description="No violation category can have a fine above this. Fines already issued are not changed.">
+          <form onSubmit={saveLimit} noValidate className="space-y-3">
+            <FormField id="vc-limit" label="Highest fine (PHP)" required error={limitError}>
+              <input id="vc-limit" className="sl-input" inputMode="decimal" value={limitDraft} maxLength={9}
+                onChange={event => { setLimitDraft(event.target.value); setLimitError('') }}
+                aria-invalid={Boolean(limitError)} aria-describedby={limitError ? 'vc-limit-error' : undefined} />
+            </FormField>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="secondary" disabled={busy} onClick={() => setLimitOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save limit'}</Button>
+            </div>
+          </form>
         </LumoDialog>
       ) : null}
     </SectionCard>

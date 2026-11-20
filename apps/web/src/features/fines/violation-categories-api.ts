@@ -35,12 +35,18 @@ export const violationCategoriesApi = {
   create: (input: ViolationCategoryInput) => request<ViolationCategory>('/api/v1/admin/violation-categories', { method: 'POST', body: JSON.stringify(input) }),
   update: (id: number, input: Partial<ViolationCategoryInput> & { isActive?: boolean; updatedAt: string }) =>
     request<ViolationCategory>(`/api/v1/admin/violation-categories/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  getSettings: () => request<ViolationSettings>('/api/v1/admin/violation-categories/settings'),
+  /** The highest fine any category may have. The server refuses a limit below an existing fine. */
+  saveSettings: (input: { maxFine: string; updatedAt: string }) =>
+    request<ViolationSettings>('/api/v1/admin/violation-categories/settings', { method: 'PUT', body: JSON.stringify(input) }),
   /** Only a category with no violation records can be deleted; the server refuses the rest. */
   remove: (id: number) => request<{ deleted: true }>(`/api/v1/admin/violation-categories/${id}`, { method: 'DELETE' }),
 }
 
-/** A violation fine has four digits at most. The server and database enforce the same limit. */
-export const MAX_VIOLATION_FINE_LABEL = '9,999.99'
+export type ViolationSettings = { maxFine: number; updatedAt: string }
+
+/** 9999.99 -> "9,999.99" */
+export const formatFine = (amount: number) => amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 /** "2 warnings, then PHP 50.00 on the 3rd offense." */
 export function describeCategory(category: Pick<ViolationCategory, 'warningsBeforeFine' | 'fineAmount'>) {

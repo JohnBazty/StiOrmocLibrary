@@ -2,7 +2,7 @@ import { Router } from 'express'
 import type { Request, Response, NextFunction } from 'express'
 import { violationCategoriesService } from './violation-categories.service.ts'
 
-type Service = Pick<typeof violationCategoriesService, 'list' | 'create' | 'update' | 'remove'>
+type Service = Pick<typeof violationCategoriesService, 'list' | 'create' | 'update' | 'remove' | 'getSettings' | 'saveSettings'>
 
 const handle = (handler: (req: Request, res: Response) => Promise<void>) => (req: Request, res: Response, next: NextFunction) => { handler(req, res).catch(next) }
 
@@ -16,6 +16,12 @@ export function createViolationCategoriesRouter(service: Service = violationCate
   const router = Router()
   router.get('/', handle(async (_req, res) => {
     res.set('Cache-Control', 'no-store').json({ success: true, data: await service.list() })
+  }))
+  router.get('/settings', handle(async (_req, res) => {
+    res.set('Cache-Control', 'no-store').json({ success: true, data: await service.getSettings() })
+  }))
+  router.put('/settings', handle(async (req, res) => {
+    res.json({ success: true, message: 'Highest fine saved.', data: await service.saveSettings(actorAccountId(res), req.body) })
   }))
   router.post('/', handle(async (req, res) => {
     res.status(201).json({ success: true, message: 'Violation category saved.', data: await service.create(actorAccountId(res), req.body) })

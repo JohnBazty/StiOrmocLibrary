@@ -23,6 +23,7 @@ export async function createConductTestDb() {
   await pg.exec(migration('056_conduct_records.sql'))
   await pg.exec(migration('074_violation_categories.sql'))
   await pg.exec(migration('075_violation_fine_four_digits.sql'))
+  await pg.exec(migration('076_violation_fine_limit_setting.sql'))
   const execute = async (sql: string, values: unknown[] = []) => {
     const write = /^\s*(INSERT|UPDATE|DELETE)/i.test(sql)
     let query = toPgPlaceholders(sql)
@@ -38,5 +39,6 @@ export async function createConductTestDb() {
 export async function resetConductTestDb(pg: PGlite) {
   await pg.exec(`TRUNCATE conduct_events,conduct_incidents,conduct_students,fine_infractions,fines,notifications,clearance_statuses,admin_notifications RESTART IDENTITY CASCADE;
  DELETE FROM violation_categories WHERE name NOT IN ('Noise','Eating or food','Other conduct');
- UPDATE violation_categories SET warnings_before_fine=2,fine_amount=50,is_active=TRUE,description=NULL,updated_by_account_id=NULL;`)
+ UPDATE violation_categories SET warnings_before_fine=2,fine_amount=50,is_active=TRUE,description=NULL,updated_by_account_id=NULL;
+ UPDATE violation_settings SET max_fine=9999.99,updated_by_account_id=NULL,updated_at=NOW();`)
 }
