@@ -1,4 +1,5 @@
-import { ArrowLeft, Eye, EyeOff, IdCard, LibraryBig, LockKeyhole, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Eye, EyeOff, IdCard, LockKeyhole, ShieldCheck } from 'lucide-react'
+import { BrandLogo } from '../../components/BrandLogo'
 import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { ThemeToggle } from '../theme/ThemeToggle'
@@ -83,7 +84,7 @@ export function AdminLoginPage() {
       <div className="relative w-full max-w-md">
         <div className="mb-6 flex items-center justify-between text-[#FFFFFF]"><Link to="/login" className="inline-flex items-center gap-2 text-sm font-bold text-[#FFFFFF]/75 hover:text-[#FFF200]"><ArrowLeft size={17} /> User login</Link><span className="inline-flex items-center gap-2 rounded-full border border-[#FFF200]/40 bg-[#FFF200]/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[.16em] text-[#FFF200]"><ShieldCheck size={14} /> Restricted access</span></div>
         <section className="overflow-hidden rounded-[2rem] bg-[#FFFFFF] shadow-2xl shadow-[#0b5ea2]">
-          <header className="bg-[#FFF200] px-7 py-6 text-[#0b5ea2]"><div className="flex items-center gap-3"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#0b5ea2] text-[#FFFFFF]"><LibraryBig /></span><div><p className="font-display text-lg font-black">STI COLLEGE ORMOC</p><p className="text-[10px] font-black uppercase tracking-[.18em]">ILMS Administration</p></div></div></header>
+          <header className="bg-[#FFF200] px-7 py-6 text-[#0b5ea2]"><div className="flex items-center gap-3"><BrandLogo className="h-12 w-12 ring-2 ring-[#0b5ea2]" /><div><p className="font-display text-lg font-black">STI COLLEGE ORMOC</p><p className="text-[10px] font-black uppercase tracking-[.18em]">ILMS Administration</p></div></div></header>
           <div className="p-7 sm:p-9">
             <p className="text-xs font-black uppercase tracking-[.2em] text-[#0b5ea2]/50">Authorized personnel only</p><h1 className="mt-2 font-display text-3xl font-black tracking-tight text-[#0b5ea2]">Library Personnel Login</h1>
             {message ? <AuthMessage>{message}</AuthMessage> : null}

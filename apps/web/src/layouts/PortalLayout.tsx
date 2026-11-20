@@ -1,4 +1,5 @@
 import { AdminSidebarNavigation } from './AdminSidebarNavigation'
+import { BrandLogo } from '../components/BrandLogo'
 import { AdminRightQuickSidebar } from './AdminRightQuickSidebar'
 import { librarianNav } from './admin-navigation'
 import { AttendanceConfirmationPrompt } from '../features/attendance/AttendanceConfirmationPrompt'
@@ -133,7 +134,7 @@ const navigation = (role: Role): NavItem[] => role === 'admin' ? adminNav : role
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <div className="flex min-w-0 items-center gap-3">
-      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#FFF200] text-[#0b5ea2] shadow-sm"><LibraryBig size={22} strokeWidth={2.5} /><span className="absolute bottom-0 h-1 w-full bg-[#0b5ea2]" /></div>
+      <BrandLogo className="h-10 w-10 shadow-sm" />
       {!compact ? <div className="min-w-0"><p className="truncate font-display text-sm font-black leading-tight tracking-tight text-white">STI COLLEGE ORMOC</p><p className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-white/70">ILMS</p></div> : null}
     </div>
   )
