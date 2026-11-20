@@ -63,7 +63,17 @@ export function createPaymentsRouters(service: ReturnType<typeof createPaymentsS
   admin.post('/recover',requireLibraryPermission('library.manage'),writes,controller.recover)
   admin.post('/:id/settlement',requireLibraryPermission('library.manage'),writes,controller.settlement)
   admin.get('/:id/settlement',requireLibraryPermission('library.manage'),controller.readSettlement)
-  admin.get('/',requireLibraryPermission('desk.operate'),controller.list)
+  admin.get('/',requireLibraryPermission('desk.operate'),(request,response,next)=>{
+    if(response.locals.authenticatedUser?.role==='Staff'){
+      const requestedKind=typeof request.query.kind==='string'?request.query.kind.trim():''
+      if(requestedKind&&requestedKind!=='Printing'){
+        response.status(403).json({success:false,code:'STAFF_PRINTING_PAYMENTS_ONLY',message:'Staff may view only printing payments.'})
+        return
+      }
+      request.query.kind='Printing'
+    }
+    next()
+  },controller.list)
   admin.put('/fee-rules',requireLibraryPermission('library.manage'),writes,controller.setFee)
   admin.post('/:id/check',requireLibraryPermission('desk.operate'),writes,controller.adminCheck)
   admin.post('/:id/cancel',requireLibraryPermission('library.manage'),writes,controller.adminCancel)

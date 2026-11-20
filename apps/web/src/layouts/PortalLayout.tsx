@@ -119,12 +119,9 @@ const adminNav: NavItem[] = [
 const staffNav: NavItem[] = [
   { label: 'Dashboard', to: '/staff/dashboard', icon: LayoutDashboard, section: 'My tasks' },
   { label: 'Borrow & return', to: '/staff/circulation', icon: CalendarClock },
-  { label: 'Book queue', to: '/staff/reservations', icon: BookMarked },
   { label: 'Printing queue', to: '/staff/printing', icon: Printer },
   { label: 'Online payments', to: '/staff/payments', icon: CircleDollarSign },
   { label: 'Attendance', to: '/staff/attendance', icon: QrCode },
-  { label: 'Announcements', to: '/staff/announcements', icon: Megaphone },
-  { label: 'Library schedule', to: '/staff/library-schedule', icon: CalendarClock },
   { label: 'Notifications', to: '/staff/notifications', icon: Bell },
   { label: 'My profile', to: '/staff/profile', icon: UserRound },
 ]
