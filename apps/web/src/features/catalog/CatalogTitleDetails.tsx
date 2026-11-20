@@ -20,7 +20,6 @@ export function CatalogTitleDetails({ item, onClose }: { item: CatalogItem; onCl
       <p>{item.recordType === 'Book' ? 'Book' : 'Research & thesis'} · {item.availability}</p>
       <p>{item.authors.join(', ')}</p>
       <dl className="grid grid-cols-2 gap-3 text-sm"><div><dt className="font-bold">ISBN / reference</dt><dd>{item.isbn || item.research?.researchCode || 'Not recorded'}</dd></div><div><dt className="font-bold">Publication year</dt><dd>{item.publicationYear ?? 'Not recorded'}</dd></div><div><dt className="font-bold">Category</dt><dd>{item.categoryName || 'Not recorded'}</dd></div><div><dt className="font-bold">Shelf</dt><dd>{item.shelfLocation || 'Not recorded'}</dd></div></dl>
-      {item.recordType === 'Research/Thesis' && <a className="inline-flex min-h-11 items-center underline" href={`/librarian/maintenance?section=research-groups&titleId=${item.titleId}`}>Change this research group</a>}
     </div>}
     {tab === 'Copies & location' && <><a className="inline-flex min-h-11 items-center underline" href={inventory}>Open copy inventory</a><CatalogDetailsPanel titleId={item.titleId} editable view="copies" /></>}
     {tab === 'Catalog details' && <CatalogDetailsPanel titleId={item.titleId} editable view="metadata" />}

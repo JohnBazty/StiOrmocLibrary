@@ -1,4 +1,3 @@
-import { ResearchGroupSelect } from './ResearchGroupSelect'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { BookOpenText, ChevronLeft, ChevronRight, FileText, Search } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
@@ -21,7 +20,6 @@ function AccessBadge({ status }: { status: ResearchCatalogItem['accessStatus'] }
 }
 
 export function ResearchCatalog() {
-  const [groupId, setGroupId] = useState('')
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [page, setPage] = useState(1)
@@ -40,12 +38,12 @@ export function ResearchCatalog() {
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true); setError('')
     try {
-      const result = await fetchResearchCatalog({ query: debouncedQuery, groupId, page, signal })
+      const result = await fetchResearchCatalog({ query: debouncedQuery, page, signal })
       setItems(result.items); setPagination(result.pagination)
     } catch (reason) {
       if (!signal?.aborted) setError(reason instanceof Error ? reason.message : 'The repository could not be loaded.')
     } finally { if (!signal?.aborted) setLoading(false) }
-  }, [debouncedQuery, groupId, page])
+  }, [debouncedQuery, page])
 
   useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort() }, [load])
 
@@ -58,7 +56,7 @@ export function ResearchCatalog() {
     {guideVisible ? <div className="mb-4 rounded-xl bg-[#FFF200] p-4 text-sm text-[#0b5ea2]"><strong>APA 7:</strong> Author. (Year). <em>Title</em> [Unpublished undergraduate thesis, Department]. STI College Ormoc.</div> : null}
     {error ? <div role="alert" className="mb-4 rounded-xl bg-[#FFF200] p-3 text-sm font-semibold text-[#0b5ea2]">{error}</div> : null}
 
-    <div className="mb-4 max-w-sm"><ResearchGroupSelect value={groupId} onChange={value => { setGroupId(value); setPage(1) }} filter /></div>
+
     <SectionCard className="overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-[#0b5ea2]/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><h2 className="font-display text-base font-bold text-[#0b5ea2]">Institutional research</h2><label className="relative block w-full sm:max-w-xs"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#0b5ea2]/50" size={16} /><input aria-label="Search research" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search research..." className="h-10 w-full rounded-xl border border-[#0b5ea2]/15 bg-[#FFFFFF] pl-9 pr-3 text-sm text-[#0b5ea2] outline-none focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/10" /></label></div>
       {loading ? <p role="status" className="px-5 py-12 text-center font-semibold">Loading institutional research…</p>

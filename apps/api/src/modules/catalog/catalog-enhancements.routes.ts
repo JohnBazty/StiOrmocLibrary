@@ -5,6 +5,7 @@ import multer from 'multer'
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit'
 import { fillImportFromLookup } from './import-lookup-fill.ts'
 import { exportFoundRows, fillFoundRows, readFoundRows } from './find-book-details.ts'
+import { researchImport } from './research-import.service.ts'
 import * as service from './catalog-enhancements.service.ts'
 import type { SheetMapping } from './holdings-parser.ts'
 import { HttpError } from '../../core/http-error.ts'
@@ -34,6 +35,9 @@ catalogMaintenanceRouter.patch('/foundation/:kind/:id',run((req,res)=>service.sa
 catalogMaintenanceRouter.put('/titles/:id/details',run((req,res)=>service.saveDetails(req.params.id,req.body,Number(res.locals.authenticatedUser.accountId))))
 catalogMaintenanceRouter.post('/titles/:id/files',upload.single('digital'),run((req,res)=>service.uploadDigital(req.params.id,req.file,req.body,Number(res.locals.authenticatedUser.accountId))))
 catalogMaintenanceRouter.post('/files/:id/archive',run((req,res)=>service.archiveDigital(req.params.id,Number(res.locals.authenticatedUser.accountId))))
+// Bulk research import: check a research list file, then add the rows that pass (each on its own).
+catalogMaintenanceRouter.post('/research-imports/preview',upload.single('research'),run(req=>researchImport.preview(req.file,req.body.shelfLocation)))
+catalogMaintenanceRouter.post('/research-imports',run(req=>researchImport.importRows(req.body)))
 catalogMaintenanceRouter.post('/imports/inspect',upload.single('holdings'),run((req,res)=>service.inspectHoldings(req.file)))
 catalogMaintenanceRouter.post('/imports',upload.single('holdings'),run((req,res)=>service.stageHoldings(req.file,mappings(req.body.mapping),Number(res.locals.authenticatedUser.accountId))))
 catalogMaintenanceRouter.get('/imports',run(()=>service.importBatches()))
