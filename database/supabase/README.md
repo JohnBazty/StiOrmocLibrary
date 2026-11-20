@@ -1,6 +1,6 @@
 ## Hosted-system integration — 2026-11-20
 
-Application source matches hosted deployment `dpl_8SSF1zDLKLbi4y6tHoKBB4nkSVe5` for Student, Faculty, Staff, Librarian and Admin. Existing main migration bytes are preserved. Latest applied migration **073**, next unused **074**; no migration is run by merging. See `docs/plans/2026-11-20-hosted-system-main-merge.md` for checks and source boundaries. Older deployment/tracker notes below are historical.
+Application source matches hosted deployment `dpl_8SSF1zDLKLbi4y6tHoKBB4nkSVe5` for Student, Faculty, Staff, Librarian and Admin. Existing main migration bytes are preserved. Latest applied migration **073**; **074_violation_categories.sql** is written but not applied (needs Ethan's go-ahead), next unused **075**; no migration is run by merging. See `docs/plans/2026-11-20-hosted-system-main-merge.md` for checks and source boundaries. Older deployment/tracker notes below are historical.
 
 -- ============================================================================
 -- STI College Ormoc Integrated Library Management System — Supabase / Postgres schema drafts
@@ -34,6 +34,7 @@ Application source matches hosted deployment `dpl_8SSF1zDLKLbi4y6tHoKBB4nkSVe5` 
 --   022_revision_phase4_attendance.sql        — attendance policy, events, scan receipts and checkout provenance (applied)
 --   023_revision_phase5_desk_circulation.sql   — in-library use and deduplicated desk confirmations (applied)
 --   024_revision_phase5_reading_materials.sql  — native physical thesis links for in-library use (applied)
+--   074_violation_categories.sql          — maintained violation rules, paper-log source on conduct incidents (written, not applied)
 -- Latest applied migration: 039_category_record_kind.sql (live ledger checked 2026-11-14).
 -- Unapplied payment drafts: 040_online_payment_foundation.sql and
 -- 041_xendit_checkout_confirmation.sql, 042_payment_counter_and_cancellation.sql and 043_payment_reconciliation.sql are pending review.

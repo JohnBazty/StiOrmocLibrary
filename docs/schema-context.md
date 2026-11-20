@@ -2,7 +2,7 @@
 
 ## Hosted-system integration — 2026-11-20
 
-Application source matches hosted deployment `dpl_8SSF1zDLKLbi4y6tHoKBB4nkSVe5` for Student, Faculty, Staff, Librarian and Admin. Existing main migration bytes are preserved. Latest applied migration **073**, next unused **074**; no migration is run by merging. See `docs/plans/2026-11-20-hosted-system-main-merge.md` for checks and source boundaries. Older deployment/tracker notes below are historical.
+Application source matches hosted deployment `dpl_8SSF1zDLKLbi4y6tHoKBB4nkSVe5` for Student, Faculty, Staff, Librarian and Admin. Existing main migration bytes are preserved. Latest applied migration **073**; **074_violation_categories.sql** is written but not applied (needs Ethan's go-ahead), next unused **075**; no migration is run by merging. See `docs/plans/2026-11-20-hosted-system-main-merge.md` for checks and source boundaries. Older deployment/tracker notes below are historical.
 
 ## November 18 application rollback
 
@@ -462,3 +462,7 @@ Postgres migration `032_login_devices.sql` was applied individually on 2026-11-1
 - `library_login_sessions` stores the browser token hash and optional seven-day deadline alongside the existing account version, last activity and revocation time. A browser-session cookie identifies an ordinary sign-in. It can resume within the existing ten-minute inactivity limit.
 - `login_otp_challenges.remember_device` binds the Student or Faculty choice to the verified challenge.
 - `login_device_switches` stores private, hashed two-minute confirmations tied to the account version and the session they can replace. The account lock serializes switches, resumptions and revocations.
+
+## Violation rules — migration 074 (written 2026-11-20, not yet applied)
+
+`violation_categories` (category_id, name unique, description, warnings_before_fine 0-3 default 2, fine_amount, is_active, sort_order, updated_by_account_id, timestamps) replaces the fixed category lists. Seeded with Noise, Eating or food and Other conduct at PHP 50.00 and 2 warnings (defaults, editable in Library setup). `conduct_students.category` and `conduct_incidents.category` now reference `violation_categories(name)` instead of a CHECK list; the name is locked once a category has records and categories are retired with `is_active`, never deleted. `conduct_incidents.source` is `Recorded` or `Paper log`; a paper-log row never has a `fine_id`. `conduct_incidents.action` still accepts `Final warning` for rows saved before this change. `conduct_students` is no longer written but still counts toward a person's warnings. RLS is on and browser roles have no access.
