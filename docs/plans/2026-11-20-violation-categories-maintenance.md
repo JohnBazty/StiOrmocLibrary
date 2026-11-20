@@ -2,7 +2,7 @@
 
 - **Date created:** 2026-11-20
 - **Date last updated:** 2026-11-20
-- **Status:** inprogress
+- **Status:** built (code, tests, reviews and migrations 074 and 075 done; visual re-audit in a browser skipped)
 - **Branch:** `feat/violation-categories-maintenance`, stacked on `feat/stocktake-webcam-scan` (33 commits ahead of `origin/main`; the current Fines UI only exists there)
 - **Migration:** `074_violation_categories.sql`, **applied to live Supabase 2026-11-20**
 - **UI skills at build time:** `sti-vaadin-design-system` + `sti-ux-qa-critic` (audit below)
@@ -172,7 +172,7 @@ Settled in this revision: the fine amount is **display only** (from setup), not 
 - [x] Fines filter options endpoint + `type`/`category` filter replacing hard-coded `TYPES`; "Violation · <category>" labels; PDF uses the same filters (tests)
 - [x] Web: Fines tabs cleanup (header actions, tab captions, URL tab state, 4 stat cards, shared components) (Vitest)
 - [x] Student/Faculty fines view: "warnings left" per category
-- [ ] `sti-ux-qa-critic` re-audit, desktop + mobile, light + dark
+- [ ] `sti-ux-qa-critic` visual re-audit, desktop + mobile, light + dark: **skipped at Ethan's request, not done**
 - [x] Reviews: `security-reviewer` + `database-reviewer` (findings fixed, see change log)
 
 ## Pre-apply checklist (migration 074, live Supabase, with Ethan's go-ahead)
@@ -194,3 +194,4 @@ Settled in this revision: the fine amount is **display only** (from setup), not 
 | 2026-11-20 | Migration 074 applied to live Supabase with Ethan's go-ahead after read-only pre-checks (ledger at 073, no existing conduct rows, constraint names matched, no long transactions). Verified: ledger row, 3 seeded categories (PHP 50.00, 2 warnings), category FKs and paper-log CHECK present, old category CHECKs dropped, RLS on, no anon/authenticated grants. Code not yet deployed. |
 | 2026-11-20 | Ethan: the fine is at most four digits (PHP 9,999.99) and a category can be deleted, not only retired. Limit set in the API validation, the Library setup form (hint and inline error, `maxLength`) and migration `075_violation_fine_four_digits.sql` (written, not applied; before applying run `SELECT name, fine_amount FROM violation_categories WHERE fine_amount > 9999.99;`, which must return no rows). Delete: `DELETE /api/v1/admin/violation-categories/:id`, Librarian only, only when no record uses the category (otherwise 409 `VIOLATION_CATEGORY_IN_USE`, retire instead); runs under the same row lock a recorded violation takes, writes an audit note, and the foreign keys are the backstop for a record saved in the same instant. The Edit dialog has a red Delete category button with a plain confirmation; it is disabled with the reason when records exist. Supersedes the earlier "no delete" decision. |
 | 2026-11-20 | Migration 075 applied to live Supabase with Ethan's go-ahead after read-only pre-checks (no category above PHP 9,999.99, constraint name matched, no long transactions). Verified: ledger row and the new CHECK (fine_amount > 0 and <= 9999.99). |
+| 2026-11-20 | Status set to built. Ethan chose to skip the visual re-audit (desktop/mobile, light/dark); the new screens have only been verified by tests, typecheck and build, not seen in a browser. |
