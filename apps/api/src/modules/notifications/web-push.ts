@@ -46,8 +46,8 @@ export function createWebPush(database:Pool=db,send=sendPush){
     JOIN LATERAL (SELECT MAX(revision_number) revision_number FROM announcement_revisions WHERE announcement_id=a.announcement_id) r ON r.revision_number IS NOT NULL
     WHERE s.active AND a.published_at>=s.created_at AND (a.expires_at IS NULL OR a.expires_at>?)
     AND (n.expires_at IS NULL OR n.expires_at>?) ON CONFLICT DO NOTHING`,[now,now,now])
-   const q=await database.getConnection();let accepted=0,retired=0,failed=0
-   try{await q.beginTransaction();const [rows]=await q.execute<RowDataPacket[]>(`SELECT d.delivery_id,s.device_id,s.endpoint FROM web_push_deliveries d
+   const q=await database.getConnection();let accepted=0,retired=0,failed=0,rows:RowDataPacket[]=[]
+   try{await q.beginTransaction();const [claimed]=await q.execute<RowDataPacket[]>(`SELECT d.delivery_id,s.device_id,s.endpoint FROM web_push_deliveries d
     JOIN web_push_devices s ON s.device_id=d.device_id AND s.active
     JOIN accounts ac ON ac.account_id=s.account_id AND ac.account_status='Active'
     JOIN users u ON u.user_id=ac.user_id AND u.account_status='Active'
@@ -55,12 +55,16 @@ export function createWebPush(database:Pool=db,send=sendPush){
     WHERE d.state='Pending' AND d.next_attempt_at<=? AND (a.expires_at IS NULL OR a.expires_at>?) AND a.published_at>=s.created_at
     AND EXISTS(SELECT 1 FROM notifications n WHERE n.user_id=u.user_id AND n.source_type='Announcement' AND n.source_id=a.announcement_id AND n.deleted_at IS NULL AND (n.expires_at IS NULL OR n.expires_at>?))
     ORDER BY d.next_attempt_at,d.delivery_id LIMIT 5 FOR UPDATE OF d,s SKIP LOCKED`,[now,now,now])
-    for(const row of rows){let code=503;try{code=await send(String(row.endpoint))}catch{/* A failed transport is retried without storing provider errors or endpoints in logs. */}
-     const state=code>=200&&code<300?'Accepted':[404,410].includes(code)?'Retired':'Pending'
-     if(state==='Retired'){await q.execute('UPDATE web_push_devices SET active=FALSE,updated_at=NOW() WHERE device_id=?',[row.device_id]);retired++}else if(state==='Accepted')accepted++;else failed++
-     await q.execute(`UPDATE web_push_deliveries SET attempts=attempts+1,state=CASE WHEN ?='Pending' AND attempts>=4 THEN 'Failed' ELSE ? END,accepted_at=CASE WHEN ?='Accepted' THEN ?::timestamptz ELSE NULL END,next_attempt_at=?::timestamptz+INTERVAL '5 minutes'*power(2,LEAST(attempts,5)) WHERE delivery_id=?`,[state,state,state,now,now,row.delivery_id])
-    }await q.commit();return {accepted,retired,failed,configured:true}
+    rows=claimed
+    for(const row of rows){await q.execute(`UPDATE web_push_deliveries SET next_attempt_at=?::timestamptz+INTERVAL '2 minutes' WHERE delivery_id=?`,[now,row.delivery_id])}
+    await q.commit()
    }catch(e){await q.rollback();throw e}finally{q.release()}
+   for(const row of rows){let code=503;try{code=await send(String(row.endpoint))}catch{/* A failed transport is retried without storing provider errors or endpoints in logs. */}
+    const state=code>=200&&code<300?'Accepted':[404,410].includes(code)?'Retired':'Pending'
+    if(state==='Retired'){await database.execute('UPDATE web_push_devices SET active=FALSE,updated_at=NOW() WHERE device_id=?',[row.device_id]);retired++}else if(state==='Accepted')accepted++;else failed++
+    await database.execute(`UPDATE web_push_deliveries SET attempts=attempts+1,state=CASE WHEN ?='Pending' AND attempts>=4 THEN 'Failed' ELSE ? END,accepted_at=CASE WHEN ?='Accepted' THEN ?::timestamptz ELSE NULL END,next_attempt_at=?::timestamptz+INTERVAL '5 minutes'*power(2,LEAST(attempts,5)) WHERE delivery_id=?`,[state,state,state,now,now,row.delivery_id])
+   }
+   return {accepted,retired,failed,configured:true}
   },
  }
 }

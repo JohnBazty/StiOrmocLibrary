@@ -67,8 +67,10 @@ function evaluateBlockers(
     blockers.push(blocker('RENEWAL_ACCOUNT_INACTIVE'))
   }
   if (loan.status !== 'Borrowed') {
-    blockers.push(blocker(loan.status === 'Overdue' ? 'RENEWAL_ALREADY_OVERDUE' : 'RENEWAL_LOAN_NOT_ACTIVE'))
-  } else if (!loan.dueAt || now >= loan.dueAt) {
+    if (loan.status !== 'Overdue' || !policy || policy.blockRenewalIfOverdue) {
+      blockers.push(blocker(loan.status === 'Overdue' ? 'RENEWAL_ALREADY_OVERDUE' : 'RENEWAL_LOAN_NOT_ACTIVE'))
+    }
+  } else if ((!loan.dueAt || now >= loan.dueAt) && (!policy || policy.blockRenewalIfOverdue)) {
     blockers.push(blocker('RENEWAL_ALREADY_OVERDUE'))
   }
   if (!policy) {
@@ -81,8 +83,8 @@ function evaluateBlockers(
     blockers.push(blocker('RENEWAL_COPY_BLOCKED'))
   }
   if (loan.titleLifecycleStatus === 'Archived') blockers.push(blocker('RENEWAL_TITLE_ARCHIVED'))
-  if (blockState.hasWaitingReservation) blockers.push(blocker('RENEWAL_RESERVATION_WAITING'))
-  if (blockState.hasOutstandingFine) blockers.push(blocker('RENEWAL_OUTSTANDING_FINE'))
+  if (blockState.hasWaitingReservation && (!policy || policy.blockRenewalIfReserved)) blockers.push(blocker('RENEWAL_RESERVATION_WAITING'))
+  if (blockState.hasOutstandingFine && (!policy || policy.blockRenewalIfUnpaidFines)) blockers.push(blocker('RENEWAL_OUTSTANDING_FINE'))
   if (blockState.hasUnpaidLostCharge) blockers.push(blocker('RENEWAL_LOST_CHARGE_UNPAID'))
   if (blockState.hasOpenLostReport) blockers.push(blocker('RENEWAL_LOST_REPORT_OPEN'))
   return blockers

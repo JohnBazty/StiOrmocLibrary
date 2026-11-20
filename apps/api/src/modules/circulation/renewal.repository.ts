@@ -4,6 +4,7 @@ import type { PreviewCredit } from '../payments/preview-balances.ts'
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { forUpdate } from '../../config/sql-dialect.js'
+import { manilaDate } from '../attendance/attendance-intervals.ts'
 
 export type RenewalExecutor = Pool | PoolConnection
 
@@ -151,10 +152,7 @@ function mapDecision(row: RowDataPacket | undefined): StoredRenewalDecision | nu
 }
 
 function localDateKey(value: Date): string {
-  const year = value.getFullYear()
-  const month = String(value.getMonth() + 1).padStart(2, '0')
-  const day = String(value.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  return manilaDate(value)
 }
 
 export function createRenewalRepository(database: Pool = db, options: { previewCredits?: (userId: number) => Promise<PreviewCredit[]> } = {}) {
@@ -174,7 +172,7 @@ export function createRenewalRepository(database: Pool = db, options: { previewC
       lock = false,
     ): Promise<StoredRenewalDecision | null> {
       const [rows] = await executor.execute<RowDataPacket[]>(
-        `SELECT * FROM loan_renewal_requests WHERE request_key = ? LIMIT 1${lock ? ' FOR UPDATE' : ''}`,
+        `SELECT *, (previous_due_at AT TIME ZONE 'Asia/Manila') AS previous_due_at, (new_due_at AT TIME ZONE 'Asia/Manila') AS new_due_at, (requested_at AT TIME ZONE 'Asia/Manila') AS requested_at, (decided_at AT TIME ZONE 'Asia/Manila') AS decided_at FROM loan_renewal_requests WHERE request_key = ? LIMIT 1${lock ? ' FOR UPDATE' : ''}`,
         [requestKey],
       )
       return mapDecision(rows[0])
@@ -187,7 +185,10 @@ export function createRenewalRepository(database: Pool = db, options: { previewC
     ): Promise<RenewalLoan | null> {
       const [rows] = await executor.execute<RowDataPacket[]>(
         `SELECT bt.transaction_id, bt.user_id, bt.material_id, bt.physical_copy_id,
-                bt.borrowing_policy_version_id, bt.borrowed_at, bt.due_at, bt.initial_due_at,
+                bt.borrowing_policy_version_id,
+                (bt.borrowed_at AT TIME ZONE 'Asia/Manila') AS borrowed_at,
+                (bt.due_at AT TIME ZONE 'Asia/Manila') AS due_at,
+                (bt.initial_due_at AT TIME ZONE 'Asia/Manila') AS initial_due_at,
                 bt.renewal_count, bt.transaction_status, u.account_status AS user_account_status,
                 a.account_status AS normalized_account_status, m.material_type,
                 pc.title_id, pc.condition_status, pc.lifecycle_status AS copy_lifecycle_status,
@@ -200,7 +201,7 @@ export function createRenewalRepository(database: Pool = db, options: { previewC
              ON pc.physical_copy_id = bt.physical_copy_id
              OR (bt.physical_copy_id IS NULL AND pc.material_id = bt.material_id)
            LEFT JOIN titles t ON t.title_id = pc.title_id
-          WHERE bt.transaction_id = ?
+          WHERE bt.transaction_id = ? AND bt.lost_confirmed_at IS NULL
           ORDER BY pc.physical_copy_id ASC
           LIMIT 1${lock ? ` ${forUpdate('bt')}` : ''}`,
         [transactionId],
@@ -226,13 +227,14 @@ export function createRenewalRepository(database: Pool = db, options: { previewC
       }
       const [fineRows] = await executor.execute<RowDataPacket[]>(
         `SELECT fine_id FROM fines
-          WHERE user_id = ? AND payment_status IN ('Accruing','Unpaid','Partially Paid')
+          WHERE user_id = ? AND payment_status IN ('Accruing','Unpaid','Partially Paid') AND fine_amount > 0
           LIMIT 1`,
         [loan.userId],
       )
       const [lostChargeRows] = await executor.execute<RowDataPacket[]>(
         `SELECT lost_book_report_id FROM lost_book_reports
           WHERE user_id = ? AND report_status = 'Confirmed' AND payment_status = 'Unpaid'
+            AND charge_resolution IN ('Quoted', 'Book Price') AND replacement_charge > 0
           LIMIT 1`,
         [loan.userId],
       )
@@ -274,7 +276,7 @@ export function createRenewalRepository(database: Pool = db, options: { previewC
       const horizon = new Date(start)
       horizon.setDate(horizon.getDate() + 366)
       const [closedRows] = await executor.execute<RowDataPacket[]>(
-        'SELECT closed_date FROM library_closed_days WHERE closed_date > DATE(?) AND closed_date <= DATE(?)',
+        "SELECT to_char(closed_date, 'YYYY-MM-DD') AS closed_date FROM library_closed_days WHERE closed_date > (?::timestamptz AT TIME ZONE 'Asia/Manila')::date AND closed_date <= (?::timestamptz AT TIME ZONE 'Asia/Manila')::date",
         [start, horizon],
       )
       const [scheduleRows] = await executor.execute<RowDataPacket[]>(
@@ -299,7 +301,7 @@ export function createRenewalRepository(database: Pool = db, options: { previewC
            decision_source, deciding_staff_account_id, deciding_staff_user_id, staff_note,
            status, decision_code, decision_summary, blocker_codes, previous_due_at, new_due_at,
            borrowing_policy_version_id, requested_at, decided_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (?::timestamptz AT TIME ZONE 'Asia/Manila'), (?::timestamptz AT TIME ZONE 'Asia/Manila'), ?, (?::timestamptz AT TIME ZONE 'Asia/Manila'), (?::timestamptz AT TIME ZONE 'Asia/Manila'))`,
         [
           input.requestKey, input.transactionId, input.renewalNumber, input.requesterAccountId,
           input.requesterUserId, input.decisionSource, input.decidingStaffAccountId,
@@ -320,7 +322,7 @@ export function createRenewalRepository(database: Pool = db, options: { previewC
     ): Promise<boolean> {
       const [result] = await executor.execute<ResultSetHeader>(
         `UPDATE borrow_transactions
-            SET initial_due_at = COALESCE(initial_due_at, ?), due_at = ?,
+            SET initial_due_at = COALESCE(initial_due_at, (?::timestamptz AT TIME ZONE 'Asia/Manila')), due_at = (?::timestamptz AT TIME ZONE 'Asia/Manila'),
                 renewal_count = renewal_count + 1, updated_at = NOW()
           WHERE transaction_id = ? AND renewal_count = ?`,
         [previousDueAt, newDueAt, transactionId, currentRenewalCount],
@@ -346,17 +348,18 @@ export function createRenewalRepository(database: Pool = db, options: { previewC
            (user_id, message_title, message_body, trigger_type, source_type, source_id,
             action_path, priority, dedupe_key, scheduled_for, delivered_at)
          VALUES (?, 'Loan renewal approved', ?, 'Due Date', 'Borrow Transaction', ?,
-                 '/student/borrowing', 'Important', ?, NOW(), NOW())
+                 CASE WHEN (SELECT user_role FROM users WHERE user_id=?)='Faculty' THEN '/faculty/borrowing' ELSE '/student/borrowing' END, 'Important', ?, NOW(), NOW())
          ON CONFLICT DO NOTHING`,
         [
           loan.userId,
           `${loan.title} was renewed. Its new due date is ${formattedDue} (Manila time).`,
           loan.transactionId,
+          loan.userId,
           `loan:${loan.transactionId}:renewal:${renewalNumber}:approved:${renewalRequestId}`,
         ],
       )
       const { notifyStaffRolesSafe } = await import('../notifications/transaction-notifications.ts')
-      await notifyStaffRolesSafe(database, {
+      await notifyStaffRolesSafe(executor, {
         key: `loan:${loan.transactionId}:renewal:${renewalNumber}:approved:${renewalRequestId}`,
         title: 'Book loan renewed',
         body: `${loan.title} renewed (#${renewalNumber}). New due date: ${formattedDue}.`,

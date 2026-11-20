@@ -9,7 +9,7 @@ export async function borrowerReturnList(q:Pick<PoolConnection,'execute'>,userId
    to_char(bt.due_at,'YYYY-MM-DD"T"HH24:MI:SS')||'+08:00' AS due_at,bt.transaction_status AS status,t.cover_image_path AS cover
    FROM borrow_transactions bt LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id
    LEFT JOIN titles t ON t.title_id=pc.title_id LEFT JOIN materials m ON m.material_id=bt.material_id
-   WHERE bt.user_id=? AND bt.transaction_status IN ('Borrowed','Overdue') AND bt.returned_at IS NULL
+   WHERE bt.user_id=? AND bt.transaction_status IN ('Borrowed','Overdue') AND bt.returned_at IS NULL AND to_jsonb(bt)->>'lost_confirmed_at' IS NULL
    ORDER BY bt.due_at,bt.transaction_id LIMIT 51 OFFSET ?`,[userId,(page-1)*50])
  return {rows:rows.slice(0,50).map(r=>({id:Number(r.id),kind:'TakeHome' as const,title:String(r.title??'Book'),barcode:r.barcode?String(r.barcode):null,borrowedAt:r.borrowed_at,dueAt:r.due_at,status:r.status,cover:r.cover??null})),page,more:rows.length>50}
 }

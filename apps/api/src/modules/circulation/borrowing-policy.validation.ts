@@ -42,6 +42,12 @@ function requireDate(value: unknown, field: string): string {
       errors: { [field]: 'Must be a YYYY-MM-DD date.' },
     })
   }
+  const parsed = new Date(`${text}T00:00:00.000Z`)
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== text) {
+    throw new HttpError(422, 'BORROWING_POLICY_VALIDATION_FAILED', `${field} must be a valid calendar date.`, {
+      errors: { [field]: 'Must be a valid calendar date.' },
+    })
+  }
   return text
 }
 

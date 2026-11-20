@@ -28,13 +28,13 @@ export async function accountHold(q: PoolConnection, userId: number): Promise<Ac
     (SELECT COUNT(*) AS total FROM (
       SELECT DISTINCT COALESCE(pc.title_id,-bt.material_id) AS title_id FROM borrow_transactions bt
         LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id
-        WHERE bt.user_id=? AND bt.transaction_status IN ('Pending','Borrowed','Overdue')
+        WHERE bt.user_id=? AND bt.transaction_status IN ('Pending','Borrowed','Overdue') AND to_jsonb(bt)->>'lost_confirmed_at' IS NULL
       UNION SELECT COALESCE(book_title_id,-material_id) FROM reservations WHERE user_id=? AND reservation_status IN ${active}
     ) commitments) AS total,
     (SELECT COUNT(*) FROM (
       SELECT DISTINCT COALESCE(pc.title_id,-bt.material_id) AS title_id FROM borrow_transactions bt
         LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id
-        WHERE bt.user_id=? AND bt.transaction_status IN ('Pending','Borrowed','Overdue')
+        WHERE bt.user_id=? AND bt.transaction_status IN ('Pending','Borrowed','Overdue') AND to_jsonb(bt)->>'lost_confirmed_at' IS NULL
     ) loan_titles) AS loans,
     (SELECT COUNT(*) FROM (
       SELECT DISTINCT COALESCE(r.book_title_id,-r.material_id) AS title_id FROM reservations r
@@ -42,7 +42,7 @@ export async function accountHold(q: PoolConnection, userId: number): Promise<Ac
         AND NOT EXISTS (
           SELECT 1 FROM borrow_transactions bt
           LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id
-          WHERE bt.user_id=r.user_id AND bt.transaction_status IN ('Pending','Borrowed','Overdue')
+          WHERE bt.user_id=r.user_id AND bt.transaction_status IN ('Pending','Borrowed','Overdue') AND to_jsonb(bt)->>'lost_confirmed_at' IS NULL
             AND COALESCE(pc.title_id,-bt.material_id)=COALESCE(r.book_title_id,-r.material_id)
         )
     ) request_titles) AS requests`,[userId,userId,userId,userId])
@@ -99,7 +99,7 @@ export async function availableCopies(q: PoolConnection, titleId: number, lockRo
   const [rows] = await q.execute<RowDataPacket[]>(`SELECT pc.* FROM physical_copies pc JOIN titles t ON t.title_id=pc.title_id
     WHERE pc.title_id=? AND pc.lifecycle_status='Active' AND t.lifecycle_status='Active' AND t.record_type='Book'
       AND pc.material_id IS NOT NULL AND pc.availability_status='Available' AND pc.condition_status NOT IN ('Lost','Damaged','For Repair')
-      AND NOT EXISTS(SELECT 1 FROM borrow_transactions bt WHERE (bt.physical_copy_id=pc.physical_copy_id OR bt.material_id=pc.material_id) AND bt.transaction_status IN ('Pending','Borrowed','Overdue'))
+      AND NOT EXISTS(SELECT 1 FROM borrow_transactions bt WHERE (bt.physical_copy_id=pc.physical_copy_id OR bt.material_id=pc.material_id) AND bt.transaction_status IN ('Pending','Borrowed','Overdue') AND to_jsonb(bt)->>'lost_confirmed_at' IS NULL)
       AND NOT EXISTS(SELECT 1 FROM in_library_uses iu WHERE iu.physical_copy_id=pc.physical_copy_id AND iu.ended_at IS NULL)
       AND NOT EXISTS(SELECT 1 FROM reservations r WHERE r.assigned_physical_copy_id=pc.physical_copy_id AND r.reservation_status IN ${active})
     ORDER BY pc.physical_copy_id ${lockRows ? 'FOR UPDATE OF pc,t' : ''}`, [titleId])
@@ -115,7 +115,7 @@ export async function allocateWaitingRequests(q: PoolConnection,titleId:number,n
   const [copies] = await q.execute<RowDataPacket[]>(`SELECT pc.*,t.title FROM physical_copies pc JOIN titles t ON t.title_id=pc.title_id
     WHERE pc.title_id=? AND pc.lifecycle_status='Active' AND t.lifecycle_status='Active' AND t.record_type='Book'
       AND pc.material_id IS NOT NULL AND pc.availability_status='Available' AND pc.condition_status NOT IN ('Lost','Damaged','For Repair')
-      AND NOT EXISTS(SELECT 1 FROM borrow_transactions bt WHERE (bt.physical_copy_id=pc.physical_copy_id OR bt.material_id=pc.material_id) AND bt.transaction_status IN ('Pending','Borrowed','Overdue'))
+      AND NOT EXISTS(SELECT 1 FROM borrow_transactions bt WHERE (bt.physical_copy_id=pc.physical_copy_id OR bt.material_id=pc.material_id) AND bt.transaction_status IN ('Pending','Borrowed','Overdue') AND to_jsonb(bt)->>'lost_confirmed_at' IS NULL)
       AND NOT EXISTS(SELECT 1 FROM in_library_uses iu WHERE iu.physical_copy_id=pc.physical_copy_id AND iu.ended_at IS NULL)
       AND NOT EXISTS(SELECT 1 FROM reservations r WHERE r.assigned_physical_copy_id=pc.physical_copy_id AND r.reservation_status IN ${active})
     ORDER BY pc.physical_copy_id FOR UPDATE OF pc,t`,[titleId])
@@ -240,7 +240,7 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
     if(!rules[0]?.is_borrowable) throw fail('RESEARCH_VIEW_ONLY','The approved policy does not allow take-home borrowing of this material.')
     const [duplicates]=await q.execute<RowDataPacket[]>(`SELECT reservation_id FROM reservations WHERE user_id=? AND book_title_id=? AND reservation_status IN ${active}
       UNION ALL SELECT bt.transaction_id FROM borrow_transactions bt JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id
-      WHERE bt.user_id=? AND pc.title_id=? AND bt.transaction_status IN ('Pending','Borrowed','Overdue')`,[userId,titleId,userId,titleId])
+      WHERE bt.user_id=? AND pc.title_id=? AND bt.transaction_status IN ('Pending','Borrowed','Overdue') AND to_jsonb(bt)->>'lost_confirmed_at' IS NULL`,[userId,titleId,userId,titleId])
     if(duplicates.length) throw fail('BOOK_ALREADY_IN_ACCOUNT','You already have this title in a book request or active loan.')
     const hold=await accountHold(q,userId)
     if(eligible.limit!==null && hold.total>=eligible.limit) throw fail('STUDENT_BORROW_LIMIT_REACHED',borrowLimitMessage(eligible.limit,hold))
@@ -351,7 +351,7 @@ export function createBookRequestService(database:Pool=db,clock=()=>new Date()) 
         if(!['pending','approved'].includes(r.reservation_status)) throw fail('RESERVATION_TRANSITION_INVALID','This request can no longer be prepared.')
         const [conflictingLoans] = await q.execute<RowDataPacket[]>(`SELECT bt.transaction_id FROM borrow_transactions bt
           JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id OR (bt.physical_copy_id IS NULL AND pc.material_id=bt.material_id)
-          WHERE bt.user_id=? AND pc.title_id=? AND bt.transaction_status IN ('Pending','Borrowed','Overdue')
+          WHERE bt.user_id=? AND pc.title_id=? AND bt.transaction_status IN ('Pending','Borrowed','Overdue') AND to_jsonb(bt)->>'lost_confirmed_at' IS NULL
           AND bt.reservation_id IS DISTINCT FROM ? LIMIT 1`,[r.user_id,r.book_title_id,r.reservation_id])
         if(conflictingLoans.length) throw fail('BOOK_ALREADY_IN_ACCOUNT','The borrower already has an active loan or checkout for this title.')
         await allocateWaitingRequests(q,Number(r.book_title_id),clock());r=await requestRow(q,Number(r.reservation_id))

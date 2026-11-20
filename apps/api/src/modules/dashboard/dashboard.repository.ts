@@ -84,7 +84,7 @@ export class DashboardRepository {
       this.pool.execute<RowDataPacket[]>(`SELECT COUNT(*) total_books,${sumEquals('availability_status', 'Available')} available_books FROM physical_copies WHERE lifecycle_status='Active'`),
       this.pool.execute<RowDataPacket[]>(`SELECT
           (SELECT COUNT(*) FROM borrow_transactions WHERE transaction_status IN ('Borrowed','Overdue') AND lost_confirmed_at IS NULL) active_borrowed,
-          (SELECT COUNT(*) FROM borrow_transactions WHERE (transaction_status='Overdue' OR (transaction_status='Borrowed' AND due_at<NOW())) AND lost_confirmed_at IS NULL) overdue_books,
+          (SELECT COUNT(*) FROM borrow_transactions WHERE (transaction_status='Overdue' OR (transaction_status='Borrowed' AND due_at<(NOW() AT TIME ZONE 'Asia/Manila'))) AND lost_confirmed_at IS NULL) overdue_books,
           (SELECT COUNT(*) FROM borrow_transactions WHERE transaction_status='Returned' AND DATE(returned_at)=${currentDate()}) returned_today,
           (SELECT COUNT(*) FROM accounts WHERE role IN ('Student','Faculty') AND account_status='Active') active_users,
           (SELECT COUNT(*) FROM reservations WHERE ${"request_kind='Reservation' AND"} reservation_status IN ('pending','approved','ready_for_pickup')) active_reservations`),

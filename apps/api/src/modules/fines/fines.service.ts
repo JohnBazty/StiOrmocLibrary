@@ -236,14 +236,25 @@ export async function refreshClearance(connection: PoolConnection, userId: numbe
     `SELECT
        EXISTS(SELECT 1 FROM borrow_transactions WHERE user_id=? AND transaction_status IN ('Borrowed','Overdue') AND lost_confirmed_at IS NULL) AS has_loan,
        EXISTS(SELECT 1 FROM fines WHERE user_id=? AND payment_status IN ('Accruing','Unpaid','Partially Paid') AND fine_amount>0) AS has_fine,
-       EXISTS(SELECT 1 FROM lost_book_reports WHERE user_id=? AND report_status='Confirmed' AND replacement_charge>0 AND payment_status='Unpaid') AS has_loss`,
-    [userId,userId,userId],
+       EXISTS(SELECT 1 FROM lost_book_reports WHERE user_id=? AND report_status='Confirmed' AND charge_resolution IN ('Quoted','Book Price') AND replacement_charge>0 AND payment_status='Unpaid') AS has_loss,
+       EXISTS(SELECT 1 FROM library_service_charges WHERE user_id=? AND payment_status IN ('Unpaid','Partially Paid') AND amount>0) AS has_charge,
+       EXISTS(SELECT 1 FROM in_library_uses WHERE user_id=? AND status='Review' AND ended_at IS NULL) AS has_in_library,
+       (SELECT override_status FROM clearance_overrides WHERE user_id=? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>NOW()) ORDER BY applied_at DESC,clearance_override_id DESC LIMIT 1) AS override_status,
+       (SELECT reason FROM clearance_overrides WHERE user_id=? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>NOW()) ORDER BY applied_at DESC,clearance_override_id DESC LIMIT 1) AS override_reason`,
+    [userId,userId,userId,userId,userId,userId,userId],
   )
-  const blocked = Number(rows[0]?.has_loan) || Number(rows[0]?.has_fine) || Number(rows[0]?.has_loss)
+  const row = rows[0] ?? {}
+  const overrideStatus = row.override_status ? String(row.override_status) : null
+  const blocked = overrideStatus
+    ? overrideStatus === 'Not Cleared'
+    : Boolean(Number(row.has_loan) || Number(row.has_fine) || Number(row.has_loss) || Number(row.has_charge) || Number(row.has_in_library))
+  const details = overrideStatus
+    ? `Authorized override: ${row.override_reason ?? overrideStatus}`
+    : blocked ? 'Outstanding library obligations remain.' : 'No outstanding library obligations.'
   await connection.execute(
     `INSERT INTO clearance_statuses(user_id,standing_status,reason_block_details,last_checked_at,updated_at)
      VALUES (?,?,?,NOW(),NOW()) ON CONFLICT (user_id) DO UPDATE SET standing_status=${excluded('standing_status')},reason_block_details=${excluded('reason_block_details')},last_checked_at=NOW(),updated_at=NOW()`,
-    [userId, blocked ? 'Not Cleared' : 'Cleared', blocked ? 'Outstanding library obligations remain.' : 'No outstanding library obligations.'],
+    [userId, blocked ? 'Not Cleared' : 'Cleared', details],
   )
 }
 
@@ -405,12 +416,13 @@ export function createFinesService(database: Pool = db, options: { previewCredit
         }
         await connection.execute(
           `INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
-           VALUES (?,'Cash payment received',?,'Fine','Fine Receipt',?,'/student/fines','Normal',?,NOW(),NOW())
+           VALUES (?,'Cash payment received',?,'Fine','Fine Receipt',?,CASE WHEN (SELECT user_role FROM users WHERE user_id=?)='Faculty' THEN '/faculty/fines' ELSE '/student/fines' END,'Normal',?,NOW(),NOW())
           ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
-          [ownerUserId,`Receipt ${receiptNumber}: PHP ${total.toFixed(2)} received at the library counter.`,insert.insertId,`fine-receipt:${insert.insertId}:issued`],
+          [ownerUserId,`Receipt ${receiptNumber}: PHP ${total.toFixed(2)} received at the library counter.`,insert.insertId,ownerUserId,`fine-receipt:${insert.insertId}:issued`],
         )
-        await refreshClearance(connection,ownerUserId); await connection.commit()
-        await notifyStaffRolesSafe(database,{key:`fine-receipt:${insert.insertId}:issued`,title:'Fine cash payment received',body:`Receipt ${receiptNumber}: PHP ${total.toFixed(2)} received at the library counter.`,type:'Fine',sourceType:'Fine Receipt',sourceId:Number(insert.insertId),personUserId:ownerUserId,librarianPath:'/librarian/fines',staffPath:'/staff/payments',priority:'Normal'})
+        await refreshClearance(connection,ownerUserId)
+        await notifyStaffRolesSafe(connection,{key:`fine-receipt:${insert.insertId}:issued`,title:'Fine cash payment received',body:`Receipt ${receiptNumber}: PHP ${total.toFixed(2)} received at the library counter.`,type:'Fine',sourceType:'Fine Receipt',sourceId:Number(insert.insertId),personUserId:ownerUserId,librarianPath:'/librarian/fines',staffPath:'/staff/payments',priority:'Normal'})
+        await connection.commit()
         return receiptDetail(Number(insert.insertId))
       } catch (error) { await connection.rollback(); throw error } finally { connection.release() }
       }
@@ -439,12 +451,13 @@ export function createFinesService(database: Pool = db, options: { previewCredit
         const result=await recomputeFineStatus(connection,targetFineId)
         await connection.execute(
           `INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
-           VALUES (?,'Fine adjusted',?,'Fine','Fine',?,'/student/fines','Important',?,NOW(),NOW())
+           VALUES (?,'Fine adjusted',?,'Fine','Fine',?,CASE WHEN (SELECT user_role FROM users WHERE user_id=?)='Faculty' THEN '/faculty/fines' ELSE '/student/fines' END,'Important',?,NOW(),NOW())
           ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
-          [fine.user_id,`${input.type}: PHP ${amount.toFixed(2)}. Reason: ${input.reason}`,targetFineId,`fine:${targetFineId}:adjustment:${Date.now()}`],
+          [fine.user_id,`${input.type}: PHP ${amount.toFixed(2)}. Reason: ${input.reason}`,targetFineId,fine.user_id,`fine:${targetFineId}:adjustment:${Date.now()}`],
         )
-        await refreshClearance(connection,Number(fine.user_id)); await connection.commit()
-        await notifyStaffRolesSafe(database,{key:`fine:${targetFineId}:adjustment:${Date.now()}`,title:'Fine adjusted',body:`${input.type}: PHP ${amount.toFixed(2)}. Reason: ${input.reason}`,type:'Fine',sourceType:'Fine',sourceId:targetFineId,personUserId:Number(fine.user_id),librarianPath:'/librarian/fines',staffPath:'/staff/notifications',priority:'Important'})
+        await refreshClearance(connection,Number(fine.user_id))
+        await notifyStaffRolesSafe(connection,{key:`fine:${targetFineId}:adjustment:${Date.now()}`,title:'Fine adjusted',body:`${input.type}: PHP ${amount.toFixed(2)}. Reason: ${input.reason}`,type:'Fine',sourceType:'Fine',sourceId:targetFineId,personUserId:Number(fine.user_id),librarianPath:'/librarian/fines',staffPath:'/staff/notifications',priority:'Important'})
+        await connection.commit()
         return { fineId:targetFineId,...result }
       } catch(error){await connection.rollback();throw error}finally{connection.release()}
       }
@@ -474,12 +487,13 @@ export function createFinesService(database: Pool = db, options: { previewCredit
         for(const allocation of allocations){if(allocation.fine_id) await recomputeFineStatus(connection,Number(allocation.fine_id));else await connection.execute("UPDATE lost_book_reports SET payment_status='Unpaid',paid_at=NULL,payment_recorded_by_user_id=NULL,updated_at=NOW() WHERE lost_book_report_id=?",[allocation.lost_book_report_id])}
         await connection.execute(
           `INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
-           VALUES (?,'Cash receipt reversed',?,'Fine','Fine Receipt',?,'/student/fines','Urgent',?,NOW(),NOW())
+           VALUES (?,'Cash receipt reversed',?,'Fine','Fine Receipt',?,CASE WHEN (SELECT user_role FROM users WHERE user_id=?)='Faculty' THEN '/faculty/fines' ELSE '/student/fines' END,'Urgent',?,NOW(),NOW())
           ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
-          [receipt.user_id,`A cash receipt was reversed. Reason: ${input.reason}`,targetReceiptId,`fine-receipt:${targetReceiptId}:reversed`],
+          [receipt.user_id,`A cash receipt was reversed. Reason: ${input.reason}`,targetReceiptId,receipt.user_id,`fine-receipt:${targetReceiptId}:reversed`],
         )
-        await refreshClearance(connection,Number(receipt.user_id)); await connection.commit()
-        await notifyStaffRolesSafe(database,{key:`fine-receipt:${targetReceiptId}:reversed`,title:'Cash receipt reversed',body:`Cash receipt #${targetReceiptId} was reversed. Reason: ${input.reason}`,type:'Fine',sourceType:'Fine Receipt',sourceId:targetReceiptId,personUserId:Number(receipt.user_id),librarianPath:'/librarian/fines',staffPath:'/staff/payments',priority:'Urgent'})
+        await refreshClearance(connection,Number(receipt.user_id))
+        await notifyStaffRolesSafe(connection,{key:`fine-receipt:${targetReceiptId}:reversed`,title:'Cash receipt reversed',body:`Cash receipt #${targetReceiptId} was reversed. Reason: ${input.reason}`,type:'Fine',sourceType:'Fine Receipt',sourceId:targetReceiptId,personUserId:Number(receipt.user_id),librarianPath:'/librarian/fines',staffPath:'/staff/payments',priority:'Urgent'})
+        await connection.commit()
         return receiptDetail(targetReceiptId)
       }catch(error){await connection.rollback();throw error}finally{connection.release()}
       }

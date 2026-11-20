@@ -1,6 +1,6 @@
 import type { Pool, RowDataPacket } from '../../config/db.js'
 import {openLongOverdueCaseInTransaction} from './circulation-case.service.ts'
-import { localTimestamp } from '../attendance/attendance-intervals.ts'
+import { localTimestamp, manilaDate } from '../attendance/attendance-intervals.ts'
 import { db } from '../../config/db.js'
 import { caseIf, excluded } from '../../config/sql-dialect.js'
 import { calculateOperatingFine, loadFineContext } from '../fines/fine-calculator.ts'
@@ -51,15 +51,17 @@ export async function escalateOverdueTransactions(database: Pool = db, now: Date
           [loan.user_id, loan.transaction_id, `${loan.title} passed its recorded return deadline.`],
         )
       }
-      await connection.execute(
-        `INSERT INTO fines
-           (transaction_id, user_id, fine_type, fine_amount, payment_status, calculation_basis, overdue_units, rate_applied, maximum_cap_applied, notes, updated_at)
-         VALUES (?, ?, 'Overdue', ?, 'Accruing', ?, ?, ?, ?, 'Automatically calculated from the operating calendar and recorded return deadline', NOW())
-         ON CONFLICT (transaction_id) DO UPDATE SET fine_amount = ${excluded('fine_amount')}, calculation_basis = ${excluded('calculation_basis')},
-           overdue_units = ${excluded('overdue_units')}, rate_applied = ${excluded('rate_applied')}, maximum_cap_applied=${excluded('maximum_cap_applied')},
-           payment_status=${caseIf("fines.payment_status IN ('Paid','Waived','Voided')", 'fines.payment_status', "'Accruing'")},notes = ${excluded('notes')},updated_at=NOW()`,
-        [loan.transaction_id, loan.user_id, charge.amount, charge.basis, charge.units, charge.rate, charge.capApplied?policy.maximumPenalty:null],
-      )
+      if (charge.amount > 0) {
+        await connection.execute(
+          `INSERT INTO fines
+             (transaction_id, user_id, fine_type, fine_amount, payment_status, calculation_basis, overdue_units, rate_applied, maximum_cap_applied, notes, updated_at)
+           VALUES (?, ?, 'Overdue', ?, 'Accruing', ?, ?, ?, ?, 'Automatically calculated from the operating calendar and recorded return deadline', NOW())
+           ON CONFLICT (transaction_id) DO UPDATE SET fine_amount = ${excluded('fine_amount')}, calculation_basis = ${excluded('calculation_basis')},
+             overdue_units = ${excluded('overdue_units')}, rate_applied = ${excluded('rate_applied')}, maximum_cap_applied=${excluded('maximum_cap_applied')},
+             payment_status=${caseIf("fines.payment_status IN ('Paid','Waived','Voided','Partially Paid')", 'fines.payment_status', "'Accruing'")},notes = ${excluded('notes')},updated_at=NOW()`,
+          [loan.transaction_id, loan.user_id, charge.amount, charge.basis, charge.units, charge.rate, charge.capApplied?policy.maximumPenalty:null],
+        )
+      }
       await connection.execute(
         `INSERT INTO clearance_statuses
            (user_id, standing_status, reason_block_details, last_checked_at, updated_at)
@@ -69,7 +71,7 @@ export async function escalateOverdueTransactions(database: Pool = db, now: Date
         [loan.user_id, `Overdue material: ${loan.title}; outstanding fine: PHP ${charge.amount.toFixed(2)}.`],
       )
       const threshold=Number(loan.long_overdue_after_days)
-      if(loan.physical_copy_id&&Number.isInteger(threshold)&&threshold>0&&charge.basis==='Daily'&&charge.units>=threshold){
+      if(loan.physical_copy_id&&Number.isInteger(threshold)&&threshold>0&&charge.basis==='Daily'&&charge.units>=threshold&&manilaDate(now)>manilaDate(dueAt)){
         const opened=await openLongOverdueCaseInTransaction(connection,{transactionId:Number(loan.transaction_id),physicalCopyId:Number(loan.physical_copy_id),borrowerUserId:Number(loan.user_id),policyVersionId:loan.borrowing_policy_version_id==null?null:Number(loan.borrowing_policy_version_id),thresholdDays:threshold,thresholdReachedAt:now,title:String(loan.title)})
         if(opened.created)longOverdueCasesOpened++
       }

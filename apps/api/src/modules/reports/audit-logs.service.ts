@@ -78,7 +78,7 @@ export async function readAuditLogs(
 
       SELECT
         'cir-' || bt.transaction_id::text AS id,
-        COALESCE(bt.updated_at, bt.borrowed_at, bt.created_at)::timestamptz AS occurred_at,
+        COALESCE(bt.updated_at, (bt.borrowed_at AT TIME ZONE 'Asia/Manila'), bt.created_at)::timestamptz AS occurred_at,
         'Circulation' AS category,
         'Loan ' || bt.transaction_status AS action,
         COALESCE(staff.full_name, 'Circulation Counter') AS actor,
@@ -152,7 +152,7 @@ export async function readAuditLogs(
 
       SELECT
         'att-' || al.log_id::text AS id,
-        COALESCE(al.checked_in_at, al.created_at)::timestamptz AS occurred_at,
+        COALESCE((al.checked_in_at AT TIME ZONE 'Asia/Manila'), al.created_at)::timestamptz AS occurred_at,
         'Attendance' AS category,
         CASE WHEN al.checked_out_at IS NOT NULL THEN 'Library Visit Completed' ELSE 'Library Check-In' END AS action,
         COALESCE(scanner.full_name, al.scan_method, 'QR Scanner') AS actor,

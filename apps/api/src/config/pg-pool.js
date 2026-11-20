@@ -65,6 +65,7 @@ async function runOnClient(client, sql, values = []) {
 }
 
 function wrapClient(client) {
+  let broken = false
   return {
     execute: (sql, values = []) => runOnClient(client, sql, values),
     query: (sql, values = []) => runOnClient(client, sql, values),
@@ -78,9 +79,13 @@ function wrapClient(client) {
       await client.query('COMMIT')
     },
     rollback: async () => {
-      await client.query('ROLLBACK')
+      try {
+        await client.query('ROLLBACK')
+      } catch {
+        broken = true
+      }
     },
-    release: () => client.release(),
+    release: () => client.release(broken),
   }
 }
 

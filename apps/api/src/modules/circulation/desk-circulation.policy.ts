@@ -26,8 +26,8 @@ export async function borrowerEligibility(q: PoolConnection,userId:number,now:Da
   const [visits]=await q.execute<RowDataPacket[]>(`SELECT log_id,seat_visit,reason_for_visit FROM attendance_logs WHERE user_id=? AND checked_out_at IS NULL AND time_out IS NULL AND attendance_date=?::date ORDER BY log_id DESC LIMIT 1 FOR UPDATE`,[userId,manilaDate(now)])
   if (mode !== 'Online' && !visits[0]) blockers.push('Check in at the library entrance before borrowing.')
   if (mode==='InLibrary'&&visits[0]&&(visits[0].seat_visit===false || visits[0].reason_for_visit==='Printing')) blockers.push('In-library reading requires a seat-counted visit. End the Printing visit and check in for reading first.')
-  const [loans]=await q.execute<RowDataPacket[]>(`SELECT transaction_id,physical_copy_id,reservation_id,transaction_status FROM borrow_transactions WHERE user_id=? AND transaction_status IN ('Pending','Borrowed','Overdue')`,[userId])
-  const [overdue]=await q.execute<RowDataPacket[]>(`SELECT transaction_id FROM borrow_transactions WHERE user_id=? AND transaction_status IN ('Borrowed','Overdue') AND (transaction_status='Overdue' OR due_at < (?::timestamptz AT TIME ZONE 'Asia/Manila')) LIMIT 1`,[userId,now])
+  const [loans]=await q.execute<RowDataPacket[]>(`SELECT transaction_id,physical_copy_id,reservation_id,transaction_status FROM borrow_transactions WHERE user_id=? AND transaction_status IN ('Pending','Borrowed','Overdue') AND lost_confirmed_at IS NULL`,[userId])
+  const [overdue]=await q.execute<RowDataPacket[]>(`SELECT transaction_id FROM borrow_transactions WHERE user_id=? AND transaction_status IN ('Borrowed','Overdue') AND lost_confirmed_at IS NULL AND (transaction_status='Overdue' OR due_at < (?::timestamptz AT TIME ZONE 'Asia/Manila')) LIMIT 1`,[userId,now])
   if(overdue.length)blockers.push('Return overdue books before borrowing another material.')
   const paymentCredits=credits ?? (user?.account_id ? await borrowerPaymentCredits(q,userId,Number(user.account_id)) : [])
   const balance=(await borrowerBalances(q,userId,paymentCredits)).totalCentavos / 100
@@ -45,7 +45,7 @@ export function requireEligible(result:Awaited<ReturnType<typeof borrowerEligibi
 }
 export async function requireLoanSlot(q:PoolConnection,userId:number,copyId:number,limit:number|null) {
   if(limit===null)return
-  const [rows]=await q.execute<RowDataPacket[]>(`SELECT (SELECT COUNT(*) FROM borrow_transactions WHERE user_id=? AND transaction_status IN ('Pending','Borrowed','Overdue') AND physical_copy_id IS DISTINCT FROM ?) + (SELECT COUNT(*) FROM reservations r WHERE r.user_id=? AND r.reservation_status IN ('pending','approved','ready_for_pickup') AND NOT EXISTS (SELECT 1 FROM borrow_transactions bt WHERE bt.reservation_id=r.reservation_id AND bt.transaction_status IN ('Pending','Borrowed','Overdue')) AND r.assigned_physical_copy_id IS DISTINCT FROM ?) AS commitments`,[userId,copyId,userId,copyId])
+  const [rows]=await q.execute<RowDataPacket[]>(`SELECT (SELECT COUNT(*) FROM borrow_transactions WHERE user_id=? AND transaction_status IN ('Pending','Borrowed','Overdue') AND lost_confirmed_at IS NULL AND physical_copy_id IS DISTINCT FROM ?) + (SELECT COUNT(*) FROM reservations r WHERE r.user_id=? AND r.reservation_status IN ('pending','approved','ready_for_pickup') AND NOT EXISTS (SELECT 1 FROM borrow_transactions bt WHERE bt.reservation_id=r.reservation_id AND bt.transaction_status IN ('Pending','Borrowed','Overdue') AND bt.lost_confirmed_at IS NULL) AND r.assigned_physical_copy_id IS DISTINCT FROM ?) AS commitments`,[userId,copyId,userId,copyId])
   if(Number(rows[0]?.commitments)>=limit)throw new HttpError(422,'STUDENT_BORROW_LIMIT_REACHED',`The approved borrowing limit is ${limit} active books or requests.`,{limit})
 }
 export async function policyDueDate(q:PoolConnection,now:Date,policy:RowDataPacket) {

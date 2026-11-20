@@ -124,7 +124,7 @@ export function validateCancellation(body: unknown) {
   return { reason: reason || 'Pending counter-claim request cancelled.' }
 }
 
-export type BorrowCartInput = { titleIds: number[] }
+export type BorrowCartInput = { titleIds: number[]; requestId?: string }
 
 export function validateBorrowCart(body: unknown): BorrowCartInput {
   const input = inputObject(body)
@@ -150,5 +150,9 @@ export function validateBorrowCart(body: unknown): BorrowCartInput {
       errors: { titleIds: 'Remove duplicate book titles before submitting.' },
     })
   }
-  return { titleIds }
+  const rawRequestId = input.requestId ?? input.request_id
+  const requestId = typeof rawRequestId === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(rawRequestId.trim())
+    ? rawRequestId.trim()
+    : undefined
+  return requestId ? { titleIds, requestId } : { titleIds }
 }

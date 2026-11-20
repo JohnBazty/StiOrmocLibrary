@@ -134,8 +134,8 @@ export function createClearanceService(database: Pool = db, options: { previewCr
       () => executor.execute<RowDataPacket[]>(
         `SELECT bt.transaction_id, bt.transaction_status, bt.borrowed_at, bt.due_at, f.fine_id,
                 COALESCE(t.title,m.title) AS title, COALESCE(pc.accession_number,m.barcode) AS accession_number,
-                CASE WHEN bt.due_at IS NULL OR bt.due_at >= NOW() THEN 0
-                     ELSE CEIL(${timestampDiffSeconds('bt.due_at', 'NOW()')}/3600) END AS overdue_hours,
+                CASE WHEN bt.due_at IS NULL OR bt.due_at >= (NOW() AT TIME ZONE 'Asia/Manila') THEN 0
+                     ELSE CEIL(${timestampDiffSeconds('bt.due_at', "(NOW() AT TIME ZONE 'Asia/Manila')")}/3600) END AS overdue_hours,
                 GREATEST(COALESCE(f.fine_amount,0)-COALESCE(fp.paid,0)-COALESCE(fa.adjusted,0),0) AS current_fine
            FROM borrow_transactions bt INNER JOIN materials m ON m.material_id=bt.material_id
            LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id
@@ -463,7 +463,7 @@ export function createClearanceService(database: Pool = db, options: { previewCr
             `INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
              VALUES (?, 'Lost book charge confirmed', ?, 'Lost Book','Lost Book Report',?,CASE WHEN (SELECT user_role FROM users WHERE user_id=?)='Faculty' THEN '/faculty/clearance' ELSE '/student/clearance' END,'Urgent',?,NOW(),NOW())
           ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
-            [report.user_id, charge !== null ? `${report.title} was confirmed lost. Replacement charge: PHP ${charge.toFixed(2)}.` : `${report.title} was confirmed lost. Awaiting a supplier quotation; no charge has been assessed.`, reportId, `lost-report:${reportId}:confirmed`],
+            [report.user_id, charge !== null ? `${report.title} was confirmed lost. Replacement charge: PHP ${charge.toFixed(2)}.` : `${report.title} was confirmed lost. Awaiting a supplier quotation; no charge has been assessed.`, reportId, report.user_id, `lost-report:${reportId}:confirmed`],
           )
         } else {
           await connection.execute(
@@ -473,9 +473,9 @@ export function createClearanceService(database: Pool = db, options: { previewCr
           await connection.execute('UPDATE borrow_transactions SET reported_lost_at=NULL,updated_at=NOW() WHERE transaction_id=?', [report.transaction_id])
           await connection.execute(
             `INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
-             VALUES (?, 'Lost book report rejected', ?, 'Lost Book','Lost Book Report',?,'/student/borrowing','Important',?,NOW(),NOW())
+             VALUES (?, 'Lost book report rejected', ?, 'Lost Book','Lost Book Report',?,CASE WHEN (SELECT user_role FROM users WHERE user_id=?)='Faculty' THEN '/faculty/borrowing' ELSE '/student/borrowing' END,'Important',?,NOW(),NOW())
           ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
-            [report.user_id, `${report.title} remains an active loan. Please coordinate with the library if this is incorrect.`, reportId, `lost-report:${reportId}:rejected`],
+            [report.user_id, `${report.title} remains an active loan. Please coordinate with the library if this is incorrect.`, reportId, report.user_id, `lost-report:${reportId}:rejected`],
           )
         }
         await connection.commit()
@@ -516,9 +516,9 @@ export function createClearanceService(database: Pool = db, options: { previewCr
         }
         const message = action === 'Charge' ? `${report.title}: replacement charge confirmed from supplier quotation.` : `${report.title}: no monetary replacement charge is due. ${reason}`
         await connection.execute(`INSERT INTO notifications(user_id,message_title,message_body,trigger_type,source_type,source_id,action_path,priority,dedupe_key,scheduled_for,delivered_at)
-          VALUES (?, 'Lost book resolution', ?, 'Lost Book','Lost Book Report',?,'/student/clearance','Important',?,NOW(),NOW())
+          VALUES (?, 'Lost book resolution', ?, 'Lost Book','Lost Book Report',?,CASE WHEN (SELECT user_role FROM users WHERE user_id=?)='Faculty' THEN '/faculty/clearance' ELSE '/student/clearance' END,'Important',?,NOW(),NOW())
           ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
-        [report.user_id, message, reportId, `lost-report:${reportId}:resolution`])
+        [report.user_id, message, reportId, report.user_id, `lost-report:${reportId}:resolution`])
         await connection.execute("INSERT INTO admin_notifications(event_type,actor_user_id,borrow_transaction_id,message_title,message_body) VALUES ('lost_book_resolved',?,?, 'Lost book resolved',?)", [actorId, report.transaction_id, message])
         await connection.commit()
         return { lostBookReportId: reportId, chargeResolution: action === 'Charge' ? 'Quoted' : 'Waived' }

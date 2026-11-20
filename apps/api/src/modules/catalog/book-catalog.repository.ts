@@ -234,6 +234,7 @@ export async function queryViewerActiveBookCount(database: Pool, accountId: numb
              ON borrowed_copy.physical_copy_id = bt.physical_copy_id
              OR (bt.physical_copy_id IS NULL AND borrowed_copy.material_id = bt.material_id)
           WHERE bt.transaction_status IN ('Pending', 'Borrowed', 'Overdue')
+            AND bt.lost_confirmed_at IS NULL
          UNION ALL
          SELECT r.user_id, r.material_id, COALESCE(r.book_title_id, reserved_copy.title_id) AS title_id
            FROM reservations r

@@ -72,8 +72,9 @@ export function createViolationCategoriesService(database: Pool = db) {
         }
         await connection.execute('UPDATE violation_settings SET max_fine=?,updated_by_account_id=?,updated_at=NOW() WHERE settings_id=1', [maxFine, account])
         await note(connection, account, 'Highest violation fine changed', `Violation fines may now be up to ${peso(maxFine)} (was ${peso(current.maxFine)}).`)
+        const updatedSettings = await readSettings(connection)
         await connection.commit()
-        return await readSettings(database)
+        return updatedSettings
       } catch (error) { await rollbackQuietly(connection); throw error } finally { connection.release() }
     },
 
@@ -97,8 +98,9 @@ export function createViolationCategoriesService(database: Pool = db) {
         )
         const id = Number((insert as unknown as { insertId: number }).insertId)
         await note(connection, account, 'Violation category added', summary({ ...input, isActive: true }))
+        const created = (await fetchOne(connection, id))!
         await connection.commit()
-        return (await fetchOne(database, id))!
+        return created
       } catch (error) { await rollbackQuietly(connection); throw isUniqueViolation(error) ? duplicate() : error } finally { connection.release() }
     },
 
@@ -128,8 +130,9 @@ export function createViolationCategoriesService(database: Pool = db) {
         )
         const title = patch.isActive !== undefined && patch.isActive !== before.isActive ? (patch.isActive ? 'Violation category restored' : 'Violation category retired') : 'Violation category changed'
         await note(connection, account, title, summary(next))
+        const updated = (await fetchOne(connection, id))!
         await connection.commit()
-        return (await fetchOne(database, id))!
+        return updated
       } catch (error) { await rollbackQuietly(connection); throw isUniqueViolation(error) ? duplicate() : error } finally { connection.release() }
     },
 

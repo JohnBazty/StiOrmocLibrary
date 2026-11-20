@@ -1,4 +1,5 @@
 export function libraryOperationRows(sql: string) {
+  if (sql.includes('FROM enrollment_lifecycle')) return [{ started: false }]
   if (sql.includes('FROM library_operating_schedule')) {
     return [1, 2, 3, 4, 5, 6, 7].map(day_of_week => ({ day_of_week, is_open: true, opens_at: '00:00:00', closes_at: '23:59:59' }))
   }

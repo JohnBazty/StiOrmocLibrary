@@ -176,9 +176,11 @@ async function setCopy(connection: PoolConnection, copy: LockedInventoryCopy, co
 async function chargeBookPrice(connection: PoolConnection, row: CaseRow, copy: LockedInventoryCopy, actorUserId: number | null,
   reason: string, staffCharge: number | null, now: Date) {
   const [existing] = await connection.execute<RowDataPacket[]>(
-    'SELECT lost_book_report_id FROM lost_book_reports WHERE transaction_id = ? LIMIT 1 FOR UPDATE', [row.transaction_id],
+    'SELECT lost_book_report_id, report_status FROM lost_book_reports WHERE transaction_id = ? LIMIT 1 FOR UPDATE', [row.transaction_id],
   )
-  if (existing[0]) throw new HttpError(409, 'CASE_LOST_ALREADY_CHARGED', 'A lost-book charge already exists for this loan. Review it in Clearance.')
+  if (existing[0] && String(existing[0].report_status) !== 'Rejected') {
+    throw new HttpError(409, 'CASE_LOST_ALREADY_CHARGED', 'A lost-book charge already exists for this loan. Review it in Clearance.')
+  }
   const [priceRows] = await connection.execute<RowDataPacket[]>('SELECT t.title, COALESCE(pc.cost_php, t.purchase_price) AS purchase_price FROM physical_copies pc JOIN titles t ON t.title_id=pc.title_id WHERE pc.physical_copy_id=? LIMIT 1', [copy.physical_copy_id])
   const price = priceRows[0]?.purchase_price === null || priceRows[0]?.purchase_price === undefined ? null : Number(priceRows[0].purchase_price)
   const bookPrice = price !== null && price > 0 ? price : null
@@ -187,13 +189,26 @@ async function chargeBookPrice(connection: PoolConnection, row: CaseRow, copy: L
   }
   const charge = bookPrice ?? staffCharge
   if (charge === null) throw new HttpError(422, 'CASE_LOST_CHARGE_REQUIRED', 'This title has no book price on record. Enter the replacement charge.')
-  const [insert] = await connection.execute<ResultSetHeader>(
-    `INSERT INTO lost_book_reports (transaction_id, user_id, physical_copy_id, report_status, purchase_price_snapshot, replacement_charge,
-       charge_resolution, payment_status, reported_at, verified_by_user_id, verified_at, staff_notes, updated_at)
-     VALUES (?, ?, ?, 'Confirmed', ?, ?, ?, 'Unpaid', NOW(), ?, NOW(), ?, NOW())`,
-    [row.transaction_id, row.borrower_user_id, row.physical_copy_id, bookPrice, charge, BOOK_PRICE_RESOLUTION, actorUserId, reason],
-  )
-  const reportId = Number(insert.insertId)
+  let reportId: number
+  if (existing[0]) {
+    reportId = Number(existing[0].lost_book_report_id)
+    await connection.execute(
+      `UPDATE lost_book_reports
+          SET report_status = 'Confirmed', purchase_price_snapshot = ?, replacement_charge = ?,
+              charge_resolution = ?, payment_status = 'Unpaid', verified_by_user_id = ?,
+              verified_at = NOW(), staff_notes = ?, updated_at = NOW()
+        WHERE lost_book_report_id = ?`,
+      [bookPrice, charge, BOOK_PRICE_RESOLUTION, actorUserId, reason, reportId],
+    )
+  } else {
+    const [insert] = await connection.execute<ResultSetHeader>(
+      `INSERT INTO lost_book_reports (transaction_id, user_id, physical_copy_id, report_status, purchase_price_snapshot, replacement_charge,
+         charge_resolution, payment_status, reported_at, verified_by_user_id, verified_at, staff_notes, updated_at)
+       VALUES (?, ?, ?, 'Confirmed', ?, ?, ?, 'Unpaid', NOW(), ?, NOW(), ?, NOW())`,
+      [row.transaction_id, row.borrower_user_id, row.physical_copy_id, bookPrice, charge, BOOK_PRICE_RESOLUTION, actorUserId, reason],
+    )
+    reportId = Number(insert.insertId)
+  }
   await setCopy(connection, copy, 'Lost', 'Unavailable', { userId: actorUserId, label: 'Librarian' }, ['Lost Override'])
   await connection.execute('UPDATE circulation_cases SET lost_book_report_id = ?, updated_at = NOW() WHERE case_id = ?', [reportId, row.case_id])
   await appendEvent(connection, Number(row.case_id), 'Linked Lost Report', actorUserId, row.status, row.status, reason, `Lost-book report ${reportId}`, now)
@@ -205,8 +220,10 @@ async function chargeBookPrice(connection: PoolConnection, row: CaseRow, copy: L
   )
   await connection.execute(
     `INSERT INTO notifications (user_id, message_title, message_body, trigger_type, source_type, source_id, action_path, priority, dedupe_key, scheduled_for, delivered_at)
-     VALUES (?, 'Lost book charge confirmed', ?, 'Lost Book', 'Lost Book Report', ?, '/student/clearance', 'Urgent', ?, NOW(), NOW())
-     ON CONFLICT (user_id, dedupe_key) DO NOTHING`, [row.borrower_user_id, message, reportId, `lost-report:${reportId}:confirmed`],
+     SELECT ?, 'Lost book charge confirmed', ?, 'Lost Book', 'Lost Book Report', ?,
+       CASE WHEN EXISTS (SELECT 1 FROM accounts WHERE user_id = ? AND role = 'Faculty') THEN '/faculty/clearance' ELSE '/student/clearance' END,
+       'Urgent', ?, NOW(), NOW()
+     ON CONFLICT (user_id, dedupe_key) DO NOTHING`, [row.borrower_user_id, message, reportId, row.borrower_user_id, `lost-report:${reportId}:confirmed`],
   )
 }
 
@@ -226,7 +243,17 @@ async function applyDisposition(connection: PoolConnection, row: CaseRow, dispos
     throw new HttpError(409, 'CASE_COPY_NOT_HELD', 'This copy is no longer held as damaged. Check it in inventory before recording a decision.')
   }
   const actor = { userId: actorUserId, label: 'Librarian' }
-  if (disposition === 'repaired_available') return setCopy(connection, copy, 'Good', 'Available', actor, [])
+  if (disposition === 'repaired_available') {
+    await setCopy(connection, copy, 'Good', 'Available', actor, [])
+    if (copy.title_id) {
+      const [reg] = await connection.execute<RowDataPacket[]>("SELECT to_regclass('public.reservations') AS has_reservations")
+      if (reg[0]?.has_reservations) {
+        const { allocateWaitingRequests } = await import('../reservations/book-request.service.ts')
+        await allocateWaitingRequests(connection, Number(copy.title_id), now)
+      }
+    }
+    return
+  }
   if (disposition === 'damaged_held') return setCopy(connection, copy, 'Damaged', 'Unavailable', actor, [])
   return chargeBookPrice(connection, row, copy, actorUserId, reason, replacementCharge, now)
 }
@@ -350,7 +377,20 @@ export function createCirculationCaseService(database: Pool = db, clock: () => D
         const row = await lockCase(connection, caseId)
         requireOpen(row)
         if (status === 'Dismissed' && row.lost_book_report_id) {
-          throw new HttpError(422, 'CASE_CHARGED_CANNOT_DISMISS', 'This case has a replacement charge. Resolve it instead, or waive the charge in Clearance first.')
+          const [reportRows] = await connection.execute<RowDataPacket[]>(
+            'SELECT report_status, charge_resolution, replacement_charge, payment_status FROM lost_book_reports WHERE lost_book_report_id = ? LIMIT 1',
+            [row.lost_book_report_id],
+          )
+          const report = reportRows[0]
+          const hasActiveCharge = !report || (
+            String(report.report_status) === 'Confirmed'
+            && !['Waived', 'Replaced'].includes(String(report.charge_resolution))
+            && Number(report.replacement_charge ?? 0) > 0
+            && String(report.payment_status) === 'Unpaid'
+          )
+          if (hasActiveCharge) {
+            throw new HttpError(422, 'CASE_CHARGED_CANNOT_DISMISS', 'This case has a replacement charge. Resolve it instead, or waive the charge in Clearance first.')
+          }
         }
         await connection.execute(
           `UPDATE circulation_cases SET status = ?, resolved_at = ${MANILA_TIMESTAMP}, resolved_by_user_id = ?, updated_at = NOW() WHERE case_id = ?`,

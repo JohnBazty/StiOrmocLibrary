@@ -2,8 +2,8 @@ import type { Pool, PoolConnection, RowDataPacket, ResultSetHeader } from '../..
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { manilaDate, manilaInstant, localTimestamp } from '../attendance/attendance-intervals.ts'
-import { borrowerEligibility } from '../circulation/desk-circulation.policy.ts'
-import { accountHold, allocateWaitingRequests, availableCopies, linkedUser, lock, releaseBookRequest } from './book-request.service.ts'
+import { borrowerEligibility, requireEligible } from '../circulation/desk-circulation.policy.ts'
+import { accountHold, allocateWaitingRequests, availableCopies, borrowLimitMessage, linkedUser, lock, releaseBookRequest } from './book-request.service.ts'
 import { recordRequestEvent } from './book-request-events.ts'
 import { loadScheduleCalendar, pickupWindow, scheduleDates } from './borrowing-schedule-calendar.ts'
 import { positiveId } from './reservation.validation.ts'
@@ -23,7 +23,7 @@ async function enabled(q:Pick<PoolConnection,'execute'>) {
 async function duplicates(q:PoolConnection,userId:number,titleId:number) {
   const [rows]=await q.execute<RowDataPacket[]>(`SELECT reservation_id::text AS id FROM reservations WHERE user_id=? AND book_title_id=? AND reservation_status IN ${active}
     UNION ALL SELECT bt.transaction_id::text FROM borrow_transactions bt LEFT JOIN physical_copies pc ON pc.physical_copy_id=bt.physical_copy_id OR (bt.physical_copy_id IS NULL AND pc.material_id=bt.material_id)
-    WHERE bt.user_id=? AND pc.title_id=? AND bt.transaction_status IN ('Pending','Borrowed','Overdue')`,[userId,titleId,userId,titleId])
+    WHERE bt.user_id=? AND pc.title_id=? AND bt.transaction_status IN ('Pending','Borrowed','Overdue') AND to_jsonb(bt)->>'lost_confirmed_at' IS NULL`,[userId,titleId,userId,titleId])
   return rows.length>0
 }
 async function notice(q:PoolConnection,r:RowDataPacket,event:string,message:string) {
@@ -50,7 +50,11 @@ async function setReason(q:PoolConnection,r:RowDataPacket,reason:string,actionNe
   if(actionNeeded)await notice(q,r,'action-needed',reason)
 }
 function view(r:RowDataPacket) {
-  return {scheduleId:Number(r.schedule_id),titleId:Number(r.title_id),title:String(r.title),pickupDate:String(r.pickup_date_text),status:String(r.status),
+  const resStatus = r.linked_reservation_status ? String(r.linked_reservation_status) : null
+  const effectiveStatus = String(r.status) === 'prepared' && resStatus && ['claimed', 'cancelled', 'expired'].includes(resStatus)
+    ? (resStatus === 'expired' ? 'unfulfilled' : resStatus)
+    : String(r.status)
+  return {scheduleId:Number(r.schedule_id),titleId:Number(r.title_id),title:String(r.title),pickupDate:String(r.pickup_date_text),status:effectiveStatus,
     reservationId:r.reservation_id?Number(r.reservation_id):null,reason:r.last_reason?String(r.last_reason):null}
 }
 export function createBorrowingScheduleService(database:Pool=db,clock=()=>new Date()) {
@@ -62,7 +66,7 @@ export function createBorrowingScheduleService(database:Pool=db,clock=()=>new Da
   async function requireEnabled(q:PoolConnection) {
     if(!await enabled(q))throw new HttpError(503,'SCHEDULE_NOT_CONFIGURED','Scheduled borrowing is not available yet.')
   }
-  const select=`SELECT s.*,to_char(s.pickup_date,'YYYY-MM-DD') AS pickup_date_text,t.title FROM borrowing_schedules s JOIN titles t ON t.title_id=s.title_id`
+  const select=`SELECT s.*,to_char(s.pickup_date,'YYYY-MM-DD') AS pickup_date_text,t.title,r.reservation_status AS linked_reservation_status FROM borrowing_schedules s JOIN titles t ON t.title_id=s.title_id LEFT JOIN reservations r ON r.reservation_id=s.reservation_id`
   return {
     async dates() {
       if(!await enabled(database)) return {available:false,dates:[] as string[]}
@@ -150,7 +154,7 @@ export function createBorrowingScheduleService(database:Pool=db,clock=()=>new Da
             await notice(q,r,!window?'closed':'unfulfilled',reason);return {prepared:0,finished:1}
           }
           if(r.status==='prepared') {
-            const [requests]=await q.execute<RowDataPacket[]>('SELECT * FROM reservations WHERE reservation_id=? FOR UPDATE',[r.reservation_id])
+            const [requests]=await q.execute<RowDataPacket[]>("SELECT *, (pickup_deadline AT TIME ZONE 'Asia/Manila') AS pickup_deadline FROM reservations WHERE reservation_id=? FOR UPDATE",[r.reservation_id])
             const request=requests[0]
             if(request && ['pending','approved','ready_for_pickup'].includes(request.reservation_status) && localTimestamp(request.pickup_deadline)!==window.closeAt.getTime()) {
               await q.execute("UPDATE reservations SET pickup_deadline=(?::timestamptz AT TIME ZONE 'Asia/Manila'),updated_at=NOW() WHERE reservation_id=?",[window.closeAt,r.reservation_id])

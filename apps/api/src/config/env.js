@@ -88,7 +88,7 @@ export const env = Object.freeze({
     connectionString: databaseUrl,
     // A Vercel deployment can run many API instances at once. Keep each
     // instance's pool small so bursts do not exhaust Supabase connections.
-    connectionLimit: Number(process.env.DB_CONNECTION_LIMIT ?? (process.env.VERCEL ? 1 : 10)),
+    connectionLimit: Number(process.env.DB_CONNECTION_LIMIT ?? (process.env.VERCEL ? 2 : 10)),
   },
   session: {
     name: 'sti.sid',

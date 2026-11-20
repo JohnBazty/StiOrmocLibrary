@@ -110,7 +110,7 @@ export async function findActiveLoan(connection: PoolConnection, materialId: num
   const [rows] = await connection.execute<RowDataPacket[]>(`
     SELECT transaction_id, transaction_status, due_at
       FROM borrow_transactions
-     WHERE material_id = ? AND transaction_status IN ('Borrowed', 'Overdue')
+     WHERE material_id = ? AND transaction_status IN ('Borrowed', 'Overdue') AND lost_confirmed_at IS NULL
      ORDER BY transaction_id DESC LIMIT 1 FOR UPDATE`, [materialId])
   return rows[0] ?? null
 }
