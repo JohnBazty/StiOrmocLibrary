@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CategoryManagementPage } from './CategoryManagementPage'
 
@@ -8,6 +8,8 @@ vi.mock('./category-api', () => ({ categoryApi: api, CategoryApiError: class ext
 const catalog = vi.hoisted(() => ({ searchSubjects: vi.fn() }))
 vi.mock('../catalog/catalog-api', () => ({ catalogApi: catalog }))
 
+function LocationProbe() { const location = useLocation(); return <p data-testid="location">{location.pathname + location.search}</p> }
+
 function renderPage() {
   return render(<MemoryRouter><CategoryManagementPage /></MemoryRouter>)
 }
@@ -15,6 +17,15 @@ function renderPage() {
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('CategoryManagementPage', () => {
+  it('opens the category shelf and the books that belong on it from Manage category & shelves', async () => {
+    const category = { categoryId: 7, categoryName: 'Programming', description: '', shelfLocation: 'Shelf A', shelfColumn: 1, shelfRow: 2, totalBooksCount: 3, totalThesisCount: 0, createdAt: '2026-09-25T00:00:00Z' }
+    api.list.mockResolvedValue([category]); api.listShelves.mockResolvedValue([{ id: 1, label: 'Shelf A', columnCount: 3, rowCount: 5 }])
+    render(<MemoryRouter initialEntries={['/librarian/categories']}><Routes><Route path="/librarian/categories" element={<CategoryManagementPage />} /><Route path="/librarian/maintenance" element={<LocationProbe />} /></Routes></MemoryRouter>)
+    await screen.findByText('Programming')
+    fireEvent.click(screen.getByLabelText('Actions for Programming'))
+    fireEvent.click(screen.getByRole('button', { name: 'Manage category & shelves for Programming' }))
+    expect((await screen.findByTestId('location')).textContent).toBe('/librarian/maintenance?tab=locations&suggestShelf=Shelf+A')
+  })
   it('edits the shelf through Edit category and refreshes the directory', async () => {
     const category = { categoryId: 7, categoryName: 'Programming', description: 'Software development books', shelfLocation: 'Shelf A', shelfColumn: 1, shelfRow: 2, totalBooksCount: 3, totalThesisCount: 1, createdAt: '2026-09-25T00:00:00Z', updatedAt: null }
     const moved = { ...category, shelfLocation: 'Shelf B', shelfColumn: 2, shelfRow: 3 }

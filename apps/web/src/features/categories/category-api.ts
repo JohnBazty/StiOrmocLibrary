@@ -40,7 +40,18 @@ export async function categoryRequest<T>(url: string, options: RequestInit = {})
   return decodeResponse<T>(await fetch(url, { ...options, headers, credentials: 'include' }))
 }
 
+export type ShelfCopy = { physicalCopyId: number; accession: string; title: string; callNumber: string | null; ddcCode: string | null; category: string | null; currentShelf: string | null; shelfColumn: number; shelfRow: number }
+export type ShelfSuggestions = {
+  shelf: { locationId: number; name: string; ddcFrom: string | null; ddcTo: string | null }
+  /** Copies that belong here (by category or DDC range) but are elsewhere or Unassigned. */
+  suggestions: Array<ShelfCopy & { reason: 'category' | 'ddc' }>
+  /** The shelf's own copies in call-number order. */
+  onShelf: ShelfCopy[]
+}
+
 export const categoryApi = {
+  shelfSuggestions: (id: number) => categoryRequest<ShelfSuggestions>(`/api/categories/shelves/${id}/suggestions`, { cache: 'no-store' }),
+  saveShelfDdcRange: (id: number, range: { ddcFrom: string; ddcTo: string }) => categoryRequest<ShelfSuggestions['shelf']>(`/api/categories/shelves/${id}/ddc-range`, { method: 'PUT', body: JSON.stringify(range) }),
   list: () => categoryRequest<Category[]>('/api/categories'),
   listShelves: (includeArchived = false) => categoryRequest<ManagedShelf[]>(`/api/categories/shelves${includeArchived ? '?includeArchived=true' : ''}`),
   addShelf: (payload: ShelfPayload) => categoryRequest<ManagedShelf>('/api/categories/shelves', { method: 'POST', body: JSON.stringify(payload) }),
