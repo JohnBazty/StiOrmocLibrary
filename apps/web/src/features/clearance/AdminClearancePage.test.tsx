@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AdminClearancePage } from './AdminClearancePage'
 import { MemoryRouter } from 'react-router-dom'
@@ -6,7 +6,7 @@ import type { ClearanceRecord } from './types'
 
 const api = vi.hoisted(() => ({
   terms: vi.fn().mockResolvedValue([]), schedule: vi.fn(), saveSchedule: vi.fn(), list: vi.fn(), detail: vi.fn(), override: vi.fn(), revoke: vi.fn(),
-  decideLost: vi.fn(), settleLost: vi.fn(), resolveLost: vi.fn(),
+  decideLost: vi.fn(), settleLost: vi.fn(), resolveLost: vi.fn(), replaceLost: vi.fn(),
 }))
 vi.mock('./clearance-api', () => ({ clearanceApi: api }))
 
@@ -108,6 +108,26 @@ describe('AdminClearancePage simplified exceptions', () => {
     expect(screen.getByText('Awaiting quotation')).toBeTruthy()
   })
 
+  it('confirms a loss as Replace copy, then puts the replacement copy back with Replace copy', async () => {
+    const lost = { lostBookReportId: 12, transactionId: 20, titleId: 5, title: 'Emma', quotationId: null, quotedAmount: null, titlePrice: 450,
+      reportedAt: '2026-09-26T01:00:00.000Z', verifiedAt: null, resolutionReason: null }
+    api.list.mockResolvedValue(listWith(blocked))
+    api.detail.mockResolvedValueOnce({ ...blocked, lostBooks: [{ ...lost, status: 'Pending', chargeResolution: 'Awaiting Review', replacementCharge: 0, paymentStatus: 'Unpaid' }] })
+      .mockResolvedValue({ ...blocked, lostBooks: [{ ...lost, status: 'Confirmed', chargeResolution: 'Awaiting Replacement', replacementCharge: 0, paymentStatus: 'Unpaid' }] })
+    api.decideLost.mockResolvedValue({}); api.replaceLost.mockResolvedValue({})
+    render(<MemoryRouter initialEntries={['/librarian/clearance']}><AdminClearancePage /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: 'Review' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm loss' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Confirm lost book' })
+    fireEvent.click(within(dialog).getByRole('radio', { name: /Replace copy/ }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm loss, wait for replacement' }))
+    await waitFor(() => expect(api.decideLost).toHaveBeenCalledWith(12, 'Confirmed', { resolution: 'Replace', bookPrice: null }))
+    expect(await screen.findByText('Waiting for replacement copy')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Replace copy' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
+    await waitFor(() => expect(api.replaceLost).toHaveBeenCalledWith(12))
+  })
+
   it('confirms a lost book at the book price and offers payment for a book-price charge', async () => {
     const lost = { lostBookReportId: 12, transactionId: 20, titleId: 5, title: 'Emma', quotationId: 8, quotedAmount: 700, titlePrice: 450,
       reportedAt: '2026-09-26T01:00:00.000Z', verifiedAt: null, resolutionReason: null }
@@ -120,8 +140,12 @@ describe('AdminClearancePage simplified exceptions', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Review' }))
     expect((await screen.findByText(/Book price: .*450\.00/)).textContent).not.toContain('700')
     fireEvent.click(screen.getByRole('button', { name: 'Confirm loss' }))
-    expect(confirm.mock.calls[0][0]).toMatch(/book price of .*450\.00/)
-    await waitFor(() => expect(api.decideLost).toHaveBeenCalledWith(12, 'Confirmed', 450))
+    const dialog = await screen.findByRole('dialog', { name: 'Confirm lost book' })
+    expect((within(dialog).getByLabelText('Book price (PHP)') as HTMLInputElement).value).toBe('450.00')
+    fireEvent.change(within(dialog).getByLabelText('Book price (PHP)'), { target: { value: '520' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm loss and charge PHP 520.00' }))
+    await waitFor(() => expect(api.decideLost).toHaveBeenCalledWith(12, 'Confirmed', { resolution: 'Pay', bookPrice: 520 }))
+    expect(confirm).not.toHaveBeenCalled()
     fireEvent.click(await screen.findByRole('button', { name: 'Record replacement payment' }))
     await waitFor(() => expect(api.settleLost).toHaveBeenCalledWith(12))
     const prompt = vi.spyOn(window, 'prompt').mockReturnValue('Book found undamaged in the return bin.')

@@ -27,7 +27,9 @@ export const clearanceApi = {
   revoke: (userId: number, overrideId: number, reason: string) => request<ClearanceRecord>(`/api/v1/admin/clearance/${userId}/overrides/${overrideId}/revoke`, { method: 'POST', body: JSON.stringify({ reason }) }),
   reportLost: (transactionId: number) => request(`/api/v1/clearance/lost-books/${transactionId}/report`, { method: 'POST' }),
   // The confirmed amount is sent so the server refuses the charge if the price changed after the page loaded.
-  decideLost: (reportId: number, status: 'Confirmed' | 'Rejected', replacementCharge?: number | null) => request(`/api/v1/admin/clearance/lost-books/${reportId}`, { method: 'PATCH', body: JSON.stringify({ status, ...(replacementCharge ? { replacement_charge: replacementCharge } : {}) }) }),
+  /** Confirming a loss says how it is settled: pay the (entered) book price or replace the copy. */
+  decideLost: (reportId: number, status: 'Confirmed' | 'Rejected', choice?: { resolution: 'Pay' | 'Replace'; bookPrice: number | null }) => request(`/api/v1/admin/clearance/lost-books/${reportId}`, { method: 'PATCH', body: JSON.stringify({ status, ...(choice ? { resolution: choice.resolution, ...(choice.bookPrice ? { book_price: choice.bookPrice } : {}) } : {}) }) }),
+  replaceLost: (reportId: number) => request(`/api/v1/admin/clearance/lost-books/${reportId}/replacement`, { method: 'PATCH' }),
   resolveLost: (reportId: number, action: 'Charge' | 'Waive', reason?: string) => request(`/api/v1/admin/clearance/lost-books/${reportId}/resolution`, { method: 'PATCH', body: JSON.stringify({ action, reason }) }),
   settleLost: (reportId: number) => request(`/api/v1/admin/clearance/lost-books/${reportId}/payment`, { method: 'PATCH' }),
 }

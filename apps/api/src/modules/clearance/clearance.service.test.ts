@@ -85,14 +85,23 @@ test('confirming a lost book with no book price falls back to the supplier quota
   assert.deepEqual(none.state.reportUpdate?.slice(0, 4), [null, null, 0, 'Awaiting Quotation'])
 })
 
-test('a staff-sent charge that differs from the book price is rejected before any write', async () => {
+test('the librarian enters the book price before confirming, and that price becomes the charge', async () => {
   const { state, database } = lostDecisionDatabase({ title_price: '450.00', current_quotation_id: null, current_quotation_amount: null })
+  await createClearanceService(database).decideLost({ role: 'Librarian', accountId: 20 }, 3, { status: 'Confirmed', resolution: 'Pay', book_price: '520' })
+  assert.deepEqual(state.reportUpdate?.slice(0, 4), [null, 520, 520, 'Book Price'])
+  assert.ok(state.messages.some((message) => message.includes('PHP 520.00')))
   await assert.rejects(
-    createClearanceService(database).decideLost({ role: 'Librarian', accountId: 20 }, 3, { status: 'Confirmed', replacement_charge: 999 }),
-    (error: { code?: string }) => error.code === 'LOST_BOOK_CHARGE_MISMATCH',
+    createClearanceService(database).decideLost({ role: 'Librarian', accountId: 20 }, 3, { status: 'Confirmed', resolution: 'Pay', book_price: '-5' }),
+    (error: { code?: string }) => error.code === 'LOST_BOOK_CHARGE_INVALID',
   )
-  assert.equal(state.reportUpdate, null)
-  assert.equal(state.rollbacks, 1)
+})
+
+test('choosing Replace copy confirms the loss with no charge, waiting for the replacement book', async () => {
+  const { state, database } = lostDecisionDatabase({ title_price: '450.00', current_quotation_id: null, current_quotation_amount: null })
+  await createClearanceService(database).decideLost({ role: 'Librarian', accountId: 20 }, 3, { status: 'Confirmed', resolution: 'Replace' })
+  assert.deepEqual(state.reportUpdate?.slice(0, 4), [null, 450, 0, 'Awaiting Replacement'])
+  assert.ok(state.messages.some((message) => message.includes('replacement copy')))
+  assert.equal(state.commits, 1)
 })
 
 test('the clearance detail exposes the book price for a pending lost-book report', async () => {
@@ -188,4 +197,39 @@ test('paid fines cannot clear unreturned books or another borrower clearance', a
     { userId: 8, kind: 'Fine', targetId: 2, principalCentavos: 2800, paymentId: 'another-borrower' },
   ] })
   assert.equal((await other.detail(actor, 7)).summary.totalOutstanding, 28)
+})
+
+function replaceDatabase(report: Record<string, unknown>) {
+  const state = { copyUpdate: null as unknown[] | null, reportUpdate: null as unknown[] | null, commits: 0, rollbacks: 0 }
+  const connection = {
+    async beginTransaction() {}, async commit() { state.commits += 1 }, async rollback() { state.rollbacks += 1 }, release() {},
+    async execute(sql: string, values: unknown[] = []) {
+      if (sql.includes('SELECT user_id FROM accounts')) return [[{ user_id: 2 }]]
+      if (sql.includes('FROM lost_book_reports l')) return [[{ lost_book_report_id: 3, transaction_id: 900, user_id: 7, report_status: 'Confirmed', charge_resolution: 'Awaiting Replacement', material_id: 100, physical_copy_id: 50, title: 'Clean Code', ...report }]]
+      if (sql.startsWith('UPDATE physical_copies')) { state.copyUpdate = values; return [{ affectedRows: 1 }] }
+      if (sql.startsWith('UPDATE lost_book_reports')) { state.reportUpdate = values; return [{ affectedRows: 1 }] }
+      return [{ affectedRows: 1 }]
+    },
+  }
+  return { state, database: { getConnection: async () => connection, execute: connection.execute.bind(connection) } as unknown as Pool }
+}
+
+test('Replace copy puts the replacement on the shelf under the lost copy and closes the report', async () => {
+  const { state, database } = replaceDatabase({})
+  const result = await createClearanceService(database).replaceLostCopy({ role: 'Librarian', accountId: 20 }, 3)
+  assert.deepEqual(result, { lostBookReportId: 3, chargeResolution: 'Replaced', physicalCopyId: 50 })
+  assert.deepEqual(state.copyUpdate, [50])
+  assert.deepEqual(state.reportUpdate, [2, 3])
+  assert.equal(state.commits, 1)
+  const charged = replaceDatabase({ charge_resolution: 'Book Price' })
+  await assert.rejects(createClearanceService(charged.database).replaceLostCopy({ role: 'Librarian', accountId: 20 }, 3), (error: { code?: string }) => error.code === 'LOST_BOOK_NOT_AWAITING_REPLACEMENT')
+  await assert.rejects(createClearanceService(database).replaceLostCopy({ role: 'Staff', accountId: 20 } as never, 3))
+})
+
+test('a lost book waiting for its replacement copy keeps the student from being cleared', async () => {
+  const student = { user_id: 7, school_id: 'S-7', full_name: 'Sample Student', course_or_strand: null, section: null, account_status: 'Active', active_loans: 0, unpaid_fines: 0, unpaid_replacement: 0, awaiting_replacement: 1 }
+  const database = { async execute(sql: string) { return sql.includes('FROM users u') ? [[student]] : [[]] } } as unknown as Pool
+  const [row] = await createClearanceService(database).exportRows({ role: 'Librarian', accountId: 1 } as never)
+  assert.equal(row.computedStatus, 'Not Cleared')
+  assert.match(row.reason, /1 lost book waiting for a replacement copy/)
 })
