@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { ViolationRecordForm } from './ViolationRecordForm'
 import { ViolationsRecords } from './ViolationsRecords'
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
@@ -16,7 +17,7 @@ const categories = [
 ]
 const standing = (over: Record<string, unknown> = {}) => ({
   name: 'Synthetic Student', role: 'Student', schoolId: 'SYNTHETIC-001', category: 'Noise', warningsUsed: 0, warningsBeforeFine: 2, fineAmount: 50, amount: null,
-  nextStep: 'First warning', fromPaperLog: false, categoryActive: true, earlierWarnings: null, history: [], reviewToken: 'token-1', ...over,
+  nextStep: 'First warning', fromPaperLog: false, categoryActive: true, paperLogAllowed: true, paperLogReason: null, earlierWarnings: null, history: [], reviewToken: 'token-1', ...over,
 })
 
 type Call = { url: string; options: RequestInit }
@@ -98,6 +99,7 @@ it('"From the paper log" asks for a warning-only standing, then saves it tagged 
   await openForm()
   await fillAndWait()
   await screen.findByRole('button', { name: 'Record 1st warning' })
+  fireEvent.change(screen.getByLabelText('When (Philippines)'), { target: { value: '2025-06-01T10:00' } })
   fireEvent.click(screen.getByLabelText(/From the paper log/))
   fireEvent.click(await screen.findByRole('button', { name: 'Record 1st warning from paper log' }))
   await screen.findByText('Paper-log warning saved. The person was not notified.')
@@ -188,4 +190,86 @@ it('shows a person their own warnings left per category without management actio
   await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
   expect(await screen.findByText('1 of 2 warnings left')).toBeTruthy()
   expect(fetch.mock.calls.some(call => String(call[0]).includes('/api/v1/fines/violations'))).toBe(true)
+})
+
+it('turns the paper-log box off with the reason beside it when the person cannot take one', async () => {
+  server({ '/standing': () => standing({ paperLogAllowed: false, paperLogReason: 'This person is already at the fine step. Paper-log entries only add earlier warnings.' }) })
+  await openForm()
+  await fillAndWait()
+  const box = await screen.findByLabelText(/From the paper log/)
+  await screen.findByText('This person is already at the fine step. Paper-log entries only add earlier warnings.')
+  expect((box as HTMLInputElement).disabled).toBe(true)
+})
+
+it('asks for a date before today when copying from the paper log', async () => {
+  server()
+  await openForm()
+  await fillAndWait()
+  await screen.findByRole('button', { name: 'Record 1st warning' })
+  fireEvent.click(screen.getByLabelText(/From the paper log/))
+  expect(await screen.findByText('Paper-log entries are for dates before today.')).toBeTruthy()
+})
+
+it('never lets an old answer for another person or category enable saving', async () => {
+  const pending: Array<(value: unknown) => void> = []
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url.includes('/violation-categories')) return { ok: true, json: async () => ({ success: true, data: categories }) }
+    if (url.includes('/standing')) {
+      const data = await new Promise(resolve => pending.push(resolve))
+      return { ok: true, json: async () => ({ success: true, data }) }
+    }
+    return { ok: true, json: async () => ({ success: true, data: { items: [], total: 0 } }) }
+  }))
+  await openForm()
+  fireEvent.change(screen.getByLabelText('What happened?'), { target: { value: 'Synthetic loud conversation' } })
+  fireEvent.change(screen.getByLabelText('School ID'), { target: { value: 'FIRST-ID' } })
+  await waitFor(() => expect(pending.length).toBe(1))
+  fireEvent.change(screen.getByLabelText('School ID'), { target: { value: 'SECOND-ID' } })
+  await waitFor(() => expect(pending.length).toBe(2))
+  pending[0](standing({ name: 'First Person', schoolId: 'FIRST-ID' }))
+  await new Promise(resolve => setTimeout(resolve, 20))
+  expect(screen.queryByText(/First Person/)).toBeNull()
+  expect((screen.getByRole('button', { name: 'Record violation' }) as HTMLButtonElement).disabled).toBe(true)
+  pending[1](standing({ name: 'Second Person', schoolId: 'SECOND-ID' }))
+  expect(await screen.findByText('Second Person · Student')).toBeTruthy()
+})
+
+it('follows the categories when they load after the form opened', () => {
+  const { rerender } = render(<ViolationRecordForm categories={[]} onSaved={() => undefined} onCancel={() => undefined} />)
+  rerender(<ViolationRecordForm categories={['Noise', 'Eating or food']} onSaved={() => undefined} onCancel={() => undefined} />)
+  expect((screen.getByLabelText('Category') as HTMLSelectElement).value).toBe('Noise')
+  rerender(<ViolationRecordForm categories={['Eating or food']} onSaved={() => undefined} onCancel={() => undefined} />)
+  expect((screen.getByLabelText('Category') as HTMLSelectElement).value).toBe('Eating or food')
+})
+
+it('shows why the category list could not load instead of hiding it', async () => {
+  server({ '/violation-categories': () => new Error('Violation rules are unavailable.') })
+  render(<ViolationsRecords admin />)
+  expect(await screen.findByText(/Violation rules are unavailable\./)).toBeTruthy()
+})
+
+it('keeps focus inside the drawer and returns it to the page heading after a deep-link close', async () => {
+  server({ '/api/v1/admin/fines/violations?': () => ({ items: [incident], total: 1 }) })
+  const onIncidentChange = vi.fn()
+  const { rerender } = render(<ViolationsRecords admin incidentId={1} onIncidentChange={onIncidentChange} />)
+  const drawer = await screen.findByRole('dialog', { name: /Synthetic Student/ })
+  const close = within(drawer).getByRole('button', { name: 'Close record' })
+  await waitFor(() => expect(document.activeElement).toBe(close))
+  const focusable = Array.from(drawer.querySelectorAll<HTMLElement>('button, select, textarea, input')).filter(el => !(el as HTMLButtonElement).disabled)
+  focusable[focusable.length - 1].focus()
+  fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Tab' })
+  expect(document.activeElement).toBe(focusable[0])
+  fireEvent.keyDown(focusable[0], { key: 'Tab', shiftKey: true })
+  expect(document.activeElement).toBe(focusable[focusable.length - 1])
+  rerender(<ViolationsRecords admin incidentId={null} onIncidentChange={onIncidentChange} />)
+  await waitFor(() => expect(document.activeElement?.id).toBe('violation-records-heading'))
+})
+
+it('says so, with a way back, when the linked record does not exist', async () => {
+  server({ '/api/v1/admin/fines/violations?': () => ({ items: [], total: 0 }) })
+  const onIncidentChange = vi.fn()
+  render(<ViolationsRecords admin incidentId={404} onIncidentChange={onIncidentChange} />)
+  expect(await screen.findByText(/could not be found/)).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Show all records' }))
+  expect(onIncidentChange).toHaveBeenCalledWith(null)
 })

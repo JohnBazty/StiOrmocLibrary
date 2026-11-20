@@ -54,6 +54,7 @@ export function ViolationsRecords({ admin = false, onSaved, incidentId = null, o
   const [categories, setCategories] = useState<ViolationCategory[]>([])
   const [own, setOwn] = useState<OwnStanding[]>([])
   const [opened, setOpened] = useState<Incident | null>(null)
+  const [missing, setMissing] = useState(false)
   const [localId, setLocalId] = useState<number | null>(null)
   const selectedId = onIncidentChange ? incidentId : localId
   const select = (id: number | null) => (onIncidentChange ?? setLocalId)(id)
@@ -61,7 +62,7 @@ export function ViolationsRecords({ admin = false, onSaved, incidentId = null, o
   useEffect(() => {
     let active = true
     const load = admin ? violationRequest<ViolationCategory[]>('/api/v1/admin/violation-categories') : Promise.resolve(null)
-    void load.then(list => { if (active && list) setCategories(list) }).catch(() => undefined)
+    void load.then(list => { if (active && list) setCategories(list) }).catch(cause => { if (active) setError(`The violation categories could not be loaded. ${cause instanceof Error ? cause.message : ''}`.trim()) })
     if (!admin) void violationsApi.ownStanding().then(list => { if (active) setOwn(list) }).catch(() => undefined)
     return () => { active = false }
   }, [admin, refresh])
@@ -78,13 +79,14 @@ export function ViolationsRecords({ admin = false, onSaved, incidentId = null, o
 
   // A record linked by address may not be on this page of the list, so it is fetched by number.
   useEffect(() => {
+    setMissing(false)
     if (!selectedId) { setOpened(null); return }
     const found = items.find(item => item.incident_id === selectedId)
     if (found) { setOpened(found); return }
     let active = true
     void violationRequest<{ items: Incident[] }>(`${base}?${new URLSearchParams({ incidentId: String(selectedId) })}`)
-      .then(data => { if (active) setOpened(data.items[0] ?? null) })
-      .catch(cause => { if (active) { setError(cause.message); setOpened(null) } })
+      .then(data => { if (active) { setOpened(data.items[0] ?? null); setMissing(!data.items[0]) } })
+      .catch(() => { if (active) { setOpened(null); setMissing(true) } })
     return () => { active = false }
   }, [selectedId, items, base])
 
@@ -112,7 +114,7 @@ export function ViolationsRecords({ admin = false, onSaved, incidentId = null, o
     <SectionCard className="my-5 overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--sl-border)] px-5 py-4">
         <div>
-          <h2 className="font-display text-base font-semibold text-[var(--sl-text-header)]">{admin ? 'Violation records' : 'My violations and warnings'}</h2>
+          <h2 id="violation-records-heading" tabIndex={-1} className="font-display text-base font-semibold text-[var(--sl-text-header)] outline-none">{admin ? 'Violation records' : 'My violations and warnings'}</h2>
           {!admin ? <p className="mt-0.5 text-xs text-[var(--sl-text-secondary)]">A warning does not block borrowing or clearance. Counts do not reset each term.</p> : null}
         </div>
         <div className="flex flex-wrap gap-2">
@@ -129,6 +131,11 @@ export function ViolationsRecords({ admin = false, onSaved, incidentId = null, o
 
       <div className="p-5">
         {error ? <NoticeBanner tone="error">{error}</NoticeBanner> : null}
+        {selectedId && missing ? (
+          <NoticeBanner tone="warning" action={<Button size="sm" variant="secondary" onClick={closeDrawer}>Show all records</Button>}>
+            Violation record {selectedId} could not be found. It may have been removed, or the link is wrong.
+          </NoticeBanner>
+        ) : null}
         {notice ? <NoticeBanner tone="success">{notice}</NoticeBanner> : null}
         {!admin ? <WarningsLeft items={own} /> : null}
 
@@ -205,6 +212,7 @@ export function ViolationsRecords({ admin = false, onSaved, incidentId = null, o
 
       {selectedId && opened ? (
         <ViolationRecordDrawer
+          key={opened.incident_id}
           item={opened} base={base} admin={admin} onClose={closeDrawer}
           onSaved={message => { closeDrawer(); setNotice(message); setRefresh(value => value + 1) }}
         />

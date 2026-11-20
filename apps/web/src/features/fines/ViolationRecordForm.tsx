@@ -8,7 +8,10 @@ const peso = (value: number) => `PHP ${value.toFixed(2)}`
 const manilaNow = () => new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 16)
 const toInstant = (local: string) => new Date(`${local}:00+08:00`)
 
-type Lookup = { state: 'idle' } | { state: 'loading' } | { state: 'ready'; standing: Standing } | { state: 'error'; message: string }
+const manilaToday = () => new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
+
+/** `key` names the person, category and paper-log choice the answer belongs to. */
+type Lookup = { state: 'idle' } | { state: 'loading' } | { state: 'ready'; key: string; standing: Standing } | { state: 'error'; message: string }
 
 export function ViolationRecordForm({ categories, onSaved, onCancel }: {
   /** Active categories only; retired ones cannot take new records. */
@@ -29,34 +32,41 @@ export function ViolationRecordForm({ categories, onSaved, onCancel }: {
   const attempt = useRef({ payload: '', key: '' })
   const sequence = useRef(0)
 
-  const loadStanding = useCallback(async (id: string, name: string, paper: boolean) => {
-    const current = ++sequence.current
+  const loadStanding = useCallback(async (id: string, name: string, paper: boolean, current = ++sequence.current) => {
     setLookup({ state: 'loading' })
     try {
       const standing = await violationsApi.standing(id, name, paper)
-      if (current === sequence.current) setLookup({ state: 'ready', standing })
+      if (current === sequence.current) setLookup({ state: 'ready', key: `${id}|${name}|${paper}`, standing })
     } catch (cause) {
       if (current === sequence.current) setLookup({ state: 'error', message: cause instanceof Error ? cause.message : 'The standing could not be loaded.' })
     }
   }, [])
 
+  // Keep the chosen category valid when the list loads or changes after the form opened.
   useEffect(() => {
+    if (!categories.includes(category)) setCategory(categories[0] ?? '')
+  }, [categories, category])
+
+  useEffect(() => {
+    // Every change invalidates any answer still on its way, before the typing pause even ends.
+    const current = ++sequence.current
     const id = schoolId.trim()
     if (id.length < 3 || !category) {
-      sequence.current++
       setLookup({ state: 'idle' })
       return
     }
     setLookup({ state: 'loading' })
-    const timer = setTimeout(() => void loadStanding(id, category, paperLog), LOOKUP_DELAY_MS)
+    const timer = setTimeout(() => void loadStanding(id, category, paperLog, current), LOOKUP_DELAY_MS)
     return () => clearTimeout(timer)
   }, [schoolId, category, paperLog, loadStanding])
 
   const detailsError = details.trim().length < 10 ? 'Enter at least 10 characters about what happened.' : ''
   const when = toInstant(incidentAt)
-  const dateError = !incidentAt || Number.isNaN(when.getTime()) ? 'Enter when it happened.' : when.getTime() > Date.now() + 60_000 ? 'Choose a time no later than now.' : ''
+  const dateError = !incidentAt || Number.isNaN(when.getTime()) ? 'Enter when it happened.' : when.getTime() > Date.now() + 60_000 ? 'Choose a time no later than now.'
+    : paperLog && incidentAt.slice(0, 10) >= manilaToday() ? 'Paper-log entries are for dates before today.' : ''
   const idError = lookup.state === 'error' ? lookup.message : ''
-  const standing = lookup.state === 'ready' ? lookup.standing : null
+  const currentKey = `${schoolId.trim()}|${category}|${paperLog}`
+  const standing = lookup.state === 'ready' && lookup.key === currentKey ? lookup.standing : null
   const canSave = Boolean(standing) && !detailsError && !dateError && !busy
 
   async function save(event: FormEvent) {
@@ -123,9 +133,13 @@ export function ViolationRecordForm({ categories, onSaved, onCancel }: {
         </div>
 
         <label className="flex items-center gap-2 text-sm font-medium sm:col-span-2">
-          <input type="checkbox" checked={paperLog} onChange={event => setPaperLog(event.target.checked)} />
+          <input type="checkbox" checked={paperLog} disabled={Boolean(standing) && !standing?.paperLogAllowed} onChange={event => setPaperLog(event.target.checked)} />
           From the paper log
-          <span className="text-xs font-normal text-[var(--sl-text-muted)]">An earlier warning copied in with its real date. It counts toward the steps and never creates a fine.</span>
+          <span className="text-xs font-normal text-[var(--sl-text-muted)]">
+            {standing && !standing.paperLogAllowed
+              ? standing.paperLogReason
+              : 'An earlier warning from before the system, copied in with its real date. It counts toward the steps and never creates a fine.'}
+          </span>
         </label>
 
         <FormField id="vr-when" label="When (Philippines)" required error={touched || dateError ? dateError : ''}>

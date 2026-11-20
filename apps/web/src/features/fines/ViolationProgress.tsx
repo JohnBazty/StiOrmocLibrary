@@ -4,9 +4,10 @@ import { warningName, type Standing } from './violations-api'
 const when = (value: string) => new Date(value).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium' })
 const peso = (value: number) => `PHP ${value.toFixed(2)}`
 
-/** Which warning a record saved now would be, as a 0-based index (a paper-log entry never goes past the last warning). */
+/** Which warning a record saved now would be (0-based). It comes from the step the server will save, never from a count. */
+const WARNING_STEPS = ['First warning', 'Second warning', 'Final warning']
 function warningIndex(standing: Standing) {
-  return Math.max(0, Math.min(standing.warningsUsed, standing.warningsBeforeFine - 1))
+  return Math.max(0, WARNING_STEPS.indexOf(standing.nextStep))
 }
 const isFine = (standing: Standing) => standing.nextStep === 'Fine'
 
@@ -17,11 +18,7 @@ function stepNames(standing: Standing) {
 
 export function standingMessage(standing: Standing) {
   const noCharge = 'No charge; borrowing and clearance are not affected.'
-  if (standing.fromPaperLog) {
-    return !isFine(standing) && standing.warningsUsed >= standing.warningsBeforeFine && standing.warningsBeforeFine > 0
-      ? 'All warnings are already used. This paper-log entry is kept as a warning, not a fine.'
-      : 'Copying an earlier warning from the paper log. No charge and no message to the person.'
-  }
+  if (standing.fromPaperLog) return 'Copying an earlier warning from the paper log. No charge and no message to the person.'
   if (isFine(standing)) {
     if (standing.role === 'Faculty') return 'Faculty go straight to the fine.'
     const threshold = standing.warningsBeforeFine

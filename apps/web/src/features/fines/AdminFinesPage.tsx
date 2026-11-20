@@ -348,15 +348,16 @@ export function AdminFinesPage() {
     }
   }
 
-  function openTab(key: FinesTab, extra: Record<string, string> = {}) {
-    setSearchParams(key === 'fines' ? {} : { tab: key, ...extra })
+  function openTab(key: FinesTab, extra: Record<string, string> = {}, replace = false) {
+    setSearchParams(key === 'fines' ? {} : { tab: key, ...extra }, { replace })
   }
   function onTabKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {
-    const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
-    if (!step) return
+    const target = event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index - 1 + tabs.length) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1
+    if (target < 0) return
     event.preventDefault()
-    const next = tabs[(index + step + tabs.length) % tabs.length]
-    openTab(next.key)
+    const next = tabs[target]
+    // Moving along the tab row replaces the address, so Back leaves the page instead of stepping through every tab.
+    openTab(next.key, {}, true)
     requestAnimationFrame(() => document.getElementById(`fines-tab-${next.key}`)?.focus())
   }
   const activeCaption = tabs.find(tab => tab.key === activeTab)!.caption

@@ -10,6 +10,8 @@ export type ViolationCategory = {
   sortOrder: number
   /** True once any violation record uses the name; the name is then locked. */
   used: boolean
+  /** Version the server saw last; sent back with an edit so a change by someone else is caught. */
+  updatedAt: string
 }
 export type ViolationCategoryInput = { name: string; description: string; warningsBeforeFine: number; fineAmount: string }
 
@@ -31,7 +33,7 @@ async function request<T>(url: string, options: RequestInit = {}) {
 export const violationCategoriesApi = {
   list: () => request<ViolationCategory[]>('/api/v1/admin/violation-categories'),
   create: (input: ViolationCategoryInput) => request<ViolationCategory>('/api/v1/admin/violation-categories', { method: 'POST', body: JSON.stringify(input) }),
-  update: (id: number, input: Partial<ViolationCategoryInput> & { isActive?: boolean }) =>
+  update: (id: number, input: Partial<ViolationCategoryInput> & { isActive?: boolean; updatedAt: string }) =>
     request<ViolationCategory>(`/api/v1/admin/violation-categories/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
 }
 

@@ -173,7 +173,13 @@ Settled in this revision: the fine amount is **display only** (from setup), not 
 - [x] Web: Fines tabs cleanup (header actions, tab captions, URL tab state, 4 stat cards, shared components) (Vitest)
 - [x] Student/Faculty fines view: "warnings left" per category
 - [ ] `sti-ux-qa-critic` re-audit, desktop + mobile, light + dark
-- [ ] Reviews: `security-reviewer` + `database-reviewer`
+- [x] Reviews: `security-reviewer` + `database-reviewer` (findings fixed, see change log)
+
+## Pre-apply checklist (migration 074, live Supabase, with Ethan's go-ahead)
+
+1. On live, run `SELECT DISTINCT category FROM conduct_incidents UNION SELECT category FROM conduct_students;`. Every value must be `Noise`, `Eating or food` or `Other conduct`; anything else makes the foreign keys fail.
+2. Apply 074 **before** deploying this code. The code needs `violation_categories` and `conduct_incidents.source`, and `/api/health` reports migration required until they exist.
+3. The migration sets a 5 second lock timeout and drops the old category checks without `IF EXISTS`, so a naming mismatch fails loudly and changes nothing.
 
 ## Change log
 
@@ -184,3 +190,4 @@ Settled in this revision: the fine amount is **display only** (from setup), not 
 | 2026-11-20 | Ethan: fined students must be findable in Fines & charges filters, built from maintenance (not hard-coded), and the first-history review panel must be removed or redesigned. Added 4a (panel removed; paper-log records; old reviews still count) and section 6 (filter options endpoint, grouped type/category filter, "Violation · category" labels). |
 | 2026-11-20 | Build started on `feat/violation-categories-maintenance`; status `inprogress`. Defaults used for the three open decisions (all easy to change in Library setup → Violation rules, no code change): seed fine PHP 50.00 for Noise, Eating or food and Other conduct (decision 1); 2 warnings before the fine per category, set per category (decision 2); existing "Final warning" holders become fine-eligible on their next offense (decision 3). |
 | 2026-11-20 | Built backend and web (migration 074 written, not applied; tests green on PGlite). Notes: a paper-log entry made when the person is already at the fine step is saved as a "Final warning" (never a fine); faculty cannot take paper-log entries (they have no warnings); the standing endpoint also returns the `reviewToken`, which now covers person, history, threshold and fine amount (not the free-text details), so the single save button can use it; `category` filtering in Fines & charges is applied in the service after the category is checked against `violation_categories`; a threshold of 3 uses the existing `Final warning` value as the third warning. Visual re-audit in a browser (desktop/mobile, light/dark) and the security and database reviews are still to do. |
+| 2026-11-20 | Review fixes. Paper log rule tightened (replaces the "final warning at the fine step" behavior): students only, category must have warnings, next step must still be a warning (409 `CONDUCT_PAPER_LOG_FINE_STEP`), dated before today in Manila, in date order, and before the person's first non-voided system record in that category (422 `CONDUCT_PAPER_LOG_AFTER_RECORDS`); standing returns `paperLogAllowed` and a reason and the checkbox is disabled with the reason beside it. Progress strip and button label come from `nextStep`. 074: `SET LOCAL lock_timeout`, case-insensitive unique index on name, CHECK drops without `IF EXISTS`; `record()` locks the actor account `FOR NO KEY UPDATE`. Category PATCH requires the `updatedAt` the client saw (409 when stale); names with `::` or `__earlier` refused. Form ignores stale standing answers and syncs the category; drawer traps focus and handles missing `?incident=`; tab arrows replace history and support Home and End. Pre-apply checklist added above. |

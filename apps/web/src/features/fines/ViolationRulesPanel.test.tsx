@@ -9,8 +9,8 @@ vi.mock('./violation-categories-api', async original => ({
 }))
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-const noise: ViolationCategory = { categoryId: 1, name: 'Noise', description: 'Loud talking', warningsBeforeFine: 2, fineAmount: 50, isActive: true, sortOrder: 1, used: true }
-const food: ViolationCategory = { categoryId: 2, name: 'Eating or food', description: null, warningsBeforeFine: 1, fineAmount: 75.5, isActive: false, sortOrder: 2, used: false }
+const noise: ViolationCategory = { categoryId: 1, name: 'Noise', description: 'Loud talking', warningsBeforeFine: 2, fineAmount: 50, isActive: true, sortOrder: 1, used: true, updatedAt: 'v-noise' }
+const food: ViolationCategory = { categoryId: 2, name: 'Eating or food', description: null, warningsBeforeFine: 1, fineAmount: 75.5, isActive: false, sortOrder: 2, used: false, updatedAt: 'v-food' }
 const api = vi.mocked(violationCategoriesApi)
 
 it('describes each rule in plain words', () => {
@@ -73,7 +73,7 @@ it('locks the name of a used category and retires it from the edit dialog', asyn
   expect((within(dialog).getByLabelText('Category name') as HTMLInputElement).disabled).toBe(true)
   expect(within(dialog).getByText(/name cannot change/i)).toBeTruthy()
   fireEvent.click(within(dialog).getByRole('button', { name: 'Retire category' }))
-  await waitFor(() => expect(api.update).toHaveBeenCalledWith(1, { isActive: false }))
+  await waitFor(() => expect(api.update).toHaveBeenCalledWith(1, { isActive: false, updatedAt: 'v-noise' }))
 })
 
 it('restores a retired category and sends only changed rule fields on save', async () => {
@@ -84,11 +84,11 @@ it('restores a retired category and sends only changed rule fields on save', asy
   fireEvent.click(screen.getByRole('button', { name: 'Edit Eating or food' }))
   const dialog = screen.getByRole('dialog')
   fireEvent.click(within(dialog).getByRole('button', { name: 'Restore category' }))
-  await waitFor(() => expect(api.update).toHaveBeenCalledWith(2, { isActive: true }))
+  await waitFor(() => expect(api.update).toHaveBeenCalledWith(2, { isActive: true, updatedAt: 'v-food' }))
   fireEvent.click(screen.getByRole('button', { name: 'Edit Eating or food' }))
   fireEvent.change(within(screen.getByRole('dialog')).getByLabelText('Fine amount (PHP)'), { target: { value: '80' } })
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Save category' }))
-  await waitFor(() => expect(api.update).toHaveBeenLastCalledWith(2, { fineAmount: '80' }))
+  await waitFor(() => expect(api.update).toHaveBeenLastCalledWith(2, { fineAmount: '80', updatedAt: 'v-food' }))
 })
 
 it('offers a retry when the list cannot load', async () => {
@@ -97,4 +97,15 @@ it('offers a retry when the list cannot load', async () => {
   expect(await screen.findByText('Violation rules are unavailable.')).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
   expect(await screen.findByText('Noise')).toBeTruthy()
+})
+
+it('explains a change made by someone else and refreshes the table behind the dialog', async () => {
+  api.list.mockResolvedValue([noise])
+  api.update.mockRejectedValue(new ViolationCategoryError('This category was changed by someone else. Reload the rules and try again.'))
+  render(<ViolationRulesPanel />)
+  await screen.findByText('Noise')
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Noise' }))
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Retire category' }))
+  expect(await screen.findByText(/changed by someone else/)).toBeTruthy()
+  await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2))
 })

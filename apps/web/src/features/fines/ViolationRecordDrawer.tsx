@@ -18,6 +18,7 @@ export function ViolationRecordDrawer({ item, base, admin, onClose, onSaved }: {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const closeRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLElement>(null)
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
 
@@ -25,9 +26,24 @@ export function ViolationRecordDrawer({ item, base, admin, onClose, onSaved }: {
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null
     closeRef.current?.focus()
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onCloseRef.current() }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') return onCloseRef.current()
+      if (event.key !== 'Tab' || !panelRef.current) return
+      // Keep Tab and Shift+Tab inside the drawer while it is open.
+      const items = Array.from(panelRef.current.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])')).filter(el => !(el as HTMLButtonElement).disabled)
+      if (!items.length) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      if (event.shiftKey && (document.activeElement === first || !panelRef.current.contains(document.activeElement))) { event.preventDefault(); last.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+    }
     document.addEventListener('keydown', onKey)
-    return () => { document.removeEventListener('keydown', onKey); opener?.focus?.() }
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      // A record opened from a link has no row button to go back to, so the page heading takes focus.
+      const back = opener && opener !== document.body && document.contains(opener) ? opener : document.getElementById('violation-records-heading')
+      back?.focus?.()
+    }
   }, [])
 
   async function addEvent(event: FormEvent) {
@@ -48,7 +64,7 @@ export function ViolationRecordDrawer({ item, base, admin, onClose, onSaved }: {
 
   return (
     <div className="fixed inset-0 z-[150] flex justify-end bg-slate-950/45" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-      <aside role="dialog" aria-modal="true" aria-labelledby="violation-drawer-title"
+      <aside ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="violation-drawer-title"
         className="flex h-full w-full max-w-md flex-col border-l border-[var(--sl-border)] bg-[var(--sl-bg-elevated)] text-[var(--sl-text)] shadow-[var(--sl-shadow-l)]">
         <header className="flex items-start justify-between gap-3 border-b border-[var(--sl-border)] px-5 py-4">
           <div className="min-w-0">

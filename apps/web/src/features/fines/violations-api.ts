@@ -30,6 +30,9 @@ export type Standing = {
   nextStep: 'First warning' | 'Second warning' | 'Final warning' | 'Fine'
   fromPaperLog: boolean
   categoryActive: boolean
+  /** Paper-log entries only back-fill earlier warnings; when false, `paperLogReason` says why. */
+  paperLogAllowed: boolean
+  paperLogReason: string | null
   earlierWarnings: { count: number; reviewedAt: string } | null
   history: Array<{ incidentId: number; date: string; step: string; source: 'Recorded' | 'Paper log' }>
   reviewToken: string

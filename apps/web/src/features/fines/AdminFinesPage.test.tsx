@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter, useLocation } from 'react-router-dom'
+import { MemoryRouter, useLocation, useNavigationType } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AdminFinesPage } from './AdminFinesPage'
 
@@ -12,7 +12,7 @@ vi.mock('./ViolationsRecords', () => ({ ViolationsRecords: (props: { incidentId?
 vi.mock('./UrgentCases', () => ({ UrgentCases: () => <p>Urgent tab body</p> }))
 vi.mock('../payments/ServiceChargesPanel', () => ({ ServiceChargesPanel: () => <p>Service tab body</p> }))
 
-function Where() { const location = useLocation(); return <p data-testid="where">{location.search}</p> }
+function Where() { const location = useLocation(); const type = useNavigationType(); return <><p data-testid="where">{location.search}</p><p data-testid="nav">{type}</p></> }
 const options = { types: [{ value: 'Overdue', label: 'Overdue' }, { value: 'Lost Book', label: 'Lost book' }, { value: 'Damage Replacement', label: 'Damage replacement' }], violations: [{ type: 'Infraction', category: null, label: 'All violations' }, { type: 'Infraction', category: 'Noise', label: 'Noise' }, { type: 'Infraction', category: 'Old rule', label: 'Old rule (retired)' }] }
 function AdminFinesPageUnderTest({ at = '/librarian/fines' }: { at?: string }) { return <MemoryRouter initialEntries={[at]}><AdminFinesPage /><Where /></MemoryRouter> }
 beforeEach(() => { api.filterOptions.mockResolvedValue(options); api.urgentCaseCount.mockResolvedValue(0) })
@@ -214,6 +214,23 @@ describe('AdminFinesPage tabs and filters', () => {
     expect(screen.getByText('Service tab body')).toBeTruthy()
     expect(screen.getByText('Other one-off services. Separate from printing and fines.')).toBeTruthy()
     fireEvent.click(screen.getByRole('tab', { name: 'Fines & charges' }))
+    expect(screen.getByTestId('where').textContent).toBe('')
+  })
+
+  it('moves between tabs with arrow keys, Home and End without piling up history entries', async () => {
+    api.adminList.mockResolvedValue(fineList); api.adminTerms.mockResolvedValue([])
+    render(<AdminFinesPageUnderTest />)
+    const first = screen.getByRole('tab', { name: 'Fines & charges' })
+    fireEvent.keyDown(first, { key: 'ArrowRight' })
+    expect(screen.getByTestId('where').textContent).toBe('?tab=urgent')
+    expect(screen.getByTestId('nav').textContent).toBe('REPLACE')
+    fireEvent.keyDown(screen.getByRole('tab', { name: /Urgent alerts/ }), { key: 'End' })
+    expect(screen.getByTestId('where').textContent).toBe('?tab=service-charges')
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Service charges' }), { key: 'ArrowRight' })
+    expect(screen.getByTestId('where').textContent).toBe('')
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Fines & charges' }), { key: 'ArrowLeft' })
+    expect(screen.getByTestId('where').textContent).toBe('?tab=service-charges')
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Service charges' }), { key: 'Home' })
     expect(screen.getByTestId('where').textContent).toBe('')
   })
 

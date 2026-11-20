@@ -73,6 +73,7 @@ export function ViolationRulesPanel() {
     } catch (cause) {
       if (cause instanceof ViolationCategoryError && Object.keys(cause.fieldErrors).length) setErrors(cause.fieldErrors as Errors)
       setFormError(cause instanceof Error ? cause.message : 'The category could not be saved.')
+      void load() // a change by someone else shows up in the table behind the dialog
     } finally {
       setBusy(false)
     }
@@ -96,7 +97,7 @@ export function ViolationRulesPanel() {
     if (draft.warningsBeforeFine !== before.warningsBeforeFine) changed.warningsBeforeFine = input.warningsBeforeFine
     if (input.fineAmount !== before.fineAmount) changed.fineAmount = input.fineAmount
     if (!Object.keys(changed).length) return setEditing(null)
-    void run(() => violationCategoriesApi.update(editing.categoryId, changed), `${editing.name} saved. New violations use the new rule; fines already issued keep their amount.`)
+    void run(() => violationCategoriesApi.update(editing.categoryId, { ...changed, updatedAt: editing.updatedAt }), `${editing.name} saved. New violations use the new rule; fines already issued keep their amount.`)
   }
 
   const set = (key: keyof Draft) => (event: { target: { value: string } }) => {
@@ -186,7 +187,7 @@ export function ViolationRulesPanel() {
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
               {existing ? (
                 <Button type="button" variant="secondary" disabled={busy}
-                  onClick={() => void run(() => violationCategoriesApi.update(existing.categoryId, { isActive: !existing.isActive }),
+                  onClick={() => void run(() => violationCategoriesApi.update(existing.categoryId, { isActive: !existing.isActive, updatedAt: existing.updatedAt }),
                     existing.isActive ? `${existing.name} retired. Old records keep it.` : `${existing.name} restored.`)}>
                   {existing.isActive ? 'Retire category' : 'Restore category'}
                 </Button>
