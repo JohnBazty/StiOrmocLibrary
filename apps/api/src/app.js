@@ -53,6 +53,7 @@ import { adminNotificationsRouter } from './modules/users/admin-notifications.ro
 import { borrowingPolicyRouter } from './modules/circulation/borrowing-policy.routes.ts'
 import { finePolicyRouter } from './modules/fines/fine-policy.routes.ts'
 import { violationCategoriesRouter } from './modules/fines/violation-categories.routes.ts'
+import { copyConditionsRouter } from './modules/inventory/copy-conditions.routes.ts'
 import { publicCatalogRouter, catalogMaintenanceRouter } from './modules/catalog/catalog-enhancements.routes.ts'
 import { deweyRouter } from './modules/catalog/dewey.routes.ts'
 import { collectionReviewRouter } from './modules/catalog/collection-review.routes.ts'
@@ -131,6 +132,7 @@ export function createApp() {
   app.use('/api/v1/admin/borrowing-policies', requireLibraryPermission('library.manage'), borrowingPolicyRouter)
   app.use('/api/v1/admin/fine-policies', requireLibraryPermission('library.manage'), finePolicyRouter)
   app.use('/api/v1/admin/violation-categories', requireLibraryPermission('library.manage'), violationCategoriesRouter)
+  app.use('/api/v1/admin/copy-conditions', requireLibraryPermission('library.manage'), copyConditionsRouter)
   app.use('/api/v1/admin/maintenance', requireLibraryPermission('library.manage'), catalogMaintenanceRouter)
   app.use('/api/v1/admin/dewey', requireLibraryPermission('library.manage'), deweyRouter)
   app.use('/api/v1/admin/collection-review', requireLibraryPermission('library.manage'), collectionReviewRouter)

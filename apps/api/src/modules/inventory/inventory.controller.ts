@@ -4,6 +4,7 @@ import { createCsvStream, createInventoryPdf, inventoryRows } from '../reports/c
 import { inventoryCopies, inventorySummary, overrideInventoryCondition, setInventoryAvailability, verifyInventoryBarcode } from './inventory.service.ts'
 import { parseInventoryListFilters, parseScanBody, type InventoryCondition, type ManualAvailability } from './inventory.validation.ts'
 import { inventoryActor } from './inventory-actor.ts'
+import { copyConditionsService } from './copy-conditions.service.ts'
 
 export async function getSummary(_request: Request, response: Response, next: NextFunction) {
   try { response.json({ success: true, data: await inventorySummary() }) }
@@ -26,14 +27,16 @@ export async function scanBarcode(request: Request, response: Response, next: Ne
 
 export async function changeCondition(request: Request, response: Response, next: NextFunction) {
   try {
-    const { barcode, conditionState } = response.locals.inventoryConditionMutation as { barcode: string; conditionState: InventoryCondition }
+    const mutation = response.locals.inventoryConditionMutation as { barcode: string; conditionState: InventoryCondition | null; conditionId: number | null }
+    const chosen = mutation.conditionId ? await copyConditionsService.resolve(mutation.conditionId) : null
+    const conditionState = (chosen?.conditionState ?? mutation.conditionState) as InventoryCondition
     const lost = conditionState === 'Lost'
     response.json({
       success: true,
       message: lost
         ? 'Condition updated to Lost. Availability was forced to Unavailable and the copy was removed from reservation allocation.'
         : 'Condition updated. Availability was preserved and remains under librarian control.',
-      data: await overrideInventoryCondition(barcode, conditionState, inventoryActor(request, response)),
+      data: await overrideInventoryCondition(mutation.barcode, conditionState, inventoryActor(request, response), undefined, chosen?.detailId ?? null),
     })
   } catch (error) { next(error) }
 }

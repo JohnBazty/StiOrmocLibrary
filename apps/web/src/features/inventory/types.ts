@@ -19,6 +19,8 @@ export type InventoryCopy = {
   call_number: string | null
   dewey_code?: string | null
   condition_status: string
+  /** Name of a library condition (Book conditions) when one is set. */
+  condition_detail?: string | null
   availability_status: string
   last_verified_at: string | null
   row_version: number

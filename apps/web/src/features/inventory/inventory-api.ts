@@ -137,6 +137,10 @@ export const inventoryApi = {
   changeCondition: (barcode: string, conditionState: 'good' | 'fair' | 'for_repair' | 'damaged' | 'lost') => request<InventoryCopy>('/api/inventory/copies/condition', {
     method: 'PATCH', body: JSON.stringify({ barcode, condition_state: conditionState }),
   }),
+  /** A library condition from Library setup -> Book conditions; the server stores its base condition too. */
+  changeConditionById: (barcode: string, conditionId: number) => request<InventoryCopy>('/api/inventory/copies/condition', {
+    method: 'PATCH', body: JSON.stringify({ barcode, condition_id: conditionId }),
+  }),
   changeAvailability: (barcode: string, availabilityStatus: 'available' | 'unavailable') => request<InventoryCopy>('/api/inventory/copies/availability', {
     method: 'PATCH', body: JSON.stringify({ barcode, availability_status: availabilityStatus }),
   }),
