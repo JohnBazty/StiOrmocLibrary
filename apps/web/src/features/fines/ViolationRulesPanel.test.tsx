@@ -5,7 +5,7 @@ import { describeCategory, ViolationCategoryError, violationCategoriesApi, type 
 
 vi.mock('./violation-categories-api', async original => ({
   ...(await original<typeof import('./violation-categories-api')>()),
-  violationCategoriesApi: { list: vi.fn(), create: vi.fn(), update: vi.fn() },
+  violationCategoriesApi: { list: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() },
 }))
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -38,7 +38,7 @@ it('blocks a bad new category with inline messages, then saves a valid one', asy
   const dialog = screen.getByRole('dialog', { name: 'Add violation category' })
   fireEvent.click(within(dialog).getByRole('button', { name: 'Save category' }))
   expect(within(dialog).getByText('Enter a category name of 2 to 80 characters.')).toBeTruthy()
-  expect(within(dialog).getByText('Enter a peso amount above 0 with at most 2 decimals.')).toBeTruthy()
+  expect(within(dialog).getByText('Enter a peso amount above 0 and up to 9,999.99, with at most 2 decimals.')).toBeTruthy()
   expect(api.create).not.toHaveBeenCalled()
 
   fireEvent.change(within(dialog).getByLabelText('Category name'), { target: { value: 'Phone use' } })
@@ -89,6 +89,74 @@ it('restores a retired category and sends only changed rule fields on save', asy
   fireEvent.change(within(screen.getByRole('dialog')).getByLabelText('Fine amount (PHP)'), { target: { value: '80' } })
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Save category' }))
   await waitFor(() => expect(api.update).toHaveBeenLastCalledWith(2, { fineAmount: '80', updatedAt: 'v-food' }))
+})
+
+it('limits the fine to four digits, before saving', async () => {
+  api.list.mockResolvedValue([noise])
+  api.create.mockResolvedValue({ ...noise, categoryId: 3, name: 'Phone use', used: false })
+  render(<ViolationRulesPanel />)
+  await screen.findByText('Noise')
+  fireEvent.click(screen.getByRole('button', { name: 'Add category' }))
+  const dialog = screen.getByRole('dialog', { name: 'Add violation category' })
+  expect(within(dialog).getByText('Up to PHP 9,999.99')).toBeTruthy()
+  fireEvent.change(within(dialog).getByLabelText('Category name'), { target: { value: 'Phone use' } })
+  for (const tooMuch of ['10000', '12345.50', '99999']) {
+    fireEvent.change(within(dialog).getByLabelText('Fine amount (PHP)'), { target: { value: tooMuch } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save category' }))
+    expect(within(dialog).getByText('Enter a peso amount above 0 and up to 9,999.99, with at most 2 decimals.')).toBeTruthy()
+  }
+  expect(api.create).not.toHaveBeenCalled()
+  fireEvent.change(within(dialog).getByLabelText('Fine amount (PHP)'), { target: { value: '9999.99' } })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Save category' }))
+  await waitFor(() => expect(api.create).toHaveBeenCalledWith({ name: 'Phone use', description: '', warningsBeforeFine: 2, fineAmount: '9999.99' }))
+})
+
+it('deletes an unused category only after a plain confirmation', async () => {
+  api.list.mockResolvedValue([noise, food])
+  api.remove.mockResolvedValue({ deleted: true })
+  render(<ViolationRulesPanel />)
+  await screen.findByText('Eating or food')
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Eating or food' }))
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete category' }))
+  expect(api.remove).not.toHaveBeenCalled()
+  const confirm = screen.getByRole('dialog', { name: 'Delete this category?' })
+  expect(within(confirm).getByText('Eating or food', { selector: 'strong' })).toBeTruthy()
+  expect(within(confirm).getByText(/cannot be undone/)).toBeTruthy()
+  fireEvent.click(within(confirm).getByRole('button', { name: 'Keep category' }))
+  expect(api.remove).not.toHaveBeenCalled()
+  expect(screen.getByRole('dialog', { name: 'Edit violation category' })).toBeTruthy()
+
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete category' }))
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete Eating or food' }))
+  await waitFor(() => expect(api.remove).toHaveBeenCalledWith(2))
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  expect(screen.getByText('Eating or food deleted.')).toBeTruthy()
+  expect(api.list).toHaveBeenCalledTimes(2)
+})
+
+it('does not offer to delete a category that has records and points to Retire instead', async () => {
+  api.list.mockResolvedValue([noise])
+  render(<ViolationRulesPanel />)
+  await screen.findByText('Noise')
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Noise' }))
+  const dialog = screen.getByRole('dialog')
+  const remove = within(dialog).getByRole('button', { name: 'Delete category' }) as HTMLButtonElement
+  expect(remove.disabled).toBe(true)
+  expect(within(dialog).getByText('Noise has violation records, so it cannot be deleted. Retire it instead.')).toBeTruthy()
+  fireEvent.click(remove)
+  expect(api.remove).not.toHaveBeenCalled()
+})
+
+it('explains a failed delete and refreshes the table', async () => {
+  api.list.mockResolvedValue([food])
+  api.remove.mockRejectedValue(new ViolationCategoryError('This category already has violation records, so it cannot be deleted. Retire it instead.'))
+  render(<ViolationRulesPanel />)
+  await screen.findByText('Eating or food')
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Eating or food' }))
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete category' }))
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete Eating or food' }))
+  expect(await screen.findByText(/already has violation records/)).toBeTruthy()
+  await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2))
 })
 
 it('offers a retry when the list cannot load', async () => {

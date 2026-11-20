@@ -100,6 +100,31 @@ export function createViolationCategoriesService(database: Pool = db) {
         return (await fetchOne(database, id))!
       } catch (error) { await rollbackQuietly(connection); throw isUniqueViolation(error) ? duplicate() : error } finally { connection.release() }
     },
+
+    /** Permanently removes a category nobody has used. One with records is retired instead, so old records keep their label. */
+    async remove(actor: unknown, target: unknown) {
+      const account = accountId(actor)
+      const id = Number(target)
+      if (!Number.isSafeInteger(id) || id < 1) throw new HttpError(422, 'VIOLATION_CATEGORY_INVALID', 'Choose a valid category.')
+      const inUse = () => new HttpError(409, 'VIOLATION_CATEGORY_IN_USE', 'This category already has violation records, so it cannot be deleted. Retire it instead.')
+      const connection = await database.getConnection()
+      try {
+        await connection.beginTransaction()
+        // Same lock a violation being recorded takes (FOR SHARE), so a record cannot slip in after the check below.
+        const [locked] = await connection.execute<RowDataPacket[]>('SELECT category_id FROM violation_categories WHERE category_id=? FOR UPDATE', [id])
+        if (!locked[0]) throw new HttpError(404, 'VIOLATION_CATEGORY_NOT_FOUND', 'Violation category not found.')
+        const before = (await fetchOne(connection, id))!
+        if (before.used) throw inUse()
+        await connection.execute('DELETE FROM violation_categories WHERE category_id=?', [id])
+        await note(connection, account, 'Violation category deleted', `${before.name} was deleted. It had no violation records.`)
+        await connection.commit()
+        return { deleted: true as const }
+      } catch (error) {
+        await rollbackQuietly(connection)
+        // The foreign keys are the last line of defence if a record is saved in the same instant.
+        throw (error as { code?: string } | null)?.code === '23503' ? inUse() : error
+      } finally { connection.release() }
+    },
   }
 }
 

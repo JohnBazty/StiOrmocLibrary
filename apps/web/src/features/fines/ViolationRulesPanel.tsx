@@ -1,9 +1,10 @@
-import { Pencil, Plus } from 'lucide-react'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { Button, FormField, LumoDialog, NoticeBanner, SectionCard, StatusBadge } from '../../components/ui'
 import {
   describeCategory,
+  MAX_VIOLATION_FINE_LABEL,
   ViolationCategoryError,
   violationCategoriesApi,
   type ViolationCategory,
@@ -15,7 +16,7 @@ type Errors = Partial<Record<keyof Draft, string>>
 
 const emptyDraft: Draft = { name: '', description: '', warningsBeforeFine: '2', fineAmount: '' }
 const NAME_ERROR = 'Enter a category name of 2 to 80 characters.'
-const AMOUNT_ERROR = 'Enter a peso amount above 0 with at most 2 decimals.'
+const AMOUNT_ERROR = `Enter a peso amount above 0 and up to ${MAX_VIOLATION_FINE_LABEL}, with at most 2 decimals.`
 
 const fromCategory = (category: ViolationCategory): Draft => ({
   name: category.name,
@@ -30,7 +31,7 @@ function validate(draft: Draft): Errors {
   if (name.length < 2 || name.length > 80) errors.name = NAME_ERROR
   if (draft.description.trim().length > 300) errors.description = 'Keep the description to 300 characters or less.'
   const amount = draft.fineAmount.trim()
-  if (!/^\d{1,6}(\.\d{1,2})?$/.test(amount) || Number(amount) <= 0) errors.fineAmount = AMOUNT_ERROR
+  if (!/^\d{1,4}(\.\d{1,2})?$/.test(amount) || Number(amount) <= 0) errors.fineAmount = AMOUNT_ERROR
   return errors
 }
 
@@ -43,6 +44,7 @@ export function ViolationRulesPanel() {
   const [errors, setErrors] = useState<Errors>({})
   const [formError, setFormError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -59,6 +61,7 @@ export function ViolationRulesPanel() {
     setDraft(target === 'new' ? emptyDraft : fromCategory(target))
     setErrors({})
     setFormError('')
+    setConfirmingDelete(false)
   }
   const close = () => { if (!busy) setEditing(null) }
 
@@ -161,8 +164,23 @@ export function ViolationRulesPanel() {
       </div>
 
       {editing ? (
-        <LumoDialog title={existing ? 'Edit violation category' : 'Add violation category'} busy={busy} onClose={close}
-          description="Faculty go straight to the fine. Students get the warnings first.">
+        <LumoDialog title={confirmingDelete ? 'Delete this category?' : existing ? 'Edit violation category' : 'Add violation category'} busy={busy} onClose={close}
+          description={confirmingDelete ? undefined : 'Faculty go straight to the fine. Students get the warnings first.'}>
+          {confirmingDelete && existing ? (
+            <div className="space-y-3">
+              {formError ? <NoticeBanner tone="error">{formError}</NoticeBanner> : null}
+              <p className="text-sm text-[var(--sl-text)]">
+                <strong>{existing.name}</strong> will be removed from Library setup and from the Fines filters. It has no violation records, so no history is lost. This cannot be undone.
+              </p>
+              <div className="flex flex-wrap justify-end gap-2 pt-1">
+                <Button type="button" variant="secondary" disabled={busy} onClick={() => { setConfirmingDelete(false); setFormError('') }}>Keep category</Button>
+                <Button type="button" variant="danger" disabled={busy}
+                  onClick={() => void run(() => violationCategoriesApi.remove(existing.categoryId), `${existing.name} deleted.`)}>
+                  {busy ? 'Deleting…' : `Delete ${existing.name}`}
+                </Button>
+              </div>
+            </div>
+          ) : (
           <form onSubmit={save} noValidate className="space-y-3">
             {formError && !Object.keys(errors).some(key => errors[key as keyof Draft]) ? <NoticeBanner tone="error">{formError}</NoticeBanner> : null}
             <FormField id="vc-name" label="Category name" required error={errors.name}
@@ -179,18 +197,27 @@ export function ViolationRulesPanel() {
                   {[0, 1, 2, 3].map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
               </FormField>
-              <FormField id="vc-amount" label="Fine amount (PHP)" required error={errors.fineAmount}>
-                <input id="vc-amount" className="sl-input" inputMode="decimal" value={draft.fineAmount} onChange={set('fineAmount')}
+              <FormField id="vc-amount" label="Fine amount (PHP)" required error={errors.fineAmount} helperText={`Up to PHP ${MAX_VIOLATION_FINE_LABEL}`}>
+                <input id="vc-amount" className="sl-input" inputMode="decimal" value={draft.fineAmount} onChange={set('fineAmount')} maxLength={7}
                   aria-invalid={Boolean(errors.fineAmount)} aria-describedby={errors.fineAmount ? 'vc-amount-error' : undefined} />
               </FormField>
             </div>
+            {existing?.used ? (
+              <p className="text-xs text-[var(--sl-text-secondary)]">{existing.name} has violation records, so it cannot be deleted. Retire it instead.</p>
+            ) : null}
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
               {existing ? (
-                <Button type="button" variant="secondary" disabled={busy}
-                  onClick={() => void run(() => violationCategoriesApi.update(existing.categoryId, { isActive: !existing.isActive, updatedAt: existing.updatedAt }),
-                    existing.isActive ? `${existing.name} retired. Old records keep it.` : `${existing.name} restored.`)}>
-                  {existing.isActive ? 'Retire category' : 'Restore category'}
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="secondary" disabled={busy}
+                    onClick={() => void run(() => violationCategoriesApi.update(existing.categoryId, { isActive: !existing.isActive, updatedAt: existing.updatedAt }),
+                      existing.isActive ? `${existing.name} retired. Old records keep it.` : `${existing.name} restored.`)}>
+                    {existing.isActive ? 'Retire category' : 'Restore category'}
+                  </Button>
+                  <Button type="button" variant="danger" disabled={busy || existing.used}
+                    onClick={() => { setFormError(''); setConfirmingDelete(true) }}>
+                    <Trash2 size={14} aria-hidden="true" /> Delete category
+                  </Button>
+                </div>
               ) : <span />}
               <div className="flex gap-2">
                 <Button type="button" variant="secondary" disabled={busy} onClick={close}>Cancel</Button>
@@ -198,6 +225,7 @@ export function ViolationRulesPanel() {
               </div>
             </div>
           </form>
+          )}
         </LumoDialog>
       ) : null}
     </SectionCard>

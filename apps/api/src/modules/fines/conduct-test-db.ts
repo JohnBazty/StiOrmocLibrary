@@ -22,6 +22,7 @@ export async function createConductTestDb() {
  INSERT INTO accounts VALUES(1,1,'LIB-TEST'),(2,2,'STU-TEST'),(3,3,'OTHER-TEST'),(4,4,'FAC-TEST');`)
   await pg.exec(migration('056_conduct_records.sql'))
   await pg.exec(migration('074_violation_categories.sql'))
+  await pg.exec(migration('075_violation_fine_four_digits.sql'))
   const execute = async (sql: string, values: unknown[] = []) => {
     const write = /^\s*(INSERT|UPDATE|DELETE)/i.test(sql)
     let query = toPgPlaceholders(sql)
