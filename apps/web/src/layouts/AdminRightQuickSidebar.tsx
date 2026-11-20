@@ -1,7 +1,5 @@
 import {
   AlertTriangle,
-  ArrowLeftRight,
-  BookMarked,
   Calendar,
   CalendarClock,
   ChevronLeft,
@@ -9,10 +7,7 @@ import {
   Clock,
   PanelRightClose,
   PanelRightOpen,
-  QrCode,
   RefreshCw,
-  ShieldCheck,
-  Users,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -24,6 +19,8 @@ import { borrowingScheduleApi, type AdminBorrowingSchedule } from '../features/r
 import { reservationApi } from '../features/reservations/reservation-api'
 import type { ReservationQueueItem } from '../features/reservations/types'
 import { SidebarResizeHandle } from './SidebarResizeHandle'
+import { coreShortcutsFor } from './core-shortcuts'
+import { agendaBrief, eventDetails } from './agenda-text'
 import {
   RIGHT_SIDEBAR_COLLAPSE_THRESHOLD,
   RIGHT_SIDEBAR_DEFAULT_WIDTH,
@@ -300,18 +297,11 @@ export function AdminRightQuickSidebar({
     for (const ev of events) {
       if (ev.lifecycle_status === 'Cancelled') continue
       const key = toManilaDateKey(ev.starts_at)
-      const restrictions = [
-        !ev.allow_walk_ins ? 'No walk-ins' : null,
-        !ev.allow_borrowing ? 'Borrowing paused' : null,
-        !ev.allow_printing ? 'Printing paused' : null,
-      ]
-        .filter(Boolean)
-        .join(' · ')
       push(key, {
         id: `event-${ev.event_id}`,
         kind: !ev.allow_borrowing || !ev.allow_printing ? 'closure' : 'notice',
-        title: `${ev.title} (${ev.space_name})`,
-        subtitle: restrictions || `${ev.event_kind} scheduled in ${ev.space_name}`,
+        title: ev.title,
+        subtitle: eventDetails(ev),
         timeLabel: `${formatManilaTime(ev.starts_at)} – ${formatManilaTime(ev.ends_at)}`,
         badgeText: ev.event_kind,
         tone: !ev.allow_borrowing || !ev.allow_printing ? 'warning' : 'info',
@@ -325,7 +315,7 @@ export function AdminRightQuickSidebar({
         id: `pickup-${item.scheduleId}`,
         kind: 'reservation',
         title: item.title,
-        subtitle: `Scheduled pickup · ${item.userName} (${item.schoolId})`,
+        subtitle: `Pickup · ${item.userName} · ${item.schoolId} · ${item.userRole}`,
         badgeText: 'Pickup',
         tone: 'warning',
         actionPath: role === 'admin' ? '/admin/audit-logs' : `${prefix}/reservations`,
@@ -340,7 +330,7 @@ export function AdminRightQuickSidebar({
         id: `res-${res.reservationId}`,
         kind: 'reservation',
         title: res.materialTitle,
-        subtitle: `${res.userName} · ${res.statusLabel ?? res.status.replace(/_/g, ' ')}`,
+        subtitle: `${res.userName} · ${res.institutionalId} · ${res.statusLabel ?? res.status.replace(/_/g, ' ')}`,
         timeLabel: formatManilaTime(res.reservedAt),
         badgeText: isReady ? 'Ready' : 'Reservation',
         tone: isReady ? 'success' : 'warning',
@@ -353,7 +343,7 @@ export function AdminRightQuickSidebar({
             id: `res-exp-${res.reservationId}`,
             kind: 'reservation',
             title: `Pickup deadline: ${res.materialTitle}`,
-            subtitle: `Reserved by ${res.userName}`,
+            subtitle: `Collect by ${formatManilaTime(res.pickupDeadline)} · ${res.userName} · ${res.institutionalId}`,
             timeLabel: formatManilaTime(res.pickupDeadline),
             badgeText: 'Expires',
             tone: 'warning',
@@ -370,7 +360,7 @@ export function AdminRightQuickSidebar({
         id: `tx-${log.id}`,
         kind: 'transaction',
         title: log.actionLabel,
-        subtitle: log.summary,
+        subtitle: agendaBrief(log.summary),
         timeLabel: formatManilaTime(log.occurredAt),
         badgeText: log.category,
         tone: 'info',
@@ -385,7 +375,7 @@ export function AdminRightQuickSidebar({
         id: `ann-${ann.announcementId}`,
         kind: 'notice',
         title: ann.title,
-        subtitle: ann.body,
+        subtitle: agendaBrief(ann.body),
         timeLabel: formatManilaTime(ann.publishedAt ?? ann.createdAt),
         badgeText: 'Notice',
         tone: ann.priority === 'Urgent' ? 'error' : 'success',
@@ -399,7 +389,7 @@ export function AdminRightQuickSidebar({
         id: `notif-${notif.notificationId}`,
         kind: notif.type.toLowerCase().includes('reserve') ? 'reservation' : 'notice',
         title: notif.title,
-        subtitle: notif.body,
+        subtitle: agendaBrief(notif.body),
         timeLabel: formatManilaTime(notif.createdAt),
         badgeText: notif.priority === 'Urgent' ? 'Urgent' : 'Alert',
         tone: notif.priority === 'Urgent' ? 'error' : 'info',
@@ -495,57 +485,11 @@ export function AdminRightQuickSidebar({
     return cells
   }, [viewMonth, todayKey, getDayOperatingInfo, agendaByDate])
 
-  // Core shortcuts only (2-3 essential items following Vaadin Lumo Side Nav Item 5232:2175)
-  const coreShortcuts = useMemo(() => {
-    if (role === 'admin') {
-      return [
-        {
-          title: 'Attendance monitoring',
-          subtitle: 'Live occupancy & gate logs',
-          icon: QrCode,
-          path: '/admin/attendance',
-          badge: 'Core',
-        },
-        {
-          title: 'User accounts',
-          subtitle: 'Students, faculty & staff',
-          icon: Users,
-          path: '/admin/users',
-          badge: 'Core',
-        },
-        {
-          title: 'System audit logs',
-          subtitle: 'All library transactions',
-          icon: ShieldCheck,
-          path: '/admin/audit-logs',
-          badge: String(auditLogs.length || ''),
-        },
-      ]
-    }
-    return [
-      {
-        title: 'Attendance monitoring',
-        subtitle: 'QR entry gate & live headcount',
-        icon: QrCode,
-        path: `${prefix}/attendance`,
-        badge: 'Core',
-      },
-      {
-        title: 'Borrow & return counter',
-        subtitle: 'Check out, return & renew books',
-        icon: ArrowLeftRight,
-        path: `${prefix}/circulation`,
-        badge: 'Desk',
-      },
-      {
-        title: 'Book queue & pickups',
-        subtitle: 'Reservations & scheduled pickups',
-        icon: BookMarked,
-        path: `${prefix}/reservations`,
-        badge: reservations.length + pickups.length > 0 ? String(reservations.length + pickups.length) : '',
-      },
-    ]
-  }, [role, prefix, auditLogs.length, reservations.length, pickups.length])
+  // Core shortcuts (Vaadin Lumo Side Nav Item 5232:2175); the list lives in core-shortcuts.ts.
+  const coreShortcuts = useMemo(
+    () => coreShortcutsFor(role, { auditLogs: auditLogs.length, queued: reservations.length + pickups.length }),
+    [role, auditLogs.length, reservations.length, pickups.length],
+  )
 
   const todayOperating = useMemo(() => getDayOperatingInfo(todayKey), [getDayOperatingInfo, todayKey])
   const selectedOperating = useMemo(
@@ -883,7 +827,7 @@ export function AdminRightQuickSidebar({
                           </span>
                         ) : null}
                       </div>
-                      <p className="mt-1 truncate text-xs font-semibold text-[var(--sl-text-header)] group-hover:text-[#0b5ea2] dark:group-hover:text-sky-300">
+                      <p className="mt-1 line-clamp-2 break-words text-xs font-semibold text-[var(--sl-text-header)] group-hover:text-[#0b5ea2] dark:group-hover:text-sky-300">
                         {item.title}
                       </p>
                       <p className="mt-0.5 line-clamp-2 text-[11px] text-[var(--sl-text-secondary)]">
@@ -919,7 +863,7 @@ export function AdminRightQuickSidebar({
           <nav aria-label="Core desk shortcuts" className="space-y-1">
             {coreShortcuts.map((shortcut) => {
               const Icon = shortcut.icon
-              const isCurrent = location.pathname.startsWith(shortcut.path)
+              const isCurrent = `${location.pathname}${location.search}${location.hash}` === shortcut.path || (!shortcut.path.includes('?') && location.pathname.startsWith(shortcut.path))
               return (
                 <button
                   key={shortcut.path}

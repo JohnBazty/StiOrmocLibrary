@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useConfirmSave } from '../../components/ConfirmSaveDialog'
-import { Button, NoticeBanner, SectionCard, StatusBadge } from '../../components/ui'
+import { Button, LumoDialog, NoticeBanner, SectionCard, StatusBadge } from '../../components/ui'
 import { UnsavedGuard } from '../../components/UnsavedChanges'
 import { attendanceApi, type LibraryEvent, type OperationalState } from './attendance-api'
 import { RefreshButton } from '../../components/RefreshButton'
@@ -409,33 +409,37 @@ export function LibraryOperationsPanel({
       </div>
 
       {cancel ? (
-        <div
+        <LumoDialog
           role="alertdialog"
-          aria-label="Cancel scheduled event"
-          className="mt-4 rounded-[8px] border border-[var(--sl-error-border)] bg-[var(--sl-error-soft)] p-4"
+          size="sm"
+          eyebrow="Cancel scheduled event"
+          title={`Cancel “${cancel.title}”?`}
+          description="Its seat limit and service restrictions stop applying. The event stays in history."
+          busy={busy}
+          onClose={() => setCancel(null)}
+          footer={
+            <>
+              <Button variant="secondary" disabled={busy} onClick={() => setCancel(null)}>
+                Keep event
+              </Button>
+              <Button
+                variant="danger"
+                disabled={busy}
+                onClick={() =>
+                  void act(() => attendanceApi.cancelEvent(cancel.event_id, cancel.row_version)).then(ok => {
+                    if (ok) setCancel(null)
+                  })
+                }
+              >
+                {busy ? 'Cancelling…' : 'Yes, cancel event'}
+              </Button>
+            </>
+          }
         >
-          <p className="font-semibold text-[var(--sl-text-header)]">Cancel “{cancel.title}”?</p>
-          <p className="mt-1 text-xs text-[var(--sl-text-secondary)]">
-            Its capacity and service restrictions will stop applying. The event record stays in history.
+          <p className="text-sm text-[var(--sl-text)]">
+            {cancel.space_name} · {new Date(cancel.starts_at).toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' })}
           </p>
-          <div className="mt-3 flex gap-2">
-            <Button
-              variant="danger"
-              size="sm"
-              disabled={busy}
-              onClick={() =>
-                void act(() => attendanceApi.cancelEvent(cancel.event_id, cancel.row_version)).then(ok => {
-                  if (ok) setCancel(null)
-                })
-              }
-            >
-              Confirm cancellation
-            </Button>
-            <Button variant="secondary" size="sm" disabled={busy} onClick={() => setCancel(null)}>
-              Keep event
-            </Button>
-          </div>
-        </div>
+        </LumoDialog>
       ) : null}
 
       {confirmSave}

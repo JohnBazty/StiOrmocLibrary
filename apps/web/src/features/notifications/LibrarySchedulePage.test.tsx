@@ -51,3 +51,22 @@ it('offers one schedule editing path without a duplicate maintenance link', asyn
   await screen.findByRole('button',{name:'Edit schedule'})
   expect(screen.queryByRole('link',{name:'Open schedule maintenance'})).toBeNull()
 })
+it('copies one day’s hours to Monday–Saturday and leaves Sunday alone', async () => {
+  await edit()
+  fireEvent.change(screen.getByLabelText('Wednesday opens'), { target: { value: '08:30' } })
+  fireEvent.change(screen.getByLabelText('Wednesday closes'), { target: { value: '18:00' } })
+  expect(screen.queryByRole('button', { name: 'Apply Sunday hours to Monday–Saturday' })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Apply Wednesday hours to Monday–Saturday' }))
+  for (const day of ['Monday', 'Tuesday', 'Thursday', 'Friday', 'Saturday']) {
+    expect((screen.getByLabelText(`${day} opens`) as HTMLInputElement).value).toBe('08:30')
+    expect((screen.getByLabelText(`${day} closes`) as HTMLInputElement).value).toBe('18:00')
+  }
+  expect((screen.getByLabelText('Sunday open') as HTMLInputElement).checked).toBe(false)
+  expect((screen.getByLabelText('Sunday opens') as HTMLInputElement).value).toBe('')
+  fireEvent.click(screen.getByRole('button', { name: 'Review schedule changes' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm schedule changes' }))
+  await waitFor(() => expect(api.saveLibrarySchedule).toHaveBeenCalled())
+  const saved = api.saveLibrarySchedule.mock.calls[0][0] as typeof schedule
+  expect(saved.weekly.filter(day => day.dayOfWeek <= 6).every(day => day.isOpen && day.opensAt === '08:30' && day.closesAt === '18:00')).toBe(true)
+  expect(saved.weekly.find(day => day.dayOfWeek === 7)).toEqual(schedule.weekly[6])
+})

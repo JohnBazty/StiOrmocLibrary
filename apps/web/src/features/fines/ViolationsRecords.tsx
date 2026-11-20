@@ -32,8 +32,10 @@ export function WarningsLeft({ items }: { items: OwnStanding[] }) {
   )
 }
 
-export function ViolationsRecords({ admin = false, onSaved, incidentId = null, onIncidentChange }: {
+export function ViolationsRecords({ admin = false, onSaved, incidentId = null, onIncidentChange, startRecording = false }: {
   admin?: boolean
+  /** Opens the record form on arrival (the Issue fines shortcut). */
+  startRecording?: boolean
   onSaved?: () => void
   /** Record open in the drawer, kept in the page address so a link opens it. */
   incidentId?: number | null
@@ -51,7 +53,7 @@ export function ViolationsRecords({ admin = false, onSaved, incidentId = null, o
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [refresh, setRefresh] = useState(0)
-  const [formOpen, setFormOpen] = useState(false)
+  const [formOpen, setFormOpen] = useState(startRecording)
   const [categories, setCategories] = useState<ViolationCategory[]>([])
   const [own, setOwn] = useState<OwnStanding[]>([])
   const [opened, setOpened] = useState<Incident | null>(null)

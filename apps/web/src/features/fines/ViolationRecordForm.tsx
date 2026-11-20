@@ -8,7 +8,6 @@ const peso = (value: number) => `PHP ${value.toFixed(2)}`
 const manilaNow = () => new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 16)
 const toInstant = (local: string) => new Date(`${local}:00+08:00`)
 
-const manilaToday = () => new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
 /** `key` names the person, category and paper-log choice the answer belongs to. */
 type Lookup = { state: 'idle' } | { state: 'loading' } | { state: 'ready'; key: string; standing: Standing } | { state: 'error'; message: string }
@@ -62,8 +61,7 @@ export function ViolationRecordForm({ categories, onSaved, onCancel }: {
 
   const detailsError = details.trim().length < 10 ? 'Enter at least 10 characters about what happened.' : ''
   const when = toInstant(incidentAt)
-  const dateError = !incidentAt || Number.isNaN(when.getTime()) ? 'Enter when it happened.' : when.getTime() > Date.now() + 60_000 ? 'Choose a time no later than now.'
-    : paperLog && incidentAt.slice(0, 10) >= manilaToday() ? 'Paper-log entries are for dates before today.' : ''
+  const dateError = !incidentAt || Number.isNaN(when.getTime()) ? 'Enter when it happened.' : when.getTime() > Date.now() + 60_000 ? 'Choose a time no later than now.' : ''
   const idError = lookup.state === 'error' ? lookup.message : ''
   const currentKey = `${schoolId.trim()}|${category}|${paperLog}`
   const standing = lookup.state === 'ready' && lookup.key === currentKey ? lookup.standing : null

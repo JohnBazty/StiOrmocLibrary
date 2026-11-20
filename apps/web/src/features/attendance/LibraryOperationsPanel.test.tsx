@@ -15,3 +15,17 @@ it('Librarian submits explicit event capacity, Manila dates and service decision
  fireEvent.click(screen.getByRole('button',{name:'Schedule event'}));fireEvent.click(await screen.findByRole('button',{name:'Yes, save'}));await waitFor(()=>expect(api.saveEvent).toHaveBeenCalled())
  expect(api.saveEvent.mock.calls[0][1]).toMatchObject({capacity:12,startsAt:'2026-10-12T09:00:00+08:00',allowWalkIns:false,allowBorrowing:true,allowPrinting:true})
 })
+it('asks to confirm a cancellation in a modal dialog before cancelling the event',async()=>{
+ const event={event_id:7,title:'Seminar',event_kind:'Event',space_name:'Reading area',starts_at:'2026-10-12T09:00:00+08:00',ends_at:'2026-10-12T10:00:00+08:00',seat_capacity:12,allow_walk_ins:false,allow_borrowing:true,allow_printing:true,lifecycle_status:'Active',row_version:3}
+ api.events.mockResolvedValue([event]);api.cancelEvent.mockResolvedValue({})
+ render(<LibraryOperationsPanel manage/>)
+ fireEvent.click(await screen.findByRole('button',{name:'Cancel event'}))
+ const dialog=screen.getByRole('alertdialog',{name:'Cancel “Seminar”?'})
+ expect(dialog.getAttribute('aria-modal')).toBe('true')
+ fireEvent.click(screen.getByRole('button',{name:'Keep event'}))
+ expect(screen.queryByRole('alertdialog')).toBeNull();expect(api.cancelEvent).not.toHaveBeenCalled()
+ fireEvent.click(screen.getByRole('button',{name:'Cancel event'}))
+ fireEvent.click(screen.getByRole('button',{name:'Yes, cancel event'}))
+ await waitFor(()=>expect(api.cancelEvent).toHaveBeenCalledWith(7,3))
+ await waitFor(()=>expect(screen.queryByRole('alertdialog')).toBeNull())
+})

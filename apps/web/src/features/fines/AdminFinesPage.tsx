@@ -422,6 +422,7 @@ export function AdminFinesPage() {
       {activeTab === 'violations' ? (
         <ViolationsRecords
           admin
+          startRecording={searchParams.get('record') === '1'}
           onSaved={() => void load()}
           incidentId={incidentId}
           onIncidentChange={id => setSearchParams(id ? { tab: 'violations', incident: String(id) } : { tab: 'violations' })}
