@@ -2,7 +2,7 @@
 
 ## Hosted-system integration — 2026-11-20
 
-Application source matches hosted deployment `dpl_8SSF1zDLKLbi4y6tHoKBB4nkSVe5` for Student, Faculty, Staff, Librarian and Admin. Existing main migration bytes are preserved. Latest applied migration **075** (`074_violation_categories.sql` and `075_violation_fine_four_digits.sql`, both applied 2026-11-20 with Ethan's go-ahead); **076_violation_fine_limit_setting.sql** is written but not applied (needs Ethan's go-ahead), next unused **077**; no migration is run by merging. See `docs/plans/2026-11-20-hosted-system-main-merge.md` for checks and source boundaries. Older deployment/tracker notes below are historical.
+Application source matches hosted deployment `dpl_8SSF1zDLKLbi4y6tHoKBB4nkSVe5` for Student, Faculty, Staff, Librarian and Admin. Existing main migration bytes are preserved. Latest applied migration **076** (`074_violation_categories.sql`, `075_violation_fine_four_digits.sql` and `076_violation_fine_limit_setting.sql`, all applied 2026-11-20 with Ethan's go-ahead), next unused **077**; no migration is run by merging. See `docs/plans/2026-11-20-hosted-system-main-merge.md` for checks and source boundaries. Older deployment/tracker notes below are historical.
 
 ## November 18 application rollback
 
@@ -471,6 +471,6 @@ Postgres migration `032_login_devices.sql` was applied individually on 2026-11-1
 
 `violation_categories.fine_amount` is limited to four digits: `CHECK(fine_amount>0 AND fine_amount<=9999.99)` replaces the 074 limit of 999999.99. The API and Library setup enforce the same limit. A category with no records can now be deleted for good (`DELETE /api/v1/admin/violation-categories/:id`); the foreign keys from `conduct_incidents` and `conduct_students` refuse the delete once any record uses it, so a used category is retired instead.
 
-### Migration 076 (written 2026-11-20, not yet applied)
+### Migration 076 (applied 2026-11-20)
 
 `violation_settings` is one row (`settings_id` = 1) holding `max_fine`, the highest fine any violation category may have (default 9999.99, editable in Library setup -> Violation rules; the API refuses a limit below an existing category fine). `violation_categories.fine_amount` keeps only a hard database ceiling of 999999.99. RLS is on and browser roles have no access.

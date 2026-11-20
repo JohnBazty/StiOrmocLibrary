@@ -2,7 +2,7 @@
 
 ## Hosted-system integration — 2026-11-20
 
-Application source matches hosted deployment `dpl_8SSF1zDLKLbi4y6tHoKBB4nkSVe5` for Student, Faculty, Staff, Librarian and Admin. Existing main migration bytes are preserved. Latest applied migration **075** (`074_violation_categories.sql` and `075_violation_fine_four_digits.sql`, both applied 2026-11-20 with Ethan's go-ahead); **076_violation_fine_limit_setting.sql** is written but not applied (needs Ethan's go-ahead), next unused **077**; no migration is run by merging. See `docs/plans/2026-11-20-hosted-system-main-merge.md` for checks and source boundaries. Older deployment/tracker notes below are historical.
+Application source matches hosted deployment `dpl_8SSF1zDLKLbi4y6tHoKBB4nkSVe5` for Student, Faculty, Staff, Librarian and Admin. Existing main migration bytes are preserved. Latest applied migration **076** (`074_violation_categories.sql`, `075_violation_fine_four_digits.sql` and `076_violation_fine_limit_setting.sql`, all applied 2026-11-20 with Ethan's go-ahead), next unused **077**; no migration is run by merging. See `docs/plans/2026-11-20-hosted-system-main-merge.md` for checks and source boundaries. Older deployment/tracker notes below are historical.
 
 This file is the shared working agreement for AI agents on this repository.
 It is stored under `.cursor/` so it is versioned and visible when the project is pushed to GitHub.
