@@ -98,13 +98,13 @@ export function PracticeTransferDialog({ direction, selected, available, fee, le
   legacyWithdrawal?:boolean
   banks?: Destination[]; bankOptions?:Array<{code:string;name:string}>
 }) {
-  const [amount, setAmount] = useState(''), [reason, setReason] = useState(''), [row, setRow] = useState(selected)
+  const withdrawal = direction === 'Withdrawal', noun = withdrawal ? 'withdrawal' : 'addition'
+  const [amount, setAmount] = useState(''), [reason, setReason] = useState(() => withdrawal ? '' : 'School bank funding addition'), [row, setRow] = useState(selected)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
   const [bank, setBank] = useState(() => banks.find(b => b.type === 'SchoolBank' && b.isDefault)?.id ?? banks.find(b => b.type === 'SchoolBank')?.id ?? ''), [addBank, setAddBank] = useState(false), [addedBanks, setAddedBanks] = useState<Destination[]>([])
   const schoolBanks = [...banks, ...addedBanks.filter(added => !banks.some(bank => bank.id === added.id))].filter(bank => bank.type === 'SchoolBank')
-  const [transferredAt,setTransferredAt]=useState(()=>currentManilaDateTime()),[verificationNote,setVerificationNote]=useState(''),[confirmed,setConfirmed]=useState(false)
+  const [transferredAt,setTransferredAt]=useState(()=>currentManilaDateTime())
   const key = useRef(crypto.randomUUID()), sending = useRef(false)
-  const withdrawal = direction === 'Withdrawal', noun = withdrawal ? 'withdrawal' : 'addition'
   const trimmedAmount = amount.trim()
   const validAmount = /^(0|[1-9]\d{0,7})(\.\d{1,2})?$/.test(trimmedAmount) && Number(trimmedAmount) > 0
   async function run() {
@@ -114,8 +114,15 @@ export function PracticeTransferDialog({ direction, selected, available, fee, le
       const isoTransferredAt = transferredAt
         ? new Date(transferredAt.includes('+') || transferredAt.endsWith('Z') ? transferredAt : transferredAt + '+08:00').toISOString()
         : undefined
-      const result = row ? await moneyOutApi.confirmPractice(row.id,withdrawal?undefined:{confirmed,verificationNote}) : await moneyOutApi.draftPractice({ direction, amount: trimmedAmount, reason, requestKey: key.current, ...(!withdrawal ? { beneficiaryId: bank,transferredAt:isoTransferredAt } : {}) })
-      setRow(result); onSaved()
+      if (withdrawal) {
+        const result = row ? await moneyOutApi.confirmPractice(row.id, undefined) : await moneyOutApi.draftPractice({ direction, amount: trimmedAmount, reason, requestKey: key.current })
+        setRow(result); onSaved()
+      } else {
+        const current = row ?? await moneyOutApi.draftPractice({ direction, amount: trimmedAmount, reason: reason.trim(), requestKey: key.current, beneficiaryId: bank, transferredAt: isoTransferredAt })
+        setRow(current)
+        const confirmed = await moneyOutApi.confirmPractice(current.id, { confirmed: true, verificationNote: 'Confirmed by librarian in Add funds' })
+        setRow(confirmed); onSaved()
+      }
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'This transfer could not be saved. Please try again.') }
     finally { sending.current = false; setBusy(false) }
   }
@@ -139,7 +146,7 @@ export function PracticeTransferDialog({ direction, selected, available, fee, le
           <div className="flex justify-between gap-4 border-t border-current/10 pt-3 font-bold"><dt>{withdrawal ? 'Total deducted' : 'Funding recorded'}</dt><dd>{paymentMoney(row.totalCentavos)}</dd></div>
           {row.balanceAfterCentavos !== undefined && row.state !== 'Cancelled' ? <div className="flex justify-between gap-4"><dt>{withdrawal ? row.state === 'Draft' ? 'Expected online balance' : 'Online balance after transfer' : 'Funding allowance after record'}</dt><dd>{paymentMoney(row.balanceAfterCentavos)}</dd></div> : null}
         </dl><p className="break-words text-sm">Purpose: {row.reason}</p>
-        {row.state === 'Draft' && !legacyWithdrawal ? <><p className="payment-muted text-sm">Review these details. This records funding; it does not debit a bank account.</p>{!withdrawal?<><label className="block font-semibold">How was this funding verified?<textarea className="payment-field mt-2" rows={3} value={verificationNote} maxLength={500} onChange={event=>setVerificationNote(event.target.value)}/></label>{verificationNote.trim().length>0&&verificationNote.trim().length<10?<p className="payment-error">Enter at least 10 characters describing how you verified this funding record.</p>:null}<label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1 h-5 w-5" checked={confirmed} onChange={event=>setConfirmed(event.target.checked)}/>I checked the bank reference, amount and school authorization. Record this funding once.</label></>:null}<Button className="payment-button w-full" disabled={busy||!withdrawal&&(!confirmed||verificationNote.trim().length<10)} onClick={() => void run()}>{busy ? 'Saving…' : 'Confirm ' + noun}</Button></> : <Button className="payment-button" disabled={busy} onClick={() => void close()}>{legacyWithdrawal&&row.state==='Draft'?'Cancel old review':'Done'}</Button>}
+        {row.state === 'Draft' && !legacyWithdrawal ? <><p className="payment-muted text-sm">Review these details. This records funding; it does not debit a bank account.</p><Button className="payment-button w-full" disabled={busy} onClick={() => void run()}>{busy ? 'Saving…' : 'Confirm ' + noun}</Button></> : <Button className="payment-button" disabled={busy} onClick={() => void close()}>{legacyWithdrawal&&row.state==='Draft'?'Cancel old review':'Done'}</Button>}
         {row.events.length ? <ol className="refund-timeline">{row.events.map((event, index) => <li key={index}><strong>{stateLabel(event.state)}</strong><p className="payment-muted text-sm">{dateLabel(event.at)}</p></li>)}</ol> : null}
       </> : <>
         <p className="payment-muted">{withdrawal ? 'Only available online funds can be withdrawn. Cash collected at the library is excluded.' : 'Confirmed school-bank funding becomes available for withdrawal, within the available Xendit balance. It does not count as a student payment or revenue.'}</p>
@@ -147,10 +154,10 @@ export function PracticeTransferDialog({ direction, selected, available, fee, le
         <label className="block font-semibold">Amount in pesos<input className="payment-field mt-2" inputMode="decimal" value={amount} onChange={event => setAmount(event.target.value)}/></label>
         <p className="payment-field-note">Available online: {paymentMoney(available)}. Transfer fee: {paymentMoney(withdrawal ? fee : 0)}.</p>
         {trimmedAmount && !validAmount ? <p className="payment-error">Enter a valid peso amount with up to two decimal places.</p> : null}
-        {!withdrawal?<><p className="payment-field-note">A funding reference is created automatically when you review this addition.</p><label className="block font-semibold">Transfer date and time (Manila)<input className="payment-field mt-2" type="datetime-local" value={transferredAt} onChange={event=>setTransferredAt(event.target.value)}/></label></>:null}
+        {!withdrawal?<><p className="payment-field-note">A funding reference is created automatically when you add funds.</p><label className="block font-semibold">Transfer date and time (Manila)<input className="payment-field mt-2" type="datetime-local" value={transferredAt} onChange={event=>setTransferredAt(event.target.value)}/></label></>:null}
         <label className="block font-semibold">Purpose<textarea className="payment-field mt-2" rows={3} maxLength={500} value={reason} onChange={event => setReason(event.target.value)}/></label>
         {reason.trim().length > 0 && reason.trim().length < 10 ? <p className="payment-error">Enter at least 10 characters for the purpose.</p> : null}
-        <Button className="payment-button w-full" disabled={busy || !valid} onClick={() => void run()}>{busy ? 'Preparing…' : 'Review ' + noun}</Button>
+        <Button className="payment-button w-full" disabled={busy || !valid} onClick={() => void run()}>{busy ? 'Saving…' : withdrawal ? 'Review withdrawal' : 'Add funds'}</Button>
       </>}
       {error ? <p role="alert" className="payment-error">{error}</p> : null}
     </div>}
