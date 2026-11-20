@@ -49,8 +49,8 @@ describe('cover from the book lookup', () => {
     expect(await screen.findByText(`Preview cover-${isbn}.jpg`)).toBeTruthy()
     expect(screen.getByText(/Cover added from the book lookup/)).toBeTruthy()
     expect(api.fetchCover).toHaveBeenCalledWith(isbn,expect.any(AbortSignal))
-    fireEvent.click(screen.getByRole('button',{name:'Auto-fill missing required information'}))
-    fireEvent.click(await screen.findByRole('button',{name:'Apply required details to draft'}))
+    // The ISBN lookup fills the required details by itself.
+    await waitFor(() => expect((screen.getByLabelText(/Title \*/i) as HTMLInputElement).value).not.toBe(''))
     fireEvent.change(screen.getByLabelText(/Category \*/i), { target: { value: '1' } })
     fireEvent.click(screen.getByRole('button', { name: /Review book and copies/i }))
     fireEvent.click(await screen.findByRole('button', { name: /^Add book and \d+ cop/ }))
@@ -88,14 +88,14 @@ describe('cover from the book lookup', () => {
   })
 })
 
-it('manual cover retry leaves metadata and optional fields blank and shows a readable missing result',async()=>{
+it('manual cover retry keeps the details the librarian edited and shows a readable missing result',async()=>{
  api.lookupIsbn.mockResolvedValue(found);api.fetchCover.mockResolvedValue(null)
  render(<AddMultipleCopiesModal categories={categories} onCreated={()=>undefined} onClose={()=>undefined}/>)
  await lookUp();await screen.findByText(/No matching cover was found/)
+ fireEvent.change(screen.getByLabelText(/Title \*/i),{target:{value:'Edited title'}})
  fireEvent.click(screen.getByRole('button',{name:'Find cover automatically'}))
  await waitFor(()=>expect(api.fetchCover.mock.calls.length).toBeGreaterThan(1))
- expect((screen.getByLabelText(/Title \*/i) as HTMLInputElement).value).toBe('')
- expect((screen.getByLabelText(/Publisher/i) as HTMLInputElement).value).toBe('')
+ expect((screen.getByLabelText(/Title \*/i) as HTMLInputElement).value).toBe('Edited title')
 })
 it('ISBN edits discard an old pending cover even before it has a preview',async()=>{
  api.lookupIsbn.mockResolvedValue(found)

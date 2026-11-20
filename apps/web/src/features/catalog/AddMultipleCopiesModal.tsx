@@ -11,7 +11,6 @@ import { CategorySuggestion } from './CategorySuggestion'
 import type { DeweySelection } from './dewey-api'
 import { DeweyField } from './DeweyField'
 import { isbnInputError, normalizeIsbnInput } from './isbn'
-import { RequiredBookInformation } from './RequiredBookInformation'
 import type { BulkBookResult, Category } from './types'
 import { PredictionList, usePredictions } from './usePredictions'
 
@@ -216,6 +215,41 @@ export function AddMultipleCopiesModal({
   }>({ state: 'idle', message: '' })
   const lookupAbort = useRef<AbortController | null>(null)
   const lastLookup = useRef('')
+  // Values the ISBN lookup wrote. Only these are replaced or cleared when the ISBN changes;
+  // anything the librarian typed is kept.
+  const autoFilled = useRef<Partial<Record<keyof typeof metadata, string>>>({})
+  const clearAutoFilled = useCallback(() => {
+    const filled = autoFilled.current
+    autoFilled.current = {}
+    if (!Object.keys(filled).length) return
+    setMetadata((current) => {
+      const next = { ...current }
+      for (const [field, value] of Object.entries(filled) as Array<[keyof typeof metadata, string]>)
+        if (current[field] === value) next[field] = ''
+      return next
+    })
+  }, [])
+  const applyLookup = useCallback((result: { title?: string | null; author?: string | null; publisher?: string | null; publicationYear?: number | string | null }) => {
+    const found: Partial<Record<keyof typeof metadata, string>> = {
+      title: result.title?.trim() || undefined,
+      author: result.author?.trim() || undefined,
+      publisher: result.publisher?.trim() || undefined,
+      publicationYear: result.publicationYear ? String(result.publicationYear) : undefined,
+    }
+    const previous = autoFilled.current
+    const written: Partial<Record<keyof typeof metadata, string>> = {}
+    setMetadata((current) => {
+      const next = { ...current }
+      for (const field of Object.keys(next) as Array<keyof typeof metadata>) {
+        const wasAuto = previous[field] !== undefined && current[field] === previous[field]
+        if (!wasAuto && current[field].trim()) continue
+        next[field] = found[field] ?? (wasAuto ? '' : current[field])
+        if (found[field]) written[field] = found[field]
+      }
+      return next
+    })
+    autoFilled.current = written
+  }, [])
   const liveIsbnError = useMemo(() => isbnInputError(isbn), [isbn])
 
   const lookupIsbn = useCallback(
@@ -251,15 +285,17 @@ export function AddMultipleCopiesModal({
             : result.source === 'google_books'
               ? 'Google Books'
               : 'Open Library'
+        applyLookup(result)
         setLookupStatus({
           state: 'found',
-          message: `Book match found from ${source}. Use Auto-fill missing required information to review missing details.`,
+          message: `Book details filled from ${source}. Check them before saving.`,
         })
         setSubjects(result.subjects ?? [])
         if (result.source !== 'local_catalog') void attachLookupCover(normalized)
       } catch (reason) {
         if (controller.signal.aborted) return
         lastLookup.current = normalized
+        clearAutoFilled()
         void attachLookupCover(normalized)
         const error = reason as ApiError
         setLookupStatus({
@@ -268,12 +304,14 @@ export function AddMultipleCopiesModal({
         })
       }
     },
-    [attachLookupCover],
+    [attachLookupCover, applyLookup, clearAutoFilled],
   )
 
   useEffect(() => {
     if (!isbn || liveIsbnError) {
       lookupAbort.current?.abort()
+      lastLookup.current = ''
+      clearAutoFilled()
       setLookupStatus({ state: 'idle', message: '' })
       return
     }
@@ -281,7 +319,7 @@ export function AddMultipleCopiesModal({
       void lookupIsbn(isbn)
     }, 600)
     return () => window.clearTimeout(timer)
-  }, [isbn, liveIsbnError, lookupIsbn])
+  }, [isbn, liveIsbnError, lookupIsbn, clearAutoFilled])
 
   useEffect(() => {
     mounted.current = true
@@ -392,7 +430,7 @@ export function AddMultipleCopiesModal({
       })
       setBatch(result)
       setMessage(
-        `Saved to inventory: ${result.numberOfCopies} physical ${result.numberOfCopies === 1 ? 'copy' : 'copies'} with unique QR and barcode labels.`,
+        `Saved to inventory: ${result.numberOfCopies} physical ${result.numberOfCopies === 1 ? 'copy' : 'copies'} with unique barcode labels.`,
       )
       await onCreated(result)
     } catch (reason) {
@@ -524,7 +562,7 @@ export function AddMultipleCopiesModal({
                       1. Required book &amp; shelf details
                     </h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Fill in Title, Author, ISBN, Copies, Category, and Book location. Accession numbers (STI-ACC-2026-...) and QR codes are generated automatically.
+                      Fill in Title, Author, ISBN, Copies, Category, and Book location. Accession numbers (STI-ACC-2026-...) and barcodes are generated automatically.
                     </p>
                   </div>
                   <span className="rounded-full bg-[#0b5ea2]/10 px-2.5 py-1 text-[11px] font-bold text-[#0b5ea2] dark:bg-sky-500/20 dark:text-sky-300">
@@ -711,20 +749,6 @@ export function AddMultipleCopiesModal({
                       setBookLocation(value.shelfLocation)
                       setShelfColumn(value.shelfColumn)
                       setShelfRow(value.shelfRow)
-                    }}
-                  />
-
-                  <RequiredBookInformation
-                    draft={{ title: metadata.title, author: metadata.author, isbn }}
-                    requireIsbn
-                    disabled={saving || Boolean(batch)}
-                    onApply={(patch) => {
-                      setMetadata((current) => ({
-                        ...current,
-                        title: current.title.trim() ? current.title : (patch.title ?? current.title),
-                        author: current.author.trim() ? current.author : (patch.author ?? current.author),
-                      }))
-                      if (patch.isbn) setIsbn((current) => (current.trim() ? current : patch.isbn!))
                     }}
                   />
                 </div>

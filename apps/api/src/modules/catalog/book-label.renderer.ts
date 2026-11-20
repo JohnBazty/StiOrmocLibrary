@@ -26,6 +26,12 @@ export async function renderBookLabel(payload: TrackingPayload) {
   }
 }
 
+/** Barcode-only label for newly added copies. */
+export async function renderBookBarcodeLabel(payload: TrackingPayload) {
+  const barcodeSvg = bwipjs.toSVG(barcodeOptions(payload.barcode, false))
+  return { barcodeImageData: `data:image/svg+xml;base64,${Buffer.from(barcodeSvg, 'utf8').toString('base64')}` }
+}
+
 export async function renderBarcodePng(barcode: string) {
   return bwipjs.toBuffer(barcodeOptions(barcode, true))
 }

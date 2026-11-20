@@ -2,7 +2,7 @@ import { assertShelfCapacity, lockShelfCapacity } from './shelf-capacity.service
 import type { Pool } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
-import { renderBookLabel } from './book-label.renderer.ts'
+import { renderBookBarcodeLabel, type TrackingPayload } from './book-label.renderer.ts'
 import { createBulkBookTitle, ensureBookLocationExists, insertGeneratedBookCopy, lockBookTitleByIsbn, lockCategoryShelf, reserveBarcodeSequence, updateBookCover } from './bulk-book.repository.ts'
 import { validateBulkBookInput } from './bulk-book.validation.ts'
 import { removeStoredCover, storeCoverImage } from './cover-image.storage.ts'
@@ -19,7 +19,7 @@ function identity(value: string) {
   return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-US')
 }
 
-export function createBulkBookService(database: Pool = db, clock: () => Date = () => new Date(), labelRenderer = renderBookLabel) {
+export function createBulkBookService(database: Pool = db, clock: () => Date = () => new Date(), labelRenderer: (payload: TrackingPayload) => Promise<{ barcodeImageData: string }> = renderBookBarcodeLabel) {
   return {
     async addBulk(body: unknown, actorAccountId: number | null = null) {
       const validated = validateBulkBookInput(body)
@@ -66,11 +66,12 @@ export function createBulkBookService(database: Pool = db, clock: () => Date = (
           const barcode = `${BRANCH_PREFIX}${year}${serial}`
           const accessionNumber = `STI-ACC-${year}-${serial}`
           const rendered = await labelRenderer({ title_id: titleId, barcode, accession_number: accessionNumber })
-          const inserted = await insertGeneratedBookCopy(connection, input, titleId, { barcode, accessionNumber, qrCodeData: rendered.qrCodeData })
+          // Book labels are barcode only: no QR code is generated or stored for new copies.
+          const inserted = await insertGeneratedBookCopy(connection, input, titleId, { barcode, accessionNumber, qrCodeData: null })
           copies.push({
             ...inserted, titleId, title: input.title, author: input.author, isbn: input.isbn,
             shelfLocation: input.shelfLocation, accessionNumber, barcode,
-            qrCodeData: rendered.qrCodeData, barcodeImageData: rendered.barcodeImageData,
+            barcodeImageData: rendered.barcodeImageData,
           })
         }
         await assignDeweyCopies(connection, dewey, copies.map(copy => ({ id: copy.physicalCopyId, version: 0 })), actorAccountId)
