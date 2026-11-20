@@ -6,7 +6,7 @@ import type { Announcement } from './types'
 import { UnsavedGuard } from '../../components/UnsavedChanges'
 
 const input = 'h-11 w-full rounded-xl border border-[#0b5ea2]/20 bg-white px-3 text-sm text-[#0b5ea2] outline-none focus:ring-4 focus:ring-[#0b5ea2]/10'
-function format(value: string | null) { if (!value) return '—'; const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) }
+function format(value: string | null) { if (!value) return '—'; const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleString([], { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' }) }
 
 export function AdminAnnouncementsPage() {
   const [items, setItems] = useState<Announcement[]>([])

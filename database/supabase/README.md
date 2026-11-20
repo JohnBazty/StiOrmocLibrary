@@ -37,6 +37,7 @@ Application source matches hosted deployment `dpl_8SSF1zDLKLbi4y6tHoKBB4nkSVe5` 
 --   074_violation_categories.sql          — maintained violation rules, paper-log source on conduct incidents (applied 2026-11-20)
 --   075_violation_fine_four_digits.sql     — violation fine limited to PHP 9,999.99 (applied 2026-11-20)
 --   076_violation_fine_limit_setting.sql   — highest violation fine is a Library setup setting (applied 2026-11-20)
+--   078_app_role_manila_timezone.sql      — app role session time zone Asia/Manila; the transaction pooler drops the startup option (not yet applied)
 -- Latest applied migration: 039_category_record_kind.sql (live ledger checked 2026-11-14).
 -- Unapplied payment drafts: 040_online_payment_foundation.sql and
 -- 041_xendit_checkout_confirmation.sql, 042_payment_counter_and_cancellation.sql and 043_payment_reconciliation.sql are pending review.
