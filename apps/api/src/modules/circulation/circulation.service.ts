@@ -1,3 +1,4 @@
+import { isFineExemptUser } from '../fines/fine-exemption.ts'
 import { localPaymentPreview } from '../payments/payments.preview.ts'
 import { borrowerBalances, borrowerPaymentCredits } from '../payments/borrower-balances.ts'
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from '../../config/db.js'
@@ -819,7 +820,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
         let lateFine = 0
         if(loan.due_at&&(loan.transaction_status==='Overdue'||localTimestamp(loan.due_at)<returnedAt.getTime())){
           const due=new Date(localTimestamp(loan.due_at));const context=await loadFineContext(connection,due,returnedAt);const policy=context.policyFor(due);const charge=calculateOperatingFine(due,returnedAt,policy,context.calendar)
-          if (charge.amount > 0) {
+          if (charge.amount > 0 && !(await isFineExemptUser(connection, loan.user_id))) { // faculty are never fined
             await connection.execute(
               `INSERT INTO fines(transaction_id,user_id,fine_type,fine_amount,payment_status,calculation_basis,overdue_units,rate_applied,maximum_cap_applied,applied_date,finalized_at,notes,updated_at)
                VALUES (?,?,'Overdue',?,'Unpaid',?,?,?,?,NOW(),?,'Finalized when the book was returned',NOW())
@@ -847,7 +848,7 @@ export function createCirculationService(database: Pool = db, clock: () => Date 
           throw new HttpError(422, 'CIRCULATION_PENALTY_INVALID', 'Penalty can only be calculated for active, overdue, or returned loans with a due date.')
         }
         const due = new Date(loan.due_at); const ended = loan.returned_at ? new Date(loan.returned_at) : clock(); const context=await loadFineContext(connection,due,ended);const policy=context.policyFor(due);const charge=calculateOperatingFine(due,ended,policy,context.calendar);const status=loan.returned_at?'Unpaid':'Accruing'
-        if (charge.amount > 0) {
+        if (charge.amount > 0 && !(await isFineExemptUser(connection, loan.user_id))) { // faculty are never fined
           await connection.execute(
             `INSERT INTO fines (transaction_id,user_id,fine_type,fine_amount,payment_status,calculation_basis,overdue_units,rate_applied,maximum_cap_applied,applied_date,finalized_at,notes,updated_at) VALUES (?,?,'Overdue',?,?,?,?,?,?,NOW(),?,'Calculated from the operating calendar and 8:59 AM cutoff',NOW()) ON CONFLICT (transaction_id) DO UPDATE SET fine_amount=${excluded('fine_amount')},payment_status=${caseIf("fines.payment_status IN ('Paid','Waived','Voided','Partially Paid')", 'fines.payment_status', excluded('payment_status'))},calculation_basis=${excluded('calculation_basis')},overdue_units=${excluded('overdue_units')},rate_applied=${excluded('rate_applied')},maximum_cap_applied=${excluded('maximum_cap_applied')},finalized_at=${excluded('finalized_at')},notes=${excluded('notes')},updated_at=NOW()`,
             [transactionId,loan.user_id,charge.amount,status,charge.basis,charge.units,charge.rate,charge.capApplied?policy.maximumPenalty:null,loan.returned_at??null],

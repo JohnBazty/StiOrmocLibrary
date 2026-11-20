@@ -54,6 +54,7 @@ function returnFake(options: Options = {}) {
         state.notices.push(values); state.commitsAtNotice.push(state.commits); return [{ affectedRows: 1 }]
       }
       if (sql.includes('INSERT INTO admin_notifications')) { state.adminNotices += 1; return [{ affectedRows: 1 }] }
+      if (sql.includes('SELECT user_role FROM users WHERE user_id=?')) return [[{ user_role: 'Student' }]] // students are fined
       throw new Error(`Unexpected SQL: ${sql}`)
     },
   }
