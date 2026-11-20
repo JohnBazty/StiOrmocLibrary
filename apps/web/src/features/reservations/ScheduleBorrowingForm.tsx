@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 import { Button, FormField, NoticeBanner } from '../../components/ui'
+import { CalendarDateButton, calendarDayLabel } from '../../components/CalendarDateButton'
 import { borrowingScheduleApi, pickupDateLabel, type BorrowingSchedule } from './borrowing-schedule-api'
 
 const MAX_PENDING_SCHEDULES = 2
@@ -17,6 +18,7 @@ export function ScheduleBorrowingForm({
   onClose: () => void
 }) {
   const [dates, setDates] = useState<string[]>([])
+  const [semesterEnd, setSemesterEnd] = useState<string | null>(null)
   const [pendingSchedules, setPendingSchedules] = useState<BorrowingSchedule[]>([])
   const [date, setDate] = useState('')
   const [loading, setLoading] = useState(true)
@@ -42,6 +44,7 @@ export function ScheduleBorrowingForm({
         ])
         if (mounted) {
           setDates(result.dates)
+          setSemesterEnd(result.semesterEnd ?? null)
           setPendingSchedules(mine.filter(row => row.status === 'scheduled'))
           setError(result.available ? '' : 'Scheduled borrowing is not available yet.')
         }
@@ -156,26 +159,19 @@ export function ScheduleBorrowingForm({
           }}
         >
           <FormField id="scheduled-pickup-date" label="Preferred pickup date" required>
-            <select
+            <CalendarDateButton
               id="scheduled-pickup-date"
-              value={date}
-              onChange={e => setDate(e.target.value)}
+              label="Preferred pickup date"
+              value={dates.includes(date) ? date : ''}
+              allowed={dates}
+              onChange={setDate}
               disabled={busy}
-              required
-              className="sl-input"
-            >
-              <option value="">Choose a date</option>
-              {date && !dates.includes(date) ? (
-                <option value={date} disabled>
-                  {pickupDateLabel(date)} — no longer available
-                </option>
-              ) : null}
-              {dates.map(d => (
-                <option key={d} value={d}>
-                  {pickupDateLabel(d)}
-                </option>
-              ))}
-            </select>
+            />
+            {semesterEnd ? (
+              <p className="mt-1 text-xs text-[var(--sl-text-secondary)]">
+                Open library days through {calendarDayLabel(semesterEnd).replace(/^\w+, /, '')}, the end of this semester.
+              </p>
+            ) : null}
           </FormField>
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <Button type="submit" disabled={busy || !dates.includes(date)}>
@@ -188,7 +184,7 @@ export function ScheduleBorrowingForm({
         </form>
       ) : (
         <NoticeBanner tone="info" className="mb-0 mt-3">
-          No open pickup dates are available in the next seven days.
+          No open pickup dates are available this semester.
         </NoticeBanner>
       )}
 
