@@ -1,9 +1,10 @@
 import { HttpError } from '../../core/http-error.ts'
+import { CLOCK_TIME_HINT, formatClockTime, parseClockTime } from '../../core/clock-time.ts'
 
 /** Standing decision: the fine cap is at most PHP 500. A higher cap needs Ethan's approval and a code change. */
 export const FINE_CAP_CEILING = 500
 
-export type FinePolicyInput = { hourlyRate: number; dailyRate: number; maximumPenalty: number; effectiveOn: string; changeReason: string }
+export type FinePolicyInput = { hourlyRate: number; dailyRate: number; maximumPenalty: number; effectiveOn: string; changeReason: string; hourlyStartsAt: string | null; hourlyEndsAt: string | null }
 
 function fail(field: string, message: string): never {
   throw new HttpError(422, 'FINE_POLICY_VALIDATION_FAILED', message, { errors: { [field]: message } })
@@ -25,6 +26,12 @@ function campusDate(value: unknown) {
   return text
 }
 
+function clock(value: unknown, field: string, label: string) {
+  const time = parseClockTime(value)
+  if (time === undefined) fail(field, `${label} must be ${CLOCK_TIME_HINT}, with AM or PM.`)
+  return time
+}
+
 function reason(value: unknown) {
   const text = typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : ''
   if (text.length < 10 || text.length > 500 || /[\u0000-\u001f\u007f]/.test(text)) fail('changeReason', 'Give a reason of 10 to 500 characters.')
@@ -39,5 +46,10 @@ export function validateFinePolicy(body: unknown): FinePolicyInput {
   if (maximumPenalty <= 0) fail('maximumPenalty', 'Maximum fine must be more than 0.')
   if (hourlyRate > dailyRate) fail('hourlyRate', 'Hourly rate cannot be more than the daily rate.')
   if (dailyRate > maximumPenalty) fail('dailyRate', 'Daily rate cannot be more than the maximum fine.')
-  return { hourlyRate, dailyRate, maximumPenalty, effectiveOn: campusDate(input.effectiveOn), changeReason: reason(input.changeReason) }
+  // Optional fine hours: hourly fines count only between these times each day.
+  const hourlyStartsAt = clock(input.hourlyStartsAt, 'hourlyStartsAt', 'Fine hours start')
+  const hourlyEndsAt = clock(input.hourlyEndsAt, 'hourlyEndsAt', 'Fine hours end')
+  if ((hourlyStartsAt === null) !== (hourlyEndsAt === null)) fail('hourlyStartsAt', 'Enter both fine hours, or leave both blank to use the library closing time.')
+  if (hourlyStartsAt && hourlyEndsAt && hourlyStartsAt >= hourlyEndsAt) fail('hourlyEndsAt', `The start (${formatClockTime(hourlyStartsAt)}) must be before the end (${formatClockTime(hourlyEndsAt)}).`)
+  return { hourlyRate, dailyRate, maximumPenalty, effectiveOn: campusDate(input.effectiveOn), changeReason: reason(input.changeReason), hourlyStartsAt, hourlyEndsAt }
 }

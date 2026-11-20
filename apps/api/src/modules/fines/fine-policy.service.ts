@@ -1,13 +1,14 @@
 import type { Pool, PoolConnection, RowDataPacket, ResultSetHeader } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
+import { formatClockTime } from '../../core/clock-time.ts'
 import { manilaDate } from './fine-calculator.ts'
 import { validateFinePolicy } from './fine-policy.validation.ts'
 
 const HISTORY_LIMIT = 50
 // Versions cannot be cancelled, so a mistyped far-future date would block every later change.
 const MAX_DAYS_AHEAD = 365
-const COLUMNS = 'fine_policy_id,hourly_rate,daily_rate,maximum_penalty,effective_from,effective_until,change_reason,created_by_user_id,created_at'
+const COLUMNS = "fine_policy_id,hourly_rate,daily_rate,maximum_penalty,effective_from,effective_until,change_reason,created_by_user_id,created_at,to_char(hourly_starts_at,'HH24:MI') AS hourly_starts_at,to_char(hourly_ends_at,'HH24:MI') AS hourly_ends_at"
 
 type Status = 'active' | 'scheduled' | 'superseded'
 const iso = (value: unknown) => value instanceof Date ? value.toISOString() : value == null ? null : new Date(String(value)).toISOString()
@@ -19,6 +20,8 @@ function toDto(row: RowDataPacket, status: Status) {
     effectiveFrom: iso(row.effective_from), effectiveUntil: iso(row.effective_until),
     changeReason: row.change_reason ? String(row.change_reason) : null,
     createdByUserId: row.created_by_user_id ? Number(row.created_by_user_id) : null, createdAt: iso(row.created_at),
+    /** Fine hours as 'HH:MM' (Manila); the app shows them as 12-hour times. */
+    hourlyStartsAt: row.hourly_starts_at ? String(row.hourly_starts_at) : null, hourlyEndsAt: row.hourly_ends_at ? String(row.hourly_ends_at) : null,
   }
 }
 
@@ -75,18 +78,19 @@ export function createFinePolicyService(database: Pool = db, clock: () => Date =
         if (latest) await connection.execute('UPDATE fine_policy_versions SET effective_until = ? WHERE fine_policy_id = ?', [effectiveFrom, Number(latest.fine_policy_id)])
         const createdByUserId = await actorUserId(accountId, connection)
         const [insert] = await connection.execute<ResultSetHeader>(
-          `INSERT INTO fine_policy_versions (hourly_rate,daily_rate,maximum_penalty,effective_from,created_by_user_id,change_reason,is_active)
-           VALUES (?,?,?,?,?,?,1)`,
-          [input.hourlyRate, input.dailyRate, input.maximumPenalty, effectiveFrom, createdByUserId, input.changeReason],
+          `INSERT INTO fine_policy_versions (hourly_rate,daily_rate,maximum_penalty,effective_from,created_by_user_id,change_reason,hourly_starts_at,hourly_ends_at,is_active)
+           VALUES (?,?,?,?,?,?,?,?,1)`,
+          [input.hourlyRate, input.dailyRate, input.maximumPenalty, effectiveFrom, createdByUserId, input.changeReason, input.hourlyStartsAt, input.hourlyEndsAt],
         )
         await connection.execute(
           "INSERT INTO admin_notifications (event_type, actor_user_id, message_title, message_body) VALUES ('fine_policy_published', ?, 'Fine rules changed', ?)",
-          [createdByUserId, `From ${input.effectiveOn}: PHP ${input.hourlyRate.toFixed(2)} per hour, PHP ${input.dailyRate.toFixed(2)} per library day, at most PHP ${input.maximumPenalty.toFixed(2)}. Reason: ${input.changeReason}`.slice(0, 500)], // message_body is VARCHAR(500)
+          [createdByUserId, `From ${input.effectiveOn}: PHP ${input.hourlyRate.toFixed(2)} per hour${input.hourlyStartsAt && input.hourlyEndsAt ? ` from ${formatClockTime(input.hourlyStartsAt)} to ${formatClockTime(input.hourlyEndsAt)}` : ''}, PHP ${input.dailyRate.toFixed(2)} per library day, at most PHP ${input.maximumPenalty.toFixed(2)}. Reason: ${input.changeReason}`.slice(0, 500)], // message_body is VARCHAR(500)
         )
         await connection.commit()
         return toDto({
           fine_policy_id: insert.insertId, hourly_rate: input.hourlyRate, daily_rate: input.dailyRate, maximum_penalty: input.maximumPenalty,
           effective_from: effectiveFrom, effective_until: null, change_reason: input.changeReason, created_by_user_id: createdByUserId, created_at: now,
+          hourly_starts_at: input.hourlyStartsAt, hourly_ends_at: input.hourlyEndsAt,
         } as unknown as RowDataPacket, effectiveFrom.getTime() > now.getTime() ? 'scheduled' : 'active')
       } catch (error) {
         await connection.rollback().catch(() => {}) // keep the original error if the connection died

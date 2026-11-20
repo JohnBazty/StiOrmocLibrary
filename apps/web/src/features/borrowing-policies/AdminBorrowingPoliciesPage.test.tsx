@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { AdminBorrowingPoliciesPage } from './AdminBorrowingPoliciesPage'
 import { borrowingPoliciesApi } from './borrowing-policies-api'
@@ -63,4 +63,22 @@ it('shows a publish error inside the dialog and leaves confirm mode when a field
   fireEvent.click(form.getByRole('button', { name: 'Review and continue' }))
   fireEvent.click(form.getByRole('button', { name: 'Confirm publish' }))
   expect((await form.findByRole('alert')).textContent).toContain('Effective date cannot be in the past.')
+})
+
+it('sets borrowing and returning hours and the due cutoff in 12-hour time', async () => {
+  vi.mocked(borrowingPoliciesApi.publish).mockResolvedValue({ displayName: 'Policy 2', status: 'scheduled' } as never)
+  const { dialog } = await openForm()
+  const form = within(dialog)
+  expect((form.getByLabelText('Due cutoff AM or PM') as HTMLSelectElement).value).toBe('AM')
+  fireEvent.change(form.getByLabelText('Borrowing opens hour'), { target: { value: '8' } })
+  fireEvent.change(form.getByLabelText('Borrowing closes hour'), { target: { value: '4' } })
+  fireEvent.change(form.getByLabelText('Borrowing closes minute'), { target: { value: '30' } })
+  fireEvent.change(form.getByLabelText('Borrowing closes AM or PM'), { target: { value: 'PM' } })
+  fireEvent.change(form.getByLabelText('Change reason'), { target: { value: 'Desk lends only in desk hours.' } })
+  fireEvent.click(form.getByRole('button', { name: 'Review and continue' }))
+  expect(form.getByText('Borrowing hours: Any time → 8:00 AM to 4:30 PM')).toBeTruthy()
+  expect(dialog.textContent).not.toMatch(/\b(1[3-9]|2[0-3]):\d\d\b/)
+  fireEvent.click(form.getByRole('button', { name: 'Confirm publish' }))
+  await waitFor(() => expect(borrowingPoliciesApi.publish).toHaveBeenCalled())
+  expect(vi.mocked(borrowingPoliciesApi.publish).mock.calls[0][0]).toMatchObject({ borrowOpensAt: '08:00', borrowClosesAt: '16:30', returnOpensAt: null, returnClosesAt: null })
 })

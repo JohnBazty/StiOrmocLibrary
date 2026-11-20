@@ -6,6 +6,7 @@ import { exactLoanDeadline } from './exact-loan-deadline.ts'
 import { borrowerBalances, borrowerPaymentCredits } from '../payments/borrower-balances.ts'
 import type { PreviewCredit } from '../payments/preview-balances.ts'
 import { enrollmentDecision } from '../enrollment/enrollment-policy.ts'
+import { deskWindowMessage } from './borrowing-windows.ts'
 
 export async function borrowingPolicy(q: PoolConnection, now: Date) {
   const [rows] = await q.execute<RowDataPacket[]>(`SELECT * FROM borrowing_policy_versions WHERE effective_on<=?::date ORDER BY effective_on DESC,borrowing_policy_version_id DESC LIMIT 1`,[manilaDate(now)])
@@ -38,7 +39,18 @@ export async function borrowerEligibility(q: PoolConnection,userId:number,now:Da
   const limit=user?.user_role==='Student'?Number(policy.student_max_active_books):user?.user_role==='Faculty'&&policy.faculty_max_active_books!=null?Number(policy.faculty_max_active_books):null
   const state=await libraryState(q,now)
   if(mode !== 'Online' && !state.allowBorrowing)blockers.push('The library is not accepting borrowing at this time.')
+  const borrowHours=deskWindowMessage('Borrowing',policy.borrow_opens_at,policy.borrow_closes_at,now)
+  if(mode !== 'Online' && borrowHours)blockers.push(borrowHours)
   return {user,visit:visits[0]??null,blockers,balance,loans,limit,policy,state,enrollment:enrollment.label}
+}
+/** The borrowing policy's returning window, if set, limits when the desk takes books back. */
+export async function requireReturnWindow(q: PoolConnection, now: Date) {
+  // A missing policy never blocks a return; only a set returning window does.
+  const [rows]=await q.execute<RowDataPacket[]>(`SELECT return_opens_at,return_closes_at FROM borrowing_policy_versions WHERE effective_on<=?::date ORDER BY effective_on DESC,borrowing_policy_version_id DESC LIMIT 1`,[manilaDate(now)])
+  const policy=Array.isArray(rows)?rows[0]:undefined
+  if(!policy)return
+  const message=deskWindowMessage('Returning',policy.return_opens_at,policy.return_closes_at,now)
+  if(message)throw new HttpError(422,'RETURN_OUTSIDE_HOURS',message)
 }
 export function requireEligible(result:Awaited<ReturnType<typeof borrowerEligibility>>) {
   if(result.blockers.length)throw new HttpError(422,'CIRCULATION_ELIGIBILITY_BLOCKED',result.blockers.join(' '),{blockers:result.blockers})

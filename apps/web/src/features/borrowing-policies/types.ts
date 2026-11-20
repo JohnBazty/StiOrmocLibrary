@@ -21,6 +21,11 @@ export type BorrowingPolicyVersion = {
   blockRenewalIfUnpaidFines: boolean
   blockRenewalIfReserved: boolean
   longOverdueAfterDays: number | null
+  /** Desk windows as 'HH:MM'; shown as 12-hour times. Null: no limit. */
+  borrowOpensAt?: string | null
+  borrowClosesAt?: string | null
+  returnOpensAt?: string | null
+  returnClosesAt?: string | null
   changeReason: string
   createdByUserId: number | null
   createdAt: string
@@ -47,6 +52,10 @@ export type PublishBorrowingPolicyInput = {
   blockRenewalIfUnpaidFines: boolean
   blockRenewalIfReserved: boolean
   longOverdueAfterDays: number
+  borrowOpensAt: string | null
+  borrowClosesAt: string | null
+  returnOpensAt: string | null
+  returnClosesAt: string | null
   changeReason: string
   materialRules: BorrowingPolicyMaterialRule[]
 }

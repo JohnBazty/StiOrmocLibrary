@@ -26,6 +26,7 @@ function deskDatabase(failCaseInsert = false) {
         state.caseInserts.push(values); return [{ insertId: 55, affectedRows: 1 }]
       }
       if (/^\s*(INSERT|UPDATE)/i.test(sql)) return [{ insertId: 1, affectedRows: 1 }]
+      if (sql.includes('FROM borrowing_policy_versions')) return [[]] // no returning window set
       throw new Error(`Unexpected SQL: ${sql}`)
     },
   }

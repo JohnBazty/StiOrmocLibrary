@@ -1,3 +1,4 @@
+import { TimeField12, formatTime12 } from '../../components/TimeField12'
 import { AlertTriangle, CheckCircle2, CircleDollarSign, Clock, ShieldAlert, SlidersHorizontal } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
@@ -11,11 +12,12 @@ const peso = (value: number) => `PHP ${value.toFixed(2)}`
 const todayCampusDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
 const campusDateTime = (value: string | null) => value ? new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—'
 
-type Draft = { hourlyRate: string; dailyRate: string; maximumPenalty: string; effectiveOn: string; changeReason: string }
+type Draft = { hourlyRate: string; dailyRate: string; maximumPenalty: string; effectiveOn: string; changeReason: string; hourlyStartsAt: string; hourlyEndsAt: string }
+const fineHours = (start?: string | null, end?: string | null) => start && end ? `${formatTime12(start)} to ${formatTime12(end)}` : 'until closing time'
 const amountFields = [['hourlyRate', 'Hourly rate'], ['dailyRate', 'Daily rate'], ['maximumPenalty', 'Maximum fine']] as const
 
-export function describeRule(policy: Pick<FinePolicyVersion, 'hourlyRate' | 'dailyRate' | 'maximumPenalty'>) {
-  return `${peso(policy.hourlyRate)} per hour on the due date, ${peso(policy.dailyRate)} per library day after, at most ${peso(policy.maximumPenalty)}.`
+export function describeRule(policy: Pick<FinePolicyVersion, 'hourlyRate' | 'dailyRate' | 'maximumPenalty' | 'hourlyStartsAt' | 'hourlyEndsAt'>) {
+  return `${peso(policy.hourlyRate)} per hour on the due date${policy.hourlyStartsAt && policy.hourlyEndsAt ? ` (${fineHours(policy.hourlyStartsAt, policy.hourlyEndsAt)})` : ''}, ${peso(policy.dailyRate)} per library day after, at most ${peso(policy.maximumPenalty)}.`
 }
 
 function fromVersion(version: FinePolicyVersion | null): Draft {
@@ -25,6 +27,8 @@ function fromVersion(version: FinePolicyVersion | null): Draft {
     maximumPenalty: String(version?.maximumPenalty ?? CAP_CEILING),
     effectiveOn: todayCampusDate(),
     changeReason: '',
+    hourlyStartsAt: version?.hourlyStartsAt ?? '',
+    hourlyEndsAt: version?.hourlyEndsAt ?? '',
   }
 }
 
@@ -109,6 +113,7 @@ export function AdminFinePoliciesPage({ embedded = false }: { embedded?: boolean
   const active = data?.active ?? null
   const changes = [
     ...amountFields.map(([key, label]) => [label, active ? peso(active[key]) : null, peso(Number(draft[key]))] as const),
+    ['Fine hours', fineHours(active?.hourlyStartsAt, active?.hourlyEndsAt), fineHours(draft.hourlyStartsAt, draft.hourlyEndsAt)] as const,
     ['Starts', null, draft.effectiveOn] as const,
   ].filter(([label, before, after]) => label === 'Starts' || before !== after).map(([label, before, after]) => before ? `${label}: ${before} → ${after}` : `${label}: ${after}`)
 
@@ -134,6 +139,8 @@ export function AdminFinePoliciesPage({ embedded = false }: { embedded?: boolean
       maximumPenalty: Number(draft.maximumPenalty),
       effectiveOn: draft.effectiveOn,
       changeReason: draft.changeReason,
+      hourlyStartsAt: draft.hourlyStartsAt || null,
+      hourlyEndsAt: draft.hourlyEndsAt || null,
     }
     try {
       const created = await finePoliciesApi.publish(input)
@@ -174,6 +181,8 @@ export function AdminFinePoliciesPage({ embedded = false }: { embedded?: boolean
         maximumPenalty: Number(inlineDraft.maximumPenalty),
         effectiveOn: inlineDraft.effectiveOn,
         changeReason: inlineDraft.changeReason.trim(),
+        hourlyStartsAt: inlineDraft.hourlyStartsAt || null,
+        hourlyEndsAt: inlineDraft.hourlyEndsAt || null,
       })
       setInlineConfirming(false)
       setNotice(`Fine rules saved. ${created.status === 'scheduled' ? `They start on ${inlineDraft.effectiveOn}.` : 'They apply to loans that fall due from this moment on.'}`)
@@ -341,6 +350,11 @@ export function AdminFinePoliciesPage({ embedded = false }: { embedded?: boolean
                 className={`${field} mt-1.5`}
               />
             </label>
+            <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2">
+              <TimeField12 label="Fine hours start" optional value={inlineDraft.hourlyStartsAt} onChange={(value) => editInline({ hourlyStartsAt: value })} />
+              <TimeField12 label="Fine hours end" optional value={inlineDraft.hourlyEndsAt} onChange={(value) => editInline({ hourlyEndsAt: value })} />
+              <p className="text-xs text-slate-600 sm:col-span-2 dark:text-slate-300">Optional fine hours: hourly fines count only between these times. Leave both empty to count until the library closes.</p>
+            </div>
             <label className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200 sm:col-span-2">
               Reason for policy update (min 10 characters)
               <input
@@ -443,6 +457,12 @@ export function AdminFinePoliciesPage({ embedded = false }: { embedded?: boolean
                   {fieldHint(key)}
                 </label>
               ))}
+              <div className="grid gap-3 sm:col-span-3 sm:grid-cols-2">
+                <TimeField12 label="Fine hours start" optional value={draft.hourlyStartsAt} onChange={(value) => edit({ hourlyStartsAt: value })} />
+                <TimeField12 label="Fine hours end" optional value={draft.hourlyEndsAt} onChange={(value) => edit({ hourlyEndsAt: value })} />
+                <p className="text-xs text-slate-600 sm:col-span-2 dark:text-slate-300">Optional. Hourly fines count only between these times on the due date. Leave both empty to count until the library closes.</p>
+                {fieldHint('hourlyStartsAt')}{fieldHint('hourlyEndsAt')}
+              </div>
               <label className="text-sm font-bold text-slate-800 dark:text-slate-200 sm:col-span-3">Starts on
                 <input required name="effectiveOn" type="date" min={todayCampusDate()} value={draft.effectiveOn} onChange={(event) => edit({ effectiveOn: event.target.value })} className={`${field} mt-1`} {...invalid('effectiveOn')} />
                 {fieldHint('effectiveOn')}
