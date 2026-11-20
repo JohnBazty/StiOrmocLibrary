@@ -67,7 +67,6 @@ export function createReservationService(database: Pool = db, clock: () => Date 
 
     swapCandidates: (accountId: unknown, id: unknown) => createBookRequestService(database,clock).swapCandidates(accountId,id),
     swapCopy: (accountId: unknown, id: unknown, body: unknown) => createBookRequestService(database,clock).swapCopy(accountId,id,body),
-    moveInQueue: (accountId: unknown, id: unknown, body: unknown) => createBookRequestService(database,clock).moveInQueue(accountId,id,body),
 
     async adjustStatus(adminUserIdValue: unknown, reservationIdValue: unknown, body: unknown) {
       return createBookRequestService(database,clock).adjustStatus(adminUserIdValue,reservationIdValue,body)

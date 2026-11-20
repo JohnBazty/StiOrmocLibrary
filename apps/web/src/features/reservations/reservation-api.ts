@@ -40,7 +40,6 @@ export const reservationApi = {
   adjustStatus: (reservationId: number, status: ReservationStatus) => request(`/api/v1/admin/reservations/${reservationId}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   swapCandidates: (reservationId: number) => request<SwapCandidate[]>(`/api/v1/admin/reservations/${reservationId}/swap-candidates`),
   swapCopy: (reservationId: number, physicalCopyId: number) => request(`/api/v1/admin/reservations/${reservationId}/swap-copy`, { method: 'POST', body: JSON.stringify({ physicalCopyId }) }),
-  moveInQueue: (reservationId: number, direction: 'up' | 'down', reason: string) => request(`/api/v1/admin/reservations/${reservationId}/move`, { method: 'POST', body: JSON.stringify({ direction, reason }) }),
   mine: () => request<RequestHistoryItem[]>('/api/v1/reservations'),
   settings: () => request<ReservationSettingsView>('/api/v1/admin/reservation-settings'),
   saveSettings: (body: { pickupWindowDays?: string; waitingExpiryDays?: string }) => request<ReservationSettingsView>('/api/v1/admin/reservation-settings', { method: 'PUT', body: JSON.stringify(body) }),

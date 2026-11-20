@@ -16,13 +16,13 @@ async function fixture(){
  CREATE TABLE titles(title_id bigint primary key,title text,category_id bigint,lifecycle_status text);
  CREATE TABLE physical_copies(physical_copy_id bigint primary key,title_id bigint,material_id bigint,barcode text,accession_number text,shelf_location text,shelf_column smallint,shelf_row smallint,condition_status text,availability_status text,lifecycle_status text,row_version integer);
  CREATE TABLE research_inventory(research_inventory_id bigint primary key,title_id bigint,title text,barcode text,accession_number text,shelf_location text,shelf_column smallint,shelf_row smallint,condition_state text,availability_status text,lifecycle_status text,row_version integer);
- CREATE TABLE borrow_transactions(physical_copy_id bigint,material_id bigint,transaction_status text,returned_at timestamp);
+ CREATE TABLE borrow_transactions(physical_copy_id bigint,material_id bigint,transaction_status text,returned_at timestamp,lost_confirmed_at timestamp);
  CREATE TABLE in_library_uses(physical_copy_id bigint,research_inventory_id bigint,ended_at timestamp);
  CREATE TABLE reservations(assigned_physical_copy_id bigint,reservation_status text);
  INSERT INTO titles VALUES(1,'Synthetic book',null,'Active');
  INSERT INTO physical_copies VALUES(1,1,1,'000123','A1','Shelf A',1,1,'Good','Available','Active',1),(2,1,2,'000124','A2','Shelf A',1,1,'Good','Borrowed','Active',1);
  INSERT INTO research_inventory VALUES(1,null,'Synthetic research','000125','R1','Shelf B',1,1,'damaged','available','Active',1);
- INSERT INTO borrow_transactions VALUES(2,2,'Borrowed',null);`)
+ INSERT INTO borrow_transactions VALUES(2,2,'Borrowed',null,null);`)
  await pg.exec(await readFile(new URL('../../../../../database/supabase/018_stocktake_sessions.sql',import.meta.url),'utf8'))
  const execute=async(sql:string,values:readonly unknown[]=[])=>{const write=/^\s*(INSERT|UPDATE|DELETE)/i.test(sql);const query=/^\s*INSERT/i.test(sql)&&!/RETURNING/i.test(sql)?sql+' RETURNING *':sql;const result=await pg.query(toPgPlaceholders(query),[...values]);return [write?{insertId:Number(Object.values(result.rows[0]??{})[0]??0),affectedRows:result.affectedRows,rows:result.rows}:result.rows,result]}
  const q={execute,query:execute,beginTransaction:()=>pg.exec('BEGIN'),commit:()=>pg.exec('COMMIT'),rollback:()=>pg.exec('ROLLBACK'),release(){},ping:async()=>{}}
@@ -91,4 +91,20 @@ test('camera flow: lookup identifies the copy, repairable/damaged scans update i
   failWith=new Error('database down')
   await assert.rejects(service.scan(id,{condition:'damaged',code:'000124',location:'Shelf A',requestKey:'cam-failed-hard'},actor),/database down/)
   }finally{await pg.close()}
+})
+test('scope: shelf names match regardless of case or spaces, and a copy shelved after the count started is counted in scope',async()=>{
+ const {pg,service}=await fixture()
+ try{
+ const first=await service.start({name:'Shelf A count',kind:'book',location:'shelf a'},actor),id=first.session.stocktake_session_id
+ assert.equal(first.report.summary.expected,2)
+ await pg.exec(`INSERT INTO physical_copies VALUES(3,1,3,'000126','A3','SHELF A ',1,1,'Good','Available','Active',1)`)
+ const lookup=await service.lookup(id,{code:'000126'})
+ assert.equal(lookup.found&&lookup.inScope,true)
+ const scanned=await service.scan(id,{condition:'good',code:'000126',location:'Shelf A',requestKey:'late-copy'},actor)
+ assert.equal(scanned.report.summary.expected,3)
+ assert.equal(scanned.report.summary.unexpected,0)
+ assert.equal(scanned.report.summary.found,1)
+ const other=await service.lookup(id,{code:'000125'})
+ assert.equal(other.found&&other.inScope,false)
+ }finally{await pg.close()}
 })

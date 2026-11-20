@@ -12,7 +12,7 @@ export type ItemFilter={assetKind?:string;location?:string;active?:boolean;code?
 export async function stocktakeItems(q:Pick<PoolConnection,'execute'>,filter:ItemFilter){
  const where:string[]=[],args:unknown[]=[]
  if(filter.assetKind&&filter.assetKind!=='both'){where.push('kind=?');args.push(filter.assetKind)}
- if(filter.location){where.push('shelf=?');args.push(filter.location)}
+ if(filter.location){where.push(String.raw`LOWER(REGEXP_REPLACE(TRIM(shelf),'\s+',' ','g'))=LOWER(REGEXP_REPLACE(TRIM(?),'\s+',' ','g'))`);args.push(filter.location)}
  if(filter.active)where.push("lifecycle='Active'")
  if(filter.code){where.push(`${filter.codeType==='accession'?'accession':'barcode'}=?`);args.push(filter.code)}
  if(filter.keys){where.push("((kind='book' AND id=ANY(?::bigint[])) OR (kind='research' AND id=ANY(?::bigint[])))");args.push(filter.keys.filter(k=>k.kind==='book').map(k=>k.id),filter.keys.filter(k=>k.kind==='research').map(k=>k.id))}

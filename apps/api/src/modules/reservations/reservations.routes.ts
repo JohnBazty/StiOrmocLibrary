@@ -20,7 +20,6 @@ export function createReservationsRouter(controller: Controller = reservationCon
   router.patch('/:reservationId/status', requireReservationManager, controller.adjustStatus)
   router.get('/:reservationId/swap-candidates', requireReservationManager, controller.swapCandidates)
   router.post('/:reservationId/swap-copy', requireReservationManager, controller.swapCopy)
-  router.post('/:reservationId/move', requireReservationManager, controller.moveInQueue)
   return router
 }
 export const reservationsRouter = createReservationsRouter()
@@ -39,7 +38,6 @@ export function createAdminReservationsV1Router(controller: Controller = reserva
   router.patch('/:reservationId/status', controller.adjustStatus)
   router.get('/:reservationId/swap-candidates', controller.swapCandidates)
   router.post('/:reservationId/swap-copy', controller.swapCopy)
-  router.post('/:reservationId/move', controller.moveInQueue)
   return router
 }
 

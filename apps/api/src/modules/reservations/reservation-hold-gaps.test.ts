@@ -221,13 +221,3 @@ test('swap locks the old and new copy together in id order', async () => {
 })
 
 // ---- B13 move down next to an assigned request
-test('a request cannot move down past one that already has a copy', async () => {
-  const rows = [{ reservation_id: 1, queue_position: 1, reservation_status: 'pending', assigned_physical_copy_id: null }, { reservation_id: 2, queue_position: 2, reservation_status: 'approved', assigned_physical_copy_id: 31 }]
-  const { database } = fakePool((sql) => {
-    if (sql.includes('SELECT user_id,role,account_status FROM accounts')) return staff
-    if (sql.includes('SELECT r.*,t.title')) return [{ ...base, reservation_id: 1, reservation_status: 'pending', queue_position: 1 }]
-    if (sql.includes('SELECT reservation_id,queue_position')) return rows
-    return undefined
-  })
-  await assert.rejects(createReservationService(database).moveInQueue(1, 1, { direction: 'down', reason: 'Valid reason' }), (e: unknown) => e instanceof HttpError && e.code === 'QUEUE_MOVE_ABOVE_ASSIGNED')
-})

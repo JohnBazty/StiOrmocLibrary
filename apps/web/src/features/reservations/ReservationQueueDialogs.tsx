@@ -63,22 +63,3 @@ export function SwapCopyDialog({ item, onClose, onDone }: DialogProps) {
   </DialogShell>
 }
 
-export function MoveDialog({ item, direction, onClose, onDone }: DialogProps & { direction: 'up' | 'down' }) {
-  const [reason, setReason] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const length = reason.trim().length
-  async function confirm() {
-    if (length < MIN_REASON || length > MAX_REASON || busy) return
-    setBusy(true); setError('')
-    try { await reservationApi.moveInQueue(item.reservationId, direction, reason.trim()); onDone(`${item.materialTitle}: moved ${direction} in the queue.`) }
-    catch (failure) { setError(failure instanceof Error ? failure.message : 'The request could not be moved.'); setBusy(false) }
-  }
-  return <DialogShell titleId="move-request-title" title={`Move ${direction}`} busy={busy} onClose={onClose}>
-    <p className="my-3 text-sm">{item.materialTitle} for {item.userName}. The reason is saved in the audit record.</p>
-    {error ? <p role="alert" className="auth-error mb-3 rounded-xl p-3 text-sm">{error}</p> : null}
-    <label className="mb-1 block text-sm font-semibold" htmlFor="move-reason">Reason ({MIN_REASON} to {MAX_REASON} characters)</label>
-    <textarea id="move-reason" className="mb-4 min-h-24 w-full rounded-xl border border-[#003399]/20 p-3 text-sm" maxLength={MAX_REASON + 100} value={reason} onChange={e => setReason(e.target.value)} />
-    <div className="flex justify-end gap-2"><Button variant="secondary" disabled={busy} onClick={onClose}>Cancel</Button><Button disabled={busy || length < MIN_REASON || length > MAX_REASON} onClick={() => void confirm()}>{busy ? 'Working…' : `Move ${direction}`}</Button></div>
-  </DialogShell>
-}

@@ -54,61 +54,6 @@ test('swap rejects an invalid copy id', async () => {
   await rejects(swap(swapPool(), {}), 422)
 })
 
-type QueueRow = { id: number; pos: number; status?: string; copy?: number | null }
-function queuePool(rows: QueueRow[], targetId: number) {
-  const pool = fakePool((sql) => {
-    if (sql.includes('SELECT user_id,role,account_status FROM accounts')) return staff
-    if (sql.includes('SELECT r.*,t.title')) { const r = rows.find((x) => x.id === targetId)!; return [{ ...held, reservation_id: r.id, reservation_status: r.status ?? 'pending', assigned_physical_copy_id: r.copy ?? null, queue_position: r.pos }] }
-    if (sql.includes('SELECT reservation_id,queue_position')) return rows.map((r) => ({ reservation_id: r.id, queue_position: r.pos, reservation_status: r.status ?? 'pending', assigned_physical_copy_id: r.copy ?? null }))
-    return undefined
-  })
-  const positions = () => Object.fromEntries(pool.calls.filter((c) => c.sql.includes('SET queue_position=?')).map((c) => [c.params[1], c.params[0]]))
-  return { pool, positions }
-}
-const move = (pool: ReturnType<typeof fakePool>, id: number, body: unknown) => createReservationService(pool.database).moveInQueue(1, id, body)
-const three = [{ id: 1, pos: 1 }, { id: 2, pos: 2 }, { id: 3, pos: 3 }]
-
-test('move up swaps with the request above and renumbers 1..n with an audit reason', async () => {
-  const { pool, positions } = queuePool(three, 2)
-  await move(pool, 2, { direction: 'up', reason: '  Faculty urgent need  ' })
-  assert.deepEqual(positions(), { 2: 1, 1: 2 })
-  const audit = pool.calls.find((c) => c.sql.includes('INSERT INTO reservation_audit_events'))!
-  assert.deepEqual(audit.params, [2, 2, 1, 'Faculty urgent need', 1])
-  assert.ok(audit.params.includes('Faculty urgent need'))
-})
-test('move down swaps with the request below', async () => {
-  const { pool, positions } = queuePool(three, 2)
-  await move(pool, 2, { direction: 'down', reason: 'Requested by the dean' })
-  assert.deepEqual(positions(), { 2: 3, 3: 2 })
-})
-test('positions with gaps are renumbered to 1..n', async () => {
-  const { pool, positions } = queuePool([{ id: 1, pos: 1 }, { id: 2, pos: 4 }, { id: 3, pos: 9 }], 3)
-  await move(pool, 3, { direction: 'up', reason: 'Fix the order please' })
-  assert.deepEqual(positions(), { 3: 2, 2: 3 })
-})
-test('the top request cannot move up', async () => {
-  const { pool } = queuePool(three, 1)
-  await rejects(move(pool, 1, { direction: 'up', reason: 'No change possible' }), 422, 'QUEUE_MOVE_NOOP')
-})
-test('the last request cannot move down', async () => {
-  const { pool } = queuePool(three, 3)
-  await rejects(move(pool, 3, { direction: 'down', reason: 'No change possible' }), 422, 'QUEUE_MOVE_NOOP')
-})
-test('a request cannot move above one that already has a copy', async () => {
-  const { pool } = queuePool([{ id: 1, pos: 1, status: 'approved', copy: 31 }, { id: 2, pos: 2 }], 2)
-  await rejects(move(pool, 2, { direction: 'up', reason: 'Jump the line' }), 422, 'QUEUE_MOVE_ABOVE_ASSIGNED')
-})
-test('only pending requests can move', async () => {
-  const { pool } = queuePool([{ id: 1, pos: 1, status: 'approved', copy: 31 }, { id: 2, pos: 2 }], 1)
-  await rejects(move(pool, 1, { direction: 'down', reason: 'Move the held one' }), 422, 'QUEUE_MOVE_NOT_PENDING')
-})
-test('a short or oversized reason is rejected before any write', async () => {
-  const { pool, positions } = queuePool(three, 2)
-  await rejects(move(pool, 2, { direction: 'up', reason: ' ab ' }), 422)
-  await rejects(move(pool, 2, { direction: 'up', reason: 'x'.repeat(501) }), 422)
-  await rejects(move(pool, 2, { direction: 'sideways', reason: 'valid reason' }), 422)
-  assert.deepEqual(positions(), {})
-})
 
 function app(role: string) {
   const service = createReservationService(swapPool().database)
@@ -118,12 +63,16 @@ function app(role: string) {
   a.use((e: unknown, _q: express.Request, res: express.Response, _n: express.NextFunction) => res.status(e instanceof HttpError ? e.status : 500).json({ code: (e as HttpError).code }))
   return a
 }
-test('students and faculty get 403 on swap, move and swap candidates', async () => {
+test('students and faculty get 403 on swap and swap candidates', async () => {
   for (const role of ['Student', 'Faculty']) {
     assert.equal((await request(app(role)).post('/api/reservations/501/swap-copy').send({ physicalCopyId: 32 })).status, 403)
-    assert.equal((await request(app(role)).post('/api/reservations/501/move').send({ direction: 'up', reason: 'valid reason' })).status, 403)
     assert.equal((await request(app(role)).get('/api/reservations/501/swap-candidates')).status, 403)
   }
+})
+test('the queue is first come, first served: there is no move route and no move service', async () => {
+  const res = await request(app('Librarian')).post('/api/reservations/501/move').send({ direction: 'up', reason: 'valid reason' })
+  assert.equal(res.status, 404)
+  assert.equal('moveInQueue' in createReservationService(fakePool(() => undefined).database), false)
 })
 test('a librarian can swap through the route', async () => {
   const res = await request(app('Librarian')).post('/api/reservations/501/swap-copy').send({ physicalCopyId: 32 })

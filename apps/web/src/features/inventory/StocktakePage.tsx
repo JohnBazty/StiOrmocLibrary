@@ -32,7 +32,7 @@ import {
 } from './stocktake-api'
 import { decodeUploadedBarcodeFile } from './barcode-image-decoder'
 import { StocktakeCameraScanner } from './StocktakeCameraScanner'
-import { StocktakeConditionDialog, type ObservedCondition } from './StocktakeConditionDialog'
+import { StocktakeConditionDialog, observedConditionLabel, type ObservedCondition } from './StocktakeConditionDialog'
 
 /** A label the camera has read and that is waiting for staff to confirm its condition. */
 type Detected = {
@@ -135,7 +135,7 @@ function kpiLink(kind: 'book' | 'research', to: string) {
   return null
 }
 
-function scanMessage(
+export function scanMessage(
   response: ScanResponse,
   lookup: LookupResult | null,
   code: string,
@@ -196,7 +196,7 @@ function scanMessage(
   if (isOutsideScope) {
     return {
       title: 'Saved under Outside scope',
-      text: `Recorded “${title}” (${code}) as ${condition === 'fair' ? 'worn but usable' : condition} under Outside scope (home shelf: ${lookup.item.shelf || 'Unassigned'}).`,
+      text: `Recorded “${title}” (${code}) as ${observedConditionLabel(condition)} under Outside scope (home shelf: ${lookup.item.shelf || 'Unassigned'}).`,
       link: null,
       tone: 'warn' as const,
       bucket,
