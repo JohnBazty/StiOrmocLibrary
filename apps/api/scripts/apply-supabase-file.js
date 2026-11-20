@@ -38,12 +38,28 @@ function splitSql(sql) {
 const client = new pg.Client({ connectionString: env.db.connectionString })
 await client.connect()
 try {
+  await client.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
+    migration_name VARCHAR(191) PRIMARY KEY,
+    checksum CHAR(64) NOT NULL,
+    applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`)
+  const existing = await client.query(
+    'SELECT checksum FROM schema_migrations WHERE migration_name = $1 LIMIT 1',
+    [fileName],
+  )
+  if (existing.rows[0] && existing.rows[0].checksum !== checksum) {
+    throw new Error(
+      `Migration ${fileName} is already recorded with checksum ${existing.rows[0].checksum} (current file checksum: ${checksum}). Refusing to overwrite checksum.`,
+    )
+  }
   const stmts = splitSql(source)
+  await client.query('BEGIN')
   for (let i = 0; i < stmts.length; i += 1) {
     try {
       await client.query(stmts[i])
       console.log(`ok ${i + 1}/${stmts.length}`)
     } catch (error) {
+      await client.query('ROLLBACK').catch(() => {})
       console.error(`FAIL ${i + 1}: ${error.message}`)
       console.error(stmts[i].slice(-500))
       process.exitCode = 1
@@ -51,16 +67,12 @@ try {
     }
   }
   if (!process.exitCode) {
-    await client.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
-      migration_name VARCHAR(191) PRIMARY KEY,
-      checksum CHAR(64) NOT NULL,
-      applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )`)
     await client.query(
       `INSERT INTO schema_migrations (migration_name, checksum) VALUES ($1, $2)
-       ON CONFLICT (migration_name) DO UPDATE SET checksum = EXCLUDED.checksum`,
+       ON CONFLICT (migration_name) DO NOTHING`,
       [fileName, checksum],
     )
+    await client.query('COMMIT')
     console.log(`Recorded ${fileName}`)
   }
 } finally {

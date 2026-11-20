@@ -25,6 +25,9 @@ function cell(value:ExcelJS.CellValue):{value:string;unsafe:boolean;numeric:bool
  if(value===null||value===undefined)return {value:'',unsafe:false,numeric:false}
  if(typeof value==='object') {
   if('richText' in value)return {value:text(value.richText.map(v=>v.text).join('')),unsafe:false,numeric:false}
+  if('text' in value && 'hyperlink' in value && !('formula' in value) && typeof value.text === 'string') {
+   return {value:text(value.text),unsafe:false,numeric:false}
+  }
   return {value:'',unsafe:true,numeric:false} // Never evaluate formulas or trust cached results.
  }
  return {value:text(value),unsafe:false,numeric:typeof value==='number'}

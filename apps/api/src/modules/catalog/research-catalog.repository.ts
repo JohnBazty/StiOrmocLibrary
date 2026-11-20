@@ -136,7 +136,7 @@ export async function queryResearchOverview(database: Pool, titleId: number) {
     return rows[0] ? mapResearch(rows[0]) : null
   } catch (error) {
     const code = (error as { code?: string } | null)?.code
-    if (!['ER_BAD_FIELD_ERROR', 'ER_NO_SUCH_TABLE'].includes(code ?? '')) throw error
+    if (!['ER_BAD_FIELD_ERROR', 'ER_NO_SUCH_TABLE', '42703', '42P01'].includes(code ?? '')) throw error
 
     // Backward-safe read for databases that have the original independent
     // inventory ledger but have not yet applied the normalized title bridge.

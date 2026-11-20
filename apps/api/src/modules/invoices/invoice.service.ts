@@ -35,10 +35,14 @@ export function createInvoiceService(database: Pool = db, issuanceEnabled = proc
     const issuerName = clean(input.issuerName, 255), issuerAddress = clean(input.issuerAddress, 1000)
     const issuerTin = clean(input.issuerTin, 50), authorityReference = clean(input.authorityReference, 100)
     const serialPrefix = clean(input.serialPrefix, 20)
-    const serialStart = Number(input.serialStart), serialEnd = Number(input.serialEnd)
+    const serialStart = input.serialStart == null || input.serialStart === '' ? 1 : Number(input.serialStart)
+    const serialEnd = input.serialEnd == null || input.serialEnd === '' ? 0 : Number(input.serialEnd)
     const approved = input.approved === true
     const printClassification = classification(input.printClassification)
     const fineClassification = classification(input.fineClassification)
+    if (!Number.isSafeInteger(serialStart) || serialStart < 0 || !Number.isSafeInteger(serialEnd) || serialEnd < 0 || (serialEnd > 0 && serialEnd < serialStart)) {
+      throw new HttpError(422, 'INVOICE_SETUP_INCOMPLETE', 'Enter a valid non-negative integer serial range.')
+    }
     if (approved && (!issuerName || !issuerAddress || !issuerTin || !authorityReference || !serialPrefix || !Number.isSafeInteger(serialStart) || serialStart < 1 || !Number.isSafeInteger(serialEnd) || serialEnd < serialStart)) {
       throw new HttpError(422, 'INVOICE_SETUP_INCOMPLETE', 'Enter the approved issuer details, authority reference, and valid serial range before enabling invoices.')
     }

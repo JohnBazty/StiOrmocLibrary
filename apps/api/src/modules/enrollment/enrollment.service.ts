@@ -220,7 +220,7 @@ export function createEnrollmentService(database: Pool = db, enabled = enrollmen
         const [rows] = await q.execute<RowDataPacket[]>(`SELECT r.school_id,r.student_name,r.program,r.year_level,
           a.account_status,u.account_status AS user_status,c.user_id,c.public_id,c.credential_version,c.credential_status,c.secret_hash
           FROM (${currentRosterSql}) r
-          LEFT JOIN accounts a ON a.school_id=r.school_id AND a.role='Student'
+          LEFT JOIN accounts a ON a.school_id=r.school_id AND a.role='${role}'
           LEFT JOIN users u ON u.user_id=a.user_id
           LEFT JOIN attendance_qr_credentials c ON c.user_id=u.user_id
           WHERE STRPOS(LOWER(CONCAT_WS(' ',r.school_id,r.student_name)),LOWER(?))>0
@@ -347,8 +347,8 @@ export function createEnrollmentService(database: Pool = db, enabled = enrollmen
         if (duplicates.length) throw fail(`Two ${role} IDs share the same school email in the resulting roster. Correct the file and upload it again.`)
         const [conflicts]=await q.execute<RowDataPacket[]>(`SELECT 1 FROM (${currentRosterSql}) r
           JOIN accounts a ON a.school_id=r.school_id OR EXISTS(SELECT 1 FROM users u WHERE u.user_id=a.user_id AND LOWER(u.email)=LOWER(r.school_email))
-          JOIN users u ON u.user_id=a.user_id
-          WHERE a.role<>? OR a.school_id<>r.school_id OR (r.school_email IS NOT NULL AND LOWER(u.email)<>LOWER(r.school_email)) LIMIT 1`,[term.semester_id,role])
+          LEFT JOIN users u ON u.user_id=a.user_id
+          WHERE a.role<>? OR a.school_id<>r.school_id OR (r.school_email IS NOT NULL AND COALESCE(LOWER(u.email),'')<>LOWER(r.school_email)) LIMIT 1`,[term.semester_id,role])
         if(conflicts.length)throw fail('A roster ID or email conflicts with an existing account. Review the identity with the library; no account or roster was changed.')
         const [otherRoster]=await q.execute<RowDataPacket[]>(`SELECT 1 FROM (${currentRosterSql}) r JOIN (${rosterSql(role==='Faculty'?'Student':'Faculty')}) other ON other.school_id=r.school_id OR (r.school_email IS NOT NULL AND LOWER(other.school_email)=LOWER(r.school_email)) LIMIT 1`,[term.semester_id,term.semester_id])
         if(otherRoster.length)throw fail('A school ID or email is already listed in the other account-type roster. Review it before importing.')
@@ -366,6 +366,10 @@ export function createEnrollmentService(database: Pool = db, enabled = enrollmen
         if (active.length) throw fail('End the active semester before starting another one.')
         const [rosters]=await q.execute<RowDataPacket[]>('SELECT 1 FROM enrollment_roster_imports WHERE semester_id=? AND roster_role=? AND complete LIMIT 1',[term.semester_id,role])
         if (!rosters.length) throw fail('Upload the complete roster before starting the semester.')
+        if (role === 'Faculty') {
+          const [studentRosters]=await q.execute<RowDataPacket[]>("SELECT 1 FROM enrollment_roster_imports WHERE semester_id=? AND roster_role='Student' AND complete LIMIT 1",[term.semester_id])
+          if (!studentRosters.length) throw fail('Upload the complete Student roster before starting the semester.')
+        }
         const time=await now(q)
         if (time>=new Date(term.manual_end_at)) throw fail('Update the end schedule before starting this semester.')
         await q.execute('UPDATE enrollment_semesters SET started_at=?,started_by=? WHERE semester_id=?',[time,actor,term.semester_id])

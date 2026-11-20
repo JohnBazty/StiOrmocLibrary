@@ -11,7 +11,8 @@ import { assignDeweyCopies, deweyService } from './dewey.service.ts'
 const BRANCH_PREFIX = 'STIORMOC'
 
 function duplicateEntry(error: unknown) {
-  return (error as { code?: string } | null)?.code === 'ER_DUP_ENTRY'
+  const code = (error as { code?: string } | null)?.code
+  return code === 'ER_DUP_ENTRY' || code === '23505'
 }
 
 function identity(value: string) {

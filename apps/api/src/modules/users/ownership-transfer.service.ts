@@ -47,10 +47,10 @@ export function createOwnershipTransfer(database:Pool=db,hasher=bcrypt,clock=()=
   const invitation=rows[0]
   if(!invitation||invitation.status!=='Pending'||new Date(invitation.expires_at)<=clock()||!matchesOwnershipToken(invitation.token_hash,id,token)||Number(o.owner_account_id)!==Number(invitation.owner_account_id)||Number(o.row_version)!==Number(invitation.ownership_version))throw invalid()
   const a=await account(q,Number(o.owner_account_id))
-  if(!a||a.role!=='Librarian'||a.account_status!=='Active'||a.user_status!=='Active'||Number(a.auth_version)!==Number(invitation.owner_auth_version))throw invalid()
+  if(!a||a.role!=='Librarian'||a.account_status!=='Active'||a.user_status!=='Active'||Number(a.auth_version)<Number(invitation.owner_auth_version))throw invalid()
   let target:RowDataPacket|null
   try{target=await recipient(q,normalizeOwnerEmail(invitation.recipient_email))}catch{throw invalid()}
-  if((target?Number(target.account_id):null)!==(invitation.target_account_id==null?null:Number(invitation.target_account_id))||(target?Number(target.auth_version):null)!==(invitation.target_auth_version==null?null:Number(invitation.target_auth_version))||(target?.role??null)!==invitation.target_role)throw invalid()
+  if((target?Number(target.account_id):null)!==(invitation.target_account_id==null?null:Number(invitation.target_account_id))||(target!==null&&invitation.target_auth_version!=null&&Number(target.auth_version)<Number(invitation.target_auth_version))||(target?.role??null)!==invitation.target_role)throw invalid()
   return {o,a,invitation,target}
  }
  async function revoke(q:PoolConnection,id:number,userId:number){

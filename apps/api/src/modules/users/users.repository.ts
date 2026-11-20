@@ -4,7 +4,7 @@ import type { Pool, PoolConnection, RowDataPacket } from '../../config/db.js'
 import { db } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
 import { requireLibraryActor } from '../../core/library-permissions.ts'
-import { currentRosterSql, enrollmentEnabled } from '../enrollment/enrollment-policy.ts'
+import { activeEnrollmentSemester, currentRosterSql, enrollmentEnabled, linkSemesterMember, rosterRegistrationRequired, rosterStudent, type RosterRole } from '../enrollment/enrollment-policy.ts'
 import { accountLockIdentifier } from '../auth/login-security.service.ts'
 
 const statuses = ['Active', 'Deactivated', 'Archived'] as const
@@ -119,8 +119,8 @@ export class UsersRepository {
     if (!enrollmentEnabled()) return null
     const [rows] = await this.pool.execute<RowDataPacket[]>(`SELECT s.semester_id
       FROM enrollment_roster_imports b JOIN enrollment_semesters s USING(semester_id)
-      WHERE s.ended_at IS NULL AND (s.started_at IS NULL OR s.scheduled_end_at>clock_timestamp())
-      ORDER BY b.roster_id DESC LIMIT 1`)
+      WHERE b.roster_role='Student' AND s.ended_at IS NULL AND (s.started_at IS NULL OR s.scheduled_end_at>clock_timestamp())
+      ORDER BY (s.started_at IS NOT NULL) DESC, b.roster_id DESC LIMIT 1`)
     return rows[0]?.semester_id ?? null
   }
   async programs(status = '') {
@@ -234,7 +234,7 @@ export class UsersRepository {
     try {
       await connection.beginTransaction()
       await requireLibraryActor(connection, actor, 'accounts.manage')
-      const [accounts] = await connection.execute<RowDataPacket[]>('SELECT account_id,user_id,role,account_status FROM accounts WHERE account_id=? FOR UPDATE', [accountId])
+      const [accounts] = await connection.execute<RowDataPacket[]>('SELECT account_id,user_id,school_id,role,account_status FROM accounts WHERE account_id=? FOR UPDATE', [accountId])
       const account = accounts[0]
       if (!account) throw new HttpError(404, 'USER_NOT_FOUND', 'Account not found.')
       if (account.account_status === 'Archived') throw new HttpError(403, 'USER_STATUS_PROTECTED', 'Archived accounts cannot be changed from User Management.')
@@ -248,6 +248,20 @@ export class UsersRepository {
       }
       if (!account.user_id) throw new HttpError(409, 'USER_PROFILE_NOT_LINKED', 'This account needs its operational profile linked before changing its status.')
       if (account.account_status === next) throw new HttpError(409, 'USER_STATUS_UNCHANGED', `This account is already ${next.toLowerCase()}.`)
+      if (next === 'Active' && enrollmentEnabled() && (account.role === 'Student' || account.role === 'Faculty')) {
+        if (await rosterRegistrationRequired(connection)) {
+          const term = await activeEnrollmentSemester(connection)
+          if (!term) {
+            throw new HttpError(422, 'USER_NOT_IN_ACTIVE_ROSTER', 'No active semester is currently open. Start the semester before reactivating accounts.')
+          }
+          const member = await rosterStudent(connection, Number(term.semester_id), String(account.school_id), account.role as RosterRole)
+          if (!member) {
+            throw new HttpError(422, 'USER_NOT_IN_ACTIVE_ROSTER', `This ${account.role} ID is not listed in the active semester roster. Add them through Late Enrollment or upload an updated roster first.`)
+          }
+          await linkSemesterMember(connection, Number(term.semester_id), accountId, String(account.school_id), String(member.student_name ?? account.school_id))
+          await connection.execute('UPDATE enrollment_semester_members SET closed_status=NULL,closed_auth_version=NULL WHERE semester_id=? AND account_id=?', [term.semester_id, accountId])
+        }
+      }
       await connection.execute('UPDATE accounts SET account_status=?,auth_version=auth_version+1,updated_at=NOW() WHERE account_id=?', [next, accountId])
       await connection.execute('UPDATE users SET account_status=?,auth_version=auth_version+1,updated_at=NOW() WHERE user_id=?', [next, account.user_id])
       await connection.execute(`INSERT INTO account_management_events(account_id,actor_account_id,action_code,previous_status,new_status,reason)

@@ -28,7 +28,8 @@ function validationError(errors: Record<string, string>) {
 }
 
 function isDuplicateEntry(error: unknown) {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ER_DUP_ENTRY'
+  const code = typeof error === 'object' && error !== null && 'code' in error ? (error as { code?: string }).code : undefined
+  return code === 'ER_DUP_ENTRY' || code === '23505'
 }
 
 export function createCatalogService(database: Pool = db) {

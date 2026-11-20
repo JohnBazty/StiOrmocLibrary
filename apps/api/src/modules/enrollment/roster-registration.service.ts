@@ -44,7 +44,7 @@ export function createRosterRegistration(database:Pool=db,sendCode=sendSchoolVer
         if(!student?.school_email)return null
         // Lock the per-ID challenge before changing it. Never return roster identity to anonymous callers.
         const [existing]=await q.execute<RowDataPacket[]>(`SELECT 1 FROM accounts WHERE school_id=?
-          UNION ALL SELECT 1 FROM users WHERE LOWER(email)=? LIMIT 1`,[schoolId,student.school_email])
+          UNION ALL SELECT 1 FROM users WHERE LOWER(email)=LOWER(?) OR school_id=? OR institutional_id=? LIMIT 1`,[schoolId,student.school_email,schoolId,schoolId])
         if(existing.length)return null
         const timestamp=new Date()
         const [saved]=await q.execute<ResultSetHeader>(`INSERT INTO enrollment_signup_challenges
@@ -96,10 +96,18 @@ export function createRosterRegistration(database:Pool=db,sendCode=sendSchoolVer
       return run(async q=>{
         const {row,student}=await current(q,challengeId)
         if(!equal(row.grant_hash,digest('grant',challengeId,grant)))throw invalid()
-        const accountId=await createActiveAccount(q,{
-          school_id:student.school_id,email:student.school_email,first_name:student.first_name,last_name:student.last_name,
-          program_strand:student.program,year_grade_level:student.year_level,requested_role:role,password_hash:passwordHash,
-        },student.student_name)
+        let accountId: number
+        try {
+          accountId=await createActiveAccount(q,{
+            school_id:student.school_id,email:student.school_email,first_name:student.first_name,last_name:student.last_name,
+            program_strand:student.program,year_grade_level:student.year_level,requested_role:role,password_hash:passwordHash,
+          },student.student_name)
+        } catch (err) {
+          if ((err as { code?: string } | null)?.code === '23505') {
+            throw new HttpError(409, 'ACCOUNT_ALREADY_EXISTS', 'An account already exists for this ID or email. Sign in instead.')
+          }
+          throw err
+        }
         await linkSemesterMember(q,Number(row.semester_id),accountId,student.school_id,student.student_name)
         if(role==='Faculty'&&student.program)await q.execute('INSERT INTO faculty_department_assignments(account_id,department,updated_by)VALUES(?,?,?)',[accountId,student.program,student.roster_uploaded_by])
         await q.execute("UPDATE registration_requests SET status='Completed',password_hash=NULL,code_hash=NULL,updated_at=NOW() WHERE school_id=? AND requested_role=? AND status IN ('PendingEmail','PendingApproval')",[student.school_id,role])
