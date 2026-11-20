@@ -17,7 +17,7 @@ export const adminNavigation: AdminNavItem[] = [
     ]},
     {id:'accounts',label:'Accounts',icon:Users,children:[
       link('Users','users',Users),
-      link('Student QR roster','student-qr-roster',QrCode),
+      link('QR Roster','student-qr-roster',QrCode),
     ]},
     link('Print supplies','supplies',PackageOpen),
     link('Borrowing policies','borrowing-policies',Scale),

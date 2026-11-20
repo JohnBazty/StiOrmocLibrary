@@ -29,12 +29,12 @@ export function createEnrollmentRouter(service=enrollmentService, role: 'Student
     if(!req.file)throw new HttpError(422,'ENROLLMENT_FILE_REQUIRED','Choose a CSV or Excel roster.')
     return service.upload(actor,req.params.id,req.file,req.body)
   }))
-  if (role === 'Student') {
-    router.post('/semesters/:id/late-enrollment/review',upload.single('roster'),
-      run((req,actor)=>service.reviewLateEnrollment(actor,req.params.id,req.file,req.body)))
-    router.post('/semesters/:id/late-enrollment',upload.single('roster'),
-      run((req,actor)=>service.saveLateEnrollment(actor,req.params.id,req.file,req.body)))
-  }
+  router.post('/semesters/:id/late-enrollment/review',upload.single('roster'),
+    run((req,actor)=>service.reviewLateEnrollment(actor,req.params.id,req.file,req.body)))
+  router.post('/semesters/:id/late-enrollment',upload.single('roster'),
+    run((req,actor)=>service.saveLateEnrollment(actor,req.params.id,req.file,req.body)))
+  router.post('/semesters/:id/activation-emails',
+    run((req,actor)=>service.sendActivationEmails(actor,req.params.id)))
   return router
 }
 export const enrollmentRouter=createEnrollmentRouter()

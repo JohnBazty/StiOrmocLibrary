@@ -71,24 +71,25 @@ export function rosterPreview(roster: EnrollmentFile, rows: EnrollmentImportRow[
   }
 }
 
-export async function inspectLateEnrollment(q: PoolConnection, semesterId: number, roster: EnrollmentFile) {
+export async function inspectLateEnrollment(q: PoolConnection, semesterId: number, roster: EnrollmentFile, role: 'Student' | 'Faculty' = 'Student') {
+  const otherRole = role === 'Faculty' ? 'Student' : 'Faculty'
   const [versionRows] = await q.execute<RosterVersion[]>(`SELECT roster_id,source_date::text
-    FROM enrollment_roster_imports WHERE semester_id=? AND roster_role='Student' ORDER BY roster_id DESC LIMIT 1`, [semesterId])
+    FROM enrollment_roster_imports WHERE semester_id=? AND roster_role=? ORDER BY roster_id DESC LIMIT 1`, [semesterId, role])
   const [completeRows] = await q.execute<RosterVersion[]>(`SELECT roster_id,source_date::text
-    FROM enrollment_roster_imports WHERE semester_id=? AND roster_role='Student' AND complete ORDER BY roster_id DESC LIMIT 1`, [semesterId])
+    FROM enrollment_roster_imports WHERE semester_id=? AND roster_role=? AND complete ORDER BY roster_id DESC LIMIT 1`, [semesterId, role])
   const head = versionRows[0]
   const baseline = completeRows[0]
-  if (!head || !baseline) throw new HttpError(409, 'LATE_ENROLLMENT_NEEDS_ROSTER', 'Upload the complete school roster before adding late students.')
+  if (!head || !baseline) throw new HttpError(409, 'LATE_ENROLLMENT_NEEDS_ROSTER', `Upload the complete ${role.toLowerCase()} roster before adding late ${role.toLowerCase()} records.`)
 
   const schoolIds = roster.rows.map(row => row.data.schoolId).filter(Boolean)
   const emails = roster.rows.map(row => row.data.email).filter(Boolean)
   const [current] = await q.execute<EffectiveStudent[]>(`SELECT school_id,student_name,first_name,last_name,school_email,program,year_level
-    FROM (${currentRosterSql}) roster
+    FROM (${rosterSql(role)}) roster
     WHERE school_id=ANY(?::text[]) OR LOWER(school_email)=ANY(?::text[])`, [semesterId, schoolIds, emails])
-  const [faculty] = await q.execute<RowDataPacket[]>(`SELECT school_id,school_email FROM (${rosterSql('Faculty')}) roster
+  const [opposite] = await q.execute<RowDataPacket[]>(`SELECT school_id,school_email FROM (${rosterSql(otherRole)}) roster
     WHERE school_id=ANY(?::text[]) OR LOWER(school_email)=ANY(?::text[])`, [semesterId, schoolIds, emails])
-  const facultyIds = new Set(faculty.map(row => String(row.school_id)))
-  const facultyEmails = new Set(faculty.map(row => canonical(row.school_email)).filter(Boolean))
+  const oppositeIds = new Set(opposite.map(row => String(row.school_id)))
+  const oppositeEmails = new Set(opposite.map(row => canonical(row.school_email)).filter(Boolean))
   const [identities] = await q.execute<KnownIdentity[]>(`SELECT a.school_id,a.role,u.email,u.full_name,TRUE AS has_account,
     a.account_status,u.account_status AS user_status
     FROM accounts a LEFT JOIN users u USING(user_id)
@@ -118,14 +119,14 @@ export async function inspectLateEnrollment(q: PoolConnection, semesterId: numbe
     const account = accounts[0]
     const errors = [...row.errors]
     const disposition = existing && sameDetails(existing, row.data) ? 'alreadyListed' : 'new'
-    if (existing && disposition === 'new') errors.push('This Student ID is already on the roster with different details. Use the roster correction workflow.')
-    if (accounts.length > 1 || (account && (account.role !== 'Student' || !account.has_account))) {
-      errors.push('This Student ID has a conflicting library record. Review the account before saving.')
+    if (existing && disposition === 'new') errors.push(`This ${role} ID is already on the roster with different details. Use the roster correction workflow.`)
+    if (accounts.length > 1 || (account && (account.role !== role || !account.has_account))) {
+      errors.push(`This ${role} ID has a conflicting library record. Review the account before saving.`)
     } else if (account && (email ? canonical(account.email) !== email : canonical(account.full_name) !== canonical(name))) {
-      errors.push('These details differ from the linked account. Check the Student ID and school email with the registrar.')
+      errors.push(`These details differ from the linked account. Check the ${role} ID and school email with the registrar.`)
     }
-    if (facultyIds.has(schoolId) || facultyEmails.has(email)) {
-      errors.push('This School ID or email is already listed in the Faculty roster. Review it before adding the student.')
+    if (oppositeIds.has(schoolId) || oppositeEmails.has(email)) {
+      errors.push(`This School ID or email is already listed in the ${otherRole} roster. Review it before saving.`)
     }
     if (email) {
       const owners = [rosterEmailOwners.get(email), accountEmailOwners.get(email)]
