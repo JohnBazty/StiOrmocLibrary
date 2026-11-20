@@ -18,6 +18,7 @@ import { CatalogManagementPage } from './CatalogManagementPage'
 import { enhancedCatalog, type CatalogRecord, type Option, type Options } from './enhanced-catalog-api'
 import { FindBookDetailsPage } from './FindBookDetailsPage'
 import { HoldingsImportPage } from './HoldingsImportPage'
+import { ResearchImportPanel } from './ResearchImportPanel'
 
 type Kind = 'locations' | 'programs' | 'courses' | 'types'
 const maintenanceTabs = [
@@ -341,7 +342,10 @@ export function CatalogMaintenancePage() {
       ) : tab === 'details' ? (
         <CatalogInformationEditor />
       ) : tab === 'imports' ? (
-        <HoldingsImportPage />
+        <>
+          <HoldingsImportPage />
+          <ResearchImportPanel />
+        </>
       ) : tab === 'find' ? (
         <FindBookDetailsPage />
       ) : tab === 'categories' ? (
