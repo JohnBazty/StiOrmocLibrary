@@ -74,6 +74,11 @@ function PaymentReview({ kind, targetId, title, options, onClose, onPayment }: {
     <div className="payment-dialog-shell">
       <header className="payment-dialog-header"><span className="payment-service-icon"><Wallet size={22} aria-hidden="true"/></span><div className="min-w-0"><h2 id={labelId}>Review payment</h2><p>{title}</p></div><button type="button" disabled={busy} aria-label="Close payment review" className="payment-close" onClick={close}><X size={20}/></button></header>
       <div className="payment-dialog-content">
+        {(options.isSample || options.localPreview || options.demoWalletEnabled) ? (
+          <p role="status" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-xs font-semibold text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+            Practice mode — sandbox GCash checkout only. No real money is charged.
+          </p>
+        ) : null}
         <div className="payment-review-grid">
           <div className="payment-review-fields">
             {kind !== 'LostBook' ? <fieldset><legend className="payment-field-title">How much would you like to pay?</legend><div className="payment-amount-options">

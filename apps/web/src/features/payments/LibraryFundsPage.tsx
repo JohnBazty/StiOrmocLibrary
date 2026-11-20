@@ -77,6 +77,11 @@ export function LibraryFundsPage() {
 
       {error ? <NoticeBanner tone="error">{error}</NoticeBanner> : null}
       {notice ? <NoticeBanner tone="success">{notice}</NoticeBanner> : null}
+      {data?.enabled ? (
+        <NoticeBanner tone="info">
+          Practice mode — sandbox transfers and test balances only. No real money is moved.
+        </NoticeBanner>
+      ) : null}
       {!data && !error ? (
         <p role="status" className="p-4 text-sm text-[var(--sl-text-secondary)]">
           Loading library funds…
