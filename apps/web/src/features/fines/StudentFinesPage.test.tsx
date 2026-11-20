@@ -24,15 +24,16 @@ describe('StudentFinesPage',()=>{
     expect(screen.queryByRole('button',{name:'Pay'})).toBeNull()
     expect(screen.getAllByText('₱190.00').length).toBeGreaterThan(1)
   })
-  it('shows a violation fine by category and how many warnings are left in each category',async()=>{
-    vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:true,json:async()=>({success:true,data:url.includes('service-charges')?[]:url.includes('/standing')?[{category:'Noise',warningsUsed:2,warningsBeforeFine:2,warningsLeft:0,fineAmount:50},{category:'Eating or food',warningsUsed:0,warningsBeforeFine:2,warningsLeft:2,fineAmount:50}]:{items:[],total:0}})})))
+  it('shows a violation fine by category without the violations and warnings section',async()=>{
+    const fetchSpy=vi.fn(async(url:string)=>({ok:true,json:async()=>({success:true,data:url.includes('service-charges')?[]:{items:[],total:0}})}))
+    vi.stubGlobal('fetch',fetchSpy)
     api.mine.mockResolvedValue({...empty,items:[{id:'F-5',fineId:5,lostBookReportId:null,title:'Noise',type:'Infraction',typeLabel:'Violation · Noise',category:'Noise',incidentId:3,reason:'Loud talking',occurredAt:'2026-11-12T00:00:00Z',assessed:50,paid:0,adjusted:0,balance:50,status:'Unpaid',paymentAllowed:true}]})
     render(<MemoryRouter><StudentFinesPage/></MemoryRouter>)
     expect(await screen.findByText(/Violation · Noise · /)).toBeTruthy()
-    expect(await screen.findByText('2 of 2 warnings left')).toBeTruthy()
-    expect(screen.getByText('No warnings left. The next offense is a fine of PHP 50.00')).toBeTruthy()
-    vi.unstubAllGlobals()
+    expect(screen.queryByText('My violations and warnings')).toBeNull()
+    expect(screen.queryByText('Warnings left')).toBeNull()
+    expect(fetchSpy.mock.calls.some(call=>String(call[0]).includes('/violations'))).toBe(false)
   })
 })
 
-afterEach(()=>{cleanup();vi.clearAllMocks()})
+afterEach(()=>{cleanup();vi.clearAllMocks();vi.unstubAllGlobals()})

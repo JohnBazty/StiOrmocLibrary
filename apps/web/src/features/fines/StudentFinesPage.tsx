@@ -1,4 +1,3 @@
-import { ViolationsRecords } from './ViolationsRecords'
 import { ServiceChargesPanel } from '../payments/ServiceChargesPanel'
 import { usePaymentUpdates } from '../payments/payment-updates'
 import { AlertTriangle,PhilippinePeso,ReceiptText } from 'lucide-react'
@@ -30,7 +29,6 @@ export function StudentFinesPage(){
   usePaymentUpdates(load)
   return <>
     <PageHeader eyebrow="Account payments" title="Library fines" action={<RefreshButton onRefresh={() => load()} variant="secondary" />}/>
-    <ViolationsRecords/>
     {error?<div role="alert" className="mb-5 flex gap-2 rounded-xl bg-[#FFF200] p-4 font-bold text-[#0b5ea2]"><AlertTriangle size={18}/>{error}</div>:null}
     <div className="mb-5 grid gap-3 sm:grid-cols-3"><StatCard label="Total assessed" value={fineMoney(data?.summary.assessed??0)} icon={PhilippinePeso}/><StatCard label="Outstanding balance" value={fineMoney(data?.summary.outstanding??0)} icon={AlertTriangle} tone="orange"/><StatCard label="Payments applied" value={fineMoney(data?.summary.collected??0)} icon={ReceiptText}/></div>
     <SectionCard className="mb-5 border-[#FFF200] p-5"><div className="flex gap-3"><PhilippinePeso className="shrink-0"/><div><h2 className="font-bold">How to pay</h2><p className="mt-1 text-sm leading-6 text-[#0b5ea2]/70">Select Pay beside an eligible charge. You can also bring your school ID and pay at the library. A payment record appears after payment is confirmed.</p></div></div></SectionCard>
