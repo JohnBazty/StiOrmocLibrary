@@ -21,6 +21,7 @@ const latestReceiptJoin = `LEFT JOIN LATERAL (SELECT * FROM print_payment_receip
 const deferredJoin = 'LEFT JOIN print_deferred_approvals d ON d.request_id=pr.request_id'
 const actualPaidSql = `(SELECT ${printingPaidSql('real_print')} FROM print_requests real_print WHERE real_print.request_id=pr.request_id)`
 const paymentFields = `${actualPaidSql} AS amount_paid,GREATEST(0,pr.calculated_cost-(${actualPaidSql})-COALESCE((to_jsonb(pr)->>'online_paid_centavos')::numeric,0)/100) AS balance,
+  COALESCE(to_jsonb(pr)->>'preferred_payment_method','Online') AS preferred_payment_method,
   (SELECT payment_id FROM print_payment_proofs proof WHERE proof.request_id=pr.request_id ORDER BY proof.created_at DESC LIMIT 1) AS proof_payment_id,d.version AS deferred_version,d.reason AS deferred_reason,d.agreed_payment_date,d.approved_at AS deferred_approved_at,d.acknowledged_at AS deferred_acknowledged_at,d.revoked_at AS deferred_revoked_at,
   (d.request_id IS NOT NULL AND d.revoked_at IS NULL AND d.acknowledged_at IS NOT NULL AND d.assessed_amount=pr.calculated_cost AND d.pricing_snapshot IS NOT DISTINCT FROM pr.pricing_snapshot) AS pay_later_accepted`
 const receiptPaymentDetails = `COALESCE((to_jsonb(r)->>'transaction_fee_centavos')::bigint,0) AS transaction_fee_centavos,
