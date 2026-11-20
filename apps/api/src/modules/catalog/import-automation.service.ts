@@ -30,7 +30,7 @@ export function createImportAutomationService(database:Pool=db,lookups:Lookups=i
    if(location&&!refs.locations.some(l=>l.name===location))throw fail('A chosen shelf is no longer active. Review the choices.',409)
    plans.push({sheet,categoryId,categoryName:category?.name??null,location})
   }
-  for(const r of source){const plan=plans.find(p=>p.sheet===r.sheet);if(!plan)throw fail('Review every spreadsheet section.');if((!r.data.categoryId&&!plan?.categoryId)||(!String(r.data.location??'').trim()&&!plan?.location))throw fail(`Choose the missing category and shelf for ${String(r.sheet).slice(0,100)}.`)}
+  for(const r of source){const plan=plans.find(p=>p.sheet===r.sheet);if(!plan)throw fail('Review every spreadsheet section.');if(!r.data.categoryId&&!plan?.categoryId)throw fail(`Choose the missing category for ${String(r.sheet).slice(0,100)}.`)}
   return plans.sort((a,b)=>a.sheet.localeCompare(b.sheet))
  }
  return {

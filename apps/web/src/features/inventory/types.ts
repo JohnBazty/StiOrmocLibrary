@@ -13,7 +13,8 @@ export type InventoryCopy = {
   category_name: string | null
   accession_number: string
   barcode: string
-  shelf_location: string
+  /** Null while the copy has no shelf (Unassigned). */
+  shelf_location: string | null
   shelf_column: number
   shelf_row: number
   call_number: string | null

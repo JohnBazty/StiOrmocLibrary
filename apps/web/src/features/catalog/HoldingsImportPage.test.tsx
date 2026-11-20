@@ -77,10 +77,12 @@ describe('Simple book import', () => {
   await waitFor(() => expect(api.review).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ categoryId: 1, location: 'Shelf A' }) })))
   expect(api.commit).not.toHaveBeenCalled()
  })
- it('accepts legacy categories without a lifecycle status', async () => {
-  api.options.mockResolvedValue({ ...options, categories: [{ id: 1, name: 'Literature' }] })
+ it('books with no shelf are ready to add as Unassigned and never count as a shelf shortage', async () => {
+  const unshelved = initial.rows.map(item => ({ ...item, data: { ...item.data, location: '' } }))
+  api.batch.mockResolvedValue({ ...initial, rows: unshelved })
   await upload()
-  expect(api.stage.mock.calls[0][1][0].categoryId).toBe(1)
+  expect(screen.getAllByText('Unassigned shelf').length).toBeGreaterThan(0)
+  expect(screen.getByRole('button', { name: 'Add 5 copies' }).hasAttribute('disabled')).toBe(false)
   expect(api.commit).not.toHaveBeenCalled()
  })
  it('keeps unrelated names unresolved without suggesting inactive choices', async () => {
@@ -102,7 +104,7 @@ describe('Simple book import', () => {
   expect(screen.queryByRole('button', { name: 'Show my book list' })).toBeNull()
   expect(api.review).not.toHaveBeenCalled(); expect(api.commit).not.toHaveBeenCalled()
  })
- it('asks once for category and shelf when multiple active choices exist and never selects one arbitrarily', async () => {
+ it('reads a file without category or shelf columns straight away: no file-wide category or shelf question', async () => {
   api.options.mockResolvedValue({ ...options,
    categories: [...options.categories, { id: 3, name: 'Science', status: 'Active', version: 1 }],
    locations: [...options.locations, { id: 4, name: 'Shelf B', status: 'Active', version: 1 }],
@@ -111,16 +113,11 @@ describe('Simple book import', () => {
   const input = screen.getByLabelText('Book list file') as HTMLInputElement
   await waitFor(() => expect(input.disabled).toBe(false))
   fireEvent.change(input, { target: { files: [new File(['Title,Author,Copies\nBook,Writer,2'], 'books.csv')] } })
-  await screen.findByText('Where should these books go?')
-  expect((screen.getByLabelText('Category for these books') as HTMLSelectElement).value).toBe('')
-  expect((screen.getByLabelText('Shelf for these books') as HTMLSelectElement).value).toBe('')
-  expect(screen.getByText('File options (optional)').closest('details')?.open).toBe(false)
-  expect(api.stage).not.toHaveBeenCalled()
-  fireEvent.change(screen.getByLabelText('Category for these books'), { target: { value: '3' } })
-  fireEvent.change(screen.getByLabelText('Shelf for these books'), { target: { value: 'Shelf B' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Show my book list' }))
-  await screen.findByText('Ready to add these books?')
-  expect(api.stage.mock.calls[0][1][0]).toMatchObject({ categoryId: 3, location: 'Shelf B' })
+  await waitFor(() => expect(api.stage).toHaveBeenCalled())
+  expect(screen.queryByText('Where should these books go?')).toBeNull()
+  expect(screen.queryByLabelText('Category for these books')).toBeNull()
+  expect(screen.queryByLabelText('Shelf for these books')).toBeNull()
+  expect(api.stage.mock.calls[0][1][0].location).toBeFalsy()
   expect(api.commit).not.toHaveBeenCalled()
  })
  it('asks a plain question for an unrecognized copy-count heading and waits for the librarian answer', async () => {
@@ -163,22 +160,11 @@ describe('Simple book import', () => {
   expect(api.stage.mock.calls[0][1][0].columns).toMatchObject({ accessions: 4, barcodes: 5 })
   expect(api.commit).not.toHaveBeenCalled()
  })
- it('does not use archived categories or shelves as automatic defaults', async () => {
-  api.options.mockResolvedValue({ ...options, categories: options.categories.map(item => ({ ...item, status: 'Archived' })), locations: options.locations.map(item => ({ ...item, status: 'Archived' })) })
-  render(<HoldingsImportPage />)
-  const input = screen.getByLabelText('Book list file') as HTMLInputElement
-  await waitFor(() => expect(input.disabled).toBe(false))
-  fireEvent.change(input, { target: { files: [new File(['Title,Author,Copies\nBook,Writer,2'], 'books.csv')] } })
-  await screen.findByText('Where should these books go?')
-  expect(screen.getByRole('link', { name: 'Set up categories and shelves' })).toBeTruthy()
-  expect(screen.getByRole('button', { name: 'Show my book list' }).hasAttribute('disabled')).toBe(true)
-  expect(api.stage).not.toHaveBeenCalled()
- })
- it('automatically reads the file, applies category/shelf once and groups clear books under one confirmation', async () => {
+ it('automatically reads the file and groups clear books under one confirmation', async () => {
   api.batch.mockResolvedValueOnce(initial).mockResolvedValue(finished)
   await upload()
   expect(api.inspect).toHaveBeenCalledTimes(1)
-  expect(api.stage.mock.calls[0][1][0]).toMatchObject({ categoryId: 1, location: 'Shelf A', columns: { title: 1, author: 2, copies: 3 } })
+  expect(api.stage.mock.calls[0][1][0]).toMatchObject({ columns: { title: 1, author: 2, copies: 3 } })
   expect(api.review).not.toHaveBeenCalled(); expect(api.commit).not.toHaveBeenCalled()
   expect((screen.getByRole('button', { name: 'Add 5 copies' }) as HTMLButtonElement).disabled).toBe(false)
   fireEvent.click(screen.getByRole('button', { name: 'Add 5 copies' }))
@@ -309,6 +295,8 @@ describe('Fill missing details from the book lookup', () => {
  it('lets an ISBN column stand in for Title and Author, and counts rows the lookup may fill', () => {
   expect(importFileReady([{ sheet: 'Books', headerRow: 1, columns: { isbn: 1, copies: 2 }, categoryId: 1, location: 'Shelf A' }])).toBe(true)
   expect(importFileReady([{ sheet: 'Books', headerRow: 1, columns: { author: 1, copies: 2 }, categoryId: 1, location: 'Shelf A' }])).toBe(false)
+  // Category and shelf are no longer file-wide questions: books without a shelf import as Unassigned.
+  expect(importFileReady([{ sheet: 'Books', headerRow: 1, columns: { title: 1, author: 2, copies: 3 } }] as never)).toBe(true)
   expect(rowsToFill({ ...initial, rows: [row(1,{data:{...row(1).data,author:''}}), filled(), row(2, { status: 'Ready' })] }).map(item => item.id)).toEqual([1])
  })
 
