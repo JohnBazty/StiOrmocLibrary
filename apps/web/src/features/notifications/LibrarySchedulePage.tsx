@@ -325,6 +325,28 @@ export function LibrarySchedulePage({ manage = false, embedded = false }: { mana
                           }
                         />
                       </label>
+                      {day.dayOfWeek <= 6 ? (
+                        <div className="sm:col-span-3">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            aria-label={`Apply ${weekdays[day.dayOfWeek - 1]} hours to Monday–Saturday`}
+                            onClick={() =>
+                              setDraft({
+                                ...draft,
+                                // Sunday is never part of this shortcut; set it on its own row.
+                                weekly: draft.weekly.map((value) =>
+                                  value.dayOfWeek <= 6
+                                    ? { ...value, isOpen: day.isOpen, opensAt: day.opensAt, closesAt: day.closesAt }
+                                    : value,
+                                ),
+                              })
+                            }
+                          >
+                            Apply these hours to Monday–Saturday
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </fieldset>

@@ -201,13 +201,14 @@ it('turns the paper-log box off with the reason beside it when the person cannot
   expect((box as HTMLInputElement).disabled).toBe(true)
 })
 
-it('asks for a date before today when copying from the paper log', async () => {
+it('records a paper-log entry on the day it was issued, today included', async () => {
   server()
   await openForm()
   await fillAndWait()
   await screen.findByRole('button', { name: 'Record 1st warning' })
   fireEvent.click(screen.getByLabelText(/From the paper log/))
-  expect(await screen.findByText('Paper-log entries are for dates before today.')).toBeTruthy()
+  await waitFor(() => expect(screen.queryByText(/dates before today/)).toBeNull())
+  expect(screen.queryByText('Choose a time no later than now.')).toBeNull()
 })
 
 it('never lets an old answer for another person or category enable saving', async () => {
@@ -272,4 +273,10 @@ it('says so, with a way back, when the linked record does not exist', async () =
   expect(await screen.findByText(/could not be found/)).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'Show all records' }))
   expect(onIncidentChange).toHaveBeenCalledWith(null)
+})
+
+it('the Issue fines shortcut opens the record form straight away', async () => {
+  server()
+  render(<ViolationsRecords admin startRecording />)
+  expect(await screen.findByRole('form', { name: 'Record a violation' })).toBeTruthy()
 })

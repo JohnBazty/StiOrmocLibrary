@@ -95,3 +95,15 @@ it('ties the help text and a save error to the input and announces the last-chan
   expect(description(input)).toMatch(/whole number from 1 to 7 days/)
   expect(screen.getAllByRole('status').some(s => s.textContent === 'Default')).toBe(true)
 })
+
+it('the Pickup window shortcut lands on the pickup window field', async () => {
+  const scroll = vi.fn()
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scroll })
+  window.history.replaceState(null, '', '/librarian/maintenance?tab=reservations#pickup-window')
+  api.settings.mockResolvedValue(defaults)
+  render(<ReservationSettingsPanel />)
+  const input = await screen.findByLabelText('Pickup window (days)')
+  await waitFor(() => expect(document.activeElement).toBe(input))
+  expect(scroll).toHaveBeenCalled()
+  window.history.replaceState(null, '', '/')
+})

@@ -28,8 +28,6 @@ const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(valu
 type Executor = Pool | PoolConnection
 type Source = 'Recorded' | 'Paper log'
 
-const manilaToday = () => `${new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10)}T00:00:00+08:00`
-
 export function createConductService(database: Pool = db) {
   /** One place decides the person's standing, so standing, preview and save always agree. */
   async function standingFor(ex: Executor, schoolId: string, categoryName: string, fromPaperLog: boolean, lock=false, incidentAt?: string) {
@@ -57,7 +55,6 @@ export function createConductService(database: Pool = db) {
       :null
     if (fromPaperLog) {
       if (block) throw new HttpError(block.status,block.code,block.message)
-      if (incidentAt && new Date(incidentAt).getTime()>=new Date(manilaToday()).getTime()) throw new HttpError(422,'CONDUCT_PAPER_LOG_DATE','Paper-log entries are for dates before today.')
       if (incidentAt && latestPaper[0]?.latest && new Date(incidentAt).getTime()<new Date(latestPaper[0].latest).getTime()) throw new HttpError(422,'CONDUCT_PAPER_LOG_ORDER','Enter paper-log entries in date order. A later paper-log entry already exists for this person.')
     }
     const fineAmount=Number(category.fine_amount)

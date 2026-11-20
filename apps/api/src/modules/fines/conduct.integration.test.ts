@@ -156,9 +156,9 @@ test('paper-log rules: students only, warnings must exist, dated before today, i
     await pg.exec("UPDATE violation_categories SET warnings_before_fine=0 WHERE name='Other conduct'")
     await assert.rejects(service.preview(librarian, { ...paper, category: 'Other conduct' }), { code: 'CONDUCT_PAPER_LOG_NO_WARNINGS' })
     assert.equal((await service.standing(librarian, { schoolId: 'STU-TEST', category: 'Other conduct' })).paperLogAllowed, false)
-    // Today (Philippines) and later are not "from before the system".
+    // A paper-log entry is recorded on the day it was issued, today included (never in the future).
     const today = new Date(Date.now() - 60_000).toISOString()
-    await assert.rejects(service.preview(librarian, { ...paper, incidentAt: today }), { code: 'CONDUCT_PAPER_LOG_DATE' })
+    assert.equal((await service.preview(librarian, { ...paper, incidentAt: today })).fromPaperLog, true)
     await save(service, { ...paper, incidentAt: '2025-07-01T03:00:00Z' })
     await assert.rejects(service.preview(librarian, { ...paper, incidentAt: '2025-06-01T03:00:00Z' }), { code: 'CONDUCT_PAPER_LOG_ORDER' })
     await save(service, { ...paper, incidentAt: '2025-07-01T03:00:00Z' }) // same instant as the latest is allowed
