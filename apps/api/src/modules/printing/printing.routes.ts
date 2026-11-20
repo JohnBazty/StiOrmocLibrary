@@ -25,7 +25,7 @@ userPrintingV1Router.get('/receipts',printingController.myReceipts)
 userPrintingV1Router.get('/receipts/:id',printingController.myReceipt)
 userPrintingV1Router.get('/receipts/:id/pdf',printingController.myReceiptPdf)
 userPrintingV1Router.post('/quote',quoteLimit,documentUpload,printingController.quote)
-userPrintingV1Router.post('/requests',documentUpload,printingController.submit)
+userPrintingV1Router.post('/requests',quoteLimit,documentUpload,printingController.submit)
 userPrintingV1Router.put('/requests/:id/cancel',printingController.cancel)
 
 export const adminPrintingV1Router=Router()

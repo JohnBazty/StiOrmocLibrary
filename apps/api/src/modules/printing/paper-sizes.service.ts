@@ -135,7 +135,7 @@ export function createPaperSizesService(database:Pool=db) {
         if(settings&&!result.already_recorded){
           if(Number(before.configuration_version)!==settings.version)throw conflict()
           await q.execute('UPDATE bond_paper_stocks SET sheets_per_ream=?,low_stock_threshold_reams=?,is_active=?,configuration_version=configuration_version+1,updated_at=NOW() WHERE paper_stock_id=?',[settings.sheets,settings.threshold,settings.active,id])
-          for(const [type,amount] of [['Monochrome',settings.monochrome],['Colored',settings.colored]])await q.execute(`INSERT INTO print_pricing_rules(print_type,paper_size,price_per_page,is_active) VALUES(?,?,?,?) ON CONFLICT(print_type,paper_size) DO UPDATE SET is_active=EXCLUDED.is_active,updated_at=NOW()`,[type,before.paper_size_dimension,amount,settings.active?1:0])
+          for(const [type,amount] of [['Monochrome',settings.monochrome],['Colored',settings.colored]])await q.execute(`INSERT INTO print_pricing_rules(print_type,paper_size,price_per_page,is_active) VALUES(?,?,?,?) ON CONFLICT(print_type,paper_size) DO UPDATE SET price_per_page=EXCLUDED.price_per_page,is_active=EXCLUDED.is_active,updated_at=NOW()`,[type,before.paper_size_dimension,amount,settings.active?1:0])
           await q.execute('UPDATE paper_brand_stocks SET monochrome_price=?,colored_price=?,updated_at=NOW() WHERE paper_brand_stock_id=? AND paper_stock_id=?',[settings.monochrome,settings.colored,result.paper_brand_stock_id,id])
           await q.execute('INSERT INTO paper_size_changes(paper_stock_id,changed_by_account_id,before_values,after_values) VALUES(?,?,?::jsonb,?::jsonb)',[id,actor.accountId,JSON.stringify(before),JSON.stringify(await read(q,id))])
         }

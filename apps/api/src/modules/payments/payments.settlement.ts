@@ -18,16 +18,21 @@ export async function settleVerifiedPayment(connection: PoolConnection, payment:
       JOIN users u ON u.user_id=pr.user_id WHERE request_id=? AND pr.user_id=?`,[payment.print_request_id,payment.user_id])
     const row = rows[0]
     const number = 'XP-'+date+'-'+randomBytes(8).toString('hex').toUpperCase()
+    const balanceBeforeCentavos = BigInt(payment.balance_before_centavos)
+    const remainingCentavos = balanceBeforeCentavos - BigInt(payment.principal_centavos)
+    const balanceBefore = pesos(balanceBeforeCentavos)
+    const balanceAfter = pesos(remainingCentavos > 0n ? remainingCentavos : 0n)
+    const nextStatus = remainingCentavos > 0n ? 'Partially Paid' : 'Paid'
     await connection.execute(`INSERT INTO print_payment_receipts(request_id,user_id,receipt_number,verification_code,
       student_name_snapshot,school_id_snapshot,file_name_snapshot,page_count_snapshot,copies_snapshot,total_sheets_snapshot,
       print_type_snapshot,paper_size_snapshot,amount_received,payment_method,received_by_name_snapshot,received_at,
-      confirmation_source,online_payment_attempt_id,transaction_fee_centavos)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'Xendit',?,'Xendit',?,?)`,
+      balance_before,balance_after,confirmation_source,online_payment_attempt_id,transaction_fee_centavos)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'Xendit',?,?,?,'Xendit',?,?)`,
       [payment.print_request_id,payment.user_id,number,randomBytes(8).toString('hex').toUpperCase(),
         row.full_name,row.school_id,row.file_name,row.page_count,row.number_of_copies,row.total_sheets,
-        row.print_type,row.paper_size,principal,payment.channel_code,now,payment.payment_id,payment.fee_centavos])
-    await connection.execute("UPDATE print_requests SET payment_status='Paid',paid_at=?,updated_at=NOW(),row_version=row_version+1 WHERE request_id=?",
-      [now,payment.print_request_id])
+        row.print_type,row.paper_size,principal,payment.channel_code,now,balanceBefore,balanceAfter,payment.payment_id,payment.fee_centavos])
+    await connection.execute('UPDATE print_requests SET payment_status=?,paid_at=?,updated_at=NOW(),row_version=row_version+1 WHERE request_id=?',
+      [nextStatus,nextStatus==='Paid'?now:null,payment.print_request_id])
     return
   }
   const [insert] = await connection.execute<ResultSetHeader>(`INSERT INTO fine_payment_receipts(request_key,user_id,

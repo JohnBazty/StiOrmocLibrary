@@ -99,7 +99,7 @@ export function createPrintingPhaseOneService(pool:Pool=db,dependencies:{inspect
     async submit(actor:Actor,body:Record<string,unknown>){
       const owner=await user(actor),key=uuid(body.request_key),kind=String(body.service_kind??'Print')
       if(!['Print','Photocopy'].includes(kind))throw problem('Choose Print or Photocopy.')
-      return transaction(async q=>{
+      const created=await transaction(async q=>{
         // Serializes retries from this owner without a process-local-only lock.
         await q.execute('SELECT pg_advisory_xact_lock(?,?)',[74053,owner])
         const [existing]=await q.execute<RowDataPacket[]>('SELECT * FROM print_requests WHERE user_id=? AND client_request_key=?',[owner,key])
@@ -121,6 +121,9 @@ export function createPrintingPhaseOneService(pool:Pool=db,dependencies:{inspect
         await q.execute("INSERT INTO print_status_history(request_id,from_status,to_status,changed_by_user_id,reason) VALUES(?,NULL,'Pending',?,?)",[result.insertId,owner,needsReview?'Submitted for page/price review':'Submitted with reviewed document quote'])
         return {request_id:Number(result.insertId),file_name:saved?.source_name??'Photocopy originals',calculated_cost:bill.totalCentavos/100,pricing_review_state:needsReview?'Pending':'Ready',payment_status:'Unpaid',job_status:'Pending'}
       })
+      const { notifyStaffRolesSafe } = await import('../notifications/transaction-notifications.ts')
+      await notifyStaffRolesSafe(pool,{key:`print:${created.request_id}:submitted`,title:'New print request submitted',body:`${created.file_name} (PHP ${Number(created.calculated_cost).toFixed(2)}) — Request #${created.request_id}.`,type:'Printing Update',sourceType:'Print Request',sourceId:created.request_id,personUserId:owner,librarianPath:'/librarian/printing',staffPath:'/staff/printing',priority:'Important'})
+      return created
     },
     async review(actor:Actor,id:unknown,body:Record<string,unknown>){
       return transaction(async q=>{
@@ -143,13 +146,16 @@ export function createPrintingPhaseOneService(pool:Pool=db,dependencies:{inspect
     },
     async accept(actor:Actor,id:unknown,body:Record<string,unknown>){
       const owner=await user(actor)
-      return transaction(async q=>{
+      const accepted=await transaction(async q=>{
         const [rows]=await q.execute<RowDataPacket[]>('SELECT * FROM print_requests WHERE request_id=? AND user_id=? FOR UPDATE',[whole(id,'request ID',Number.MAX_SAFE_INTEGER),owner]),row=rows[0]
         if(!row||row.pricing_review_state!=='Awaiting confirmation'||row.job_status!=='Pending'||Number(row.row_version)!==Number(body.version)||amountCents(body.amount)!==amountCents(row.calculated_cost))throw problem('This price changed. Refresh and review it again.',409)
         await q.execute("UPDATE print_requests SET pricing_review_state='Ready',row_version=row_version+1,updated_at=NOW() WHERE request_id=?",[row.request_id])
         await q.execute("INSERT INTO printing_price_review_events(request_id,actor_user_id,event_type,details) VALUES(?,?,'Accepted',?::jsonb)",[row.request_id,owner,JSON.stringify({amount:row.calculated_cost,version:row.row_version})])
-        return {request_id:Number(row.request_id),pricing_review_state:'Ready'}
+        return {request_id:Number(row.request_id),pricing_review_state:'Ready',row_version:Number(row.row_version),calculated_cost:Number(row.calculated_cost)}
       })
+      const { notifyStaffRolesSafe } = await import('../notifications/transaction-notifications.ts')
+      await notifyStaffRolesSafe(pool,{key:`print:${accepted.request_id}:price-accepted:${accepted.row_version}`,title:'Printing price accepted',body:`Request #${accepted.request_id} reviewed price (PHP ${accepted.calculated_cost.toFixed(2)}) was accepted by the requester.`,type:'Printing Update',sourceType:'Print Request',sourceId:accepted.request_id,personUserId:owner,librarianPath:'/librarian/printing',staffPath:'/staff/printing',priority:'Normal'})
+      return {request_id:accepted.request_id,pricing_review_state:'Ready'}
     },
     async requestPreview(actor:Actor,id:unknown,staff=false){
       const requestId=whole(id,'request ID',Number.MAX_SAFE_INTEGER),owner=staff?null:await user(actor)
