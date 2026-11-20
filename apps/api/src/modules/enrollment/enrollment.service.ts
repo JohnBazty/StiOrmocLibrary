@@ -9,6 +9,9 @@ import QRCode from 'qrcode'
 import { libraryQrImageOptions } from '../attendance/attendance-qr-image.ts'
 import { existingAttendancePayload, issueAttendanceCredential } from '../attendance/attendance-credential.service.ts'
 import { inspectLateEnrollment, inspectReplacement, lateFingerprint, matchesReview, reviewChanged, reviewToken, rosterPreview } from './late-enrollment.ts'
+import { sendSchoolEmail } from '../auth/school-email.sender.ts'
+import { SYSTEM_SHORT_NAME } from '../../config/branding.ts'
+import { env } from '../../config/env.js'
 
 type LateEnrollmentResult = { added: number; alreadyListed: number; missingEmail: number; missingEmailStudentIds: string[] }
 type LateEnrollmentReview = LateEnrollmentResult & ReturnType<typeof rosterPreview> & { reviewToken: string }
@@ -149,16 +152,15 @@ export function createEnrollmentService(database: Pool = db, enabled = enrollmen
   function lateEnrollment(actor: number, semesterId: unknown, file: EnrollmentRosterFile | undefined, body: unknown, save: false): Promise<LateEnrollmentReview>
   function lateEnrollment(actor: number, semesterId: unknown, file: EnrollmentRosterFile | undefined, body: unknown, save: true): Promise<LateEnrollmentResult>
   async function lateEnrollment(actor: number, semesterId: unknown, file: EnrollmentRosterFile | undefined, body: unknown, save: boolean) {
-    if (role !== 'Student') throw new HttpError(404, 'STUDENT_ENROLLMENT_ONLY', 'Late enrollment is available for students only.')
     const input = object(body)
     if (['scope','complete','semesterId','academicYear','termName'].some(field => field in input)) {
-      throw fail('Add students to the selected semester using the late enrollment form.')
+      throw fail(`Add ${role.toLowerCase()} records to the selected semester using the late enrollment form.`)
     }
-    if (file && lateFormFields.some(field => field in input)) throw fail('Choose either a student form or a registrar file.')
+    if (file && lateFormFields.some(field => field in input)) throw fail(`Choose either a ${role.toLowerCase()} form or a registrar file.`)
     const sourceDate = day(input.sourceDate)
     if (save && ((input.confirmed !== true && input.confirmed !== 'true') ||
       typeof input.reviewToken !== 'string' || !/^[0-9a-f]{64}$/.test(input.reviewToken))) {
-      throw new HttpError(422, 'ENROLLMENT_CONFIRMATION_REQUIRED', 'Review the late students and confirm the registrar details before saving.')
+      throw new HttpError(422, 'ENROLLMENT_CONFIRMATION_REQUIRED', 'Review the late entries and confirm the registrar details before saving.')
     }
     const initial = await run(actor, false, async q => {
       const term = await semester(q, semesterId)
@@ -166,8 +168,8 @@ export function createEnrollmentService(database: Pool = db, enabled = enrollmen
       return term
     })
     const roster = file
-      ? await parseEnrollmentFile(file, { academicYear: initial.academic_year, termName: initial.term_name, listedEnrolled: true, includeSource: !save })
-      : parseLateEnrollmentForm(input)
+      ? await parseEnrollmentFile(file, { academicYear: initial.academic_year, termName: initial.term_name, listedEnrolled: true, includeSource: !save, role })
+      : parseLateEnrollmentForm(input, role)
     const sourceKind = file ? 'LateEnrollmentFile' : 'LateEnrollmentForm'
     const fileName = file ? safeFileName(file) : 'Entered by the library'
 
@@ -176,7 +178,7 @@ export function createEnrollmentService(database: Pool = db, enabled = enrollmen
       const time = await now(q)
       requireActiveTerm(term, time)
       const id = Number(term.semester_id)
-      const assessment = await inspectLateEnrollment(q, id, roster)
+      const assessment = await inspectLateEnrollment(q, id, roster, role)
       if (sourceDate > manilaDay(time)) throw fail('The registrar confirmation date cannot be in the future.')
       if (sourceDate < assessment.baseline.source_date) throw fail('Use registrar confirmation from the date of the current complete roster or later.')
       const { additions, alreadyListed, missingEmailStudentIds, rows } = assessment
@@ -185,7 +187,7 @@ export function createEnrollmentService(database: Pool = db, enabled = enrollmen
         additions.map(row => row.schoolId), alreadyListed, assessment.identities)
       if (!save) return checkedPreview({ ...rosterPreview(roster, rows), ...summary, reviewToken: token })
       if (rows.some(row => row.errors.length)) {
-        throw new HttpError(422, 'ROSTER_ROWS_INVALID', 'Fix the highlighted student details before saving. No students were added.', {
+        throw new HttpError(422, 'ROSTER_ROWS_INVALID', 'Fix the highlighted details before saving. No records were added.', {
           rows: rows.filter(row => row.errors.length).slice(0, 25).map(row => ({ sheet: row.sheet, row: row.row, errors: row.errors })),
         })
       }
@@ -194,8 +196,8 @@ export function createEnrollmentService(database: Pool = db, enabled = enrollmen
       requireActiveTerm(term, await now(q))
       const [saved] = await q.execute<ResultSetHeader>(`INSERT INTO enrollment_roster_imports
         (semester_id,source_date,complete,file_hash,file_name,student_count,uploaded_by,source_kind,roster_role)
-        VALUES (?,?,FALSE,?,?,?,?,?,'Student')`, [id, sourceDate, lateFingerprint(sourceKind, assessment.baseline.roster_id, additions),
-        fileName, additions.length, actor, sourceKind])
+        VALUES (?,?,FALSE,?,?,?,?,?,?)`, [id, sourceDate, lateFingerprint(sourceKind, assessment.baseline.roster_id, additions),
+        fileName, additions.length, actor, sourceKind, role])
       await insertRosterStudents(q, saved.insertId, additions)
       await addRosterMembers(q, id)
       requireActiveTerm(term, await now(q))
@@ -404,6 +406,55 @@ export function createEnrollmentService(database: Pool = db, enabled = enrollmen
           ORDER BY school_id LIMIT 51 OFFSET ?`,[term.semester_id,term.semester_id,!term.ended_at,search,(page-1)*50])
         return { rows:rows.slice(0,50), more:rows.length>50, page, archived:Boolean(term.ended_at) }
       })
+    },
+    async sendActivationEmails(actor: number, semesterId: unknown, sendEmail = sendSchoolEmail) {
+      const targets = await run(actor, false, async q => {
+        const term = await semester(q, semesterId)
+        if (term.ended_at) throw fail('Activation emails can only be sent for an active or draft semester.')
+        const [rows] = await q.execute<RowDataPacket[]>(`SELECT r.roster_id, r.school_id, r.student_name, r.school_email
+          FROM (${currentRosterSql}) r
+          LEFT JOIN accounts a ON a.school_id = r.school_id
+          LEFT JOIN users u ON LOWER(u.email) = LOWER(r.school_email)
+          WHERE a.account_id IS NULL AND u.user_id IS NULL
+          ORDER BY r.school_id`, [term.semester_id])
+        const [cols] = await q.execute<RowDataPacket[]>(
+          `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='enrollment_roster_students' AND column_name='activation_email_status' LIMIT 1`,
+        )
+        return { rows, hasTrackingColumns: cols.length > 0 }
+      })
+      const activationUrl = `${env.webOrigin.replace(/\/$/, '')}/register`
+      let sent = 0, failed = 0, skippedNoEmail = 0
+      const failures: Array<{ schoolId: string; reason: string }> = []
+      for (const row of targets.rows) {
+        const email = typeof row.school_email === 'string' ? row.school_email.trim() : ''
+        const schoolId = String(row.school_id)
+        if (!email) { skippedNoEmail++; continue }
+        try {
+          await sendEmail(
+            email,
+            `Activate your ${SYSTEM_SHORT_NAME} account`,
+            `Hello ${row.student_name},\n\nYour ${role.toLowerCase()} record (${schoolId}) is ready for ${SYSTEM_SHORT_NAME}. Activate your library account at ${activationUrl} using your ${role} ID.\n`,
+          )
+          sent++
+          if (targets.hasTrackingColumns) {
+            await database.execute(
+              `UPDATE enrollment_roster_students SET activation_email_status='Sent', activation_email_sent_at=NOW(), activation_email_error=NULL WHERE roster_id=? AND school_id=?`,
+              [row.roster_id, schoolId],
+            )
+          }
+        } catch (err) {
+          failed++
+          const reason = err instanceof Error ? err.message : 'Unable to send activation email.'
+          failures.push({ schoolId, reason })
+          if (targets.hasTrackingColumns) {
+            await database.execute(
+              `UPDATE enrollment_roster_students SET activation_email_status='Failed', activation_email_sent_at=NOW(), activation_email_error=? WHERE roster_id=? AND school_id=?`,
+              [reason.slice(0, 500), row.roster_id, schoolId],
+            )
+          }
+        }
+      }
+      return { total: targets.rows.length, sent, failed, skippedNoEmail, failures: failures.slice(0, 25) }
     },
   }
 }

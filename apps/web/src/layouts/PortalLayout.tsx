@@ -112,7 +112,7 @@ const userNav = (role: 'student' | 'faculty'): NavItem[] => {
 const adminNav: NavItem[] = [
   { label: 'Dashboard', to: '/admin/dashboard', icon: LayoutDashboard, section: 'Accounts' },
   { label: 'Users', to: '/admin/users', icon: Users },
-  { label: 'Student QR roster', to: '/admin/student-qr-roster', icon: QrCode },
+  { label: 'QR Roster', to: '/admin/student-qr-roster', icon: QrCode },
   { label: 'Clearance', to: '/admin/clearance', icon: ClipboardCheck },
   { label: 'Library schedule', to: '/admin/library-schedule', icon: CalendarClock },
   { label: 'Notifications', to: '/admin/notifications', icon: Bell },

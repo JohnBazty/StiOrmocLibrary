@@ -30,7 +30,7 @@ it('uses the requested order as visible sections, with only Books, Accounts and 
  }
  expect(within(menu).queryByRole('link',{name:'Account overview'})).toBeNull()
  const accounts=group('Accounts',section('File maintenance'))
- expect(within(accounts).getAllByRole('link',{hidden:true}).map(link=>link.textContent)).toEqual(['Users','Student QR roster'])
+ expect(within(accounts).getAllByRole('link',{hidden:true}).map(link=>link.textContent)).toEqual(['Users','QR Roster'])
  const routes=librarianNav.map(item=>item.to)
  expect(routes).toHaveLength(23)
  expect(new Set(routes).size).toBe(23)

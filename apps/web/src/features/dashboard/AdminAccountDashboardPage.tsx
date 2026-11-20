@@ -114,7 +114,7 @@ export function AdminAccountDashboardPage() {
             to={`${prefix}/student-qr-roster`}
             className="inline-flex min-h-[38px] items-center gap-2 rounded-[6px] border border-[var(--sl-border-strong)] bg-[var(--sl-bg-elevated)] px-4 text-sm font-semibold text-[var(--sl-text-header)] hover:bg-[var(--sl-bg-subtle)]"
           >
-            <QrCode size={15} aria-hidden="true" /> Student QR roster
+            <QrCode size={15} aria-hidden="true" /> QR Roster
           </Link>
         </div>
       </SectionCard>

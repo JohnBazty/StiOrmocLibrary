@@ -5,7 +5,7 @@ import nodemailer from 'nodemailer'
 const unavailable = () => new HttpError(503, 'EMAIL_SENDER_NOT_CONFIGURED', 'School-email verification is not configured yet. Please contact the library administrator.')
 
 export function requireVerificationSender(address: string) {
-  const gmailUser = process.env.GMAIL_SENDER_EMAIL?.trim().toLowerCase()
+  const gmailUser = (process.env.GMAIL_SENDER_EMAIL?.trim() || process.env.GMAIL_USER?.trim() || '').toLowerCase()
   const gmailPassword = process.env.GMAIL_APP_PASSWORD?.replace(/\s/g, '')
   if (gmailUser || gmailPassword) {
     if (!gmailUser || !gmailPassword || !/^[^\s@]+@gmail\.com$/.test(gmailUser)) throw unavailable()

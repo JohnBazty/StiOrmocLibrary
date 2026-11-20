@@ -53,6 +53,7 @@ return {
   lateSave:(id:number,body:unknown)=>call<LateResult>(`/semesters/${id}/late-enrollment`,body),
   upload:(id:number,body:FormData)=>call<{alreadyUploaded:boolean;students:number;missingEmail:number}>(`/semesters/${id}/roster`,body),
   roster:(id:number,page:number,q:string,signal?:AbortSignal)=>call<{rows:RosterRow[];more:boolean;archived:boolean}>(`/semesters/${id}/roster?${new URLSearchParams({page:String(page),q})}`,undefined,signal),
+  sendActivationEmails:(id:number)=>call<{total:number;sent:number;failed:number;skippedNoEmail:number;failures:Array<{schoolId:string;reason:string}>}>(`/semesters/${id}/activation-emails`,{}),
 }
 
 }

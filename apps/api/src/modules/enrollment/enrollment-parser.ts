@@ -16,7 +16,7 @@ const header=(value:unknown)=>text(value).toLowerCase().replace(/[^a-z0-9]/g,'')
 const aliases:Record<string,string[]>= {
  schoolId:['facultyid','facultyidnumber','employeeid','facultycode','studentid','schoolid','studentnumber','idnumber'],name:['fullname','fullnamefirstnamemiddleinitiallastname','facultyname','studentname','name'],
  first:['firstname','givenname'],last:['lastname','surname'],middle:['middlename'],suffix:['suffix'],
- program:['program','programstrand','course','department','departmentprogram'],yearLevel:['level','yearlevel','yeargradelevel','gradelevel'],
+ program:['program','programstrand','course','department','departmentprogram','facultydepartment','academicdepartment','college','dept'],yearLevel:['level','yearlevel','yeargradelevel','gradelevel'],
  section:['section','classsection'],email:['institutionalemailaddress','institutionalemail','campusemailaddress','schoolemail','emailaddress','email'],
  status:['enrollmentstatus','enrolmentstatus','status'],academicYear:['academicyear','schoolyear','sy'],term:['semester','term','termname'],
 }
@@ -62,21 +62,23 @@ function validateStudent(
   return { data, errors, warnings }
 }
 
-export function parseLateEnrollmentForm(input: Record<string, unknown>): EnrollmentFile {
+export function parseLateEnrollmentForm(input: Record<string, unknown>, role: 'Student' | 'Faculty' = 'Student'): EnrollmentFile {
   const field = (key: string) => typeof input[key] === 'string' ? text(input[key]) : ''
   const firstName = field('firstName'), lastName = field('lastName')
   const { data, errors, warnings } = validateStudent({
     schoolId: field('schoolId'), name: [firstName, lastName].filter(Boolean).join(' '),
     firstName, lastName, program: field('program'), yearLevel: field('yearLevel'), section: '', email: field('email'),
-  }, 'Enrolled')
+  }, 'Enrolled', role)
   if (!firstName || !lastName) errors.push('Enter both the first name and last name from the registrar.')
   if (input.email != null && typeof input.email !== 'string') errors.push('Enter the school email as text or leave it blank.')
-  const sheet = 'Student details'
+  const sheet = role === 'Faculty' ? 'Faculty details' : 'Student details'
   return {
     rows: [{ sheet, row: 1, data, errors, warnings, source: [data.schoolId, firstName, lastName, data.program, data.yearLevel, field('email')] }],
     errors: Number(errors.length > 0), warnings: Number(warnings.length > 0), sheets: [sheet],
-    headings: { [sheet]: ['Student ID', 'First name', 'Last name', 'Program or strand', 'Year or grade level', 'School email'] },
-    fingerprint: createHash('sha256').update(JSON.stringify({ data, email: field('email') })).digest('hex'),
+    headings: { [sheet]: role === 'Faculty'
+      ? ['Faculty ID', 'First name', 'Last name', 'Department', 'Level', 'School email']
+      : ['Student ID', 'First name', 'Last name', 'Program or strand', 'Year or grade level', 'School email'] },
+    fingerprint: createHash('sha256').update(JSON.stringify({ role, data, email: field('email') })).digest('hex'),
   }
 }
 

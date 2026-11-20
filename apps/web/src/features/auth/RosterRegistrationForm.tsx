@@ -82,24 +82,37 @@ export function RosterRegistrationForm({ fieldClass, busy, onBusy, onComplete, r
       <p className="text-sm">Enter the {role} ID on your school record. We use the school email on the enrollment roster.</p>
       <label className="block space-y-2 text-sm font-bold">{role} ID
         <input required maxLength={50} autoComplete="username" className={fieldClass} value={schoolId} disabled={busy}
+          aria-invalid={schoolId.trim().length > 0 && !validId ? true : undefined}
           onChange={event => setSchoolId(event.target.value)} />
       </label>
+      {schoolId.trim().length > 0 && !validId && (
+        <p role="alert" className="text-xs font-semibold text-red-700 dark:text-red-300">Enter a valid {role} ID (at least 3 letters, numbers, dots, underscores, or hyphens).</p>
+      )}
     </> : !grant ? <>
-      <p role="status" className="text-sm">If your ID is eligible, a code was sent to your school email. Check your inbox and spam folder. If you already have an account, sign in instead.</p>
+      <p role="status" className="text-sm">A 6-digit verification code was sent to your school email. Check your inbox and spam folder.</p>
       <label className="block space-y-2 text-sm font-bold">Email verification code
         <input required autoFocus inputMode="numeric" maxLength={6} autoComplete="one-time-code" className={fieldClass}
           value={code} disabled={busy} onChange={event => setCode(event.target.value.replace(/\D/g, ''))} />
       </label>
+      {code.length > 0 && code.length < 6 && (
+        <p className="text-xs text-slate-600 dark:text-slate-300">Enter all 6 digits from the email.</p>
+      )}
     </> : <>
-      <p role="status" className="text-sm">School email verified. Set a password to finish creating your account.</p>
+      <p role="status" className="text-sm">School email verified. Set a password to finish activating your account.</p>
       <label className="block space-y-2 text-sm font-bold">Password
         <input required autoFocus type="password" minLength={8} maxLength={72} autoComplete="new-password"
           className={fieldClass} value={password} disabled={busy} onChange={event => setPassword(event.target.value)} />
       </label>
+      {password.length > 0 && password.length < 8 && (
+        <p role="alert" className="text-xs font-semibold text-red-700 dark:text-red-300">Use at least 8 characters.</p>
+      )}
       <label className="block space-y-2 text-sm font-bold">Confirm password
         <input required type="password" minLength={8} maxLength={72} autoComplete="new-password"
           className={fieldClass} value={confirmation} disabled={busy} onChange={event => setConfirmation(event.target.value)} />
       </label>
+      {confirmation.length > 0 && password !== confirmation && (
+        <p role="alert" className="text-xs font-semibold text-red-700 dark:text-red-300">The passwords do not match.</p>
+      )}
     </>}
     <button className="min-h-12 w-full rounded-xl bg-[#FFF200] px-4 font-bold text-[#0b5ea2] disabled:opacity-55"
       disabled={busy || (!challengeId ? !validId : !grant && code.length !== 6)}>

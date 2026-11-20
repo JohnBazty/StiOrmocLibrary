@@ -79,12 +79,12 @@ function EnrollmentContent({area}:{area:'admin'|'librarian'}) {
           {!term.has_complete&&<p className="w-full text-sm">Upload the complete school roster to start this semester.</p>}
         </div>}
         {term.status==='Active'&&<div className="space-y-2">
-          {role==='Student'&&<Button onClick={()=>setLateOpen(true)}>Add late students</Button>}
+          <Button onClick={()=>setLateOpen(true)}>{role==='Faculty'?'Add late faculty':'Add late students'}</Button>
           {!term.can_end&&<p className="text-sm">Can be ended from {displayTime(term.manual_end_at)}. Refresh when that time arrives.</p>}
           <SemesterAction action="end" disabled={busy||!term.can_end} count={Number(term.active_accounts)} onConfirm={()=>transition('end')}/>
         </div>}
       </SectionCard>
-      {role==='Student'&&term.status==='Active'&&lateOpen&&<LateEnrollment key={term.semester_id} term={term} onSaved={()=>reload()} onClose={()=>confirmLeave(()=>setLateOpen(false))}/>}
+      {term.status==='Active'&&lateOpen&&<LateEnrollment key={term.semester_id} term={term} onSaved={()=>reload()} onClose={()=>confirmLeave(()=>setLateOpen(false))}/>}
       {term.status!=='Ended'&&<RosterUpload key={`upload-${term.semester_id}`} term={term} onSaved={message=>{setNotice(message);reload()}}/>}
       <RosterRecords key={`records-${term.semester_id}`} term={term} revision={revision}/>
     </>}
@@ -209,6 +209,8 @@ function RosterRecords({term,revision}:{term:Semester;revision:number}){
   const [search,setSearch]=useState(''),[query,setQuery]=useState(''),[page,setPage]=useState(1)
   const [data,setData]=useState<Awaited<ReturnType<typeof studentEnrollmentApi.roster>>|null>(null)
   const [error,setError]=useState(''),[detail,setDetail]=useState<UserDetail|null>(null)
+  const [emailBusy,setEmailBusy]=useState(false),[emailStatus,setEmailStatus]=useState('')
+  const { ask: askEmail, dialog: confirmEmailDialog } = useConfirmSave()
   useEffect(()=>{
     const controller=new AbortController()
     enrollmentApi.roster(term.semester_id,page,query,controller.signal).then(value=>{setData(value);setError('')})
@@ -216,8 +218,26 @@ function RosterRecords({term,revision}:{term:Semester;revision:number}){
     return ()=>controller.abort()
   },[term.semester_id,page,query,revision])
   async function records(id:number){setError('');try{setDetail(await usersApi.detail(id))}catch(e){setError(errorText(e))}}
+  async function runActivationEmails(){
+    setEmailBusy(true);setError('');setEmailStatus('')
+    try{
+      const result=await enrollmentApi.sendActivationEmails(term.semester_id)
+      const parts=[`${result.sent} sent`]
+      if(result.failed)parts.push(`${result.failed} failed`)
+      if(result.skippedNoEmail)parts.push(`${result.skippedNoEmail} skipped (no school email)`)
+      setEmailStatus(result.total===0?'Every roster member already has an account.':`Activation emails processed (${parts.join(', ')}).`)
+    }catch(e){setError(errorText(e))}
+    finally{setEmailBusy(false)}
+  }
   return <SectionCard className="space-y-4 p-5">
-    <h2 className="text-balance text-lg font-bold">{term.status==='Ended'?`Archived ${role} roster`:`${role} roster`}</h2>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <h2 className="text-balance text-lg font-bold">{term.status==='Ended'?`Archived ${role} roster`:`${role} roster`}</h2>
+      {term.status!=='Ended'&&<Button variant="secondary" disabled={emailBusy} onClick={()=>askEmail(`Send activation emails to every imported ${role.toLowerCase()} row without a library account?`,()=>{void runActivationEmails()})}>
+        {emailBusy?'Sending activation emails…':'Send activation emails'}
+      </Button>}
+    </div>
+    {confirmEmailDialog}
+    {emailStatus&&<p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">{emailStatus}</p>}
     <form className="flex flex-wrap items-end gap-2" onSubmit={e=>{e.preventDefault();setPage(1);setQuery(search.trim())}}>
       <label className="min-w-52 flex-1 text-sm font-semibold">Find {role}<input className={field} value={search} maxLength={100} onChange={e=>setSearch(e.target.value)} placeholder={`Name or ${role} ID`}/></label><Button type="submit">Search</Button>
     </form>

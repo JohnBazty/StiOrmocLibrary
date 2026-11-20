@@ -123,9 +123,9 @@ export const env = Object.freeze({
     docxRendererToken: process.env.DOCX_RENDERER_TOKEN?.trim() ?? '',
   },
   mail: {
-    gmailUser: process.env.GMAIL_USER?.trim() || '',
+    gmailUser: process.env.GMAIL_SENDER_EMAIL?.trim() || process.env.GMAIL_USER?.trim() || '',
     gmailAppPassword: process.env.GMAIL_APP_PASSWORD?.trim() || '',
-    from: process.env.MAIL_FROM?.trim() || process.env.GMAIL_USER?.trim() || '',
+    from: process.env.MAIL_FROM?.trim() || process.env.GMAIL_SENDER_EMAIL?.trim() || process.env.GMAIL_USER?.trim() || '',
   },
   passwordReset: {
     otpTtlMinutes: Math.max(5, Math.min(10, Number(process.env.PASSWORD_RESET_OTP_TTL_MINUTES ?? 10))),

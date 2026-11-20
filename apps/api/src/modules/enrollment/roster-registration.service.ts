@@ -41,11 +41,11 @@ export function createRosterRegistration(database:Pool=db,sendCode=sendSchoolVer
         const term=await activeEnrollmentSemester(q)
         if(!term)throw notOpen()
         const student=await rosterStudent(q,Number(term.semester_id),schoolId,role)
-        if(!student?.school_email)return null
-        // Lock the per-ID challenge before changing it. Never return roster identity to anonymous callers.
+        if(!student)throw new HttpError(422,'ROSTER_NOT_FOUND',`This ${role} ID is not on the active enrollment roster. Contact the library or registrar.`)
+        if(!student.school_email)throw new HttpError(422,'ROSTER_EMAIL_MISSING',`No school email is listed for this ${role} ID. Contact the library or registrar.`)
         const [existing]=await q.execute<RowDataPacket[]>(`SELECT 1 FROM accounts WHERE school_id=?
           UNION ALL SELECT 1 FROM users WHERE LOWER(email)=LOWER(?) OR school_id=? OR institutional_id=? LIMIT 1`,[schoolId,student.school_email,schoolId,schoolId])
-        if(existing.length)return null
+        if(existing.length)throw new HttpError(409,'ACCOUNT_ALREADY_EXISTS',`An account already exists for this ${role} ID or email. Sign in instead.`)
         const timestamp=new Date()
         const [saved]=await q.execute<ResultSetHeader>(`INSERT INTO enrollment_signup_challenges
           (challenge_id,semester_id,roster_id,school_id,school_email,code_hash,sent_at,expires_at,roster_role)
@@ -62,7 +62,10 @@ export function createRosterRegistration(database:Pool=db,sendCode=sendSchoolVer
       })
       if(target){
         try{await sendCode(target,code)}
-        catch{await database.execute('UPDATE enrollment_signup_challenges SET code_hash=NULL WHERE challenge_id=?',[challengeId])}
+        catch(err){
+          await database.execute('UPDATE enrollment_signup_challenges SET code_hash=NULL WHERE challenge_id=?',[challengeId])
+          throw err
+        }
       }
       return {challengeId}
     },
