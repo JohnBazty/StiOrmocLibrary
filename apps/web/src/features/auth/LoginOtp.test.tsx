@@ -8,7 +8,7 @@ import { getCsrfToken } from './auth-storage'
 const challenge = {otpRequired:true,challengeId:'00000000-0000-4000-8000-000000000001',emailHint:'te***@ormoc.sti.edu.ph',expiresIn:600,resendAfter:60}
 function page() { render(<MemoryRouter initialEntries={['/login']}><ThemeProvider><Routes><Route path="/login" element={<LoginPage popup/>}/><Route path="/student/dashboard" element={<h1>Signed in dashboard</h1>}/></Routes></ThemeProvider></MemoryRouter>) }
 function submit() {
-  fireEvent.change(screen.getByLabelText('Student Number / Faculty ID'),{target:{value:'EXAMPLE-123'}})
+  fireEvent.change(screen.getByLabelText('Student ID / Faculty ID'),{target:{value:'EXAMPLE-123'}})
   fireEvent.change(screen.getByLabelText('Password'),{target:{value:'ExamplePass123!'}})
   fireEvent.click(screen.getByRole('button',{name:'Log In'}))
 }
