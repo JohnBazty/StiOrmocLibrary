@@ -105,8 +105,8 @@ Always know and document:
 | --- | --- |
 | Migrations directory | `database/supabase/` (Postgres only; MySQL was retired 2026-11-10) |
 | Latest applied migration | `040_library_hours_8am_5pm.sql` (2026-11-18); `038_fine_policy_maintenance.sql` also applied. Both ledger checksums and current schema verified read-only during integration. Earlier applied migrations include `037` and `034`; pending/reserved files remain tracked below. |
-| Latest file pending review | `033_rename_system_brand.sql`; `035` reserved by PR #20 (circulation RLS), not applied |
-| **Next available number** | **`041`** (`040_library_hours_8am_5pm.sql` applied 2026-11-18; `038_fine_policy_maintenance.sql` applied 2026-11-18 from `feat/fines-maintenance`; `039` reserved for the mobile refresh token, PR #39) |
+| Latest file pending review | `086_printing_bucket_and_payment_method.sql` (Phases 1–3 migrations `078`–`086` written locally, not applied to live Supabase) |
+| **Next available number** | **`087`** (`078`–`082` Phases 1–2, `083`–`086` Phase 3 written locally, pending review and Ethan's go-ahead before live apply) |
 
 Applied enrollment 031 supersedes the removed 028 draft. Keep applied filenames and source bytes, including line endings. The 003 source still needs checksum reconciliation. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set.
 

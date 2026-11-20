@@ -2,7 +2,8 @@
 
 - **Date created:** 2026-11-20
 - **Date last updated:** 2026-11-20
-- **Status:** planned
+- **Status:** inprogress (all 6 slices built and committed locally on their branches and merged into `chore/revisions-phase-3`; reviews, live migrations 083–086, and PRs pending Ethan's go-ahead)
+- **Integration branch (local only):** `chore/revisions-phase-3` merges `chore/revisions-phase-2` and all 6 Phase 3 slice branches for whole-suite checks.
 - **Source:** Ethan's `new-revisions.docx` (2026-11-20). Other phases: `2026-11-20-revisions-phase-1-fixes-and-cleanups.md` `2026-11-20-revisions-phase-2-catalog-circulation-maintenance.md`
 - **Migrations:** next unused number is **078** (see `.cursor/agent-protocol.md`); numbers are assigned when each slice is built.
 
@@ -85,15 +86,17 @@ Ethan's `new-revisions.docx` lists about 45 changes from user testing: bugs ("do
 
 ## Implementation tracking
 
-- [ ] 3a. Time fields in policies (`feat/policy-time-windows`)
-- [ ] 3b. Separate Faculty and Student policies (`feat/faculty-student-policies`)
-- [ ] 3c. Registration, roster and activation (`feat/roster-activation`)
-- [ ] 3d. Printing and photocopy (`fix/printing-upload-payment-choice`)
-- [ ] 3e. Payments in practice mode (`fix/hosted-payment-practice`)
-- [ ] 3f. Restricted staff account (`feat/restricted-staff-role`)
+- [x] 3a. Time fields in policies (`feat/policy-time-windows`). Migration `083_policy_time_windows.sql` written (NOT applied); 12-hour `TimeField12` picker on Fine rules and Borrowing policies.
+- [x] 3b. Separate Faculty and Student policies (`feat/faculty-student-policies`). Migration `084_faculty_policies.sql` written (NOT applied); faculty exempt from overdue/violation fines; separate Student & Faculty tabs in Borrowing policies, Waitlist & renewal setup, and Reservation expiry settings.
+- [x] 3c. Registration, roster and activation (`feat/roster-activation`). Migration `085_roster_activation_emails.sql` written (NOT applied); clear 422/409 roster rejections and surfaced mail errors; `GMAIL_USER`/`GMAIL_SENDER_EMAIL` aligned; Faculty department aliases + late enrollment; QR Roster Student/Faculty switcher; "Send activation emails" action.
+- [x] 3d. Printing and photocopy (`fix/printing-upload-payment-choice`). Migration `086_printing_bucket_and_payment_method.sql` written (NOT applied); private `printing-documents` bucket + `preferred_payment_method` (`Cash`/`Online`); photocopy payment choice in `PrintRequestForm` and counter cash note in `StudentPrintingPage`; clear > 4 MB file size error.
+- [x] 3e. Payments in practice mode (`fix/hosted-payment-practice`). Trailing-slash-safe `WEB_ORIGIN` in `hosted-payments.ts`; explicit Practice mode notices on `PaymentAction` and `LibraryFundsPage`.
+- [x] 3f. Restricted staff account (`feat/restricted-staff-role`). Staff removed from `announcements.manage`; Staff admin payments restricted to `Printing` kind only; Book queue, Announcements, and Library schedule removed from `staffNav` and `/staff/*` routes.
+- [ ] Reviews (`security-reviewer`; `database-reviewer` for `083`–`086`), then Ethan's go-ahead for push/PRs, live migrations `083`–`086`, and creating the restricted Staff test account.
 
 ## Change log
 
 | Date | Change |
 | --- | --- |
 | 2026-11-20 | Plan drafted from `new-revisions.docx` and a code map of every item; Ethan approved the 3-phase split. Status `planned`. |
+| 2026-11-20 | All 6 Phase 3 slices (`3a`–`3f`) built tests-first on separate branches and merged locally into `chore/revisions-phase-3` (on top of `chore/revisions-phase-2`). Migrations `083`–`086` written (NOT applied; next `087`). Status `inprogress`. |
