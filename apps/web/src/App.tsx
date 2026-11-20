@@ -53,7 +53,6 @@ const BookCart = lazy(() => import('./features/catalog/BookCart').then(m => ({ d
 const StudentPrintingPage = lazy(() => import('./features/printing/StudentPrintingPage').then(m => ({ default: m.StudentPrintingPage })))
 const AdminPrintingQueuePage = lazy(() => import('./features/printing/AdminPrintingQueuePage').then(m => ({ default: m.AdminPrintingQueuePage })))
 const StaffPrintingQueuePage = lazy(() => import('./features/printing/StaffPrintingQueuePage').then(m => ({ default: m.StaffPrintingQueuePage })))
-const AdminPrintSuppliesPage = lazy(() => import('./features/printing/AdminPrintSuppliesPage').then(m => ({ default: m.AdminPrintSuppliesPage })))
 const NotificationCenterPage = lazy(() => import('./features/notifications/NotificationCenterPage').then(m => ({ default: m.NotificationCenterPage })))
 const LibrarySchedulePage = lazy(() => import('./features/notifications/LibrarySchedulePage').then(m => ({ default: m.LibrarySchedulePage })))
 const WorkspaceNotificationsPage = lazy(() => import('./features/notifications/WorkspaceNotificationsPage').then(m => ({ default: m.WorkspaceNotificationsPage })))
@@ -172,7 +171,8 @@ export default function App() {
           <Route path="/librarian/inventory/stocktake" element={<AppLayout><StocktakePage /></AppLayout>} />
           <Route path="/librarian/floor-plan" element={<AppLayout><FloorPlanImagePage /></AppLayout>} />
           <Route path="/librarian/printing" element={<AppLayout><AdminPrintingQueuePage /></AppLayout>} />
-          <Route path="/librarian/supplies" element={<AppLayout><AdminPrintSuppliesPage /></AppLayout>} />
+          {/* Print supplies is archived (revisions 2026-11-20); paper sizes and prices are in Printing settings. */}
+          <Route path="/librarian/supplies" element={<Navigate to="/librarian/maintenance?tab=printing" replace />} />
           <Route path="/librarian/attendance" element={<AppLayout><AdminAttendancePage /></AppLayout>} />
           <Route path="/librarian/clearance" element={<AppLayout><AdminClearancePage /></AppLayout>} />
           <Route path="/librarian/announcements" element={<AppLayout><AdminAnnouncementsPage /></AppLayout>} />

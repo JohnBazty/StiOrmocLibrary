@@ -1,3 +1,6 @@
+// ARCHIVED (revisions 2026-11-20): no longer routed or in the menu; /librarian/supplies redirects to
+// Library setup -> Printing settings, which keeps paper sizes and prices (PrintingPaperSettings).
+// Kept so stock tracking can be restored without rebuilding it.
 import { Download, Droplets, PackageOpen, Plus, RefreshCw } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ResponsiveTable } from '../../components/ResponsiveTable'

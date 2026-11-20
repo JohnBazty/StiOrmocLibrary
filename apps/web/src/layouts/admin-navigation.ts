@@ -1,4 +1,4 @@
-import { Archive, Bell, BookMarked, BookOpen, CalendarClock, CircleDollarSign, ClipboardCheck, FileBarChart, Folder, LayoutDashboard, Map, Megaphone, PackageOpen, Printer, QrCode, Settings, Scale, SlidersHorizontal, Tags, Users, UserRound, type LucideIcon } from 'lucide-react'
+import { Archive, Bell, BookMarked, BookOpen, CalendarClock, CircleDollarSign, ClipboardCheck, FileBarChart, Folder, LayoutDashboard, Map, Megaphone, Printer, QrCode, Settings, Scale, SlidersHorizontal, Tags, Users, UserRound, type LucideIcon } from 'lucide-react'
 
 export type AdminNavLink = { label: string; to: string; icon: LucideIcon }
 export type AdminNavGroup = { id: string; label: string; icon: LucideIcon; children: AdminNavItem[]; section?: boolean }
@@ -19,7 +19,6 @@ export const adminNavigation: AdminNavItem[] = [
       link('Users','users',Users),
       link('Student QR roster','student-qr-roster',QrCode),
     ]},
-    link('Print supplies','supplies',PackageOpen),
     link('Borrowing policies','borrowing-policies',Scale),
   ]},
   {id:'transaction',label:'Transactions',icon:CalendarClock,section:true,children:[
