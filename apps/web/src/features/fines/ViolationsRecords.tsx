@@ -1,54 +1,214 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Button, SectionCard } from '../../components/ui'
-import { getCsrfToken } from '../auth/auth-storage'
-
-type Incident = {incident_id:number;full_name:string;school_id:string;category:string;incident_at:string;action:string;details:string;location:string;recorded_by:string;fine_amount?:number;payment_status?:string;voided_at?:string;events:Array<{type:string;reason:string;at:string}>}
-type Preview = {name:string;schoolId:string;category:string;previousCount:number;action:string;amount:number|null;reviewToken:string}
-async function request<T>(url:string, body?:unknown):Promise<T> {
-  const token=getCsrfToken()
-  const response=await fetch(url,{method:body?'POST':'GET',credentials:'include',headers:{Accept:'application/json',...(token?{'X-CSRF-Token':token} :{}),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})})
-  const result=await response.json()
-  if(!response.ok||!result.success)throw new Error(result.message??'Violation records are unavailable. Please retry.')
-  return result.data
-}
-const inputClass='min-h-11 w-full rounded-xl border px-3 py-2'
-const categories=['Noise','Eating or food','Other conduct']
-function localNow(){return new Date(Date.now()+8*60*60*1000).toISOString().slice(0,16)}
-const date=(value:string)=>new Date(value).toLocaleString('en-PH',{timeZone:'Asia/Manila'})
-
-export function ViolationsRecords({admin=false,onSaved}:{admin?:boolean;onSaved?:()=>void}) {
-  const base=admin?'/api/v1/admin/fines/violations':'/api/v1/fines/violations'
-  const [items,setItems]=useState<Incident[]>([]),[error,setError]=useState(''),[notice,setNotice]=useState(''),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false)
-  const [search,setSearch]=useState(''),[category,setCategory]=useState(''),[page,setPage]=useState(1),[total,setTotal]=useState(0),[refresh,setRefresh]=useState(0),[from,setFrom]=useState(''),[to,setTo]=useState('')
-  const [open,setOpen]=useState(false),[preview,setPreview]=useState<Preview|null>(null),[draft,setDraft]=useState<Record<string,unknown>|null>(null)
-  const [selected,setSelected]=useState<Incident|null>(null),[eventType,setEventType]=useState('Correction'),[reason,setReason]=useState('')
-  const key=useRef('')
-  useEffect(()=>{let active=true;setLoading(true);void request<{items:Incident[];total:number}>(`${base}?${new URLSearchParams({search,category,from,to,page:String(page)})}`).then(data=>{if(active){setItems(data.items);setTotal(data.total);setError('')}}).catch(e=>{if(active)setError(e.message)}).finally(()=>{if(active)setLoading(false)});return()=>{active=false}},[base,search,category,from,to,page,refresh])
-  async function download(format:'csv'|'pdf') {setError('');try{const response=await fetch(`${base}/report.${format}?${new URLSearchParams({search,category,from,to})}`,{credentials:'include'});if(!response.ok){const result=await response.json();throw new Error(result.message??'Export failed.')}const url=URL.createObjectURL(await response.blob());const a=document.createElement('a');a.href=url;a.download=`violations-records.${format}`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){setError((e as Error).message)}}
-  async function review(e:FormEvent<HTMLFormElement>){e.preventDefault();setBusy(true);setError('');const fields=Object.fromEntries(new FormData(e.currentTarget).entries());const body={...fields,incidentAt:new Date(`${fields.incidentAt}:00+08:00`).toISOString(),...(fields.priorWarnings===''?{priorWarnings:undefined}:{priorWarnings:Number(fields.priorWarnings)})};try{setPreview(await request<Preview>(base+'/preview',body));setDraft(body);key.current=crypto.randomUUID()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
-  async function save(){if(!preview||!draft||busy)return;setBusy(true);setError('');try{await request(base,{...draft,reviewToken:preview.reviewToken,requestKey:key.current});setPreview(null);setDraft(null);setOpen(false);setNotice('Violation saved. The person has been notified.');setRefresh(v=>v+1);onSaved?.()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
-  async function addEvent(e:FormEvent){e.preventDefault();if(!selected||busy)return;setBusy(true);try{await request(`${base}/${selected.incident_id}/events`,{type:eventType,reason});setSelected(null);setReason('');setRefresh(v=>v+1);setNotice('Review note saved; original history is preserved.')}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
-  return <SectionCard className="my-5 p-5">
-    <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-bold">{admin?'Violations records':'My violations and warnings'}</h2><div className="flex gap-2"><Button variant="secondary" onClick={()=>setRefresh(v=>v+1)}>Refresh records</Button>{admin?<Button onClick={()=>{setOpen(v=>!v);setPreview(null)}}>{open?'Close form':'Record violation'}</Button>:null}</div></div>
-    <p className="my-3 text-sm">Students have three lifetime warnings per violation category. Warnings do not block borrowing or clearance. Counts do not reset each term. Earlier infraction fines remain in the financial history below; no warnings have been invented for them.</p>
-    {error?<p role="alert" className="my-3 rounded-xl border border-red-400 p-3">{error}</p>:null}
-    {notice?<p role="status" data-tone="success" className="my-3 rounded-xl border border-green-500 p-3">{notice}</p>:null}
-    {open&&admin?<form onSubmit={review} onChange={()=>setPreview(null)} className="my-5 grid gap-3 rounded-xl border p-4 sm:grid-cols-2">
-      <label>School ID<input name="schoolId" required className={inputClass}/></label>
-      <label>Violation category<select name="category" className={inputClass}>{categories.map(c=><option key={c}>{c}</option>)}</select></label>
-      <label>Incident date and time (Philippines)<input name="incidentAt" type="datetime-local" defaultValue={localNow()} required className={inputClass}/></label>
-      <label>Location<input name="location" defaultValue="Library" maxLength={150} className={inputClass}/></label>
-      <label className="sm:col-span-2">What happened?<textarea name="details" required minLength={10} maxLength={1000} className={inputClass}/></label>
-      <details className="sm:col-span-2"><summary className="cursor-pointer py-2 font-semibold">First record for this category: review lifetime warning history</summary><p className="my-2 text-sm">Confirm new entrant status (Grade 11 or first-year college) and prior warnings. Use zero only for a verified new entrant with no prior warnings. Existing students do not receive a fresh set. Review is saved once for this category; later records use saved history.</p><label>Warnings already used<select name="priorWarnings" className={inputClass}><option value="">Use saved review</option><option value="0">0 — verified new entrant, no prior warnings</option><option value="1">1 already used</option><option value="2">2 already used</option><option value="3">3 used / no warnings remaining</option></select></label><label>Reason for the initial review<textarea name="reviewReason" maxLength={1000} className={inputClass} placeholder="How new entrant status and prior warning history were verified"/></label></details>
-      <label>Normal fine amount (only after warnings)<input name="amount" type="number" min="0.01" max="999999.99" step="0.01" className={inputClass}/></label>
-      <p className="self-center text-sm">No money is charged for a warning. Faculty uses the normal fine process.</p>
-      <Button type="submit" disabled={busy} className="sm:col-span-2">Review outcome</Button>
-      {preview?<div role="status" className="rounded-xl border border-blue-400 p-4 sm:col-span-2"><strong>{preview.name} · {preview.schoolId}</strong><p>{preview.category}: {preview.action}</p><p>Previous qualifying incidents and prior warnings: {preview.previousCount}</p><p>{preview.amount?`Fine to issue: PHP ${Number(preview.amount).toFixed(2)}`:'No fine. Borrowing and clearance are unaffected by this warning.'}</p><p className="my-2 text-sm">Confirm the person and incident details above before saving.</p><Button type="button" disabled={busy} onClick={()=>void save()}>Save reviewed violation</Button></div>:null}
-    </form>:null}
-    <div className="my-4 flex flex-wrap gap-3">{admin?<label className="grow">Search person or school ID<input value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}} className={inputClass}/></label>:null}<label>From<input type="date" value={from} onChange={e=>{setFrom(e.target.value);setPage(1)}} className={inputClass}/></label><label>Through<input type="date" value={to} onChange={e=>{setTo(e.target.value);setPage(1)}} className={inputClass}/></label><label>Category<select value={category} onChange={e=>{setCategory(e.target.value);setPage(1)}} className={inputClass}><option value="">All categories</option>{categories.map(c=><option key={c}>{c}</option>)}</select></label></div>
-    {admin?<div className="my-3 flex gap-2"><Button variant="secondary" onClick={()=>void download('csv')}>Export violations CSV</Button><Button variant="secondary" onClick={()=>void download('pdf')}>Export violations PDF</Button></div>:null}
-    {loading?<p role="status">Loading violations…</p>:items.length===0?<p>No violation records match.</p>:<div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{['Person','Incident','Action','Details'].map(t=><th key={t} className="p-3">{t}</th>)}</tr></thead><tbody>{items.map(item=><tr key={item.incident_id} className="border-t"><td className="p-3">{item.full_name}<br/>{item.school_id}</td><td className="p-3">{item.category}<br/>{date(item.incident_at)}</td><td className="p-3">{item.action}<p>{item.voided_at?'Voided':item.events.some(e=>e.type==='Resolved')?'Resolved':'Recorded'}</p>{item.fine_amount?<p>PHP {Number(item.fine_amount).toFixed(2)} · {item.payment_status}</p>:null}</td><td className="p-3"><button className="min-h-11 underline" onClick={()=>{setSelected(item);setReason('')}}>View record</button></td></tr>)}</tbody></table></div>}
-    <div className="mt-4 flex items-center gap-3"><Button variant="secondary" disabled={page===1||loading} onClick={()=>setPage(v=>v-1)}>Previous</Button><span>Page {page}</span><Button variant="secondary" disabled={page*25>=total||loading} onClick={()=>setPage(v=>v+1)}>Next</Button></div>
-    {selected?<div className="mt-5 space-y-3 rounded-xl border p-4"><h3 className="font-bold">{selected.full_name} · {selected.category}</h3><p>Action: {selected.action}{selected.voided_at?' · Voided':''}</p><p>{selected.details}</p><p>{selected.location} · {date(selected.incident_at)}</p>{admin?<p>Recorded by {selected.recorded_by}</p>:null}{selected.events.map((e,i)=><p key={i}>{e.type} · {date(e.at)}: {e.reason}</p>)}{!admin?<p>Ask the librarian at the counter if you believe this record needs review.</p>:<form onSubmit={addEvent} className="space-y-3"><label>Review action<select value={eventType} onChange={e=>setEventType(e.target.value)} className={inputClass}><option>Correction</option><option>Resolved</option><option>Voided</option></select></label><label>Reason<textarea value={reason} onChange={e=>setReason(e.target.value)} minLength={10} maxLength={1000} required className={inputClass}/></label><p className="text-sm">Original facts remain visible. Corrections and resolutions do not reset warnings. Financial adjustments use the normal fine controls.</p><Button type="submit" disabled={busy}>Save review note</Button></form>}<Button variant="secondary" onClick={()=>setSelected(null)}>Close record</Button></div>:null}
-  </SectionCard>
-}
+import { Download, Plus, RefreshCw } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ResponsiveTable } from '../../components/ResponsiveTable'
+import { Button, NoticeBanner, SectionCard, StatusBadge } from '../../components/ui'
+import { ViolationRecordDrawer } from './ViolationRecordDrawer'
+import { ViolationRecordForm } from './ViolationRecordForm'
+import type { ViolationCategory } from './violation-categories-api'
+import { adminViolationsBase, ownViolationsBase, violationRequest, violationsApi, type Incident, type OwnStanding } from './violations-api'
+
+const date = (value: string) => new Date(value).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })
+const PAGE_SIZE = 25
+
+export function WarningsLeft({ items }: { items: OwnStanding[] }) {
+  if (!items.length) return null
+  return (
+    <div className="mb-4 rounded-[8px] border border-[var(--sl-border)] bg-[var(--sl-bg-subtle)] p-4">
+      <h3 className="text-sm font-semibold text-[var(--sl-text-header)]">Warnings left</h3>
+      <ul className="mt-2 grid gap-2 sm:grid-cols-3">
+        {items.map(item => (
+          <li key={item.category} className="rounded-[6px] border border-[var(--sl-border)] bg-[var(--sl-bg-elevated)] p-3 text-sm">
+            <p className="font-semibold text-[var(--sl-text-header)]">{item.category}</p>
+            <p className="tabular-nums">
+              {item.warningsBeforeFine === 0 ? 'No warnings: a fine applies at once' : item.warningsLeft > 0
+                ? `${item.warningsLeft} of ${item.warningsBeforeFine} warnings left`
+                : `No warnings left. The next offense is a fine of PHP ${item.fineAmount.toFixed(2)}`}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+export function ViolationsRecords({ admin = false, onSaved, incidentId = null, onIncidentChange }: {
+  admin?: boolean
+  onSaved?: () => void
+  /** Record open in the drawer, kept in the page address so a link opens it. */
+  incidentId?: number | null
+  onIncidentChange?: (id: number | null) => void
+}) {
+  const base = admin ? adminViolationsBase : ownViolationsBase
+  const [items, setItems] = useState<Incident[]>([])
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [category, setCategory] = useState('')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [refresh, setRefresh] = useState(0)
+  const [formOpen, setFormOpen] = useState(false)
+  const [categories, setCategories] = useState<ViolationCategory[]>([])
+  const [own, setOwn] = useState<OwnStanding[]>([])
+  const [opened, setOpened] = useState<Incident | null>(null)
+  const [localId, setLocalId] = useState<number | null>(null)
+  const selectedId = onIncidentChange ? incidentId : localId
+  const select = (id: number | null) => (onIncidentChange ?? setLocalId)(id)
+
+  useEffect(() => {
+    let active = true
+    const load = admin ? violationRequest<ViolationCategory[]>('/api/v1/admin/violation-categories') : Promise.resolve(null)
+    void load.then(list => { if (active && list) setCategories(list) }).catch(() => undefined)
+    if (!admin) void violationsApi.ownStanding().then(list => { if (active) setOwn(list) }).catch(() => undefined)
+    return () => { active = false }
+  }, [admin, refresh])
+
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+    void violationRequest<{ items: Incident[]; total: number }>(`${base}?${new URLSearchParams({ search, category, from, to, page: String(page) })}`)
+      .then(data => { if (active) { setItems(data.items); setTotal(data.total); setError('') } })
+      .catch(cause => { if (active) setError(cause.message) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [base, search, category, from, to, page, refresh])
+
+  // A record linked by address may not be on this page of the list, so it is fetched by number.
+  useEffect(() => {
+    if (!selectedId) { setOpened(null); return }
+    const found = items.find(item => item.incident_id === selectedId)
+    if (found) { setOpened(found); return }
+    let active = true
+    void violationRequest<{ items: Incident[] }>(`${base}?${new URLSearchParams({ incidentId: String(selectedId) })}`)
+      .then(data => { if (active) setOpened(data.items[0] ?? null) })
+      .catch(cause => { if (active) { setError(cause.message); setOpened(null) } })
+    return () => { active = false }
+  }, [selectedId, items, base])
+
+  async function download(format: 'csv' | 'pdf') {
+    setError('')
+    try {
+      const response = await fetch(`${base}/report.${format}?${new URLSearchParams({ search, category, from, to })}`, { credentials: 'include' })
+      if (!response.ok) throw new Error((await response.json()).message ?? 'Export failed.')
+      const url = URL.createObjectURL(await response.blob())
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `violations-records.${format}`
+      anchor.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (cause) {
+      setError((cause as Error).message)
+    }
+  }
+
+  const filterNames = admin ? categories.map(item => item.name) : own.map(item => item.category)
+  const closeDrawer = () => select(null)
+  const input = 'sl-input'
+
+  return (
+    <SectionCard className="my-5 overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--sl-border)] px-5 py-4">
+        <div>
+          <h2 className="font-display text-base font-semibold text-[var(--sl-text-header)]">{admin ? 'Violation records' : 'My violations and warnings'}</h2>
+          {!admin ? <p className="mt-0.5 text-xs text-[var(--sl-text-secondary)]">A warning does not block borrowing or clearance. Counts do not reset each term.</p> : null}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => setRefresh(value => value + 1)}><RefreshCw size={16} aria-hidden="true" /> Refresh</Button>
+          {admin ? (
+            <>
+              <Button variant="secondary" onClick={() => void download('csv')}><Download size={16} aria-hidden="true" /> Export CSV</Button>
+              <Button variant="secondary" onClick={() => void download('pdf')}><Download size={16} aria-hidden="true" /> Export PDF</Button>
+              <Button onClick={() => setFormOpen(value => !value)}><Plus size={16} aria-hidden="true" /> {formOpen ? 'Close form' : 'Record violation'}</Button>
+            </>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="p-5">
+        {error ? <NoticeBanner tone="error">{error}</NoticeBanner> : null}
+        {notice ? <NoticeBanner tone="success">{notice}</NoticeBanner> : null}
+        {!admin ? <WarningsLeft items={own} /> : null}
+
+        {formOpen && admin ? (
+          <ViolationRecordForm
+            categories={categories.filter(item => item.isActive).map(item => item.name)}
+            onCancel={() => setFormOpen(false)}
+            onSaved={message => { setFormOpen(false); setNotice(message); setRefresh(value => value + 1); onSaved?.() }}
+          />
+        ) : null}
+
+        <div className="mb-4 flex flex-wrap items-end gap-3">
+          {admin ? (
+            <label className="grow text-xs font-semibold text-[var(--sl-text-secondary)]">Search person or school ID
+              <input value={search} onChange={event => { setSearch(event.target.value); setPage(1) }} className={`${input} mt-1`} />
+            </label>
+          ) : null}
+          <label className="text-xs font-semibold text-[var(--sl-text-secondary)]">From
+            <input type="date" value={from} onChange={event => { setFrom(event.target.value); setPage(1) }} className={`${input} mt-1`} />
+          </label>
+          <label className="text-xs font-semibold text-[var(--sl-text-secondary)]">Through
+            <input type="date" value={to} onChange={event => { setTo(event.target.value); setPage(1) }} className={`${input} mt-1`} />
+          </label>
+          <label className="text-xs font-semibold text-[var(--sl-text-secondary)]">Category filter
+            <select value={category} onChange={event => { setCategory(event.target.value); setPage(1) }} className={`${input} mt-1`}>
+              <option value="">All categories</option>
+              {filterNames.map(name => <option key={name}>{name}</option>)}
+            </select>
+          </label>
+        </div>
+
+        {loading ? <p role="status" className="text-sm">Loading violations…</p> : items.length === 0 ? (
+          <p className="py-4 text-sm text-[var(--sl-text-secondary)]">No violation records match.</p>
+        ) : (
+          <ResponsiveTable label="Violation records">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="border-b border-[var(--sl-border)] bg-[var(--sl-bg-subtle)]">
+                <tr>{[...(admin ? ['Person'] : []), 'Category', 'Step', 'Date', 'Fine status'].map(heading => <th key={heading} scope="col" className="px-3 py-2.5">{heading}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--sl-border)]">
+                {items.map(item => {
+                  const state = item.voided_at ? 'Voided' : item.events.some(event => event.type === 'Resolved') ? 'Resolved' : ''
+                  return (
+                    <tr key={item.incident_id} className="align-top">
+                      {admin ? <td className="px-3 py-3"><p className="font-semibold text-[var(--sl-text-header)]">{item.full_name}</p><p className="text-xs text-[var(--sl-text-muted)]">{item.school_id}</p></td> : null}
+                      <td className="px-3 py-3">
+                        <button type="button" className="min-h-9 font-semibold text-[#0b5ea2] underline dark:text-[#93c5fd]" onClick={() => select(item.incident_id)}>
+                          {item.category}<span className="sr-only"> record, view details</span>
+                        </button>
+                      </td>
+                      <td className="px-3 py-3">
+                        <p>{item.action}</p>
+                        <p className="mt-0.5 flex flex-wrap gap-1 text-xs text-[var(--sl-text-secondary)]">
+                          {item.source === 'Paper log' ? <StatusBadge status="Paper log" tone="neutral" /> : null}
+                          {state ? <StatusBadge status={state} tone="neutral" /> : null}
+                        </p>
+                      </td>
+                      <td className="px-3 py-3 text-xs tabular-nums text-[var(--sl-text-secondary)]">{date(item.incident_at)}</td>
+                      <td className="px-3 py-3">{item.fine_amount ? <><p className="font-semibold tabular-nums">PHP {Number(item.fine_amount).toFixed(2)}</p><p className="text-xs">{item.payment_status}</p></> : <span className="text-[var(--sl-text-muted)]">No charge</span>}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </ResponsiveTable>
+        )}
+
+        <div className="mt-4 flex items-center gap-3 text-sm">
+          <Button variant="secondary" disabled={page === 1 || loading} onClick={() => setPage(value => value - 1)}>Previous</Button>
+          <span>Page {page}</span>
+          <Button variant="secondary" disabled={page * PAGE_SIZE >= total || loading} onClick={() => setPage(value => value + 1)}>Next</Button>
+        </div>
+      </div>
+
+      {selectedId && opened ? (
+        <ViolationRecordDrawer
+          item={opened} base={base} admin={admin} onClose={closeDrawer}
+          onSaved={message => { closeDrawer(); setNotice(message); setRefresh(value => value + 1) }}
+        />
+      ) : null}
+    </SectionCard>
+  )
+}

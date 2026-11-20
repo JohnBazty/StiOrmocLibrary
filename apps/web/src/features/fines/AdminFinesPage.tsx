@@ -5,10 +5,10 @@ import {
   PhilippinePeso,
   ReceiptText,
   RefreshCw,
-  ShieldCheck,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import {
@@ -27,11 +27,24 @@ import { usePaymentUpdates } from '../payments/payment-updates'
 import { ServiceChargesPanel } from '../payments/ServiceChargesPanel'
 import { currentMonth, fineDate, fineMoney, today } from './fine-format'
 import { finesApi } from './fines-api'
-import type { FineFilters, FineList, FineObligation, FineReceipt, FineTerm } from './types'
+import type { FineFilterOptions, FineFilters, FineList, FineObligation, FineReceipt, FineTerm } from './types'
 import { UrgentCases } from './UrgentCases'
 import { ViolationsRecords } from './ViolationsRecords'
 
 type FinesTab = 'fines' | 'urgent' | 'violations' | 'service-charges'
+
+const tabs: Array<{ key: FinesTab; label: string; caption: string }> = [
+  { key: 'fines', label: 'Fines & charges', caption: 'Overdue fines are added automatically. Record cash payments and adjustments here.' },
+  { key: 'urgent', label: 'Urgent alerts', caption: 'People whose balance or overdue items need follow-up today.' },
+  { key: 'violations', label: 'Violations', caption: 'Record library conduct. Warnings and fines follow Library setup → Violation rules.' },
+  { key: 'service-charges', label: 'Service charges', caption: 'Other one-off services. Separate from printing and fines.' },
+]
+const fallbackOptions: FineFilterOptions = {
+  types: [{ value: 'Overdue', label: 'Overdue' }, { value: 'Lost Book', label: 'Lost book' }, { value: 'Damage Replacement', label: 'Damage replacement' }],
+  violations: [{ type: 'Infraction', category: null, label: 'All violations' }],
+}
+// One select carries both the fine type and the violation category.
+const filterValue = (type: string, category?: string | null) => (category ? `${type}::${category}` : type)
 
 const initial: FineFilters = { search: '', status: 'all', type: 'all', period: 'all', page: 1, limit: 100 }
 
@@ -40,7 +53,13 @@ function requestKey() {
 }
 
 export function AdminFinesPage() {
-  const [activeTab, setActiveTab] = useState<FinesTab>('fines')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedTab = searchParams.get('tab')
+  const activeTab: FinesTab = tabs.some(tab => tab.key === requestedTab) ? (requestedTab as FinesTab) : 'fines'
+  const incidentParam = Number(searchParams.get('incident'))
+  const incidentId = Number.isSafeInteger(incidentParam) && incidentParam > 0 ? incidentParam : null
+  const [options, setOptions] = useState<FineFilterOptions>(fallbackOptions)
+  const [urgentCount, setUrgentCount] = useState(0)
   const [filters, setFilters] = useState<FineFilters>(initial)
   const [data, setData] = useState<FineList | null>(null)
   const [terms, setTerms] = useState<FineTerm[]>([])
@@ -69,6 +88,7 @@ export function AdminFinesPage() {
   const hasActiveFilters =
     filters.period !== 'all' ||
     filters.type !== 'all' ||
+    Boolean(filters.category) ||
     filters.status !== 'all' ||
     Boolean(filters.search.trim())
 
@@ -107,6 +127,8 @@ export function AdminFinesPage() {
       .adminTerms()
       .then(setTerms)
       .catch(() => setTerms([]))
+    void finesApi.filterOptions().then(setOptions).catch(() => setOptions(fallbackOptions))
+    void finesApi.urgentCaseCount().then(setUrgentCount).catch(() => setUrgentCount(0))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   usePaymentUpdates(() => (busy ? undefined : load(appliedFilters.current)))
@@ -326,19 +348,25 @@ export function AdminFinesPage() {
     }
   }
 
-  const tabs: Array<[FinesTab, string]> = [
-    ['fines', 'Fines & charges'],
-    ['urgent', 'Urgent alerts'],
-    ['violations', 'Violations'],
-    ['service-charges', 'Service charges'],
-  ]
+  function openTab(key: FinesTab, extra: Record<string, string> = {}) {
+    setSearchParams(key === 'fines' ? {} : { tab: key, ...extra })
+  }
+  function onTabKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
+    if (!step) return
+    event.preventDefault()
+    const next = tabs[(index + step + tabs.length) % tabs.length]
+    openTab(next.key)
+    requestAnimationFrame(() => document.getElementById(`fines-tab-${next.key}`)?.focus())
+  }
+  const activeCaption = tabs.find(tab => tab.key === activeTab)!.caption
 
   return (
     <>
       <PageHeader
         eyebrow="Financial records"
         title="Fines management"
-        description="Track overdue fines, replacement charges, and infractions; record counter cash payments or authorized adjustments."
+        description="Track overdue fines, replacement charges and violations; record counter cash payments or authorized adjustments."
         action={
           <div className="flex flex-wrap gap-2">
             <a
@@ -347,6 +375,63 @@ export function AdminFinesPage() {
             >
               Online payments
             </a>
+          </div>
+        }
+      />
+
+      <div role="tablist" aria-label="Fines management views" className="flex flex-wrap gap-1 border-b border-[var(--sl-border)]">
+        {tabs.map((tab, index) => {
+          const active = activeTab === tab.key
+          return (
+            <button
+              key={tab.key}
+              id={`fines-tab-${tab.key}`}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              aria-controls="fines-tabpanel"
+              tabIndex={active ? 0 : -1}
+              onClick={() => openTab(tab.key)}
+              onKeyDown={event => onTabKey(event, index)}
+              className={`-mb-px inline-flex min-h-10 items-center gap-2 border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${
+                active
+                  ? 'border-[#0b5ea2] text-[#0b5ea2] dark:border-[#93c5fd] dark:text-[#93c5fd]'
+                  : 'border-transparent text-[var(--sl-text-secondary)] hover:border-[var(--sl-border-strong)] hover:text-[var(--sl-text-header)]'
+              }`}
+            >
+              {tab.label}
+              {tab.key === 'urgent' && urgentCount > 0 ? (
+                <span aria-label={`${urgentCount} urgent ${urgentCount === 1 ? 'case' : 'cases'}`} className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#FFF200] px-1.5 text-xs font-bold text-[#0b5ea2] ring-1 ring-[#0b5ea2]/40">
+                  {urgentCount}
+                </span>
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
+      <p className="mb-5 mt-2 text-sm text-[var(--sl-text-secondary)]">{activeCaption}</p>
+
+      <div role="tabpanel" id="fines-tabpanel" aria-labelledby={`fines-tab-${activeTab}`}>
+
+      {error ? <NoticeBanner tone="error">{error}</NoticeBanner> : null}
+      {notice ? <NoticeBanner tone="success">{notice}</NoticeBanner> : null}
+
+      {activeTab === 'urgent' ? <UrgentCases onCount={setUrgentCount} /> : null}
+      {activeTab === 'violations' ? (
+        <ViolationsRecords
+          admin
+          onSaved={() => void load()}
+          incidentId={incidentId}
+          onIncidentChange={id => setSearchParams(id ? { tab: 'violations', incident: String(id) } : { tab: 'violations' })}
+        />
+      ) : null}
+      {activeTab === 'service-charges' ? (
+        <ServiceChargesPanel admin canManage={getCurrentIdentity()?.role === 'Librarian'} className="" />
+      ) : null}
+
+      {activeTab === 'fines' ? (
+        <>
+          <div className="mb-3 flex flex-wrap justify-end gap-2">
             <Button variant="secondary" onClick={() => void load()}>
               <RefreshCw size={16} aria-hidden="true" /> Refresh
             </Button>
@@ -354,41 +439,6 @@ export function AdminFinesPage() {
               <Download size={16} aria-hidden="true" /> Export filtered PDF
             </Button>
           </div>
-        }
-      />
-
-      <nav aria-label="Fines management views" className="mb-5 flex flex-wrap gap-1 border-b border-[var(--sl-border)]">
-        {tabs.map(([key, label]) => {
-          const active = activeTab === key
-          return (
-            <button
-              key={key}
-              type="button"
-              aria-pressed={active}
-              onClick={() => setActiveTab(key)}
-              className={`-mb-px inline-flex min-h-10 items-center border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${
-                active
-                  ? 'border-[#0b5ea2] text-[#0b5ea2] dark:border-[#93c5fd] dark:text-[#93c5fd]'
-                  : 'border-transparent text-[var(--sl-text-secondary)] hover:border-[var(--sl-border-strong)] hover:text-[var(--sl-text-header)]'
-              }`}
-            >
-              {label}
-            </button>
-          )
-        })}
-      </nav>
-
-      {error ? <NoticeBanner tone="error">{error}</NoticeBanner> : null}
-      {notice ? <NoticeBanner tone="success">{notice}</NoticeBanner> : null}
-
-      {activeTab === 'urgent' ? <UrgentCases setup /> : null}
-      {activeTab === 'violations' ? <ViolationsRecords admin onSaved={() => void load()} /> : null}
-      {activeTab === 'service-charges' ? (
-        <ServiceChargesPanel admin canManage={getCurrentIdentity()?.role === 'Librarian'} />
-      ) : null}
-
-      {activeTab === 'fines' ? (
-        <>
           <SectionCard className="mb-5 p-4">
             <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
               <select
@@ -407,14 +457,28 @@ export function AdminFinesPage() {
               {controls}
               <select
                 aria-label="Fine type"
-                value={filters.type}
-                onChange={event => setFilters({ ...filters, type: event.target.value })}
+                value={filterValue(filters.type, filters.category)}
+                onChange={event => {
+                  const [type, category] = event.target.value.split('::')
+                  setFilters({ ...filters, type, category: category || undefined })
+                }}
                 className="sl-input"
               >
-                <option value="all">All fine types</option>
-                <option>Overdue</option>
-                <option>Infraction</option>
-                <option>Lost Book</option>
+                <option value="all">All charges</option>
+                <optgroup label="Borrowing">
+                  {options.types.map(type => (
+                    <option key={type.value} value={type.value}>
+                      {type.label}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Violations">
+                  {options.violations.map(item => (
+                    <option key={`${item.type}-${item.category ?? 'all'}`} value={filterValue(item.type, item.category)}>
+                      {item.label}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
               <select
                 aria-label="Fine status"
@@ -452,11 +516,10 @@ export function AdminFinesPage() {
             ) : null}
           </SectionCard>
 
-          <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard label="Assessed" value={fineMoney(data?.summary.assessed ?? 0)} icon={PhilippinePeso} />
             <StatCard label="Outstanding" value={fineMoney(data?.summary.outstanding ?? 0)} icon={AlertTriangle} tone="warning" />
             <StatCard label="Collected" value={fineMoney(data?.summary.collected ?? 0)} icon={ReceiptText} tone="success" />
-            <StatCard label="Waived" value={fineMoney(data?.summary.waived ?? 0)} icon={ShieldCheck} />
             <StatCard label="Accounts with balance" value={data?.summary.accountsWithBalance ?? 0} icon={FileText} />
           </div>
 
@@ -499,7 +562,7 @@ export function AdminFinesPage() {
                           <p className="font-semibold text-[var(--sl-text-header)]">{item.userName}</p>
                           <p className="mt-0.5 text-xs text-[var(--sl-text-muted)]">{item.schoolId}</p>
                         </td>
-                        <td className="px-4 py-3.5 text-xs font-medium text-[var(--sl-text-secondary)]">{item.type}</td>
+                        <td className="px-4 py-3.5 text-xs font-medium text-[var(--sl-text-secondary)]">{item.typeLabel}</td>
                         <td className="max-w-48 px-4 py-3.5 font-semibold text-[var(--sl-text-header)]">{item.title}</td>
                         <td className="max-w-64 px-4 py-3.5 text-xs text-[var(--sl-text-secondary)]">{item.reason}</td>
                         <td className="px-4 py-3.5 font-semibold tabular-nums text-[var(--sl-text-header)]">
@@ -561,6 +624,11 @@ export function AdminFinesPage() {
                                 Cash payment
                               </Button>
                             ) : null}
+                            {item.incidentId ? (
+                              <Button size="sm" variant="ghost" onClick={() => openTab('violations', { incident: String(item.incidentId) })}>
+                                View violation
+                              </Button>
+                            ) : null}
                             {item.fineId && item.status !== 'Accruing' && !['Paid', 'Waived', 'Voided'].includes(item.status) ? (
                               <Button
                                 size="sm"
@@ -600,6 +668,7 @@ export function AdminFinesPage() {
           </SectionCard>
         </>
       ) : null}
+      </div>
 
       {paying ? (
         <LumoDialog title="Record cash payment" busy={busy} onClose={() => setPaying(null)}>

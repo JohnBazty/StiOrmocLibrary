@@ -1,4 +1,4 @@
-import { BookOpen, CalendarClock, Clock, GraduationCap, MapPin, Printer, SlidersHorizontal } from 'lucide-react'
+import { BookOpen, CalendarClock, Clock, GraduationCap, MapPin, Printer, ShieldAlert, SlidersHorizontal } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useConfirmSave } from '../../components/ConfirmSaveDialog'
@@ -6,6 +6,8 @@ import { confirmLeave } from '../../components/UnsavedChanges'
 import { Button, NoticeBanner, PageHeader, SectionCard } from '../../components/ui'
 import { CategoryManagementPage } from '../categories/CategoryManagementPage'
 import { AdminFinePoliciesPage } from '../fines/AdminFinePoliciesPage'
+import { UrgentAlertRules } from '../fines/UrgentAlertRules'
+import { ViolationRulesPanel } from '../fines/ViolationRulesPanel'
 import { LibrarySchedulePage } from '../notifications/LibrarySchedulePage'
 import { PrintingServiceSetup } from '../printing/PrintingServiceSetup'
 import { LibraryCirculationSetupPanel } from '../reservations/LibraryCirculationSetupPanel'
@@ -23,6 +25,7 @@ const maintenanceTabs = [
   'locations',
   'reservations',
   'fine-rules',
+  'violation-rules',
   'research-groups',
   'printing',
   'schedule',
@@ -41,6 +44,7 @@ const primarySetupSections = [
   { key: 'locations', label: 'Shelves & locations', icon: MapPin, hint: 'Compartment grid & shelf capacity' },
   { key: 'reservations', label: 'Reservations & renewals', icon: CalendarClock, hint: 'Expiry, waitlist cap & student renewals' },
   { key: 'fine-rules', label: 'Fine rules', icon: SlidersHorizontal, hint: 'Hourly, daily & maximum overdue penalty' },
+  { key: 'violation-rules', label: 'Violation rules', icon: ShieldAlert, hint: 'Warnings, fines & urgent alert rules' },
   { key: 'research-groups', label: 'Academic groups', icon: GraduationCap, hint: 'Research groups, programs & courses' },
   { key: 'printing', label: 'Printing settings', icon: Printer, hint: 'Paper rates & print service rules' },
   { key: 'schedule', label: 'Library hours', icon: Clock, hint: 'Operating schedule & closures' },
@@ -238,7 +242,7 @@ export function CatalogMaintenancePage() {
       <PageHeader
         eyebrow="Library administration"
         title="Library setup"
-        description="Configure shelves, reservation expiry, waitlist & renewal limits, fine rules, academic groups, printing rates, and operating hours."
+        description="Configure shelves, reservation expiry, waitlist & renewal limits, fine rules, violation rules, academic groups, printing rates, and operating hours."
         action={(
           <Link
             className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#0b5ea2]/25 bg-white px-4 text-sm font-bold text-[#0b5ea2] shadow-2xs transition hover:bg-[#0b5ea2]/5 dark:border-sky-400/30 dark:bg-slate-900 dark:text-sky-300"
@@ -251,7 +255,7 @@ export function CatalogMaintenancePage() {
 
       <SectionCard className="p-4">
         <nav aria-label="Library setup sections" className="space-y-3">
-          <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
             {primarySetupSections.map(({ key, label, icon: Icon, hint }) => {
               const isActive = tab === key || (key === 'research-groups' && isAcademicTab)
               return (
@@ -322,6 +326,11 @@ export function CatalogMaintenancePage() {
         <LibraryCirculationSetupPanel />
       ) : tab === 'fine-rules' ? (
         <AdminFinePoliciesPage embedded />
+      ) : tab === 'violation-rules' ? (
+        <div className="space-y-5">
+          <ViolationRulesPanel />
+          <UrgentAlertRules />
+        </div>
       ) : tab === 'covers' ? (
         <BookCoversPage />
       ) : tab === 'research-groups' ? (

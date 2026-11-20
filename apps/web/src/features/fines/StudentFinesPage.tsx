@@ -36,7 +36,7 @@ export function StudentFinesPage(){
     <div className="space-y-5">
       <SectionCard className="overflow-hidden"><div className="border-b border-[#0b5ea2]/15 p-5"><h2 className="font-bold">Fine and replacement-charge history</h2></div>
         <div className="divide-y divide-[#0b5ea2]/15">{data?.items.length?data.items.map(item=><article key={item.id} className="min-w-0 space-y-4 p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h3 className="break-words text-base font-bold">{item.title}</h3><p className="mt-1 text-sm opacity-70">{item.type} · {fineDate(item.occurredAt)}</p></div><StatusBadge status={item.status}/></div>
+          <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h3 className="break-words text-base font-bold">{item.title}</h3><p className="mt-1 text-sm opacity-70">{item.typeLabel} · {fineDate(item.occurredAt)}</p></div><StatusBadge status={item.status}/></div>
           <p className="break-words text-sm leading-6 opacity-80">{item.reason}</p>
           <dl className="grid grid-cols-3 gap-3 text-sm tabular-nums"><div><dt className="opacity-65">Assessed</dt><dd className="mt-1 font-semibold">{fineMoney(item.assessed)}</dd></div><div><dt className="opacity-65">Payments applied</dt><dd className="mt-1 font-semibold">{fineMoney(item.paid)}</dd></div><div><dt className="opacity-65">Balance</dt><dd className="mt-1 font-bold">{fineMoney(item.balance)}</dd></div></dl>
           {item.adjusted>0?<p className="text-sm">Waived or reduced: {fineMoney(item.adjusted)}</p>:null}

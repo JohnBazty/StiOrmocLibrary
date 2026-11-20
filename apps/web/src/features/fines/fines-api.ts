@@ -1,6 +1,6 @@
 import { notifyPaymentUpdate } from '../payments/payment-updates'
 import { getCsrfToken } from '../auth/auth-storage'
-import type { FineFilters,FineList,FineReceipt,FineReceiptSummary,FineTerm } from './types'
+import type { FineFilterOptions,FineFilters,FineList,FineReceipt,FineReceiptSummary,FineTerm } from './types'
 
 function headers(accept='application/json'){const value=new Headers({Accept:accept});const token=getCsrfToken();if(token)value.set('X-CSRF-Token', token);return value}
 async function request<T>(url:string,options:RequestInit={}){const requestHeaders=headers();if(options.body)requestHeaders.set('Content-Type','application/json');const response=await fetch(url,{...options,headers:requestHeaders,credentials:'include'});const payload=await response.json().catch(()=>null) as {success?:boolean;data?:T;message?:string}|null;if(!response.ok||!payload?.success)throw new Error(payload?.message??'The fines request failed.');if(options.body)notifyPaymentUpdate();return payload.data as T}
@@ -11,7 +11,8 @@ export const finesApi={
   mine:(filters:FineFilters)=>request<FineList>(`/api/v1/fines/me?${query(filters)}`),
   terms:()=>request<FineTerm[]>('/api/v1/fines/terms'),
   adminTerms:()=>request<FineTerm[]>('/api/v1/admin/fines/terms'),
-  issueInfraction:(input:{schoolId:string;category:string;amount:number;incidentAt:string;location?:string;details:string})=>request('/api/v1/admin/fines/infractions',{method:'POST',body:JSON.stringify(input)}),
+  filterOptions:()=>request<FineFilterOptions>('/api/v1/admin/fines/filter-options'),
+  urgentCaseCount:()=>request<{items:unknown[]}>('/api/v1/admin/fines/urgent-cases').then(data=>data.items.length),
   pay:(input:{requestKey:string;allocations:Array<{fineId?:number;lostBookReportId?:number;amount:number}>;notes?:string})=>request<FineReceipt>('/api/v1/admin/fines/payments',{method:'POST',body:JSON.stringify(input)}),
   adjust:(fineId:number,input:{type:'Waiver'|'Reduction'|'Void';amount?:number;reason:string})=>request(`/api/v1/admin/fines/${fineId}/adjustments`,{method:'POST',body:JSON.stringify(input)}),
   receipts:()=>request<FineReceiptSummary[]>('/api/v1/fines/receipts'),
