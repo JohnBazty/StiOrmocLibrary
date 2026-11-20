@@ -10,7 +10,8 @@ type ValidationErrors = Record<string, string>
 export type PhysicalCopyInput = {
   barcode: string
   accessionNumber: string
-  shelfLocation: string
+  /** Null while the copy has no shelf yet (Unassigned). */
+  shelfLocation: string | null
   locationId?: number
   shelfColumn?: number
   shelfRow?: number

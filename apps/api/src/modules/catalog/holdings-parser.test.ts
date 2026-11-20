@@ -74,7 +74,9 @@ test('cleanup keeps original source cells and only uniquely recognizes existing 
  assert.equal(second.categoryId, null); assert.equal(second.location, '')
  assert.equal(second.author, ''); assert.equal(second.copies, '')
  const errors = validateHoldingsData(second)
- for (const fragment of ['Author', 'Copies', 'ISBN', 'category', 'shelf']) assert.ok(errors.some(error => error.toLowerCase().includes(fragment.toLowerCase())), fragment)
+ for (const fragment of ['Author', 'Copies', 'ISBN', 'category']) assert.ok(errors.some(error => error.toLowerCase().includes(fragment.toLowerCase())), fragment)
+ // An unmatched shelf no longer blocks the row: it imports as Unassigned (revisions phase 2, 2c).
+ assert.equal(errors.some(error => error.toLowerCase().includes('shelf')), false)
 })
 
 test('ambiguous quantity headings need a choice and number expressions stay invalid', () => {

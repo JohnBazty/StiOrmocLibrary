@@ -49,8 +49,6 @@ export function HoldingsImportPage() {
   const [page, setPage] = useState(1)
   const [filter, setFilter] = useState<'all' | 'attention'>('all')
   const [editing, setEditing] = useState<number | null>(null)
-  const [category, setCategory] = useState('')
-  const [shelf, setShelf] = useState('')
   const finalReview = useRef<HTMLDivElement>(null)
   const errorBanner = useRef<HTMLParagraphElement>(null)
   const running = useRef(false)
@@ -60,6 +58,8 @@ export function HoldingsImportPage() {
   const shelfDemands = new Map<string, { placement: PlacementValue; quantity: number }>()
   for (const row of summary?.ready ?? []) {
     if (!options || !(!row.decision || ['new', 'add'].includes(row.decision))) continue
+    // A book with no shelf is added as Unassigned; it takes no shelf space yet.
+    if (!String(row.data.location ?? '').trim()) continue
     const placement = importPlacement(row, options)
     const key = `${placement.shelfLocation}:${placement.shelfColumn}:${placement.shelfRow}`
     const previous = shelfDemands.get(key)
@@ -82,12 +82,6 @@ export function HoldingsImportPage() {
       if (!active) return
       if (settings.status === 'fulfilled') {
         setOptions(settings.value)
-        const categories = settings.value.categories.filter(
-          (item) => (item.status === 'Active' || !item.status) && (!item.recordKind || item.recordKind === 'Book'),
-        )
-        const shelves = settings.value.locations.filter((item) => item.status === 'Active')
-        if (categories.length === 1) setCategory(String(categories[0].id))
-        if (shelves.length === 1) setShelf(shelves[0].name)
       } else setError('Categories and shelves could not be loaded. Refresh this page to try again.')
       if (previous.status === 'fulfilled') setBatches(previous.value)
       else setHistoryError('Saved book lists could not be loaded. You can still add a new file.')
@@ -136,7 +130,8 @@ export function HoldingsImportPage() {
     setMapping((current) => current.map((item) => (item.sheet === name ? { ...item, ...patch } : item)))
   }
 
-  const selectedMappings = applyImportDefaults(mapping, category, shelf)
+  // Category comes from the file or each book's review; a book with no shelf is imported as Unassigned.
+  const selectedMappings = applyImportDefaults(mapping, '', '')
   const canPrepare = importFileReady(selectedMappings)
 
   async function openReview(chosen: File, mappings: Mapping[]) {
@@ -172,7 +167,7 @@ export function HoldingsImportPage() {
       const recognized = result.map((sheet) => sheet.mapping)
       setSheets(result)
       setMapping(recognized)
-      const ready = applyImportDefaults(recognized, category, shelf)
+      const ready = applyImportDefaults(recognized, '', '')
       if (importFileReady(ready) && result.every((sheet) => !unrecognizedImportHeadings(sheet).length))
         await openReview(chosen, ready)
     })
@@ -546,11 +541,7 @@ export function HoldingsImportPage() {
                 sheets={sheets}
                 mapping={mapping}
                 options={options}
-                category={category}
-                shelf={shelf}
                 disabled={locked}
-                onCategory={setCategory}
-                onShelf={setShelf}
                 onMapping={changeMapping}
                 onInclude={(sheet, include) =>
                   setMapping((current) =>
@@ -799,7 +790,7 @@ export function HoldingsImportPage() {
                               'Category needed'}
                           </p>
                           <p className="text-xs text-slate-500 dark:text-slate-400">
-                            {row.data.location || 'Shelf needed'}
+                            {row.data.location || 'Unassigned shelf'}
                           </p>
                         </td>
                         <td className="px-4 py-3">

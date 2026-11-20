@@ -1,5 +1,6 @@
 import {acceptedImportCover} from './import-cover.service.ts'
-import { assertShelfCapacity, listManagedShelves, lockShelfCapacity, saveManagedShelf } from './shelf-capacity.service.ts'
+import { listManagedShelves, lockShelfCapacity, saveManagedShelf } from './shelf-capacity.service.ts'
+import { importCopyPlacement } from './import-placement.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { lookupReviewFacts } from './import-lookup-fill.ts'
 import { createClient } from '@supabase/supabase-js'
@@ -160,7 +161,7 @@ async function validateImportReferences(c:Query,data:HoldingsData,needsCopies:bo
   const category=(await rows(c,'SELECT category_id,record_kind FROM categories WHERE category_id=?',[data.categoryId]))[0]
   if(!category)throw fail('Choose an existing category.')
   if(category.record_kind&&String(category.record_kind)!=='Book')throw fail('Choose a book category.')
-  if(!(await rows(c,"SELECT 1 FROM catalog_locations WHERE name=? AND lifecycle_status='Active'",[data.location])).length)throw fail('Choose an active managed shelf location.')
+  if(data.location&&!(await rows(c,"SELECT 1 FROM catalog_locations WHERE name=? AND lifecycle_status='Active'",[data.location])).length)throw fail('Choose an active managed shelf location, or leave the shelf empty to import as Unassigned.')
  }
 }
 function storedImportDewey(stored: unknown, deweyNumber: unknown, rawIsbn: unknown): ReviewedDewey | null {
@@ -215,12 +216,8 @@ export async function commitImport(value:unknown,actor:number){
    const data=row.data_json as HoldingsData,needsCopies=['new','add'].includes(row.decision),issues=validateHoldingsData(data,needsCopies);if(issues.length)throw fail(issues.join(' '));await validateImportReferences(c,data,needsCopies)
    const category=needsCopies?await lockCategoryShelf(c,data.categoryId!):null
    if(needsCopies&&!category)throw fail('Choose an existing category.')
-   const sameShelf=category?.shelfLocation===data.location
-   const placement=needsCopies?await assertShelfCapacity(c,{
-    locationId:data.locationId,shelfLocation:data.location,
-    shelfColumn:data.shelfColumn??(sameShelf?category!.shelfColumn:1),
-    shelfRow:data.shelfRow??(sameShelf?category!.shelfRow:1),
-   },Number(data.copies)):null
+   // No shelf yet: the copies are imported as Unassigned without a capacity check.
+   const placement=needsCopies?await importCopyPlacement(c,data,category,Number(data.copies)):null
    // A global transaction lock closes concurrent duplicate-title races across imports.
    await c.execute("SELECT pg_advisory_xact_lock(734031)")
    let titleId=Number(row.target_title_id),copyIds:number[]=[]

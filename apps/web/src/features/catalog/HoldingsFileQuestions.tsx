@@ -3,15 +3,12 @@ import type { Mapping, Options, Sheet } from './enhanced-catalog-api'
 import { catalogInput } from './CatalogDetailsPanel'
 import { importFields, importFieldNames, missingImportFields, unrecognizedImportHeadings } from './holdings-import-helpers'
 
-type Props = { sheets: Sheet[]; mapping: Mapping[]; options: Options; category: string; shelf: string; disabled: boolean;
-  onCategory: (value: string) => void; onShelf: (value: string) => void;
+type Props = { sheets: Sheet[]; mapping: Mapping[]; options: Options; disabled: boolean;
   onMapping: (sheet: string, patch: Partial<Mapping>) => void; onInclude: (sheet: Sheet, include: boolean) => void }
 
-export function HoldingsFileQuestions({ sheets, mapping, options, category, shelf, disabled, onCategory, onShelf, onMapping, onInclude }: Props) {
+export function HoldingsFileQuestions({ sheets, mapping, options, disabled, onMapping, onInclude }: Props) {
   const categories = options.categories.filter(item => (item.status === 'Active' || !item.status) && (!item.recordKind || item.recordKind === 'Book'))
   const locations = options.locations.filter(item => item.status === 'Active')
-  const needsCategory = mapping.some(item => !item.categoryId && !item.columns.categoryName)
-  const needsShelf = mapping.some(item => !item.location && !item.columns.shelfLocation)
   function columns(sheet: Sheet, selected: Mapping, field: string) {
     const headings = sheet.preview[selected.headerRow - 1] ?? sheet.headers
     return <select className={catalogInput} disabled={disabled} value={selected.columns[field] ?? ''} onChange={event => onMapping(sheet.name, { columns: { ...selected.columns, [field]: Number(event.target.value) || 0 } })}>
@@ -20,11 +17,6 @@ export function HoldingsFileQuestions({ sheets, mapping, options, category, shel
   }
   return <div className="space-y-4">
     {sheets.filter(sheet => mapping.some(item => item.sheet === sheet.name) && unrecognizedImportHeadings(sheet, mapping.find(item => item.sheet === sheet.name)).length).map(sheet => <p key={sheet.name} className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-100">Other details in {sheet.name}: <strong>{unrecognizedImportHeadings(sheet, mapping.find(item => item.sheet === sheet.name)).join(', ')}</strong>. These headings were not recognized. Open File options below to match any supported details you want included before showing your book list.</p>)}
-    {needsCategory || needsShelf ? <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-white/15 dark:bg-white/5"><h3 className="font-semibold">Where should these books go?</h3><p className="text-sm text-slate-600 dark:text-slate-300">Choose once for this file. You can change individual books on the next screen.</p>
-      <div className="grid gap-3 sm:grid-cols-2">{needsCategory ? <label className="text-sm font-semibold">Category for these books<select className={catalogInput} value={category} disabled={disabled} onChange={event => onCategory(event.target.value)}><option value="">Choose category</option>{categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : null}
-      {needsShelf ? <label className="text-sm font-semibold">Shelf for these books<select className={catalogInput} value={shelf} disabled={disabled} onChange={event => onShelf(event.target.value)}><option value="">Choose shelf</option>{locations.map(item => <option key={item.id}>{item.name}</option>)}</select></label> : null}</div>
-      {!categories.length || !locations.length ? <p className="text-sm">A category and shelf must exist first. <a href="/librarian/categories" className="font-semibold underline">Set up categories and shelves</a>.</p> : null}
-    </div> : null}
     {sheets.map(sheet => {
       const selected = mapping.find(item => item.sheet === sheet.name)
       const missing = selected ? missingImportFields(selected.columns) : []

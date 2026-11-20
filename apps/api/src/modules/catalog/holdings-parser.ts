@@ -320,7 +320,8 @@ export function validateHoldingsData(data:HoldingsData, needsCopies=true){
     if(!/^\d+$/.test(data.copies)||!Number.isInteger(copies)||copies<1||copies>100)errors.push('Copies must be a whole number from 1 to 100.')
     if((data.missingCopies && !/^\d+$/.test(data.missingCopies))||!Number.isInteger(missing)||missing<0||missing>copies)errors.push('Missing copies must be a whole number between zero and the copy count.')
     if(!data.categoryId)errors.push(data.categoryName ? `Category “${data.categoryName}” could not be matched safely. Choose an existing category.` : 'Choose a category.')
-    if(!data.location || data.location.length>100)errors.push(data.shelfLocation ? `Shelf “${data.shelfLocation}” could not be matched safely. Choose an active shelf.` : 'Choose a managed shelf location.')
+    // No shelf is fine: the copies are imported as Unassigned and offered in shelf suggestions.
+    if(data.location && data.location.length>100)errors.push('The shelf name is too long; choose an active shelf.')
     for(const field of ['accessions','barcodes'] as const){
       const ids=identityList(data[field])
       if(field==='accessions' && data.generateAccessions)continue

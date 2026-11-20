@@ -21,7 +21,8 @@ export function applyImportDefaults(mapping: Mapping[], category: string, shelf:
   }))
 }
 export function importFileReady(mapping: Mapping[]) {
-  return mapping.length > 0 && mapping.every(item => missingImportFields(item.columns).length === 0 && (item.categoryId || item.columns.categoryName > 0) && (item.location || item.columns.shelfLocation > 0))
+  // Category is checked per book in review; a book without a shelf is imported as Unassigned.
+  return mapping.length > 0 && mapping.every(item => missingImportFields(item.columns).length === 0)
 }
 
 /** Suggestions are display-only; the librarian must choose one and save the normal review. */

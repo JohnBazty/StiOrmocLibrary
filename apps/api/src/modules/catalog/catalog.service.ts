@@ -122,7 +122,7 @@ export function createCatalogService(database: Pool = db) {
         }
         Object.assign(input.copy, await assertShelfCapacity(connection, input.copy, 1))
 
-        if (!await ensureBookLocationExists(connection, input.copy.shelfLocation)) {
+        if (!await ensureBookLocationExists(connection, input.copy.shelfLocation ?? '')) {
           throw new HttpError(422, 'RESEARCH_LOCATION_NOT_FOUND', 'Shelf location must match an existing managed location.', {
             errors: { shelfLocation: 'Select an existing shelf location.' },
           })
