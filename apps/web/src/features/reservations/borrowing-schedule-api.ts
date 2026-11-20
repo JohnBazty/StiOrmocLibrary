@@ -6,7 +6,7 @@ export type ScheduleQueue={available:boolean;items:AdminBorrowingSchedule[];pagi
 const base='/api/v1/borrowing-schedules'
 export const borrowingScheduleApi={
  queue:(filters:ScheduleQueueFilters,page=1,signal?:AbortSignal)=>reservationRequest<ScheduleQueue>(`/api/v1/admin/borrowing-schedules?${new URLSearchParams({...filters,page:String(page),limit:'25'})}`,{signal}),
- dates:()=>reservationRequest<{available:boolean;dates:string[]}>(`${base}/dates`),
+ dates:()=>reservationRequest<{available:boolean;dates:string[];semesterEnd?:string|null}>(`${base}/dates`),
  mine:()=>reservationRequest<BorrowingSchedule[]>(base),
  create:(input:{titleId:number;pickupDate:string;clientRequestId:string})=>reservationRequest<BorrowingSchedule>(base,{method:'POST',body:JSON.stringify(input)}),
  cancel:(id:number)=>reservationRequest<BorrowingSchedule>(`${base}/${id}/cancel`,{method:'PUT'}),

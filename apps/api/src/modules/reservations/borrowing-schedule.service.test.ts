@@ -18,6 +18,9 @@ async function fixture(role='Student') {
  CREATE TABLE library_operating_schedule(day_of_week INT,is_open BOOLEAN,opens_at TIME,closes_at TIME);
  INSERT INTO library_operating_schedule SELECT d,true,'07:00','17:00' FROM generate_series(1,6) d;
  CREATE TABLE library_closed_days(closed_date DATE);
+ CREATE TABLE academic_terms(academic_term_id BIGINT PRIMARY KEY,academic_year TEXT,term_name TEXT,starts_on DATE,ends_on DATE,is_active INT);
+ CREATE TABLE enrollment_semesters(semester_id BIGINT PRIMARY KEY,academic_year TEXT,term_name TEXT,end_date DATE,started_at TIMESTAMPTZ,ended_at TIMESTAMPTZ);
+ INSERT INTO academic_terms VALUES(1,'2026-2027','First semester','2026-08-01','2026-12-19',1);
  CREATE TABLE reservations(reservation_id BIGSERIAL PRIMARY KEY,user_id BIGINT,material_id BIGINT,book_title_id BIGINT,borrowing_policy_version_id BIGINT,request_kind TEXT,queue_position INT,reservation_status TEXT,reserved_at TIMESTAMP,assigned_physical_copy_id BIGINT,accession_id BIGINT,preparation_started_at TIMESTAMP,pickup_deadline TIMESTAMP,updated_at TIMESTAMP);
  CREATE TABLE physical_copies(physical_copy_id BIGINT PRIMARY KEY,title_id BIGINT,material_id BIGINT,barcode TEXT,shelf_location TEXT,lifecycle_status TEXT DEFAULT 'Active',condition_status TEXT DEFAULT 'Good',availability_status TEXT DEFAULT 'Available',row_version INT DEFAULT 1,updated_at TIMESTAMP);
  CREATE TABLE borrow_transactions(transaction_id BIGSERIAL PRIMARY KEY,user_id BIGINT,material_id BIGINT,physical_copy_id BIGINT,reservation_id BIGINT,transaction_status TEXT,cancelled_at TIMESTAMP,cancelled_by_user_id BIGINT,cancellation_reason TEXT,updated_at TIMESTAMP);
@@ -48,6 +51,20 @@ async function fixture(role='Student') {
  const pool={execute,query:execute,getConnection:async()=>q} as unknown as Pool
  return {pg,state,service:createBorrowingScheduleService(pool,()=>state.now)}
 }
+test('schedule dates run to the end of the current semester and nothing later is accepted',async()=>{
+ const {pg,service}=await fixture()
+ try {
+  const {dates,semesterEnd}=await service.dates()
+  assert.equal(semesterEnd,'2026-12-19')
+  assert.equal(dates.at(-1),'2026-12-19')
+  assert.ok(dates.includes('2026-12-01'))
+  await pg.exec("UPDATE academic_terms SET ends_on='2026-12-31'; INSERT INTO enrollment_semesters VALUES(5,'2026-2027','First semester','2026-12-12','2026-08-01',NULL)")
+  assert.equal((await service.dates()).semesterEnd,'2026-12-12')
+  await assert.rejects(service.create(7,{titleId:2,pickupDate:'2026-12-15',clientRequestId:'schedule-request-late1'}),{code:'SCHEDULE_DATE_INVALID'})
+  await pg.exec("DELETE FROM enrollment_semesters; UPDATE academic_terms SET is_active=0")
+  assert.deepEqual((await service.dates()).dates,[])
+ } finally { await pg.close() }
+})
 const body=(titleId=2,key='schedule-request-0001')=>({titleId,pickupDate:'2026-11-24',clientRequestId:key})
 for(const role of ['Student','Faculty'])test(role+' can schedule with an active loan; two pending schedules, idempotency and ownership are enforced',async()=>{
  const {pg,service}=await fixture(role)
@@ -112,7 +129,7 @@ test('missed dates become unfulfilled without entering the ordinary waitlist',as
 test('malformed dates, duplicate titles, conflicting keys, same-title loans and staff scheduling are rejected',async()=>{
  const {pg,service}=await fixture()
  try {
-  for(const pickupDate of ['2026-11-19','2026-11-22','2026-11-27','2026-02-30','invalid'])await assert.rejects(service.create(7,{...body(),pickupDate}),{code:'SCHEDULE_DATE_INVALID'})
+  for(const pickupDate of ['2026-11-19','2026-11-22','2026-12-21','2026-02-30','invalid'])await assert.rejects(service.create(7,{...body(),pickupDate}),{code:'SCHEDULE_DATE_INVALID'})
   await service.create(7,body())
   await assert.rejects(service.create(7,body(2,'schedule-request-0002')),{code:'SCHEDULE_ALREADY_EXISTS'})
   await assert.rejects(service.create(7,{...body(),pickupDate:'2026-11-25'}),{code:'REQUEST_KEY_REUSED'})

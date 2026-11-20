@@ -69,9 +69,9 @@ export function createBorrowingScheduleService(database:Pool=db,clock=()=>new Da
   const select=`SELECT s.*,to_char(s.pickup_date,'YYYY-MM-DD') AS pickup_date_text,t.title,r.reservation_status AS linked_reservation_status FROM borrowing_schedules s JOIN titles t ON t.title_id=s.title_id LEFT JOIN reservations r ON r.reservation_id=s.reservation_id`
   return {
     async dates() {
-      if(!await enabled(database)) return {available:false,dates:[] as string[]}
+      if(!await enabled(database)) return {available:false,dates:[] as string[],semesterEnd:null as string|null}
       const c=await loadScheduleCalendar(database,clock())
-      return {available:true,dates:scheduleDates(clock(),c.week,c.closed)}
+      return {available:true,dates:scheduleDates(clock(),c.week,c.closed,c.lastDate),semesterEnd:c.lastDate}
     },
     async list(accountId:unknown) {
       return transaction(async q=>{
@@ -94,7 +94,7 @@ export function createBorrowingScheduleService(database:Pool=db,clock=()=>new Da
           return view(prior[0])
         }
         const c=await loadScheduleCalendar(q,clock())
-        if(!scheduleDates(clock(),c.week,c.closed).includes(date))throw fail('SCHEDULE_DATE_INVALID','Choose an open library date within the next seven days.')
+        if(!scheduleDates(clock(),c.week,c.closed,c.lastDate).includes(date))throw fail('SCHEDULE_DATE_INVALID',c.lastDate?'Choose an open library date within the current semester.':'Scheduling opens once the library sets up the current semester.')
         const [counts]=await q.execute<RowDataPacket[]>("SELECT COUNT(*) AS total FROM borrowing_schedules WHERE user_id=? AND status='scheduled'",[userId])
         if(Number(counts[0]?.total)>=2)throw fail('SCHEDULE_LIMIT_REACHED','You already have two pending schedules. Cancel one before scheduling another book.')
         const [same]=await q.execute<RowDataPacket[]>("SELECT schedule_id FROM borrowing_schedules WHERE user_id=? AND title_id=? AND status='scheduled'",[userId,titleId])

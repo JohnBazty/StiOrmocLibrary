@@ -18,13 +18,36 @@ export function pickupWindow(date:string,week:Day[],closed:Set<string>) {
   }
   return null
 }
-export function scheduleDates(now:Date,week:Day[],closed:Set<string>) {
-  return Array.from({length:7},(_,i)=>nextDate(manilaDate(now),i+1)).filter(date=>pickupWindow(date,week,closed)!==null)
+/** A semester is at most about six months; this only bounds the loop. */
+const MAX_SCHEDULE_DAYS=200
+/** Open library days from Manila tomorrow through the last day of the current semester. No semester, no dates. */
+export function scheduleDates(now:Date,week:Day[],closed:Set<string>,lastDate:string|null) {
+  if(!lastDate||!validDate(lastDate))return []
+  const dates:string[]=[]
+  for(let i=1;i<=MAX_SCHEDULE_DAYS;i++){
+    const date=nextDate(manilaDate(now),i)
+    if(date>lastDate)break
+    if(pickupWindow(date,week,closed)!==null)dates.push(date)
+  }
+  return dates
+}
+/**
+ * Last day of the current semester: the started, not yet ended enrollment semester first,
+ * otherwise the active academic term. Null when neither is set up.
+ */
+export async function currentSemesterLastDate(q:Pick<PoolConnection,'execute'>,now:Date) {
+  const [rows]=await q.execute<RowDataPacket[]>(`SELECT to_char(last_day,'YYYY-MM-DD') AS last_day FROM (
+      SELECT end_date AS last_day,1 AS priority FROM enrollment_semesters WHERE started_at IS NOT NULL AND ended_at IS NULL
+      UNION ALL SELECT ends_on,0 FROM academic_terms WHERE is_active=1) terms
+    WHERE last_day>=?::date ORDER BY priority DESC,last_day ASC LIMIT 1`,[manilaDate(now)])
+  return rows[0]?.last_day?String(rows[0].last_day):null
 }
 export async function loadScheduleCalendar(q:Pick<PoolConnection,'execute'>,now:Date) {
   const [week]=await q.execute<RowDataPacket[]>('SELECT day_of_week,is_open,opens_at,closes_at FROM library_operating_schedule')
-  const [closed]=await q.execute<RowDataPacket[]>("SELECT to_char(closed_date,'YYYY-MM-DD') AS closed_date FROM library_closed_days WHERE closed_date BETWEEN ?::date AND ?::date",[nextDate(manilaDate(now),-374),nextDate(manilaDate(now),8)])
-  return {week:week as Day[],closed:new Set(closed.map(r=>String(r.closed_date)))}
+  const lastDate=await currentSemesterLastDate(q,now)
+  const until=lastDate&&lastDate>nextDate(manilaDate(now),8)?lastDate:nextDate(manilaDate(now),8)
+  const [closed]=await q.execute<RowDataPacket[]>("SELECT to_char(closed_date,'YYYY-MM-DD') AS closed_date FROM library_closed_days WHERE closed_date BETWEEN ?::date AND ?::date",[nextDate(manilaDate(now),-374),until])
+  return {week:week as Day[],closed:new Set(closed.map(r=>String(r.closed_date))),lastDate}
 }
 /** Scheduled requests have a fixed pickup-day closing deadline, even before Mark ready. */
 export async function requireScheduledPickup(q:Pick<PoolConnection,'execute'>,row:RowDataPacket,now:Date) {

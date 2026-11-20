@@ -16,6 +16,8 @@ test('staff schedule query is read-only, filters and paginates pending schedules
    CREATE TABLE borrowing_schedules(schedule_id BIGINT PRIMARY KEY,user_id BIGINT,title_id BIGINT,pickup_date DATE,status TEXT,created_at TIMESTAMPTZ,last_reason TEXT);
    CREATE TABLE library_operating_schedule(day_of_week INT,is_open BOOLEAN,opens_at TIME,closes_at TIME);
    CREATE TABLE library_closed_days(closed_date DATE);
+   CREATE TABLE academic_terms(academic_term_id BIGINT PRIMARY KEY,ends_on DATE,is_active INT);
+   CREATE TABLE enrollment_semesters(semester_id BIGINT PRIMARY KEY,end_date DATE,started_at TIMESTAMPTZ,ended_at TIMESTAMPTZ);
    INSERT INTO library_operating_schedule SELECT n,true,'07:00','17:00' FROM generate_series(1,6) n;
    INSERT INTO users VALUES(1,'Sample Student','SAMPLE-1','Student'),(2,'Sample Faculty','SAMPLE-2','Faculty');
    INSERT INTO titles VALUES(10,'Sample book'),(20,'Another book');

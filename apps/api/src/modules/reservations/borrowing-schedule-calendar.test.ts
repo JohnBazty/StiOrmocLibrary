@@ -4,8 +4,16 @@ import { pickupWindow, scheduleDates, requireScheduledPickup } from './borrowing
 import type { PoolConnection } from '../../config/db.js'
 
 const week = [1,2,3,4,5,6].map(day_of_week => ({day_of_week,is_open:true,opens_at:'07:00:00',closes_at:'17:00:00'}))
-test('seven calendar days, Manila tomorrow, and open dates only', () => {
-  assert.deepEqual(scheduleDates(new Date('2026-11-18T16:30:00Z'),week,new Set(['2026-11-23'])), ['2026-11-20','2026-11-21','2026-11-24','2026-11-25','2026-11-26'])
+test('open dates from Manila tomorrow through the last day of the current semester', () => {
+  assert.deepEqual(scheduleDates(new Date('2026-11-18T16:30:00Z'),week,new Set(['2026-11-23']),'2026-11-26'), ['2026-11-20','2026-11-21','2026-11-24','2026-11-25','2026-11-26'])
+  const long=scheduleDates(new Date('2026-11-18T16:30:00Z'),week,new Set(),'2026-12-31')
+  assert.equal(long.at(-1),'2026-12-31')
+  assert.ok(long.length>7)
+  assert.ok(long.every(date=>new Date(`${date}T00:00:00Z`).getUTCDay()!==0))
+})
+test('no current semester means no schedule dates, and a past semester end gives none', () => {
+  assert.deepEqual(scheduleDates(new Date('2026-11-18T16:30:00Z'),week,new Set(),null),[])
+  assert.deepEqual(scheduleDates(new Date('2026-11-18T16:30:00Z'),week,new Set(),'2026-11-19'),[])
 })
 test('preparation skips Sunday and holidays; collection lasts through pickup closing', () => {
   const window=pickupWindow('2026-11-24',week,new Set(['2026-11-23']))!
