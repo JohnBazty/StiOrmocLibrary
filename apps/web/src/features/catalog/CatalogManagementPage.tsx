@@ -794,25 +794,17 @@ export function CatalogManagementPage({ maintenance = false }: { maintenance?: b
                           ) : (
                             <span className="text-xs text-[#0b5ea2]/50">Codes unavailable</span>
                           )}
-                          {item.recordType === 'Book' ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCategoryError(null)
-                                setCategoryItem(item)
-                              }}
-                              className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0b5ea2]"
-                            >
-                              <ArrowRightLeft size={15} /> Change category
-                            </button>
-                          ) : (
-                            <a
-                              href={`/librarian/maintenance?section=research-groups&titleId=${item.titleId}`}
-                              className="inline-flex min-h-10 items-center text-xs font-bold"
-                            >
-                              Change research group
-                            </a>
-                          )}
+                          {/* Research uses research categories now that research groups are removed. */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCategoryError(null)
+                              setCategoryItem(item)
+                            }}
+                            className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0b5ea2]"
+                          >
+                            <ArrowRightLeft size={15} /> Change category
+                          </button>
                           {item.recordType === 'Book' ? (
                             <>
                               <button

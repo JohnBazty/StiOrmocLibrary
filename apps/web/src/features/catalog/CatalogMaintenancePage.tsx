@@ -18,7 +18,6 @@ import { CatalogManagementPage } from './CatalogManagementPage'
 import { enhancedCatalog, type CatalogRecord, type Option, type Options } from './enhanced-catalog-api'
 import { FindBookDetailsPage } from './FindBookDetailsPage'
 import { HoldingsImportPage } from './HoldingsImportPage'
-import { ResearchGroupsPanel } from './ResearchGroupsPanel'
 
 type Kind = 'locations' | 'programs' | 'courses' | 'types'
 const maintenanceTabs = [
@@ -26,7 +25,6 @@ const maintenanceTabs = [
   'reservations',
   'fine-rules',
   'violation-rules',
-  'research-groups',
   'printing',
   'schedule',
   'covers',
@@ -45,7 +43,7 @@ const primarySetupSections = [
   { key: 'reservations', label: 'Reservations & renewals', icon: CalendarClock, hint: 'Expiry, waitlist cap & student renewals' },
   { key: 'fine-rules', label: 'Fine rules', icon: SlidersHorizontal, hint: 'Hourly, daily & maximum overdue penalty' },
   { key: 'violation-rules', label: 'Violation rules', icon: ShieldAlert, hint: 'Warnings, fines & urgent alert rules' },
-  { key: 'research-groups', label: 'Academic groups', icon: GraduationCap, hint: 'Research groups, programs & courses' },
+  { key: 'programs', label: 'Programs & courses', icon: GraduationCap, hint: 'Programs & courses for research' },
   { key: 'printing', label: 'Printing settings', icon: Printer, hint: 'Paper rates & print service rules' },
   { key: 'schedule', label: 'Library hours', icon: Clock, hint: 'Operating schedule & closures' },
 ] as const
@@ -222,7 +220,9 @@ function CatalogInformationEditor() {
 
 export function CatalogMaintenancePage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const requested = searchParams.get('tab') ?? searchParams.get('section')
+  // Research groups were removed (revisions 2026-11-20); old links open Programs & courses.
+  const rawRequested = searchParams.get('tab') ?? searchParams.get('section')
+  const requested = rawRequested === 'research-groups' ? 'programs' : rawRequested
   const tab: MaintenanceTab = maintenanceTabs.includes(requested as MaintenanceTab) ? (requested as MaintenanceTab) : 'locations'
 
   function openTab(next: MaintenanceTab) {
@@ -235,7 +235,7 @@ export function CatalogMaintenancePage() {
     })
   }
 
-  const isAcademicTab = (['research-groups', 'programs', 'courses'] as string[]).includes(tab)
+  const isAcademicTab = (['programs', 'courses'] as string[]).includes(tab)
 
   return (
     <div className="space-y-5 text-slate-900 dark:text-slate-100">
@@ -257,7 +257,7 @@ export function CatalogMaintenancePage() {
         <nav aria-label="Library setup sections" className="space-y-3">
           <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
             {primarySetupSections.map(({ key, label, icon: Icon, hint }) => {
-              const isActive = tab === key || (key === 'research-groups' && isAcademicTab)
+              const isActive = tab === key || (key === 'programs' && isAcademicTab)
               return (
                 <button
                   key={key}
@@ -284,7 +284,6 @@ export function CatalogMaintenancePage() {
           {isAcademicTab && (
             <div className="flex flex-wrap gap-2 border-t border-slate-200/80 pt-3 dark:border-slate-700/60" aria-label="Academic group settings">
               {([
-                ['research-groups', 'Research groups'],
                 ['programs', 'Programs'],
                 ['courses', 'Courses'],
               ] as const).map(([key, label]) => (
@@ -333,8 +332,6 @@ export function CatalogMaintenancePage() {
         </div>
       ) : tab === 'covers' ? (
         <BookCoversPage />
-      ) : tab === 'research-groups' ? (
-        <ResearchGroupsPanel />
       ) : tab === 'printing' ? (
         <PrintingServiceSetup />
       ) : tab === 'schedule' ? (

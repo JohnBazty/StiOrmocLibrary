@@ -53,10 +53,10 @@ test('changes a book title category and preserves every copy placement in one tr
   assert.ok(state.statements.some(({ sql }) => sql.includes('INSERT INTO floor_plan_events')))
 })
 
-test('research classification uses academic groups without changing shelf locations or book categories', async () => {
+test('research uses research categories (research groups were removed) and never a book category', async () => {
   const { state, database } = catalogPool({ recordType: 'Research/Thesis' })
   await assert.rejects(createCatalogManagementService(database).changeTitleCategory(14, { targetCategoryId: 8, expectedRowVersion: 3 }, 5),
-    (error: unknown) => error instanceof HttpError && error.code === 'RESEARCH_ACADEMIC_GROUP_REQUIRED')
+    (error: unknown) => error instanceof HttpError && error.code === 'CATEGORY_RECORD_KIND_MISMATCH')
   assert.equal(state.commits, 0)
   assert.equal(state.rollbacks, 1)
   assert.equal(state.statements.some(({ sql }) => /^\s*(UPDATE|INSERT)/.test(sql)), false)

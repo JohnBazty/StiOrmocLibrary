@@ -1,4 +1,3 @@
-vi.mock('./research-groups-api', () => ({ researchGroupsApi: { list: vi.fn().mockResolvedValue([{ id: 1, label: 'BSIT · Year 2', active: true }]) } }))
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ResearchCatalog } from './ResearchCatalog'
@@ -47,10 +46,10 @@ describe('ResearchCatalog view-only UI', () => {
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-it('filters research by the selected program and year group', async () => {
+it('has no research group filter now that research groups are removed', async () => {
   api.fetchResearchCatalog.mockResolvedValue({ items: [paper], pagination: { page: 1, limit: 25, total: 1, totalPages: 1 } })
   render(<ResearchCatalog />)
-  await screen.findByRole('option', { name: 'BSIT · Year 2' })
-  fireEvent.change(screen.getByLabelText('Filter research group'), { target: { value: '1' } })
-  await waitFor(() => expect(api.fetchResearchCatalog).toHaveBeenLastCalledWith(expect.objectContaining({ groupId: '1', page: 1 })))
+  await screen.findAllByText('SmartLib Research')
+  expect(screen.queryByLabelText('Filter research group')).toBeNull()
+  expect(api.fetchResearchCatalog).toHaveBeenLastCalledWith(expect.not.objectContaining({ groupId: expect.anything() }))
 })
