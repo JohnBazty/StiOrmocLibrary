@@ -30,3 +30,13 @@ it('refuses an untrusted checkout without changing the page or browser history',
   expect(browser.history.replaceState).not.toHaveBeenCalled()
   expect(browser.location.assign).not.toHaveBeenCalled()
 })
+
+it('opens the payment result page directly for practiceCheckout without an external checkoutUrl', () => {
+  const assign = vi.fn()
+  vi.stubGlobal('window', { location: { assign } })
+  openPaymentReviewResult({ paymentId: payment.paymentId, checkoutUrl: null, state: 'Active', practiceCheckout: true } as Payment)
+  expect(assign).toHaveBeenCalledWith('/payments/result?payment=' + payment.paymentId)
+  assign.mockClear()
+  openPaymentReviewResult({ paymentId: payment.paymentId, checkoutUrl: null, state: 'Active', practiceCheckout: false } as Payment)
+  expect(assign).not.toHaveBeenCalled()
+})

@@ -3,11 +3,11 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, expect, it, vi } from 'vitest'
 import { LibraryFundsPage } from './LibraryFundsPage'
 import type { FundsOverview, MoneyOutRecord } from './money-out-api'
-const api = vi.hoisted(() => ({ overview: vi.fn(), recover: vi.fn() }))
+const api = vi.hoisted(() => ({ overview: vi.fn(), recover: vi.fn(), sampleBank: vi.fn() }))
 vi.mock('./money-out-api', async original => ({ ...await original<typeof import('./money-out-api')>(), moneyOutApi: api }))
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 const withdrawal = { id:'w-1',type:'Withdrawal',state:'Processing',reference:'WDR-1',principalCentavos:5000,feeCentavos:500,totalCentavos:5000,appliedPrincipalCentavos:0,rail:'Transfer',reason:'School approved withdrawal',createdAt:'2026-11-13T01:00:00Z',expiresAt:'2026-11-13T02:00:00Z',destination:{name:'School bank',bank:'BNORPHMM',account:'•••• 8888'},events:[] } as MoneyOutRecord
-const data = { enabled:true,payoutsEnabled:true,refundsEnabled:true,payoutFeeCentavos:500,beneficiaries:[{id:'bank-1',type:'SchoolBank',label:'Approved school bank',bank:'BNORPHMM',account:'•••• 8888'}],balance:{availableCentavos:10000,reservedCentavos:5500,providerBalanceCentavos:20000},setupMessage:null,operations:[withdrawal],voids:[],collections:{totalCollectionsCentavos:17000,onlineCollectionsCentavos:12000,cashCollectedCentavos:5000,topUpsCentavos:3000,providerWithdrawalsCentavos:0},practiceTransfers:[{id:'top-1',reference:'ADD-1',direction:'TopUp',state:'Succeeded',amountCentavos:3000,feeCentavos:0,totalCentavos:3000,reason:'School bank funding entry',createdAt:'2026-11-12T01:00:00Z',destination:'School bank',events:[]}],totals:{grossCollections:12000,appliedPrincipal:11500,userFees:500,refundedPrincipal:0,refundedFees:0,withdrawals:0} } as unknown as FundsOverview
+const data = { enabled:true,payoutsEnabled:true,refundsEnabled:true,payoutFeeCentavos:500,beneficiaries:[{id:'bank-1',type:'SchoolBank',label:'Approved school bank',bank:'BNORPHMM',account:'•••• 8888'}],balance:{availableCentavos:10000,reservedCentavos:5500,providerBalanceCentavos:20000},setupMessage:null,operations:[withdrawal],voids:[],collections:{totalCollectionsCentavos:17000,onlineCollectionsCentavos:12000,cashCollectedCentavos:5000,topUpsCentavos:3000,providerWithdrawalsCentavos:0,availableCentavos:10000},practiceTransfers:[{id:'top-1',reference:'ADD-1',direction:'TopUp',state:'Succeeded',amountCentavos:3000,feeCentavos:0,totalCentavos:3000,reason:'School bank funding entry',createdAt:'2026-11-12T01:00:00Z',destination:'School bank',events:[]}],totals:{grossCollections:12000,appliedPrincipal:11500,userFees:500,refundedPrincipal:0,refundedFees:0,withdrawals:0} } as unknown as FundsOverview
 it('offers one withdrawal and addition, merges activity and keeps cash separate from withdrawable funds', async () => {
   api.recover.mockResolvedValue({}); api.overview.mockResolvedValue(data)
   render(<MemoryRouter><LibraryFundsPage/></MemoryRouter>)
@@ -30,4 +30,16 @@ it('offers one withdrawal and addition, merges activity and keeps cash separate 
   await waitFor(() => expect(screen.getByRole('button', { name:'Done' })).toBeTruthy())
   expect(screen.queryByRole('button', { name:'Check status' })).toBeNull()
   expect(screen.getByText('Available to withdraw').closest('article')?.textContent).toContain('₱45.00')
+})
+it('offers one-click sample school bank setup when no school bank is saved yet', async () => {
+  api.recover.mockResolvedValue({})
+  api.sampleBank.mockResolvedValue({ id: 'sample-bank', type: 'SchoolBank', label: 'School bank · Xendit sample', bank: 'BNORPHMM', account: '•••• 8888', isDefault: true, isSample: true })
+  api.overview
+    .mockResolvedValueOnce({ ...data, beneficiaries: [], schoolBanks: [] })
+    .mockResolvedValueOnce(data)
+  render(<MemoryRouter><LibraryFundsPage /></MemoryRouter>)
+  const button = await screen.findByRole('button', { name: 'Use sample school bank' })
+  fireEvent.click(button)
+  await waitFor(() => expect(api.sampleBank).toHaveBeenCalledTimes(1))
+  await screen.findByText('Approved school bank')
 })

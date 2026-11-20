@@ -63,7 +63,7 @@ export function DemoWalletCheckout({ payment, accounts, busy, error, onPay, onBa
           <button type="button" className="wallet-cancel" disabled={locked} onClick={onClose}>Cancel payment</button>
         </div>
       </div>
-      {step==='number'?<details className="payment-optional"><summary>Assigned library wallets</summary><p>These credentials work only in this library flow. Never enter your personal GCash PIN here.</p><table className="wallet-accounts"><caption className="sr-only">Assigned numbers and PINs</caption><thead><tr><th>Mobile number</th><th>PIN</th></tr></thead><tbody>{accounts.map(row=><tr key={row.number}><td>{row.number}</td><td>{row.pin}</td></tr>)}</tbody></table></details>:null}
+      {step==='number'?<details className="payment-optional"><summary>Assigned library wallets</summary><p>These credentials work only in this library flow. Never enter your personal GCash PIN here.</p><table className="wallet-accounts"><caption className="sr-only">Assigned numbers and PINs</caption><thead><tr><th>Mobile number</th><th>PIN</th><th><span className="sr-only">Use number</span></th></tr></thead><tbody>{accounts.map(row=><tr key={row.number}><td>{row.number}</td><td>{row.pin}</td><td><button type="button" className="min-h-9 px-2 text-xs font-semibold text-[#0b5ea2] underline dark:text-[#93c5fd]" disabled={locked} onClick={()=>{setNumber(row.number);setHint('')}}>Fill</button></td></tr>)}</tbody></table></details>:null}
     </div>
   </form>
 }

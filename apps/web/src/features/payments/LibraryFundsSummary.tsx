@@ -8,12 +8,14 @@ export function LibraryFundsSummary({
   onAdd,
   onWithdraw,
   onBank,
+  onUseSampleBank,
   busy,
 }: {
   data: FundsOverview
   onAdd: () => void
   onWithdraw: () => void
   onBank: () => void
+  onUseSampleBank?: () => void
   busy: boolean
 }) {
   const bank =
@@ -105,6 +107,11 @@ export function LibraryFundsSummary({
           <Button variant="secondary" disabled={busy} onClick={onAdd}>
             <ArrowUpFromLine size={16} aria-hidden="true" /> Add funds
           </Button>
+          {!bank && data.payoutsEnabled && onUseSampleBank ? (
+            <Button variant="secondary" disabled={busy} onClick={onUseSampleBank}>
+              Use sample school bank
+            </Button>
+          ) : null}
         </div>
 
         {!canWithdraw ? (
@@ -112,7 +119,7 @@ export function LibraryFundsSummary({
             {!data.payoutsEnabled
               ? 'Online payouts are not enabled for this environment.'
               : !bank
-                ? 'Set up the school bank to enable withdrawals.'
+                ? 'Set up the school bank or use the sample school bank to enable withdrawals.'
                 : data.payoutFeeCentavos === null
                   ? 'Set the transfer fee in Advanced settings first.'
                   : 'No online funds are currently available to withdraw.'}

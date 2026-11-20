@@ -11,11 +11,16 @@ export function openWalletPayment(payment: Pick<Payment, 'paymentId'>) {
   window.location.assign(paymentWalletPath(payment))
 }
 
-/** Save the library confirmation page in browser history before leaving for Xendit. */
+/** Save the library confirmation page in browser history before leaving for Xendit or practice confirmation. */
 export function openPaymentReviewResult(payment: Payment) {
-  if (!payment.checkoutUrl) return
-  providerCheckout(payment.checkoutUrl)
-  window.location.assign(paymentResultPath(payment, true))
+  if (payment.checkoutUrl) {
+    providerCheckout(payment.checkoutUrl)
+    window.location.assign(paymentResultPath(payment, true))
+    return
+  }
+  if (payment.practiceCheckout && ['Active', 'Succeeded'].includes(payment.state)) {
+    window.location.assign(paymentResultPath(payment, false))
+  }
 }
 
 export function handoffToProvider(payment: Payment) {

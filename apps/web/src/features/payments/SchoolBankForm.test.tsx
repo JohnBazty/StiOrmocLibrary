@@ -15,3 +15,12 @@ it('validates matching numbers and reviews masked details before saving once',as
   const save=screen.getByRole('button',{name:'Save school account'});fireEvent.click(save);fireEvent.click(save);await waitFor(()=>expect(saved).toHaveBeenCalledOnce())
   expect(api.beneficiary).toHaveBeenCalledOnce();expect(api.beneficiary.mock.calls[0][0]).toMatchObject({type:'SchoolBank',confirmed:true,accountNumber:'1234567890',confirmAccountNumber:'1234567890'})
 })
+it('shows inline hints for incomplete account numbers, authorization reference and postal code',()=>{
+  render(<SchoolBankForm bankOptions={bankOptions} onSaved={()=>{}} onCancel={()=>{}}/> )
+  fireEvent.change(screen.getByLabelText('Account number'),{target:{value:'123'}})
+  expect(screen.getByText(/6 to 30 digits/i)).toBeTruthy()
+  fireEvent.change(screen.getByLabelText('School authorization reference'),{target:{value:'short'}})
+  expect(screen.getByText(/at least 10 characters/i)).toBeTruthy()
+  fireEvent.change(screen.getByLabelText('Postal code'),{target:{value:'65'}})
+  expect(screen.getByText(/4-digit postal code/i)).toBeTruthy()
+})

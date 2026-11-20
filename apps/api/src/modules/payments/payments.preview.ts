@@ -21,6 +21,7 @@ import { localFundsStore, type FundsStore } from './money-out.store.ts'
 import { emptyFunds } from './money-out.rules.ts'
 import { requireLibraryActor } from '../../core/library-permissions.ts'
 import { withLocalPaymentLock } from './local-payment-lock.ts'
+import { createHybridPracticeProvider, createPracticeProvider, DEFAULT_PRACTICE_BUSINESS_ID } from './practice-provider.ts'
 
 export type Attempt = {
   paymentId: string; accountId: number; userId: number; kind: 'Fine' | 'Printing' | 'LostBook' | 'Other'; targetId: number
@@ -30,7 +31,7 @@ export type Attempt = {
   checkoutUrl?: string; reviewCode?: string
   lastCheckedAt?: string
   providerPaymentId?: string; appliedPrincipalCentavos?: number
-  demoWallet?: boolean
+  demoWallet?: boolean; practiceCheckout?: boolean
 }
 type Store = { load(): Promise<Attempt[]>; save(rows: Attempt[]): Promise<void> }
 const directory = new URL('../../../../../output/local-payment-tests/', import.meta.url)
@@ -43,7 +44,7 @@ const privateStore: Store = {
 /** Local Test checkout only. School charges are read, never settled or updated. */
 export function createLocalPaymentPreview(config: XenditSandboxConfig, database: Pool = db, store: Store = privateStore,
   provider: Pick<ReturnType<typeof createXenditClient>, 'createSession'|'getSession'|'cancelSession'|'getPayment'> & Partial<ReturnType<typeof createXenditClient>> = createXenditClient(() => config),
-  moneyOutOptions: { funds?: FundsStore; refundsEnabled?: boolean; payoutsEnabled?: boolean; payoutFeeCentavos?: number | null; lock?: <T>(run: () => Promise<T>) => Promise<T>; availability?:()=>Promise<boolean> } = {}) {
+  moneyOutOptions: { funds?: FundsStore; refundsEnabled?: boolean; payoutsEnabled?: boolean; payoutFeeCentavos?: number | null; defaultBusinessId?: string; lock?: <T>(run: () => Promise<T>) => Promise<T>; availability?:()=>Promise<boolean> } = {}) {
   if (!config.enabled || config.mode !== 'test') throw paymentError('Test checkout is not configured.')
   if (config.returnUrl) paymentReturnUrl(config.returnUrl, '00000000-0000-4000-8000-000000000001')
   let queue = Promise.resolve<unknown>(undefined)
@@ -56,7 +57,7 @@ export function createLocalPaymentPreview(config: XenditSandboxConfig, database:
   let testFunds = emptyFunds()
   const moneyOut = createLocalMoneyOut({ database, attempts: store, provider: provider as ReturnType<typeof createXenditClient>, locked,
     funds: moneyOutOptions.funds ?? (store === privateStore ? localFundsStore : { load: async () => structuredClone(testFunds), save: async value => { testFunds = structuredClone(value) } }),
-    refundsEnabled: moneyOutOptions.refundsEnabled ?? false, payoutsEnabled: moneyOutOptions.payoutsEnabled ?? false, payoutFeeCentavos: moneyOutOptions.payoutFeeCentavos ?? null, callbackToken: config.webhookToken })
+    refundsEnabled: moneyOutOptions.refundsEnabled ?? false, payoutsEnabled: moneyOutOptions.payoutsEnabled ?? false, payoutFeeCentavos: moneyOutOptions.payoutFeeCentavos ?? null, defaultBusinessId: moneyOutOptions.defaultBusinessId, callbackToken: config.webhookToken })
   const creditsFor = (rows: Attempt[], accountId: number, userId: number): Promise<PreviewCredit[]> => moneyOut.credits(rows, accountId, userId)
   async function currentOwner(actor: PaymentActor) {
     if (!['Student', 'Faculty'].includes(String(actor.role))) throw paymentError('Use a borrower account.', 'PAYMENT_ROLE_FORBIDDEN', 403)
@@ -98,7 +99,7 @@ export function createLocalPaymentPreview(config: XenditSandboxConfig, database:
   const publicRow = (row: Attempt) => ({ paymentId: row.paymentId, kind: row.kind, targetId: row.targetId,
     principalCentavos: row.principalCentavos, feeCentavos: row.feeCentavos, totalCentavos: row.totalCentavos,
     remainingCentavos: row.state === 'Succeeded' ? Math.max(0, row.balanceCentavos - row.principalCentavos) : row.balanceCentavos, channelCode: row.channelCode, state: row.state, isSample: true, localPreview: true,
-    checkoutUrl: row.state === 'Active' ? row.checkoutUrl : null, demoWallet: Boolean(row.demoWallet), receiptId: null, createdAt: row.createdAt, expiresAt: row.expiresAt,
+    checkoutUrl: row.state === 'Active' ? (row.checkoutUrl ?? null) : null, demoWallet: Boolean(row.demoWallet), practiceCheckout: Boolean(row.practiceCheckout), receiptId: null, createdAt: row.createdAt, expiresAt: row.expiresAt,
     description: row.kind === 'Printing' ? 'Printing payment' : row.kind === 'LostBook' ? 'Replacement charge' : row.kind === 'Other' ? 'Library service payment' : 'Library fine payment', reviewCode: row.reviewCode ?? null })
   const evidence = (row: Attempt) => ({ payment_id: row.paymentId, total_centavos: String(row.totalCentavos), channel_code: row.channelCode,
     created_at: row.createdAt, provider_session_id: row.providerSessionId, provider_business_id: row.businessId })
@@ -247,7 +248,14 @@ export function createLocalPaymentPreview(config: XenditSandboxConfig, database:
           ...(returnUrl ? { success_return_url: returnUrl, cancel_return_url: returnUrl } : {}),
           customer: { reference_id: 'Sandbox' + row.paymentId.replaceAll('-', ''), type: 'INDIVIDUAL', individual_detail: { given_names: 'Sandbox', surname: 'Payer' } } })
         row.providerSessionId = session.payment_session_id; row.businessId = session.business_id
-        verifySession(session, evidence(row)); row.checkoutUrl = checkoutUrl(session.payment_link_url); row.state = 'Active'
+        verifySession(session, evidence(row))
+        if (session.practice_checkout === true) {
+          row.practiceCheckout = true
+          row.checkoutUrl = undefined
+        } else {
+          row.checkoutUrl = checkoutUrl(session.payment_link_url)
+        }
+        row.state = 'Active'
       } catch { row.state = 'Review'; row.reviewCode = 'PAYMENT_CREATION_UNCERTAIN' }
       await store.save(rows); return publicRow(row)
     }) },
@@ -255,6 +263,9 @@ export function createLocalPaymentPreview(config: XenditSandboxConfig, database:
     check(actor: PaymentActor, id: unknown, cancel = false) { return locked(async () => {
       const rows = await store.load(), row = await owned(actor, id, rows)
       if (!row.providerSessionId || ['Succeeded', 'Cancelled', 'Expired'].includes(row.state)) return decorated(row)
+      if (cancel && row.practiceCheckout && ['Active', 'Review'].includes(row.state)) {
+        await provider.cancelSession(row.providerSessionId)
+      }
       let session = await provider.getSession(row.providerSessionId)
       verifySession(session, evidence(row))
       if (cancel && session.status === 'ACTIVE') { await provider.cancelSession(row.providerSessionId); session = await provider.getSession(row.providerSessionId); verifySession(session, evidence(row)) }
@@ -288,27 +299,85 @@ export function createLocalPaymentPreview(config: XenditSandboxConfig, database:
   }
 }
 
+function syntheticPracticeConfig(databaseUrl: string): XenditSandboxConfig {
+  return Object.freeze({
+    enabled: true,
+    mode: 'test' as const,
+    apiOrigin: 'https://api.xendit.co' as const,
+    secretKey: 'xnd_development_practice_mode_local',
+    webhookToken: '',
+    databaseUrl,
+    webhookUrl: null,
+    returnUrl: null,
+  })
+}
+
+function assertPostgresUrl(databaseUrl: string) {
+  let database: URL
+  try { database = new URL(databaseUrl) } catch { throw new Error('Hosted payment database is invalid.') }
+  if (!['postgres:', 'postgresql:'].includes(database.protocol)) throw new Error('Hosted payment database is invalid.')
+  return databaseUrl
+}
+
+function createHostedLedgerPreview(
+  databaseUrl: string,
+  moneyOutSettings: { refundsEnabled: boolean; payoutsEnabled: boolean; payoutFeeCentavos: number | null },
+) {
+  const url = assertPostgresUrl(databaseUrl)
+  const config = syntheticPracticeConfig(url)
+  const storage = createHostedPaymentStore(createPgPool(url, 1) as unknown as Pool)
+  const practice = createPracticeProvider(storage)
+  return createLocalPaymentPreview(config, db, storage.attempts, practice, {
+    funds: storage.funds,
+    lock: storage.locked,
+    defaultBusinessId: DEFAULT_PRACTICE_BUSINESS_ID,
+    ...moneyOutSettings,
+  })
+}
+
 function configuredPreview() {
-  if (!process.env.NODE_TEST_CONTEXT && process.env.HOSTED_PAYMENT_PREVIEW === 'true') {
-    const config = readHostedPaymentConfig(process.env)
-    if (!config.enabled) return null
-    const storage = createHostedPaymentStore(createPgPool(config.databaseUrl, 1) as unknown as Pool)
-    return createLocalPaymentPreview(config, db, storage.attempts, createXenditClient(() => config), {
-      funds: storage.funds, lock: storage.locked,
-      refundsEnabled: process.env.HOSTED_PAYMENT_REFUNDS_ENABLED === 'true',
-      payoutsEnabled: process.env.HOSTED_PAYMENT_PAYOUTS_ENABLED === 'true',
-      payoutFeeCentavos: /^\d{1,7}$/.test(process.env.HOSTED_PAYMENT_PAYOUT_FEE_CENTAVOS ?? '') ? Number(process.env.HOSTED_PAYMENT_PAYOUT_FEE_CENTAVOS) : null,
+  if (process.env.NODE_TEST_CONTEXT) return null
+  if (process.env.HOSTED_PAYMENT_PREVIEW === 'true') {
+    if (process.env.XENDIT_ENABLED === 'true' || process.env.XENDIT_MODE === 'live'
+      || process.env.XENDIT_SECRET_KEY?.trim().startsWith('xnd_production_')) {
+      throw new Error('Hosted payment mode is invalid.')
+    }
+    const payoutFeeCentavos = /^\d{1,7}$/.test(process.env.HOSTED_PAYMENT_PAYOUT_FEE_CENTAVOS ?? '')
+      ? Number(process.env.HOSTED_PAYMENT_PAYOUT_FEE_CENTAVOS)
+      : 500
+    const moneyOutSettings = {
+      refundsEnabled: process.env.HOSTED_PAYMENT_REFUNDS_ENABLED !== 'false',
+      payoutsEnabled: process.env.HOSTED_PAYMENT_PAYOUTS_ENABLED !== 'false',
+      payoutFeeCentavos,
+    }
+    if (process.env.XENDIT_SECRET_KEY?.trim()) {
+      const config = readHostedPaymentConfig(process.env)
+      if (!config.enabled) return null
+      const storage = createHostedPaymentStore(createPgPool(config.databaseUrl, 1) as unknown as Pool)
+      const practice = createPracticeProvider(storage)
+      const provider = createHybridPracticeProvider(createXenditClient(() => config), practice, storage.attempts, storage.funds)
+      return createLocalPaymentPreview(config, db, storage.attempts, provider, {
+        funds: storage.funds, lock: storage.locked, defaultBusinessId: DEFAULT_PRACTICE_BUSINESS_ID, ...moneyOutSettings,
+      })
+    }
+    return createHostedLedgerPreview(env.db.connectionString, moneyOutSettings)
+  }
+  if (process.env.LOCAL_PAYMENT_PREVIEW === 'true') {
+    if (env.isProduction || process.env.VERCEL || env.webOrigin !== 'http://localhost:5173') throw new Error('Local Test checkout is only available on localhost.')
+    const settings = dotenv.parse(readFileSync(new URL('../../../.env.xendit-sandbox', import.meta.url)))
+    const config = readXenditSandboxConfig(settings)
+    const localReturnUrl = settings.XENDIT_LOCAL_RETURN_URL?.trim()
+    const payoutFee = settings.XENDIT_LOCAL_PAYOUT_FEE_CENTAVOS
+    return createLocalPaymentPreview(config.enabled && localReturnUrl ? { ...config, returnUrl: localReturnUrl } : config, db, privateStore, createXenditClient(() => config), {
+      refundsEnabled: settings.XENDIT_LOCAL_REFUNDS_ENABLED === 'true', payoutsEnabled: settings.XENDIT_LOCAL_PAYOUTS_ENABLED === 'true',
+      payoutFeeCentavos: payoutFee && /^\d{1,7}$/.test(payoutFee) ? Number(payoutFee) : null,
     })
   }
-  if (process.env.LOCAL_PAYMENT_PREVIEW !== 'true' || process.env.NODE_TEST_CONTEXT) return null
-  if (env.isProduction || process.env.VERCEL || env.webOrigin !== 'http://localhost:5173') throw new Error('Local Test checkout is only available on localhost.')
-  const settings = dotenv.parse(readFileSync(new URL('../../../.env.xendit-sandbox', import.meta.url)))
-  const config = readXenditSandboxConfig(settings)
-  const localReturnUrl = settings.XENDIT_LOCAL_RETURN_URL?.trim()
-  const payoutFee = settings.XENDIT_LOCAL_PAYOUT_FEE_CENTAVOS
-  return createLocalPaymentPreview(config.enabled && localReturnUrl ? { ...config, returnUrl: localReturnUrl } : config, db, privateStore, createXenditClient(() => config), {
-    refundsEnabled: settings.XENDIT_LOCAL_REFUNDS_ENABLED === 'true', payoutsEnabled: settings.XENDIT_LOCAL_PAYOUTS_ENABLED === 'true',
-    payoutFeeCentavos: payoutFee && /^\d{1,7}$/.test(payoutFee) ? Number(payoutFee) : null,
-  })
+  if (!env.isProduction && !process.env.VERCEL && !env.xendit.enabled && process.env.LOCAL_PAYMENT_PREVIEW !== 'false') {
+    return createHostedLedgerPreview(env.db.connectionString, {
+      refundsEnabled: true, payoutsEnabled: true, payoutFeeCentavos: 500,
+    })
+  }
+  return null
 }
 export const localPaymentPreview = configuredPreview()

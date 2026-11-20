@@ -96,6 +96,12 @@ export function LibraryFundsPage() {
             onAdd={() => setAddition(true)}
             onWithdraw={() => setWithdraw(true)}
             onBank={() => setManageBank(true)}
+            onUseSampleBank={() =>
+              void action(async () => {
+                await moneyOutApi.sampleBank()
+                setNotice('Sample school bank added and ready for transfers.')
+              })
+            }
           />
 
           <FundsActivity
@@ -185,7 +191,7 @@ export function LibraryFundsPage() {
           direction={selectedLocal?.direction ?? 'TopUp'}
           selected={selectedLocal}
           legacyWithdrawal={selectedLocal?.direction === 'Withdrawal'}
-          available={data.balance?.availableCentavos ?? 0}
+          available={data.balance?.availableCentavos ?? data.collections.availableCentavos}
           fee={data.payoutFeeCentavos ?? 0}
           onSaved={() => saved('Bank funding entry updated.')}
           onClose={() => {

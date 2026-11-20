@@ -72,7 +72,7 @@ it('uses a Sandbox badge and familiar payment labels in review',async()=>{
   render(<PaymentAction kind="Fine" targetId={1} title="Library fine"/>)
   await waitFor(()=>expect(screen.getByRole('button',{name:'Pay'}).hasAttribute('disabled')).toBe(false))
   fireEvent.click(screen.getByRole('button',{name:'Pay'}))
-  expect(screen.queryByText(/No real money|Sandbox/)).toBeNull()
+  expect(screen.getByText(/Practice mode — sandbox GCash checkout only/)).toBeTruthy()
   expect(screen.getByText('GCash')).toBeTruthy()
   expect(await screen.findByText('Total to pay')).toBeTruthy()
   expect(screen.queryByText(/Test (total|bill|checkout)/)).toBeNull()

@@ -10,6 +10,7 @@ export type SessionEvent = {
   providerPaymentId: string | null
 }
 const unavailable = () => paymentError('Payment provider is temporarily unavailable.','PAYMENT_PROVIDER_UNAVAILABLE',503)
+export const XENDIT_HTTP_STATUS = Symbol('xenditHttpStatus')
 const mismatch = () => paymentError('This payment needs library review.','PAYMENT_EVIDENCE_MISMATCH',409)
 const sessionId = (value: unknown) => {
   if (typeof value !== 'string' || !/^ps-[a-f\d]{24}$/i.test(value)) throw mismatch()
@@ -94,7 +95,12 @@ export function createXenditClient(config: () => XenditSandboxConfig = () => env
           ...(options.key ? { 'idempotency-key': options.key } : {})},
         ...(body?{body:JSON.stringify(body)}:{}),
       })
-      if (!response.ok || !response.body) { await response.body?.cancel(); throw unavailable() }
+      if (!response.ok || !response.body) {
+        await response.body?.cancel()
+        const error = unavailable() as Error & { [XENDIT_HTTP_STATUS]?: number }
+        error[XENDIT_HTTP_STATUS] = response.status
+        throw error
+      }
       const reader = response.body.getReader(), chunks: Uint8Array[] = []
       let size = 0
       for (;;) {
@@ -107,7 +113,10 @@ export function createXenditClient(config: () => XenditSandboxConfig = () => env
       const result = JSON.parse(Buffer.concat(chunks).toString('utf8'))
       if (!result || typeof result!=='object' || Array.isArray(result) !== Boolean(options.array)) throw unavailable()
       return result as ProviderObject
-    } catch { throw unavailable() }
+    } catch (cause) {
+      if (cause && typeof cause === 'object' && XENDIT_HTTP_STATUS in cause) throw cause
+      throw unavailable()
+    }
   }
   return {
     createRefund:(body: ProviderObject)=>call('/v3/refunds',body),

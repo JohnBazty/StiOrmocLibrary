@@ -49,3 +49,12 @@ it('clears the PIN when changing the number and keeps all controls disabled whil
  expect(screen.getByRole('button',{name:'Opening payment…'}).hasAttribute('disabled')).toBe(true)
  expect(screen.getByLabelText('PIN').hasAttribute('disabled')).toBe(true)
 })
+it('allows filling an assigned wallet number in one click without exposing forbidden labels',()=>{
+ render(<DemoWalletCheckout {...props}/>)
+ const fillButtons=screen.getAllByRole('button',{name:/Fill/i})
+ fireEvent.click(fillButtons[0])
+ expect((screen.getByLabelText('Mobile number') as HTMLInputElement).value).toBe(accounts[0].number)
+ fireEvent.click(screen.getByRole('button',{name:'Next'}))
+ expect(screen.getByRole('heading',{name:'Enter PIN'})).toBeTruthy()
+ expect(screen.queryByText(/demo|test|authentication/i)).toBeNull()
+})

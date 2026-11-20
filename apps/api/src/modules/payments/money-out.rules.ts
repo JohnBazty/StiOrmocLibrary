@@ -15,6 +15,7 @@ export type MoneyOut = {
   reasonCode?: RefundReason; approvedAt?: string; approvedBy?: number
   requestId?: string
   providerPaymentId?: string; providerState?: string; payload?: Record<string, any>; submittedAt?: string; checkedAt?: string
+  practiceProvider?: boolean
   events: Array<{ at: string; state: MoneyOutState; actorId: number; code: string }>
 }
 export type Beneficiary = {

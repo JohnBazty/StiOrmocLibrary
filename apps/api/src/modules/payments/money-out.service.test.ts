@@ -241,13 +241,40 @@ test('same-currency payout validates the exact destination amount when optional 
   const invalid=await g.service.draftWithdrawal(admin,{amount:'50',beneficiaryId:other.id,reason:'Mismatching destination amount',requestKey:randomUUID()})
   assert.equal((await g.service.submit(admin,invalid.id,{confirmed:true})).state,'Review')
 })
-test('sample school bank setup is admin-only, explicit and idempotent',async()=>{
+test('sample school bank setup is admin-only, explicit, idempotent and defaults the first active bank',async()=>{
   const f=fixture()
   await assert.rejects(f.service.setupSampleBank({accountId:7,role:'Student'},{confirmed:true}),/Librarian/)
   await assert.rejects(f.service.setupSampleBank(admin,{confirmed:false}),/Confirm/)
   const first=await f.service.setupSampleBank(admin,{confirmed:true}),second=await f.service.setupSampleBank(admin,{confirmed:true})
-  assert.equal(first.id,second.id);assert.equal(first.isSample,true);assert.equal(f.ledger().beneficiaries.length,1)
+  assert.equal(first.id,second.id);assert.equal(first.isSample,true);assert.equal(first.isDefault,true);assert.equal(f.ledger().beneficiaries.length,1)
+  assert.equal(f.ledger().beneficiaries[0].isDefault,true)
   assert.equal(f.calls().payoutCalls,0)
+})
+test('withdrawal falls back to defaultBusinessId when no online payments exist yet and rejects multiple businesses',async()=>{
+  let ledger=emptyFunds()
+  const service=createLocalMoneyOut({
+    database:{getConnection:async()=>({beginTransaction:async()=>{},commit:async()=>{},rollback:async()=>{},release(){},execute:async()=>[[{role:'Librarian',account_status:'Active',user_status:'Active'}]]})} as never,
+    attempts:{load:async()=>[]},
+    funds:{load:async()=>structuredClone(ledger),save:async v=>{ledger=structuredClone(v)}},
+    provider:{getBalance:async()=>({balance:1000,currency:'PHP'})} as never,
+    locked:run=>run(),refundsEnabled:true,payoutsEnabled:true,payoutFeeCentavos:500,defaultBusinessId:'practice-sti-ormoc-library',
+  })
+  const bank=await service.setupSampleBank(admin,{confirmed:true})
+  const topup=await service.practice.draft(admin,{direction:'TopUp',amount:'200',reason:'Initial school bank funding',requestKey:randomUUID(),beneficiaryId:bank.id,transferReference:'BANK-DEFAULT-1',transferredAt:new Date().toISOString()})
+  await service.practice.confirm(admin,topup.id,{confirmed:true,verificationNote:'Checked school bank deposit'})
+  const draft=await service.draftWithdrawal(admin,{amount:'50',beneficiaryId:bank.id,reason:'Withdraw using default business id',requestKey:randomUUID()})
+  assert.equal(draft.state,'Draft')
+  const multiService=createLocalMoneyOut({
+    database:{getConnection:async()=>({beginTransaction:async()=>{},commit:async()=>{},rollback:async()=>{},release(){},execute:async()=>[[{role:'Librarian',account_status:'Active',user_status:'Active'}]]})} as never,
+    attempts:{load:async()=>[
+      {paymentId:randomUUID(),accountId:1,userId:1,kind:'Fine',targetId:1,principalCentavos:5000,feeCentavos:100,totalCentavos:5100,balanceCentavos:5000,channelCode:'GCASH',state:'Succeeded',createdAt:'2026-11-12T00:00:00Z',businessId:'biz-a'},
+      {paymentId:randomUUID(),accountId:1,userId:1,kind:'Fine',targetId:2,principalCentavos:5000,feeCentavos:100,totalCentavos:5100,balanceCentavos:5000,channelCode:'GCASH',state:'Succeeded',createdAt:'2026-11-12T00:00:00Z',businessId:'biz-b'},
+    ]},
+    funds:{load:async()=>structuredClone(ledger),save:async v=>{ledger=structuredClone(v)}},
+    provider:{getBalance:async()=>({balance:1000,currency:'PHP'})} as never,
+    locked:run=>run(),refundsEnabled:true,payoutsEnabled:true,payoutFeeCentavos:500,defaultBusinessId:'practice-sti-ormoc-library',
+  })
+  await assert.rejects(multiService.draftWithdrawal(admin,{amount:'50',beneficiaryId:bank.id,reason:'Multiple business accounts check',requestKey:randomUUID()}),/provider account/)
 })
 test('void affects unpaid remainder only and original money remains in history',async()=>{
   const f=fixture();f.original.appliedPrincipalCentavos=4000;f.original.principalCentavos=4000

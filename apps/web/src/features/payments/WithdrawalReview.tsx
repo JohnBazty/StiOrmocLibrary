@@ -24,11 +24,14 @@ export function WithdrawalReview({ data, onClose, onSaved }: { data: FundsOvervi
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Cancel the review first.') }
     finally { sending.current = false; setBusy(false) }
   }
+  const trimmedAmount = amount.trim()
+  const validAmount = /^(0|[1-9]\d{0,7})(\.\d{1,2})?$/.test(trimmedAmount) && Number(trimmedAmount) > 0
+  const exceedsBalance = validAmount && Math.round(Number(trimmedAmount) * 100) + (data.payoutFeeCentavos ?? 0) > (data.balance?.availableCentavos ?? 0)
   async function submit() {
     if (sending.current) return
     sending.current = true; setBusy(true); setError('')
     try {
-      setRow(row ? await moneyOutApi.confirm(row.id) : await moneyOutApi.withdrawal({ beneficiaryId: bank, amount, reason, requestKey: key.current }))
+      setRow(row ? await moneyOutApi.confirm(row.id) : await moneyOutApi.withdrawal({ beneficiaryId: bank, amount: trimmedAmount, reason, requestKey: key.current }))
       onSaved()
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'The withdrawal could not be prepared.') }
     finally { sending.current = false; setBusy(false) }
@@ -52,10 +55,12 @@ export function WithdrawalReview({ data, onClose, onSaved }: { data: FundsOvervi
       {banks.length === 1 ? <div className="funds-bank"><p className="payment-muted text-sm">To school bank</p><strong>{banks[0].label}</strong><p className="payment-muted text-sm">{banks[0].bank} · {banks[0].account}</p></div> : <label className="block font-semibold">School bank<select className="payment-field mt-2" value={bank} onChange={event => setBank(event.target.value)}>{banks.map(value => <option key={value.id} value={value.id}>{value.label} · {value.account}</option>)}</select></label>}
       <label className="block font-semibold">Amount in pesos<input className="payment-field mt-2" inputMode="decimal" aria-describedby={amountNote} value={amount} onChange={event => setAmount(event.target.value)}/></label>
       <p id={amountNote} className="payment-field-note">Available: {paymentMoney(data.balance?.availableCentavos ?? 0)}. Transfer fee: {paymentMoney(data.payoutFeeCentavos ?? 0)}.</p>
+      {trimmedAmount && !validAmount ? <p role="alert" className="payment-error">Enter a valid peso amount with up to two decimal places.</p> : null}
       {data.payoutFeeIsSample ? <p className="payment-field-note">The ₱5 transfer fee is the approved practice rate, not a confirmed provider charge.</p> : null}
       <label className="block font-semibold">Purpose<textarea className="payment-field mt-2" rows={3} maxLength={500} value={reason} onChange={event => setReason(event.target.value)}/></label>
-      {Number(amount) > 0 && Math.round(Number(amount) * 100) + (data.payoutFeeCentavos ?? 0) > (data.balance?.availableCentavos ?? 0) ? <p role="alert" className="payment-error">Amount plus transfer fee exceeds available funds.</p> : null}
-      <Button className="payment-button w-full" disabled={busy || !bank || reason.trim().length < 10 || !/^(0|[1-9]\d{0,7})(\.\d{1,2})?$/.test(amount) || Number(amount) <= 0 || Math.round(Number(amount) * 100) + (data.payoutFeeCentavos ?? 0) > (data.balance?.availableCentavos ?? 0)} onClick={() => void submit()}>{busy ? 'Preparing…' : 'Review withdrawal'}<ArrowRight size={16}/></Button>
+      {reason.trim().length > 0 && reason.trim().length < 10 ? <p role="alert" className="payment-error">Enter at least 10 characters for the purpose.</p> : null}
+      {exceedsBalance ? <p role="alert" className="payment-error">Amount plus transfer fee exceeds available funds.</p> : null}
+      <Button className="payment-button w-full" disabled={busy || !bank || reason.trim().length < 10 || !validAmount || exceedsBalance} onClick={() => void submit()}>{busy ? 'Preparing…' : 'Review withdrawal'}<ArrowRight size={16}/></Button>
     </>}
     {error ? <p role="alert" className="payment-error">{error}</p> : null}
   </div></MoneyOutDialog>

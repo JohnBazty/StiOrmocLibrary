@@ -24,7 +24,7 @@ type Dependencies = {
   database: Pool; funds: FundsStore; attempts: { load(): Promise<LocalAttempt[]> }
   provider: ReturnType<typeof createXenditClient>; locked<T>(run: () => Promise<T>): Promise<T>
   refundsEnabled: boolean; payoutsEnabled: boolean; payoutFeeCentavos: number | null
-  callbackToken?: string
+  callbackToken?: string; defaultBusinessId?: string
 }
 
 /** Freeze legacy allocation order. Excess captures are refundable but never credited to a bill twice. */
@@ -104,6 +104,7 @@ export function createLocalMoneyOut(deps: Dependencies) {
         || !['ACCEPTED','PENDING_COMPLIANCE_ASSESSMENT','REJECTED','ROUTING','REQUESTED','READY','LOCKED','EXPIRED','FAILED','SUCCEEDED','CANCELLED','REVERSED'].includes(response.status)) throw paymentError('Transfer confirmation needs review.', 'MONEY_OUT_EVIDENCE_MISMATCH', 409)
       row.providerId = response.payout_id
     }
+    if (response.practice_provider === true) row.practiceProvider = true
     row.providerState = response.status; row.checkedAt = new Date().toISOString()
     const state = response.status === 'SUCCEEDED' ? 'Succeeded' : response.status === 'REVERSED' ? 'Reversed'
       : ['FAILED','REJECTED','EXPIRED','CANCELLED'].includes(response.status) ? 'Failed' : 'Processing'
@@ -464,21 +465,25 @@ export function createLocalMoneyOut(deps: Dependencies) {
       if (input.confirmed !== true) throw paymentError('Confirm the Xendit sample destination first.')
       if (!deps.payoutsEnabled) throw paymentError('Enable Xendit Money-out access first.', 'PAYOUT_SETUP_REQUIRED', 503)
       const ledger = await funds.load()
+      const hasDefault = ledger.beneficiaries.some(item => item.type === 'SchoolBank' && item.active && item.isDefault)
       let row = ledger.beneficiaries.find(item => item.type === 'SchoolBank' && item.isSample && item.active)
       if (!row) {
         row = { id: randomUUID(), type: 'SchoolBank', label: 'School bank · Xendit sample', isSample: true, active: true,
+          ...(hasDefault ? {} : { isDefault: true }),
           verifiedBy: actorId, verifiedAt: new Date().toISOString(), evidence: 'Owner-approved Xendit development sample recipient; not a real school account',
           recipient: { type: 'BUSINESS', business_name: 'SAMPLE SCHOOL LIBRARY', relationship: 'OWNSELF',
             account_details: { currency: 'PHP', account_country: 'PH', account_holder_name: 'SAMPLE SCHOOL LIBRARY', account_number: '8888888888', routing_type_1: 'SWIFT', routing_value_1: 'BNORPHMM' },
             address: { country: 'PH', street_line_1: 'Sample School Road', city: 'Ormoc', province_state: 'Leyte', postal_code: '6541' } } }
         ledger.beneficiaries.push(row)
+      } else if (!hasDefault) {
+        row.isDefault = true
       }
       if (!ledger.transferFee && deps.payoutFeeCentavos === null) {
         ledger.transferFee = { centavos: 500, reference: 'Owner-approved PHP 5 sample fee; not a provider fee agreement', actorId, confirmedAt: new Date().toISOString(), isSample: true }
         ledger.feeHistory = [...(ledger.feeHistory ?? []), structuredClone(ledger.transferFee)]
       }
       await funds.save(ledger)
-      return { id: row.id, type: row.type, label: row.label, isSample: true, ...maskedDestination(row.recipient) }
+      return { id: row.id, type: row.type, label: row.label, isSample: true, isDefault: row.isDefault === true, ...maskedDestination(row.recipient) }
     }) },
     draftWithdrawal(actor: PaymentActor, value: unknown) { return locked(async () => {
       const actorId = await admin(actor), input = inputObject(value, ['amount','beneficiaryId','reason','requestKey']), ledger = await funds.load(); expireDrafts(ledger)
@@ -493,11 +498,12 @@ export function createLocalMoneyOut(deps: Dependencies) {
       const fee = transferFee(ledger)
       if (!deps.payoutsEnabled || fee === null) throw paymentError('Set up transfer access and confirm its provider fee first.', 'PAYOUT_SETUP_REQUIRED', 503)
       const businesses = new Set((await deps.attempts.load()).filter(row => row.state === 'Succeeded').map(row => row.businessId).filter(Boolean))
-      if (businesses.size !== 1) throw paymentError('Confirm the library’s provider account before withdrawing funds.')
+      if (businesses.size > 1 || (businesses.size === 0 && !deps.defaultBusinessId)) throw paymentError('Confirm the library’s provider account before withdrawing funds.')
+      const businessId = [...businesses][0] ?? deps.defaultBusinessId!
       if (principal + fee > (await available(ledger)).availableCentavos) throw paymentError('This amount exceeds the available provider balance.')
       const row: MoneyOut = { id: randomUUID(), type: 'Withdrawal', state: 'Draft', actorId, requestKey: key, principal, fee,
         total: principal, appliedPrincipal: 0, rail: 'Transfer', transferFee: fee, beneficiaryId: destination.id, destination: structuredClone(destination.recipient),
-        businessId: [...businesses][0]!, reason, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now()+15*60_000).toISOString(), events: [] }
+        businessId, reason, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now()+15*60_000).toISOString(), events: [] }
       event(row, 'Draft', 'REVIEW_CREATED', actorId); ledger.operations.push(row); await funds.save(ledger); return moneyOutPublic(row)
     }) },
     submit(actor: PaymentActor, id: unknown, value: unknown = {}) { return locked(async () => {

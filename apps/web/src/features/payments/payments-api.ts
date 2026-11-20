@@ -3,7 +3,7 @@ import { getCsrfToken } from '../auth/auth-storage'
 export type PaymentKind='Printing'|'Fine'|'LostBook'|'Other'
 export type Payment={paymentId:string;kind:PaymentKind;targetId:number;principalCentavos:number;feeCentavos:number;totalCentavos:number;
   remainingCentavos:number;channelCode:string;state:string;isSample:boolean;checkoutUrl:string|null;cancellationPending?:boolean;refundReview?:boolean;
-  receiptId:number|null;description?:string|null;payerName?:string|null;schoolId?:string|null;createdAt:string;expiresAt:string;reviewCode?:string|null;localPreview?:boolean;
+  receiptId:number|null;description?:string|null;payerName?:string|null;schoolId?:string|null;createdAt:string;expiresAt:string;reviewCode?:string|null;localPreview?:boolean;practiceCheckout?:boolean;
   refundRequests?:import('./refund-requests-api').RefundRequest[];refundRequestAllowed?:boolean;refundRequestReason?:string|null;
   demoWallet?:boolean;refundStatus?:string|null;refundedCentavos?:number;refundableCentavos?:number;refundEligible?:boolean;refunds?:import('./money-out-api').MoneyOutRecord[]}
 export type PaymentMethod={channelCode:string;displayName:string;minTotalCentavos:number;maxTotalCentavos:number}
