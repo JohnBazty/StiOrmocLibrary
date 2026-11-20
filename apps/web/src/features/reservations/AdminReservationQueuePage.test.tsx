@@ -2,7 +2,7 @@ import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react'
 import {MemoryRouter} from 'react-router-dom'
 import {afterEach,beforeEach,expect,it,vi} from 'vitest'
 import {AdminReservationQueuePage} from './AdminReservationQueuePage'
-const api=vi.hoisted(()=>({queue:vi.fn(),adjustStatus:vi.fn(),swapCandidates:vi.fn(),swapCopy:vi.fn(),moveInQueue:vi.fn()}))
+const api=vi.hoisted(()=>({queue:vi.fn(),adjustStatus:vi.fn(),swapCandidates:vi.fn(),swapCopy:vi.fn()}))
 const schedules=vi.hoisted(()=>({queue:vi.fn()}))
 vi.mock('./reservation-api',()=>({reservationApi:api}))
 vi.mock('./borrowing-schedule-api',()=>({borrowingScheduleApi:schedules,pickupDateLabel:(date:string)=>date}))
@@ -63,20 +63,11 @@ it('shows why a waiting request was skipped',async()=>{
  api.queue.mockResolvedValue({items:[{...row,lastSkipReason:'Over borrowing limit',lastSkippedAt:'2026-11-18T02:00:00Z'}],pagination:{pages:1,total:1}})
  open();await screen.findByText(/Skipped: Over borrowing limit, Nov 18, 2026, 10:00 AM/)
 })
-it('moves a waiting request only with a reason and closes on Escape',async()=>{
- api.moveInQueue.mockResolvedValue({})
+it('keeps the queue first come, first served: a waiting request offers Cancel but no reordering',async()=>{
  open();await screen.findByText('Waiting title')
- fireEvent.click(screen.getByRole('button',{name:'Move up'}))
- const dialog=screen.getByRole('dialog')
- const confirm=[...dialog.querySelectorAll('button')].find(b=>b.textContent==='Move up') as HTMLButtonElement
- expect(confirm.disabled).toBe(true)
- fireEvent.change(screen.getByLabelText(/Reason/),{target:{value:'Dean asked'}})
- fireEvent.click(confirm)
- await waitFor(()=>expect(api.moveInQueue).toHaveBeenCalledWith(81,'up','Dean asked'))
- await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull())
- fireEvent.click(screen.getByRole('button',{name:'Move down'}))
- fireEvent.keyDown(document,{key:'Escape'})
- expect(screen.queryByRole('dialog')).toBeNull()
+ expect(screen.getAllByRole('button',{name:'Cancel request'}).length).toBeGreaterThan(0)
+ expect(screen.queryByRole('button',{name:'Move up'})).toBeNull()
+ expect(screen.queryByRole('button',{name:'Move down'})).toBeNull()
 })
 it('swaps the copy from the list of eligible copies',async()=>{
  api.queue.mockResolvedValue({items:[{...row,status:'approved',assignedCopyId:4,barcode:'SAMPLE-COPY'}],pagination:{pages:1,total:1}})

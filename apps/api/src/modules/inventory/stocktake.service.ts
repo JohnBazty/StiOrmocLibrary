@@ -35,6 +35,22 @@ async function report(q:PoolConnection,s:Session):Promise<StocktakeReport>{
  const live=await stocktakeItems(q,{keys:items.map(e=>e.item)})
  return buildStocktakeReport(items,mapped,live)
 }
+async function insertExpected(q:PoolConnection,id:number,items:StockItem[]){
+  await q.execute(`INSERT INTO stocktake_expected_items(stocktake_session_id,asset_kind,source_item_id,barcode,accession_number,title,category_id,category_name,home_shelf_label,home_shelf_column,home_shelf_row,condition_snapshot,availability_snapshot,lifecycle_snapshot,row_version_snapshot,loan_state_snapshot,reservation_state_snapshot)
+      SELECT ?,x.kind,x.id,x.barcode,x.accession,x.title,x."categoryId",x.category,x.shelf,x."column",x.row,x.condition,x.availability,x.lifecycle,x.version,x.loan,x.reservation FROM jsonb_to_recordset(?::jsonb) AS x(kind text,id bigint,barcode text,accession text,title text,"categoryId" bigint,category text,shelf text,"column" smallint,row smallint,condition text,availability text,lifecycle text,version integer,loan text,reservation text)`,[id,JSON.stringify(items)])
+}
+const shelfKey=(value:unknown)=>String(value??'').trim().replace(/\s+/g,' ').toLowerCase()
+/** A copy added or reshelved after the count started still belongs to it when it matches the count's collection and location. */
+function belongsToScope(s:Session,item:StockItem){
+ const stored=snapshot(s)
+ if(item.lifecycle!=='Active')return false
+ if(stored.kind&&stored.kind!=='both'&&item.kind!==stored.kind)return false
+ return !stored.location||shelfKey(item.shelf)===shelfKey(stored.location)
+}
+async function expectedHit(q:PoolConnection,id:number,item:StockItem){
+ const [rows]=await q.execute<RowDataPacket[]>('SELECT 1 AS hit FROM stocktake_expected_items WHERE stocktake_session_id=? AND asset_kind=? AND source_item_id=? LIMIT 1',[id,item.kind,item.id])
+ return rows.length>0
+}
 export function createStocktakeService(database:Pool=db,deps:{applyCondition?:ConditionApplier}={}){
   const applyCondition=deps.applyCondition??defaultApplier(database)
   const publicOutcome=({status,from,to,message}:InventoryOutcome):InventoryOutcome=>({status,...(from?{from}:{}),...(to?{to}:{}),...(message?{message}:{})})
@@ -61,20 +77,19 @@ export function createStocktakeService(database:Pool=db,deps:{applyCondition?:Co
    return transaction(async q=>{
     const items=await stocktakeItems(q,{assetKind:String(kind),location,active:true});if(!items.length)throw fail('No active physical items match this scope. Choose another location or collection.')
     const [insert]=await q.execute<ResultSetHeader>(`INSERT INTO stocktake_sessions(session_name,scope_kind,scope_label,asset_kind,scope_snapshot,started_by_user_id,started_by_label) VALUES (?,'collection',?,?,?,?,?)`,[name,location||'All locations',kind,JSON.stringify({format:'stocktake-v1',location,kind}),actor.userId,actor.label]);const id=insert.insertId
-    await q.execute(`INSERT INTO stocktake_expected_items(stocktake_session_id,asset_kind,source_item_id,barcode,accession_number,title,category_id,category_name,home_shelf_label,home_shelf_column,home_shelf_row,condition_snapshot,availability_snapshot,lifecycle_snapshot,row_version_snapshot,loan_state_snapshot,reservation_state_snapshot)
-      SELECT ?,x.kind,x.id,x.barcode,x.accession,x.title,x."categoryId",x.category,x.shelf,x."column",x.row,x.condition,x.availability,x.lifecycle,x.version,x.loan,x.reservation FROM jsonb_to_recordset(?::jsonb) AS x(kind text,id bigint,barcode text,accession text,title text,"categoryId" bigint,category text,shelf text,"column" smallint,row smallint,condition text,availability text,lifecycle text,version integer,loan text,reservation text)`,[id,JSON.stringify(items)])
+    await insertExpected(q,id,items)
     return detail(q,await session(q,id))
    })
   },
   async lookup(id:number,query:{code?:unknown;codeType?:unknown}){
    const code=text(query.code,'a barcode or accession',100),codeType=query.codeType==='accession'?'accession':'barcode'
-   return transaction(async q=>{active(await session(q,id))
+   return transaction(async q=>{const s=await session(q,id);active(s)
     const matches=await stocktakeItems(q,{code,codeType});if(matches.length>1)throw fail('This code matches more than one item. Check its unique accession label.')
     const item=matches[0];if(!item)return {found:false as const,code}
-    const [expected]=await q.execute<RowDataPacket[]>('SELECT 1 AS hit FROM stocktake_expected_items WHERE stocktake_session_id=? AND asset_kind=? AND source_item_id=? LIMIT 1',[id,item.kind,item.id])
+    const expected=await expectedHit(q,id,item)
     const [seen]=await q.execute<RowDataPacket[]>('SELECT COUNT(*) AS total FROM stocktake_scans WHERE stocktake_session_id=? AND resolved_asset_kind=? AND resolved_source_item_id=?',[id,item.kind,item.id])
     const {kind,title,accession,barcode,shelf,condition,availability,lifecycle,loan}=item
-    return {found:true as const,code,item:{kind,title,accession,barcode,shelf,condition,availability,lifecycle,loan},inScope:expected.length>0,alreadyCounted:Number(seen[0]?.total??0)>0}
+    return {found:true as const,code,item:{kind,title,accession,barcode,shelf,condition,availability,lifecycle,loan},inScope:expected||belongsToScope(s,item),alreadyCounted:Number(seen[0]?.total??0)>0}
    })
   },
   async scan(id:number,body:Record<string,unknown>,actor:InventoryRequestActor){
@@ -85,6 +100,7 @@ export function createStocktakeService(database:Pool=db,deps:{applyCondition?:Co
     if(prior.length){const old=JSON.parse(prior[0].lookup_snapshot);if(prior[0].entered_barcode!==code||prior[0].observed_shelf_label!==shelf||old.codeType!==codeType||old.condition!==condition)throw fail('This scan reference belongs to another scan. Refresh and try again.');return {detail:await detail(q,s),item:(old.item??null) as StockItem|null,stored:(old.inventory??null) as InventoryOutcome|null,snapshot:old as Record<string,unknown>}}
     const matches=await stocktakeItems(q,{code,codeType});if(matches.length>1)throw fail('This code matches more than one item. Check its unique accession label.')
     const item=matches[0]??null,snapshot={codeType,item,condition}
+    if(item&&!(await expectedHit(q,id,item))&&belongsToScope(s,item))await insertExpected(q,id,[item])
     await q.execute(`INSERT INTO stocktake_scans(stocktake_session_id,request_key,entered_barcode,resolved_asset_kind,resolved_source_item_id,observed_shelf_label,scan_source,lookup_snapshot,scanned_by_user_id,scanned_by_label) VALUES (?,?,?,?,?,?,'scanner',?,?,?)`,[id,requestKey,code,item?.kind??null,item?.id??null,shelf,JSON.stringify(snapshot),actor.userId,actor.label])
     return {detail:await detail(q,s),item,stored:null,snapshot:snapshot as Record<string,unknown>}
    })

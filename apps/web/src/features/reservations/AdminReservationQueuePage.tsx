@@ -6,7 +6,7 @@ import { Button, EmptyState, NoticeBanner, PageHeader, SectionCard, StatusBadge 
 import { ResponsiveTable } from '../../components/ResponsiveTable'
 import { getCurrentIdentity } from '../auth/auth-storage'
 import { reservationApi } from './reservation-api'
-import { DialogShell, MoveDialog, SwapCopyDialog } from './ReservationQueueDialogs'
+import { DialogShell, SwapCopyDialog } from './ReservationQueueDialogs'
 import { AdminScheduledBorrowing } from './AdminScheduledBorrowing'
 import { pickupDateLabel } from './borrowing-schedule-api'
 import type { ReservationFilters, ReservationQueueItem, ReservationStatus } from './types'
@@ -49,7 +49,6 @@ export function AdminReservationQueuePage() {
   const [success, setSuccess] = useState('')
   const [cancel, setCancel] = useState<ReservationQueueItem | null>(null)
   const [swap, setSwap] = useState<ReservationQueueItem | null>(null)
-  const [move, setMove] = useState<{ item: ReservationQueueItem; direction: 'up' | 'down' } | null>(null)
 
   const cart = filters.kind === 'CartHandover'
   const workspace = getCurrentIdentity()?.role === 'Staff' ? '/staff' : '/librarian'
@@ -86,7 +85,6 @@ export function AdminReservationQueuePage() {
 
   const done = (message: string) => {
     setSwap(null)
-    setMove(null)
     setSuccess(message)
     void load()
   }
@@ -355,26 +353,6 @@ export function AdminReservationQueuePage() {
                                   Swap copy
                                 </Button>
                               ) : null}
-                              {r.requestKind !== 'CartHandover' && r.status === 'pending' ? (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    variant="secondary"
-                                    disabled={busy !== null || r.queuePosition === 1}
-                                    onClick={() => setMove({ item: r, direction: 'up' })}
-                                  >
-                                    Move up
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="secondary"
-                                    disabled={busy !== null}
-                                    onClick={() => setMove({ item: r, direction: 'down' })}
-                                  >
-                                    Move down
-                                  </Button>
-                                </>
-                              ) : null}
                               {!terminal ? (
                                 <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => setCancel(r)}>
                                   Cancel request
@@ -432,7 +410,6 @@ export function AdminReservationQueuePage() {
           ) : null}
 
           {swap ? <SwapCopyDialog item={swap} onClose={() => setSwap(null)} onDone={done} /> : null}
-          {move ? <MoveDialog item={move.item} direction={move.direction} onClose={() => setMove(null)} onDone={done} /> : null}
           {cancel ? (
             <DialogShell titleId="cancel-request-title" title="Cancel this book request?" busy={busy !== null} onClose={() => setCancel(null)}>
               <p className="my-4 text-sm text-[var(--sl-text)]">

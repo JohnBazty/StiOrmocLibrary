@@ -40,6 +40,19 @@ it.each([true,false])('opens a large camera dialog with a fitting guide (QR=%s),
  expect(onScan).not.toHaveBeenCalled()
 })
 
+it('borrower ID scanning uses a barcode camera guide, not a QR guide',async()=>{
+ render(<DeskScanInput label="Borrower barcode or School ID" value="" onChange={()=>{}} onScan={()=>{}} disabled={false} qr allowIdBarcode/>)
+ expect(screen.getByPlaceholderText('Scan the School ID barcode or type the School ID')).toBeTruthy()
+ fireEvent.click(screen.getByRole('button',{name:'Scan with camera'}))
+ await screen.findByRole('dialog',{name:'Scan borrower barcode'})
+ await waitFor(()=>expect(cameraStart).toHaveBeenCalledOnce())
+ const config=cameraStart.mock.calls[0][1] as unknown as {qrbox:(width:number,height:number)=>{width:number;height:number}}
+ const guide=config.qrbox(720,540)
+ expect(guide.width).toBeGreaterThan(guide.height)
+ fireEvent.click(screen.getByRole('button',{name:'Close camera'}))
+ await waitFor(()=>expect(cameraStop).toHaveBeenCalledOnce())
+})
+
 it('closes on a successful scan and ignores repeated camera frames',async()=>{
  const onScan=vi.fn()
  render(<DeskScanInput label="Book barcode" value="" onChange={()=>{}} onScan={onScan} disabled={false}/>)

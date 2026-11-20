@@ -34,14 +34,6 @@ export function validateStatusAdjustment(body: unknown) {
   return { status, pickupDeadline }
 }
 
-export function validateMove(body: unknown) {
-  const input = body && typeof body === 'object' ? body as Record<string, unknown> : {}
-  const reason = stringValue(input.reason)
-  if (input.direction !== 'up' && input.direction !== 'down') throw new HttpError(422, 'QUEUE_MOVE_INVALID', 'Direction must be up or down.')
-  if (reason.length < 5 || reason.length > 500) throw new HttpError(422, 'QUEUE_MOVE_REASON_INVALID', 'Give a reason of 5 to 500 characters.')
-  return { direction: input.direction as 'up' | 'down', reason }
-}
-
 export function parseQueueFilters(query: Record<string, unknown>): QueueFilters {
   const statusText = stringValue(query.status)
   if (statusText && statusText !== 'active' && !RESERVATION_STATUSES.includes(statusText as ReservationStatus)) throw new HttpError(422, 'RESERVATION_FILTER_INVALID', 'Unsupported reservation status filter.')

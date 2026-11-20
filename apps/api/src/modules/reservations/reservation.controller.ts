@@ -40,9 +40,6 @@ export function createReservationController(service: Service = reservationServic
     swapCopy: asyncController(async (request, response) => {
       response.json({ success: true, message: 'Copy swapped.', data: await service.swapCopy(authenticatedUser(request, response)?.id, request.params.reservationId, request.body) })
     }),
-    moveInQueue: asyncController(async (request, response) => {
-      response.json({ success: true, message: 'Request moved.', data: await service.moveInQueue(authenticatedUser(request, response)?.id, request.params.reservationId, request.body) })
-    }),
     cancelForAccount: asyncController(async (request, response) => {
       response.json({ success: true, message: 'Reservation cancelled and queue realigned.', data: await service.cancelForAccount(authenticatedUser(request, response)?.id, request.params.reservationId) })
     }),

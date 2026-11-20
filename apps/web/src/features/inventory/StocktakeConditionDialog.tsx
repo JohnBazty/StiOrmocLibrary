@@ -11,6 +11,9 @@ type Option = {
   badgeTone: 'success' | 'warning' | 'error'
 }
 
+/** Human label for an observed condition key (for messages). */
+export const observedConditionLabel = (value: ObservedCondition) => OPTIONS.find(option => option.value === value)?.label ?? value
+
 const OPTIONS: Option[] = [
   {
     value: 'good',
