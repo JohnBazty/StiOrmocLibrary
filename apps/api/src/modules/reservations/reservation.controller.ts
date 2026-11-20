@@ -9,13 +9,16 @@ function sessionUser(request: Request) {
   return (request.session as typeof request.session & { user?: { id?: number; role?: string } }).user
 }
 function authenticatedUser(request: Request, response: Response) {
-  return (response.locals.authenticatedUser as { id?: number; role?: string } | undefined) ?? sessionUser(request)
+  return (response.locals.authenticatedUser as { id?: number; accountId?: number; role?: string } | undefined) ?? sessionUser(request)
 }
 
 export function createReservationController(service: Service = reservationService) {
   return {
     create: asyncController(async (request, response) => {
-      const result = await service.create(authenticatedUser(request, response)?.id, request.body)
+      const user = authenticatedUser(request, response)
+      const result = response.locals.authenticationType === 'jwt'
+        ? await service.createForAccount(user?.accountId ?? user?.id, request.body)
+        : await service.create(user?.id, request.body)
       response.status(201).json({ success: true, message: 'Reservation request submitted successfully.', data: result })
     }),
     createForAccount: asyncController(async (request, response) => {

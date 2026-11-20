@@ -22,14 +22,16 @@ const requireSupabase = () => {
 }
 
 function validate(file?: Express.Multer.File) {
-  if (!file || !allowed[file.mimetype] || file.size < 1 || file.size > 2 * 1024 * 1024) {
+  if (!file || !Object.hasOwn(allowed, file.mimetype) || file.size < 1 || file.size > 2 * 1024 * 1024) {
     throw new HttpError(422, 'AVATAR_INVALID', 'Choose a PNG, JPEG, or WebP image up to 2 MB.')
   }
   const valid = file.mimetype === 'image/png'
     ? file.buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
     : file.mimetype === 'image/jpeg'
       ? file.buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))
-      : file.buffer.subarray(0, 4).toString('ascii') === 'RIFF' && file.buffer.subarray(8, 12).toString('ascii') === 'WEBP'
+      : file.mimetype === 'image/webp'
+        && file.buffer.subarray(0, 4).toString('ascii') === 'RIFF'
+        && file.buffer.subarray(8, 12).toString('ascii') === 'WEBP'
   if (!valid) throw new HttpError(422, 'AVATAR_INVALID', 'The image content does not match its file type.')
   requireSupabase()
   return file

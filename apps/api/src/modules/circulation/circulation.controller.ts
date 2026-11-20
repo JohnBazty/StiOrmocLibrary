@@ -1,16 +1,28 @@
 import type { NextFunction, Request, Response } from 'express'
+import { HttpError } from '../../core/http-error.ts'
 import { circulationService, createCirculationService } from './circulation.service.ts'
 import { circulationCaseService, createCirculationCaseService } from './circulation-case.service.ts'
 
 type Service = ReturnType<typeof createCirculationService>
 type CaseService = ReturnType<typeof createCirculationCaseService>
+function normalizeActorRole(role?: string) {
+  if (role === 'Library Staff') return 'Staff'
+  if (role === 'System Administrator') return 'Admin'
+  return role
+}
 function authenticatedAccount(response: Response) {
   const user = response.locals.authenticatedUser as { accountId?: number; id?: number } | undefined
+  if (response.locals.authenticationType === 'session') {
+    if (!Number.isSafeInteger(user?.accountId) || Number(user?.accountId) < 1) {
+      throw new HttpError(401, 'SESSION_UPGRADE_REQUIRED', 'Please sign in again using the updated login.')
+    }
+    return Number(user!.accountId)
+  }
   return user?.accountId ?? user?.id
 }
 function authenticatedActor(response: Response) {
   const user = response.locals.authenticatedUser as { accountId?: number; id?: number; role?: string } | undefined
-  return { accountId: user?.accountId ?? user?.id, role: user?.role }
+  return { accountId: authenticatedAccount(response), role: normalizeActorRole(user?.role) }
 }
 function asyncController(handler: (request: Request, response: Response) => Promise<void>) {
   return async (request: Request, response: Response, next: NextFunction) => { try { await handler(request, response) } catch (error) { next(error) } }

@@ -91,20 +91,31 @@ export async function sendSchoolEmail(address: string, subject: string, content:
   const credentials = new URLSearchParams({
     client_id: sender.client, client_secret: sender.secret, scope: 'https://graph.microsoft.com/.default', grant_type: 'client_credentials',
   })
-  const tokenResponse = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(sender.tenant)}/oauth2/v2.0/token`, {
-    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: credentials,
-    signal: AbortSignal.timeout(10000),
-  })
-  if (!tokenResponse.ok) throw new HttpError(503, 'EMAIL_DELIVERY_UNAVAILABLE', 'Verification email is unavailable. Please try again later.')
-  const token = await tokenResponse.json() as { access_token?: string }
-  if (!token.access_token) throw new HttpError(503, 'EMAIL_DELIVERY_UNAVAILABLE', 'Verification email is unavailable. Please try again later.')
-  const sendResponse = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender.sender)}/sendMail`, {
-    method: 'POST', headers: { Authorization: `Bearer ${token.access_token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: {
-      subject,
-      body: { contentType: 'Text', content },
-      toRecipients: [{ emailAddress: { address } }],
-    } }), signal: AbortSignal.timeout(10000),
-  })
+  let tokenResponse: Response
+  let token: { access_token?: string }
+  try {
+    tokenResponse = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(sender.tenant)}/oauth2/v2.0/token`, {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: credentials,
+      signal: AbortSignal.timeout(10000),
+    })
+    if (!tokenResponse.ok) throw new Error('token_status')
+    token = await tokenResponse.json() as { access_token?: string }
+  } catch {
+    throw new HttpError(503, 'EMAIL_DELIVERY_UNAVAILABLE', 'Verification email is unavailable. Please try again later.')
+  }
+  if (!token?.access_token) throw new HttpError(503, 'EMAIL_DELIVERY_UNAVAILABLE', 'Verification email is unavailable. Please try again later.')
+  let sendResponse: Response
+  try {
+    sendResponse = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender.sender)}/sendMail`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: {
+        subject,
+        body: { contentType: 'Text', content },
+        toRecipients: [{ emailAddress: { address } }],
+      } }), signal: AbortSignal.timeout(10000),
+    })
+  } catch {
+    throw new HttpError(503, 'EMAIL_DELIVERY_UNAVAILABLE', 'Verification email is unavailable. Please try again later.')
+  }
   if (!sendResponse.ok) throw new HttpError(503, 'EMAIL_DELIVERY_UNAVAILABLE', 'Verification email is unavailable. Please try again later.')
 }

@@ -2,10 +2,15 @@ import { Router } from 'express'
 import { attendanceController } from './attendance.controller.ts'
 export const attendanceRouter=Router()
 attendanceRouter.use((request,response,next)=>{
-  if(response.locals.authenticatedUser?.role!=='Staff')return next()
-  const allowed=(request.method==='GET'&&['/logs','/summary','/state','/events','/capacity'].includes(request.path))
-    ||(request.method==='POST'&&['/scan','/scan/resolve','/scan/check-in','/scan/check-out'].includes(request.path))
-  return allowed?next():response.status(403).json({success:false,code:'STAFF_ATTENDANCE_FORBIDDEN',message:'Staff may use attendance scans and view attendance records only.'})
+  const rawRole = String(response.locals.authenticatedUser?.role ?? '')
+  const role = rawRole === 'Library Staff' ? 'Staff' : rawRole
+  if (role === 'Librarian') return next()
+  if (role === 'Staff') {
+    const allowed=(request.method==='GET'&&['/logs','/summary','/state','/events','/capacity'].includes(request.path))
+      ||(request.method==='POST'&&['/scan','/scan/resolve','/scan/check-in','/scan/check-out'].includes(request.path))
+    return allowed?next():response.status(403).json({success:false,code:'STAFF_ATTENDANCE_FORBIDDEN',message:'Staff may use attendance scans and view attendance records only.'})
+  }
+  return response.status(403).json({success:false,code:'FORBIDDEN',message:'You do not have permission to access attendance administration.'})
 })
 attendanceRouter.get('/academic-terms',attendanceController.terms)
 attendanceRouter.get('/summary',attendanceController.summary)

@@ -1,11 +1,21 @@
 import { Router } from 'express'
+import { HttpError } from '../../core/http-error.ts'
 import { reservationController, createReservationController } from './reservation.controller.ts'
 import { requireReservationManager } from './reservation.rbac.ts'
+
+const PATRON_ROLES = new Set(['Student', 'Faculty'])
 
 type Controller = ReturnType<typeof createReservationController>
 export function createReservationsRouter(controller: Controller = reservationController) {
   const router = Router()
-  router.post('/', controller.create)
+  router.post('/', (request, response, next) => {
+    const user = (response.locals.authenticatedUser as { role?: string } | undefined)
+      ?? (request.session as typeof request.session & { user?: { role?: string } })?.user
+    if (!user?.role || !PATRON_ROLES.has(user.role)) {
+      return next(new HttpError(403, 'FORBIDDEN', 'Only Student and Faculty accounts may submit book reservations.'))
+    }
+    return next()
+  }, controller.create)
   router.get('/admin/queue', requireReservationManager, controller.queue)
   router.patch('/:reservationId/status', requireReservationManager, controller.adjustStatus)
   router.get('/:reservationId/swap-candidates', requireReservationManager, controller.swapCandidates)

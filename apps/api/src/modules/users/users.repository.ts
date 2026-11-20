@@ -62,6 +62,7 @@ export class UsersRepository {
       const allowed = accountId !== actor && (['Student', 'Faculty', 'Staff'].includes(account.role)
         || (actorRole === 'Admin' && (account.role === 'Librarian' || (account.role === 'Admin' && allowAdminTarget))))
       if (!allowed) throw new HttpError(403, 'USER_STATUS_PROTECTED', 'This account cannot be changed from User Management.')
+      if (account.account_status !== 'Active') throw new HttpError(409, 'USER_ACCOUNT_INACTIVE', 'Only active accounts can use sign-in recovery actions.')
       if(account.role==='Librarian'&&!allowAdminTarget){const [owners]=await connection.execute<RowDataPacket[]>('SELECT owner_account_id FROM library_ownership WHERE owner_account_id=?',[accountId]);if(owners[0])throw new HttpError(403,'USER_STATUS_PROTECTED','The administrator owner changes their password through account security or Forgot password.')}
       const result = await work(connection, account, actor, auditReason, locks[0] ?? {})
       await connection.commit()
@@ -236,8 +237,15 @@ export class UsersRepository {
       const [accounts] = await connection.execute<RowDataPacket[]>('SELECT account_id,user_id,role,account_status FROM accounts WHERE account_id=? FOR UPDATE', [accountId])
       const account = accounts[0]
       if (!account) throw new HttpError(404, 'USER_NOT_FOUND', 'Account not found.')
-      if (account.role === 'Admin' || accountId === actor) throw new HttpError(403, 'USER_STATUS_PROTECTED', 'This account cannot be deactivated from User Management.')
-      if(account.role==='Librarian'){const [owners]=await connection.execute<RowDataPacket[]>('SELECT owner_account_id FROM library_ownership WHERE owner_account_id=?',[accountId]);if(owners[0])throw new HttpError(403,'USER_STATUS_PROTECTED','Transfer ownership before deactivating the administrator owner.')}
+      if (account.account_status === 'Archived') throw new HttpError(403, 'USER_STATUS_PROTECTED', 'Archived accounts cannot be changed from User Management.')
+      if (account.role === 'Admin' || account.role === 'Librarian' || accountId === actor) {
+        if (account.role === 'Librarian') {
+          const [owners] = await connection.execute<RowDataPacket[]>('SELECT owner_account_id FROM library_ownership WHERE owner_account_id=?', [accountId])
+          if (owners[0]) throw new HttpError(403, 'USER_STATUS_PROTECTED', 'Transfer ownership before deactivating the administrator owner.')
+          throw new HttpError(403, 'USER_STATUS_PROTECTED', 'Retired librarian accounts cannot be changed from User Management.')
+        }
+        throw new HttpError(403, 'USER_STATUS_PROTECTED', 'This account cannot be deactivated from User Management.')
+      }
       if (!account.user_id) throw new HttpError(409, 'USER_PROFILE_NOT_LINKED', 'This account needs its operational profile linked before changing its status.')
       if (account.account_status === next) throw new HttpError(409, 'USER_STATUS_UNCHANGED', `This account is already ${next.toLowerCase()}.`)
       await connection.execute('UPDATE accounts SET account_status=?,auth_version=auth_version+1,updated_at=NOW() WHERE account_id=?', [next, accountId])

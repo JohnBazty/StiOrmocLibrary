@@ -12,14 +12,16 @@ const client = env.supabase.url && env.supabase.secretKey
   : null
 
 function validateImage(file?: Express.Multer.File) {
-  if (!file || !allowed[file.mimetype] || file.size < 1 || file.size > 4 * 1024 * 1024) {
+  if (!file || !Object.hasOwn(allowed, file.mimetype) || file.size < 1 || file.size > 4 * 1024 * 1024) {
     throw new HttpError(422, 'FLOOR_IMAGE_INVALID', 'Choose a PNG, JPEG, or WebP image up to 4 MB.')
   }
   const valid = file.mimetype === 'image/png'
     ? file.buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
     : file.mimetype === 'image/jpeg'
       ? file.buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))
-      : file.buffer.subarray(0, 4).toString('ascii') === 'RIFF' && file.buffer.subarray(8, 12).toString('ascii') === 'WEBP'
+      : file.mimetype === 'image/webp'
+        && file.buffer.subarray(0, 4).toString('ascii') === 'RIFF'
+        && file.buffer.subarray(8, 12).toString('ascii') === 'WEBP'
   if (!valid) throw new HttpError(422, 'FLOOR_IMAGE_INVALID', 'The file content does not match its image type.')
   return file
 }
@@ -45,17 +47,20 @@ export const floorPlanImageService = {
     const { error: uploadError } = await storage.upload(objectPath, file.buffer, { contentType: file.mimetype, upsert: false })
     if (uploadError) throw new HttpError(503, 'FLOOR_IMAGE_STORAGE_UNAVAILABLE', 'Floor plan image upload failed. Try again.')
     const connection = await db.getConnection()
+    let committing = false
     try {
       await connection.beginTransaction()
+      await connection.execute('SELECT pg_advisory_xact_lock(734041)')
       await connection.execute('UPDATE floor_plan_images SET is_current=FALSE WHERE is_current=TRUE')
       await connection.execute(
         `INSERT INTO floor_plan_images (storage_path, original_name, mime_type, uploaded_by_account_id, is_current)
          VALUES (?, ?, ?, ?, TRUE)`, [objectPath, file.originalname.slice(0, 255), file.mimetype, actorId],
       )
+      committing = true
       await connection.commit()
     } catch (error) {
-      await connection.rollback()
-      await storage.remove([objectPath])
+      await connection.rollback().catch(() => undefined)
+      if (!committing) await storage.remove([objectPath]).catch(() => undefined)
       throw error
     } finally { connection.release() }
     return this.current()

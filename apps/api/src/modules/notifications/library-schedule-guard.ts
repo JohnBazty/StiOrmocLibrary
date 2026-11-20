@@ -17,10 +17,11 @@ export function requireLibraryOpenForUserTransactions(
     libraryScheduleService.current(),
   clock: () => Date = () => new Date(),
 ) {
-  return async (request: Request, _response: Response, next: NextFunction) => {
+  return async (request: Request, response: Response, next: NextFunction) => {
     try {
       if (READ_METHODS.has(request.method.toUpperCase())) return next()
       const role =
+        (response.locals?.authenticatedUser as { role?: string } | undefined)?.role ??
         (request as Request & { auth?: { role?: string }; session?: { user?: { role?: string } } }).auth?.role ??
         (request as Request & { session?: { user?: { role?: string } } }).session?.user?.role ??
         ''

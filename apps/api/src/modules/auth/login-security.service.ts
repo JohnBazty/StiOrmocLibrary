@@ -268,7 +268,7 @@ export function createLoginSecurityService(database: Pool = db,
         const [accounts] = await c.execute<RowDataPacket[]>('SELECT a.auth_version,a.account_status,u.email,a.role,a.school_id,u.account_status AS linked_status FROM accounts a LEFT JOIN users u ON u.user_id=a.user_id WHERE a.account_id=? FOR UPDATE OF a', [reference[0].account_id])
         const [rows] = await c.execute<RowDataPacket[]>('SELECT * FROM login_otp_challenges WHERE challenge_id=? FOR UPDATE', [challengeId])
         const row = rows[0], account = accounts[0]
-        if (!row || row.consumed_at || row.failed_count >= 3 || row.resend_count >= 3 || !account || Number(account.auth_version) !== Number(row.auth_version)) throw failCode()
+        if (!row || !row.code_hash || row.consumed_at || new Date(row.expires_at).getTime() <= now() || row.failed_count >= 3 || row.resend_count >= 3 || !account || Number(account.auth_version) !== Number(row.auth_version)) throw failCode()
         if (account.account_status !== 'Active' || (account.linked_status && account.linked_status !== 'Active') || ((account.role==='Student'||account.role==='Faculty') && await semesterAccessEnded(c,Number(reference[0].account_id)))) {
           const restoration = (account.role === 'Student' || account.role === 'Faculty') && await restorationEvidence(c, Number(reference[0].account_id), account.school_id, String(account.email ?? ''))
           if (!restoration || restoration.semesterId !== Number(row.restoration_semester_id)) throw failCode()

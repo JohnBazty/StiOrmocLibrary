@@ -4,6 +4,7 @@ import cors from 'cors'
 import express from 'express'
 import session from 'express-session'
 import helmet from 'helmet'
+import multer from 'multer'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { db } from './config/db.js'
@@ -81,9 +82,10 @@ export function createApp() {
     },
   }))
   app.use(cors({ origin: env.webOrigin, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }))
-  app.use('/api/payments/xendit/webhook', paymentWebhookRouter)
+  const notFoundBoundary = (_request, response) => response.status(404).json({ success: false, message: 'Route not found.' })
+  app.use('/api/payments/xendit/webhook', paymentWebhookRouter, notFoundBoundary)
   // D1: Supabase Cron only; before body parsing, the session, JWT and CSRF middleware, authorized by X-Job-Runner-Secret alone.
-  app.use('/api/internal/jobs', createInternalJobRouter(jobRunner, () => env.jobRunner.secret))
+  app.use('/api/internal/jobs', createInternalJobRouter(jobRunner, () => env.jobRunner.secret), notFoundBoundary)
   app.use(express.json({ limit: '3mb' }))
   app.use(express.urlencoded({ extended: false, limit: '32kb' }))
   app.use(session({
@@ -110,9 +112,9 @@ export function createApp() {
       })
     } catch (error) { next(error) }
   })
-  app.use('/api/auth', authRouter)
-  app.use('/api/v1/auth', jwtAuthRouter)
-  app.use('/api/public/catalog', publicCatalogRouter)
+  app.use('/api/auth', authRouter, notFoundBoundary)
+  app.use('/api/v1/auth', jwtAuthRouter, notFoundBoundary)
+  app.use('/api/public/catalog', publicCatalogRouter, notFoundBoundary)
   app.use('/api/v1', authenticateJwt, ensureActiveJwtAccount, requireCsrfForStateChanges)
   app.use('/api/v1/admin/stocktake', requireLibraryPermission('library.manage'), stocktakeRouter)
   const attendanceConfirmations = createAttendanceConfirmationRouters()
@@ -144,45 +146,45 @@ export function createApp() {
     } catch (error) { next(error) }
   })
   app.use('/api/v1/admin/jobs', requireLibraryPermission('library.manage'), createAdminJobRouter(jobRunner))
-  app.use('/api/v1/catalog', authenticateJwt, requireJwtRoles('Student', 'Faculty', 'Librarian'), bookCatalogRouter)
-  app.use('/api/v1/floor-plan', authenticateJwt, requireJwtRoles('Librarian', 'Student', 'Faculty'), floorPlanRouter)
-  app.use('/api/v1/catalog', authenticateJwt, requireJwtRoles('Student', 'Faculty', 'Librarian'), researchCatalogRouter)
-  app.use('/api/v1/admin/books', authenticateJwt, requireLibraryPermission('library.manage'), bulkBookRouter)
-  app.use('/api/v1/admin/research', authenticateJwt, requireLibraryPermission('library.manage'), researchAssetRouter)
-  app.use('/api/v1/admin/catalog', authenticateJwt, requireLibraryPermission('library.manage'), bulkCatalogEntryRouter)
-  app.use('/api/v1/admin/catalog', authenticateJwt, requireLibraryPermission('library.manage'), catalogAdminRouter)
-  app.use('/api/v1/admin/invoices', authenticateJwt, requireLibraryPermission('library.manage'), archivedInvoiceRouter)
-  app.use('/api/v1/invoices', authenticateJwt, requireJwtRoles('Student', 'Faculty'), archivedInvoiceRouter)
   const enforceLibraryOpen = requireLibraryOpenForUserTransactions()
-  app.use('/api/v1/reservations', authenticateJwt, requireJwtRoles('Student', 'Faculty'), enforceLibraryOpen, userReservationsV1Router)
+  app.use('/api/v1/catalog', requireJwtRoles('Student', 'Faculty', 'Librarian'), enforceLibraryOpen, bookCatalogRouter)
+  app.use('/api/v1/floor-plan', requireJwtRoles('Librarian', 'Student', 'Faculty'), floorPlanRouter)
+  app.use('/api/v1/catalog', requireJwtRoles('Student', 'Faculty', 'Librarian'), researchCatalogRouter)
+  app.use('/api/v1/admin/books', requireLibraryPermission('library.manage'), bulkBookRouter)
+  app.use('/api/v1/admin/research', requireLibraryPermission('library.manage'), researchAssetRouter)
+  app.use('/api/v1/admin/catalog', requireLibraryPermission('library.manage'), bulkCatalogEntryRouter)
+  app.use('/api/v1/admin/catalog', requireLibraryPermission('library.manage'), catalogAdminRouter)
+  app.use('/api/v1/admin/invoices', requireLibraryPermission('library.manage'), archivedInvoiceRouter)
+  app.use('/api/v1/invoices', requireJwtRoles('Student', 'Faculty'), archivedInvoiceRouter)
+  app.use('/api/v1/reservations', requireJwtRoles('Student', 'Faculty'), enforceLibraryOpen, userReservationsV1Router)
   app.use('/api/v1/borrowing-schedules', requireJwtRoles('Student', 'Faculty'), enforceLibraryOpen, createBorrowingScheduleRouter())
-  app.use('/api/v1/borrowing', authenticateJwt, requireJwtRoles('Student', 'Faculty'), enforceLibraryOpen, userCirculationRouter)
+  app.use('/api/v1/borrowing', requireJwtRoles('Student', 'Faculty'), enforceLibraryOpen, userCirculationRouter)
   app.use('/api/v1/borrowing', requireJwtRoles('Student','Faculty'), enforceLibraryOpen, userInLibraryRouter)
   app.use('/api/v1/admin/circulation-desk',requireLibraryPermission('desk.operate'),deskCirculationRouter)
-  app.use('/api/v1/borrow', authenticateJwt, requireJwtRoles('Student', 'Faculty'), enforceLibraryOpen, borrowCartRouter)
-  app.use('/api/v1/circulation', authenticateJwt, requireJwtRoles('Student', 'Faculty', 'Librarian', 'Staff'), enforceLibraryOpen, circulationRequestRouter)
-  app.use('/api/v1/admin/reservations', authenticateJwt, requireLibraryPermission('desk.operate'), adminReservationsV1Router)
+  app.use('/api/v1/borrow', requireJwtRoles('Student', 'Faculty'), enforceLibraryOpen, borrowCartRouter)
+  app.use('/api/v1/circulation', requireJwtRoles('Student', 'Faculty', 'Librarian', 'Staff'), enforceLibraryOpen, circulationRequestRouter)
+  app.use('/api/v1/admin/reservations', requireLibraryPermission('desk.operate'), adminReservationsV1Router)
   app.use('/api/v1/admin/borrowing-schedules', createAdminBorrowingScheduleRouter())
-  app.use('/api/v1/admin/attendance', authenticateJwt, requireLibraryPermission('desk.operate'), adminAttendanceV1Router)
-  app.use('/api/v1/attendance', authenticateJwt, requireJwtRoles('Librarian', 'Student', 'Faculty'), enforceLibraryOpen, userAttendanceV1Router)
-  app.use('/api/v1/admin/users', authenticateJwt, requireLibraryPermission('accounts.manage'), adminUsersV1Router)
+  app.use('/api/v1/admin/attendance', requireLibraryPermission('desk.operate'), adminAttendanceV1Router)
+  app.use('/api/v1/attendance', requireJwtRoles('Librarian', 'Student', 'Faculty'), enforceLibraryOpen, userAttendanceV1Router)
+  app.use('/api/v1/admin/users', requireLibraryPermission('accounts.manage'), adminUsersV1Router)
   app.use('/api/v1/admin/notifications', requireLibraryPermission('accounts.manage'), adminNotificationsRouter)
-  app.use('/api/v1/printing', authenticateJwt, requireJwtRoles('Student', 'Faculty'), enforceLibraryOpen, userPrintingV1Router)
-  app.use('/api/v1/clearance', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userClearanceV1Router)
-  app.use('/api/v1/fines', authenticateJwt, requireJwtRoles('Student', 'Faculty'), enforceLibraryOpen, userFinesV1Router)
-  app.use('/api/v1/notifications', authenticateJwt, requireJwtRoles('Student', 'Faculty', 'Librarian', 'Staff', 'Admin'), userNotificationsV1Router)
-  app.use('/api/v1/library-schedule', authenticateJwt, requireJwtRoles('Student', 'Faculty', 'Librarian', 'Staff', 'Admin'), libraryScheduleRouter)
-  app.use('/api/v1/dashboard', authenticateJwt, requireJwtRoles('Student', 'Faculty'), userDashboardV1Router)
-  app.use('/api/v1/workspace/tasks', authenticateJwt, workspaceTasksRouter)
-  app.use('/api/v1/admin/reports', authenticateJwt, liveReportsRouter)
-  app.use('/api/v1/admin/printing', authenticateJwt, requireLibraryPermission('desk.operate'), adminPrintingV1Router)
-  app.use('/api/v1/admin/clearance', authenticateJwt, requireJwtRoles('Admin', 'Librarian'), adminClearanceV1Router)
-  app.use('/api/v1/admin/fines', authenticateJwt, requireLibraryPermission('library.manage'), adminFinesV1Router)
-  app.use('/api/v1/admin/announcements', authenticateJwt, requireLibraryPermission('desk.operate'), adminAnnouncementsV1Router)
-  app.use('/api/v1/admin/dashboard', authenticateJwt, requireLibraryPermission('library.manage'), adminDashboardV1Router)
-  app.use('/api/v1/admin', authenticateJwt, requireLibraryPermission('desk.operate'), adminCirculationRouter)
-  app.use('/api/v1/admin', authenticateJwt, requireLibraryPermission('library.manage'), thesisInventoryV1AdminRouter)
-  app.use('/api/v1', jwtProtectedRouter)
+  app.use('/api/v1/printing', requireJwtRoles('Student', 'Faculty'), enforceLibraryOpen, userPrintingV1Router)
+  app.use('/api/v1/clearance', requireJwtRoles('Student', 'Faculty'), userClearanceV1Router)
+  app.use('/api/v1/fines', requireJwtRoles('Student', 'Faculty'), enforceLibraryOpen, userFinesV1Router)
+  app.use('/api/v1/notifications', requireJwtRoles('Student', 'Faculty', 'Librarian', 'Staff', 'Admin'), userNotificationsV1Router)
+  app.use('/api/v1/library-schedule', requireJwtRoles('Student', 'Faculty', 'Librarian', 'Staff', 'Admin'), libraryScheduleRouter)
+  app.use('/api/v1/dashboard', requireJwtRoles('Student', 'Faculty'), userDashboardV1Router)
+  app.use('/api/v1/workspace/tasks', workspaceTasksRouter)
+  app.use('/api/v1/admin/reports', liveReportsRouter)
+  app.use('/api/v1/admin/printing', requireLibraryPermission('desk.operate'), adminPrintingV1Router)
+  app.use('/api/v1/admin/clearance', requireJwtRoles('Admin', 'Librarian'), adminClearanceV1Router)
+  app.use('/api/v1/admin/fines', requireLibraryPermission('library.manage'), adminFinesV1Router)
+  app.use('/api/v1/admin/announcements', requireLibraryPermission('desk.operate'), adminAnnouncementsV1Router)
+  app.use('/api/v1/admin/dashboard', requireLibraryPermission('library.manage'), adminDashboardV1Router)
+  app.use('/api/v1/admin', requireLibraryPermission('desk.operate'), adminCirculationRouter)
+  app.use('/api/v1/admin', requireLibraryPermission('library.manage'), thesisInventoryV1AdminRouter)
+  app.use('/api/v1', jwtProtectedRouter, notFoundBoundary)
   app.use('/auth/logout', logoutRouter)
   if (env.inventoryPreviewEnabled) app.use('/api/dev/inventory', inventoryPreviewRouter)
 
@@ -196,13 +198,15 @@ export function createApp() {
     response.set('Cache-Control', 'no-store')
     return response.redirect(303, new URL('/register', env.webOrigin).toString())
   })
-  app.get('/admin/dashboard', requireAuth, requireRoles(...STAFF_ROLES), (request, response) => {
+  app.get('/admin/dashboard', requireAuth, requireRoles(...STAFF_ROLES, ROLES.SYSTEM_ADMINISTRATOR), (request, response) => {
+    const role = request.session?.user?.role ?? response.locals.authenticatedUser?.role
     response.set('Cache-Control', 'no-store')
-    response.redirect(303, new URL(webDashboardForRole(request.session.user.role), env.webOrigin).toString())
+    response.redirect(303, new URL(webDashboardForRole(role), env.webOrigin).toString())
   })
   app.get('/user/dashboard', requireAuth, requireRoles(...USER_ROLES), (request, response) => {
+    const role = request.session?.user?.role ?? response.locals.authenticatedUser?.role
     response.set('Cache-Control', 'no-store')
-    response.redirect(303, new URL(webDashboardForRole(request.session.user.role), env.webOrigin).toString())
+    response.redirect(303, new URL(webDashboardForRole(role), env.webOrigin).toString())
   })
 
   // Protect every existing feature API, then add stricter staff/admin guards.
@@ -212,16 +216,25 @@ export function createApp() {
   app.use('/api/dashboard/student', requireRoles(...USER_ROLES))
   app.use('/api/users', requireRoles(ROLES.SYSTEM_ADMINISTRATOR, ROLES.LIBRARIAN))
   app.use('/api/circulation', requireRoles(...STAFF_ROLES))
+  app.use('/api/attendance', requireRoles(...STAFF_ROLES))
+  app.use('/api/reservations', enforceLibraryOpen)
+  app.use('/api/printing', enforceLibraryOpen)
   app.use('/api/fines', requireRoles(ROLES.LIBRARIAN))
   app.use('/api/inventory', requireRoles(ROLES.LIBRARIAN))
   app.use('/api/reports', requireRoles(ROLES.LIBRARIAN))
   registerModules(app)
 
-  app.use((_request, response) => response.status(404).json({ success: false, message: 'Route not found.' }))
+  app.use(notFoundBoundary)
   app.use((error, _request, response, _next) => {
     if (response.headersSent) return response.destroy(error instanceof Error ? error : undefined)
     if (error instanceof SyntaxError && 'body' in error) {
       return response.status(400).json({ success: false, message: 'The request body contains invalid JSON.' })
+    }
+    if (error instanceof multer.MulterError) {
+      const message = error.code === 'LIMIT_FILE_SIZE'
+        ? 'The uploaded file is too large. Choose a smaller file and try again.'
+        : 'The uploaded file could not be accepted. Check the file count and fields, then try again.'
+      return response.status(422).json({ success: false, code: error.code || 'UPLOAD_INVALID', message })
     }
     if (error instanceof HttpError) {
       return response.status(error.status).json({

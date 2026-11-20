@@ -10,6 +10,7 @@ import {
   sumCondition,
 } from '../../config/sql-dialect.js'
 import { HttpError } from '../../core/http-error.ts'
+import { requireLibraryActor } from '../../core/library-permissions.ts'
 import { issueAttendanceCredential, validateAttendanceCredential } from './attendance-credential.service.ts'
 import { parseAttendanceScan, parseCapacityUpdate } from './attendance.validation.ts'
 import { libraryState } from './attendance-operations.service.ts'
@@ -181,6 +182,9 @@ export function createAttendanceService(pool: Pool = db) {
       const input=parseCapacityUpdate(body),connection=await pool.getConnection()
       try {
         await connection.beginTransaction()
+        const accountId = Number(actor.accountId)
+        if (!Number.isSafeInteger(accountId) || accountId < 1) throw new HttpError(401, 'JWT_REQUIRED', 'A valid login is required.')
+        await requireLibraryActor(connection, accountId, 'library.manage')
         const staffUserId=await actorUserId(connection,actor)
         const [rows]=await connection.execute<RowDataPacket[]>('SELECT seat_capacity FROM library_profile_settings WHERE settings_id=1 FOR UPDATE')
         const previous=Number(rows[0]?.seat_capacity??80)

@@ -1,7 +1,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { env } from '../../config/env.js'
 import { dashboardForRole } from './auth.constants.js'
-import { authenticateJwt, ensureActiveJwtAccount, requestAccessToken, requireJwtCsrf, verifyAccessToken } from './jwt-auth.middleware.ts'
+import { authenticateJwt, clearAccessCookie, ensureActiveJwtAccount, requestAccessToken, requireJwtCsrf, verifyAccessToken } from './jwt-auth.middleware.ts'
 import { db } from '../../config/db.js'
 
 export function createCsrfToken() {
@@ -14,8 +14,10 @@ export function ensureCsrfToken(request, _response, next) {
 }
 
 export function verifyCsrfToken(request, response, next) {
-  const received = request.get('x-csrf-token') || request.body?._csrf || ''
-  const expected = request.session?.csrfToken || ''
+  const headerToken = request.get('x-csrf-token')
+  const bodyToken = typeof request.body?._csrf === 'string' ? request.body._csrf : ''
+  const received = headerToken || bodyToken
+  const expected = typeof request.session?.csrfToken === 'string' ? request.session.csrfToken : ''
   const receivedBuffer = Buffer.from(received)
   const expectedBuffer = Buffer.from(expected)
 
@@ -83,7 +85,7 @@ export function requireAuth(request, response, next) {
   }
 
   void db.execute(
-    `SELECT u.account_status,u.auth_version,a.account_status AS linked_status
+    `SELECT u.account_status,u.auth_version,a.account_id AS linked_account_id,a.account_status AS linked_status
        FROM users u LEFT JOIN accounts a ON a.user_id=u.user_id WHERE u.user_id=?`, [user.id],
   ).then(([rows]) => {
     const current = rows[0]
@@ -96,9 +98,11 @@ export function requireAuth(request, response, next) {
       })
     }
     // Background reads must not extend an unattended cookie session.
-  if (request.method !== 'GET') request.session.lastActivity = Date.now()
+    if (request.method !== 'GET') request.session.lastActivity = Date.now()
     request.session.touch()
-    response.locals.authenticatedUser = user
+    response.locals.authenticatedUser = current.linked_account_id
+      ? { ...user, accountId: Number(current.linked_account_id) }
+      : user
     response.locals.authenticationType = 'session'
     next()
   }).catch(next)
@@ -122,9 +126,34 @@ export function requireRoles(...allowedRoles) {
 export function requireLogoutAuth(request, response, next) {
   const access = requestAccessToken(request)
   if (access) {
-    // A stale JWT cookie must not block an express-session sign-out.
-    if (access.source === 'cookie' && request.session?.user) {
-      try { verifyAccessToken(access.token) } catch { return requireAuth(request, response, next) }
+    if (access.source === 'cookie') {
+      let verified
+      try {
+        verified = verifyAccessToken(access.token)
+      } catch {
+        clearAccessCookie(response)
+        if (request.session?.user) return requireAuth(request, response, next)
+        return response.status(401).json({ success: false, code: 'JWT_INVALID', message: 'The access token is invalid or expired.' })
+      }
+      response.locals.authenticatedUser = verified
+      response.locals.authenticationType = 'jwt'
+      response.locals.authenticationSource = 'cookie'
+      // Probe active JWT state; an idle-expired or revoked JWT cookie must still be clearable and must not block a coexisting express-session sign-out.
+      const probe = {
+        locals: response.locals,
+        status() { return probe },
+        json() {
+          clearAccessCookie(response)
+          if (request.session?.user) {
+            delete response.locals.authenticatedUser
+            delete response.locals.authenticationType
+            delete response.locals.authenticationSource
+            return requireAuth(request, response, next)
+          }
+          return next()
+        },
+      }
+      return ensureActiveJwtAccount(request, probe, next)
     }
     return authenticateJwt(request, response, () => ensureActiveJwtAccount(request, response, next))
   }

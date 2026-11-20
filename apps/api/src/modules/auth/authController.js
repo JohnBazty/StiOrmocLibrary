@@ -31,7 +31,7 @@ export function createLoginController({
 
       const [rows] = await database.execute(
         `SELECT u.user_id, u.full_name, u.email, u.password_hash, u.account_status, u.auth_version,
-                a.account_status AS linked_status, r.role_name
+                a.account_id, a.account_status AS linked_status, r.role_name
          FROM users AS u
          INNER JOIN roles AS r ON r.role_id = u.role_id
          LEFT JOIN accounts a ON a.user_id=u.user_id
@@ -63,6 +63,7 @@ export function createLoginController({
       await regenerateSession(request)
       request.session.user = {
         id: userId,
+        ...(user.account_id ? { accountId: Number(user.account_id) } : {}),
         fullName: user.full_name,
         email: user.email,
         role: effectiveRole,
