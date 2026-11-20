@@ -2,7 +2,8 @@
 
 - **Date created:** 2026-11-20
 - **Date last updated:** 2026-11-20
-- **Status:** planned
+- **Status:** inprogress (all 7 slices built and committed locally on their branches; migrations 079-082 written, not applied; reviews, live migrations and PRs wait for Ethan's go-ahead)
+- **Integration branch (local only):** `chore/revisions-phase-2` = phase 1 integration + all phase 2 slice branches, for whole-suite checks.
 - **Source:** Ethan's `new-revisions.docx` (2026-11-20). Other phases: `2026-11-20-revisions-phase-1-fixes-and-cleanups.md` `2026-11-20-revisions-phase-3-policies-accounts-payments.md`
 - **Migrations:** next unused number is **078** (see `.cursor/agent-protocol.md`); numbers are assigned when each slice is built.
 
@@ -87,16 +88,18 @@ Ethan's `new-revisions.docx` lists about 45 changes from user testing: bugs ("do
 
 ## Implementation tracking
 
-- [ ] 2a. Reservation calendar for the current semester (`feat/reservation-semester-calendar`)
-- [ ] 2b. Book condition maintenance (`feat/copy-condition-maintenance`)
-- [ ] 2c. Import without a shelf (`feat/import-unassigned-shelf`)
-- [ ] 2d. Shelf transfer and suggestions (`feat/shelf-ddc-transfer`)
-- [ ] 2e. Lost book: replace or pay (`feat/lost-book-replace-or-pay`)
-- [ ] 2f. Research: bulk import and remove Research groups (`feat/research-bulk-import`)
-- [ ] 2g. Event occupancy (`feat/event-occupancy-auto`)
+- [x] 2a. Reservation calendar for the current semester (`feat/reservation-semester-calendar`). Open days from tomorrow to the current semester's last day (started enrollment semester, else active academic term); no semester, no dates. `components/CalendarDateButton`. No migration.
+- [x] 2b. Book condition maintenance (`feat/copy-condition-maintenance`). Ethan chose custom conditions. Migration `079_copy_conditions.sql`: library conditions behave like one of the five base conditions; `physical_copies.condition_detail_id` + guard trigger, `condition_status` unchanged so lending/returns/stocktake logic is untouched. Library setup -> Book conditions; inventory condition dialog offers them (books only; returns and stocktake still use the base five).
+- [x] 2c. Import without a shelf (`feat/import-unassigned-shelf`). Migration `080_unassigned_copy_shelf.sql`. No shelf or an unmatched shelf imports as Unassigned; category still required per book (file column or row review). File-wide category/shelf question removed.
+- [x] 2d. Shelf transfer and suggestions (`feat/shelf-ddc-transfer`). Migration `081_shelf_ddc_range.sql`. Suggestions by category shelf or DDC range (Unassigned included, lent/lost excluded), shelf contents in call-number order, move via the existing move dialog; categories get Manage category & shelves.
+- [x] 2e. Lost book: replace or pay (`feat/lost-book-replace-or-pay`). Migration `082_lost_book_replacement.sql`. Confirm-loss dialog: Pay book price (entered/confirmed price becomes the charge) or Replace copy ('Awaiting Replacement', blocks clearance); Replace copy returns the copy under its barcode and offers it to the waitlist.
+- [x] 2f. Research: bulk import and remove Research groups (`feat/research-bulk-import`). Research groups tab, select and filter removed (API/table kept, no migration); Add Research asks for department or program; research titles can change category. Bulk import: check file, then import ready rows (each on its own, re-checked server-side).
+- [x] 2g. Event occupancy (`feat/event-occupancy-auto`). Form asks for seats the event uses; remaining seats calculated from library capacity. Library-state rules ignore an event outside its start/end. No migration.
+- [ ] Reviews (security-reviewer; database-reviewer for 079-082), then Ethan's go-ahead for push/PRs and for applying 079-082 to live Supabase.
 
 ## Change log
 
 | Date | Change |
 | --- | --- |
 | 2026-11-20 | Plan drafted from `new-revisions.docx` and a code map of every item; Ethan approved the 3-phase split. Status `planned`. |
+| 2026-11-20 | Ethan said proceed with phase 2; all 7 slices built tests-first on separate branches. 2b scope chosen by Ethan (custom conditions behaving like a base condition). 2c: an unmatched shelf name imports as Unassigned instead of blocking. 2e: entered price replaces the fixed book-price rule; Awaiting Replacement blocks clearance. Status `inprogress`. |
