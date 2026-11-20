@@ -11,7 +11,7 @@ test('operating hours and pre-closing boundary restrict entry',()=>{
  assert.equal(evaluateLibraryState(new Date('2026-10-11T12:00:00+08:00'),{...policy,configured:false},schedule,false,80,[]).state,'Needs configuration')
 })
 test('overlapping events use the most restrictive remaining capacity and explicit service permissions',()=>{
- const event={event_id:1,title:'Class',event_kind:'Class',space_name:'Reading area',starts_at:'',ends_at:'',seat_capacity:20,allow_walk_ins:false,allow_borrowing:true,allow_printing:true,row_version:1}
+ const event={event_id:1,title:'Class',event_kind:'Class',space_name:'Reading area',starts_at:'2026-10-11T11:00:00+08:00',ends_at:'2026-10-11T13:00:00+08:00',seat_capacity:20,allow_walk_ins:false,allow_borrowing:true,allow_printing:true,row_version:1}
  const state=evaluateLibraryState(new Date('2026-10-11T12:00:00+08:00'),policy,schedule,false,80,[event,{...event,event_id:2,seat_capacity:10,allow_printing:false}])
  assert.equal(state.capacity,10);assert.equal(state.allowWalkIns,false);assert.equal(state.allowBorrowing,true);assert.equal(state.allowPrinting,false)
 })
@@ -19,4 +19,12 @@ test('policy and event inputs reject unapproved purposes, invalid ranges and mis
  assert.throws(()=>parseAttendancePolicy({servicePurposes:['Study'],preclosingMinutes:0}))
  assert.throws(()=>parseOperationalEvent({title:'Class',kind:'Class',spaceName:'A',capacity:20,startsAt:'2026-10-11T12:00:00+08:00',endsAt:'2026-10-11T11:00:00+08:00'}))
  assert.throws(()=>parseOperationalEvent({title:'Class',kind:'Class',spaceName:'A',capacity:20,startsAt:'2026-10-11T12:00:00+08:00',endsAt:'2026-10-11T13:00:00+08:00'}))
+})
+test('an event changes seats and services only while it is running, not before it starts or after it ends',()=>{
+ const event={event_id:1,title:'Seminar',event_kind:'Event',space_name:'Hall',starts_at:'2026-10-11T14:00:00+08:00',ends_at:'2026-10-11T16:00:00+08:00',seat_capacity:30,allow_walk_ins:false,allow_borrowing:false,allow_printing:true,row_version:1}
+ const before=evaluateLibraryState(new Date('2026-10-11T13:59:59+08:00'),policy,schedule,false,80,[event])
+ assert.equal(before.capacity,80);assert.equal(before.allowBorrowing,true);assert.equal(before.state,'Open')
+ const during=evaluateLibraryState(new Date('2026-10-11T14:00:00+08:00'),policy,schedule,false,80,[event])
+ assert.equal(during.capacity,30);assert.equal(during.allowBorrowing,false);assert.equal(during.state,'Scheduled event')
+ assert.equal(evaluateLibraryState(new Date('2026-10-11T16:00:00+08:00'),policy,schedule,false,80,[event]).capacity,80)
 })

@@ -21,7 +21,9 @@ export function parseAttendancePolicy(value:unknown) {
  if(!Number.isSafeInteger(Number(b.version))||Number(b.version)<1)throw new HttpError(422,'ATTENDANCE_POLICY_VERSION_INVALID','Refresh the policy before saving.')
  return {purposes:[...new Set(purposes)] as string[],minutes,version:Number(b.version)}
 }
-export function evaluateLibraryState(now:Date, policy:AttendancePolicy, schedule:{is_open:number;opens_at:string|null;closes_at:string|null}|undefined,closed:boolean,baseCapacity:number,events:OperationalEvent[]) {
+export function evaluateLibraryState(now:Date, policy:AttendancePolicy, schedule:{is_open:number;opens_at:string|null;closes_at:string|null}|undefined,closed:boolean,baseCapacity:number,allEvents:OperationalEvent[]) {
+ // An event changes seats and services only while it runs: from its start up to (not including) its end.
+ const events=allEvents.filter(e=>new Date(e.starts_at).getTime()<=now.getTime()&&now.getTime()<new Date(e.ends_at).getTime())
  const date=manilaDate(now),openAt=schedule?.opens_at?manilaInstant(date,schedule.opens_at):null,closeAt=schedule?.closes_at?manilaInstant(date,schedule.closes_at):null
  const cutoff=closeAt&&policy.preclosingMinutes?new Date(closeAt.getTime()-policy.preclosingMinutes*60000):null
  const hoursOpen=Boolean(schedule?.is_open&&!closed&&openAt&&closeAt&&now>=openAt&&now<closeAt)
