@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { cleanImportValue, matchImportReference } from './holdings-cleanup.ts'
+import { cleanImportValue, matchImportReference, parseImportDate } from './holdings-cleanup.ts'
 
 test('formatting cleanup reports before/after values without inventing book facts', () => {
   assert.deepEqual(cleanImportValue('title', '  A\tbook\n title  '), { value: 'A book title', correction: { field: 'title', before: '  A\tbook\n title  ', after: 'A book title', reason: 'spaces' } })
@@ -46,4 +46,17 @@ test('spreadsheet placeholders count as blank so the book lookup can fill them',
   assert.equal(cleanImportValue('isbn', 'Not verified').value, '')
   assert.equal(cleanImportValue('title', 'None of the Above').value, 'None of the Above', 'only a whole-cell placeholder is cleared')
   assert.equal(cleanImportValue('edition', '2nd - revised').value, '2nd - revised')
+})
+
+test('receivedOn converts Excel serial dates and slash dates to YYYY-MM-DD without inventing dates', () => {
+  assert.equal(parseImportDate('46037'), '2026-01-15')
+  assert.equal(parseImportDate('46037.5'), '2026-01-15')
+  assert.equal(parseImportDate('2026-01-15'), '2026-01-15')
+  assert.equal(parseImportDate('2026/01/15'), '2026-01-15')
+  assert.equal(parseImportDate('2026-01-15T00:00:00.000Z'), '2026-01-15')
+  assert.equal(parseImportDate('2026-02-31'), null)
+  assert.equal(parseImportDate('2026'), null)
+  assert.equal(cleanImportValue('receivedOn', '46037').value, '2026-01-15')
+  assert.equal(cleanImportValue('receivedOn', '2026-01-15').value, '2026-01-15')
+  assert.equal(cleanImportValue('publicationYear', '2026-01-15').value, '2026')
 })

@@ -38,7 +38,7 @@ export function validateXlsxArchive(bytes: Buffer) {
 }
 function cellText(value: ExcelJS.CellValue): string {
   if(value===null || value===undefined) return ''
-  if(value instanceof Date) return String(value.getFullYear())
+  if(value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10)
   if(typeof value==='object'){
     if('richText' in value) return value.richText.map(x=>x.text).join('')
     if('formula' in value || 'sharedFormula' in value) return 'result' in value ? cellText(value.result as ExcelJS.CellValue) : ''

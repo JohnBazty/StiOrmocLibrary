@@ -7,11 +7,13 @@ import type { PoolConnection, RowDataPacket, ResultSetHeader } from '../../confi
 import { db } from '../../config/db.js'
 import { env } from '../../config/env.js'
 import { HttpError } from '../../core/http-error.ts'
-import { assignDeweyCopies, deweyService } from './dewey.service.ts'
+import { assignDeweyCopies, deweyService, type ReviewedDewey } from './dewey.service.ts'
+import { deweyCode } from './dewey-lookup.service.ts'
+import { normalizeIsbn } from './catalog.validation.ts'
 import { requireLibraryActor } from '../../core/library-permissions.ts'
 import { refreshCollectionReview } from './collection-review.service.ts'
 import { clean, holdingsFields, holdingsIdentity, holdingsMappingIdentity, identityList, key, mappedRows, positiveId, readHoldings, validateHoldingsData, type HoldingsData, type SheetMapping } from './holdings-parser.ts'
-import { retainImportCorrections, type ImportReferences } from './holdings-cleanup.ts'
+import { parseImportDate, retainImportCorrections, type ImportReferences } from './holdings-cleanup.ts'
 import { insertAuthors, insertLegacyBookMaterial, insertPhysicalCopy, insertTitle } from './catalog.repository.ts'
 import { lockCategoryShelf, reserveBarcodeSequence } from './bulk-book.repository.ts'
 import { renderBookLabel } from './book-label.renderer.ts'
@@ -161,9 +163,20 @@ async function validateImportReferences(c:Query,data:HoldingsData,needsCopies:bo
   if(!(await rows(c,"SELECT 1 FROM catalog_locations WHERE name=? AND lifecycle_status='Active'",[data.location])).length)throw fail('Choose an active managed shelf location.')
  }
 }
+function storedImportDewey(stored: unknown, deweyNumber: unknown, rawIsbn: unknown): ReviewedDewey | null {
+ if(stored&&typeof stored==='object'){
+  const entry=stored as Record<string,unknown>,code=deweyCode(entry.code)
+  if(code&&(entry.source==='manual'||entry.source==='open_library'||entry.source==='local_rule')){
+   return {code,source:entry.source,sourceUrl:typeof entry.sourceUrl==='string'?entry.sourceUrl:null,isbn:typeof entry.isbn==='string'?entry.isbn:normalizeIsbn(rawIsbn)}
+  }
+ }
+ const fromColumn=deweyCode(typeof deweyNumber==='string'?deweyNumber:'')
+ return fromColumn?{code:fromColumn,source:'manual',sourceUrl:null,isbn:normalizeIsbn(rawIsbn)}:null
+}
 export async function reviewImport(value:unknown,body:Record<string,unknown>,actor:number){
- const rowId=id(value),decision=String(body.decision),data=normalizedData(body.data as Record<string,unknown>??{}),needsCopies=['new','add'].includes(decision)
- const dewey=needsCopies?await deweyService.prepare((body.data as Record<string,unknown>)?.dewey,data.isbn):null
+ const rowId=id(value),decision=String(body.decision),rawData=(body.data&&typeof body.data==='object'?body.data:{}) as Record<string,unknown>,data=normalizedData(rawData),needsCopies=['new','add'].includes(decision)
+ const hasDeweyField=Object.hasOwn(rawData,'dewey')
+ const dewey=needsCopies?await deweyService.prepare(rawData.dewey,data.isbn):null
  if(!['new','add','link','reuse','skip'].includes(decision))throw fail('Choose how to handle this row.')
  if(decision!=='skip'){const errors=validateHoldingsData(data,needsCopies);if(errors.length)throw fail(errors.join(' '))}
  await transaction(actor,async c=>{
@@ -172,7 +185,9 @@ export async function reviewImport(value:unknown,body:Record<string,unknown>,act
   data.autoCorrections=retainImportCorrections(row.data_json?.autoCorrections)
   // Lookup facts come from the stored row; a row the lookup filled needs the librarian's checked tick (LOOKUP_NOT_CHECKED).
   Object.assign(data,lookupReviewFacts(row.data_json,decision,body.lookupChecked,actor,new Date()))
+  // Only trust server-prepared Dewey or server-staged Excel Dewey when untouched; never trust client-forged reviewedDewey.
   if(dewey)data.reviewedDewey=dewey
+  else if(needsCopies&&!hasDeweyField){const kept=storedImportDewey(row.data_json?.reviewedDewey,data.deweyNumber,data.isbn);if(kept)data.reviewedDewey=kept}
   if(decision!=='skip')await validateImportReferences(c,data,needsCopies)
   let target:number|null=null,reuse:number|null=null
   if(decision==='link'||decision==='add'){target=id(body.targetTitleId);if(!(await rows(c,"SELECT 1 FROM titles WHERE title_id=? AND record_type='Book' AND lifecycle_status='Active'",[target])).length)throw fail('Choose an active existing book.')}
@@ -230,7 +245,7 @@ export async function commitImport(value:unknown,actor:number){
      const copy={barcode,accessionNumber:accession,shelfLocation:placement!.shelfLocation,shelfColumn:placement!.shelfColumn,shelfRow:placement!.shelfRow,conditionStatus:index<missing?'Lost':'Good',legacyMaterialId:null as number|null}
      copy.legacyMaterialId=Number(await insertLegacyBookMaterial(c,{title:canonical.title,authors:[canonical.author],isbn:canonical.isbn,categoryId:canonical.category_id,publicationYear:canonical.publication_year,publisher:null,callNumber:null,copy}))
      const copyId=Number(await insertPhysicalCopy(c,titleId,copy)),label=await renderBookLabel({title_id:titleId,barcode,accession_number:accession});await c.execute('UPDATE physical_copies SET qr_code_data=?,availability_status=? WHERE physical_copy_id=?',[label.qrCodeData,index<missing?'Unavailable':'Available',copyId])
-     if(data.fundSource||data.fundDetail||data.costPhp||data.receivedOn){const parsedCost=data.costPhp&&/^\d+(?:\.\d{1,2})?$/.test(data.costPhp)?Number(data.costPhp):null,parsedDate=data.receivedOn&&/^\d{4}-\d{2}-\d{2}$/.test(data.receivedOn)?data.receivedOn:null;await c.execute('UPDATE physical_copies SET fund_source=COALESCE(?,fund_source),fund_detail=COALESCE(?,fund_detail),cost_php=COALESCE(?,cost_php),acquired_at=COALESCE(?,acquired_at) WHERE physical_copy_id=?',[data.fundSource||null,data.fundDetail||null,parsedCost,parsedDate,copyId])}
+     if(data.fundSource||data.fundDetail||data.costPhp||data.receivedOn){const parsedCost=data.costPhp&&/^\d+(?:\.\d{1,2})?$/.test(data.costPhp)?Number(data.costPhp):null,parsedDate=parseImportDate(data.receivedOn);await c.execute('UPDATE physical_copies SET fund_source=COALESCE(?,fund_source),fund_detail=COALESCE(?,fund_detail),cost_php=COALESCE(?,cost_php),acquired_at=COALESCE(?,acquired_at) WHERE physical_copy_id=?',[data.fundSource||null,data.fundDetail||null,parsedCost,parsedDate,copyId])}
      copyIds.push(copyId)
     }
    }

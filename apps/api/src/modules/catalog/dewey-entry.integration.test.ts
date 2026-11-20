@@ -63,3 +63,28 @@ test('import review stores only server-validated Dewey provenance and rejects an
   await assert.rejects(reviewImport(1,{version:1,decision:'new',data:{...data,dewey:{...selection,reviewed:false}}},1),{code:'DEWEY_REVIEW_REQUIRED'})
   assert.equal(stored,undefined)
 })
+
+test('import review preserves server-staged Excel Dewey numbers when untouched, and respects explicit clear',async()=>{
+  let stored:Record<string,unknown>|undefined
+  const stagedDewey={code:'155.8',source:'manual',sourceUrl:null,isbn}
+  const connection={beginTransaction:async()=>{},commit:async()=>{},rollback:async()=>{},release(){},
+    async execute(sql:string,args:unknown[]=[]){
+      if(sql.includes('pg_advisory_xact_lock'))return [[]]
+      if(sql.includes('FROM accounts'))return [[{role:'Librarian',account_status:'Active'}]]
+      if(sql.includes('SELECT * FROM catalog_import_rows'))return [[{status:'Review',row_version:1,data_json:{reviewedDewey:stagedDewey,deweyNumber:'155.8'}}]]
+      if(sql.includes('FROM categories'))return [[{category_id:1,record_kind:'Book'}]]
+      if(sql.includes('FROM catalog_locations'))return [[{location_id:1}]]
+      if(sql.includes('FROM titles t'))return [[]]
+      if(sql.startsWith('UPDATE catalog_import_rows')){stored=JSON.parse(String(args[0]));return [{affectedRows:1}]}
+      throw new Error('Unexpected import query')
+    },
+  }
+  mock.method(db,'getConnection',async()=>connection as never)
+  const untouched={title:'Cultural Psychology',author:'Steven J. Heine',isbn,copies:'1',categoryId:1,location:'Shelf A',deweyNumber:'155.8'}
+  await reviewImport(1,{version:1,decision:'new',data:untouched},1)
+  assert.deepEqual(stored?.reviewedDewey,stagedDewey)
+
+  stored=undefined
+  await reviewImport(1,{version:1,decision:'new',data:{...untouched,dewey:null}},1)
+  assert.equal((stored as Record<string,unknown>|undefined)?.reviewedDewey,undefined)
+})
