@@ -42,7 +42,8 @@ const empty = {
   spaceName: '',
   startsAt: '',
   endsAt: '',
-  capacity: '',
+  /** Seats the event takes; the remaining seats are worked out from the library capacity. */
+  eventSeats: '',
   allowWalkIns: false,
   allowBorrowing: true,
   allowPrinting: true,
@@ -109,11 +110,14 @@ export function LibraryOperationsPanel({
     }
   }
 
+  const librarySeats = state ? (state.baseCapacity ?? state.capacity) : null
+  const usedSeats = Number(form.eventSeats)
+  const remainingSeats = librarySeats !== null && form.eventSeats !== '' && Number.isFinite(usedSeats) ? Math.max(0, librarySeats - usedSeats) : null
   const save = async () => {
     const ok = await act(() =>
       attendanceApi.saveEvent(edit, {
         ...form,
-        capacity: Number(form.capacity),
+        capacity: remainingSeats ?? 0,
         startsAt: `${form.startsAt}:00+08:00`,
         endsAt: `${form.endsAt}:00+08:00`,
       }),
@@ -133,7 +137,7 @@ export function LibraryOperationsPanel({
       spaceName: e.space_name,
       startsAt: localInput(e.starts_at),
       endsAt: localInput(e.ends_at),
-      capacity: String(e.seat_capacity),
+      eventSeats: String(Math.max(0, (librarySeats ?? e.seat_capacity) - e.seat_capacity)),
       allowWalkIns: e.allow_walk_ins,
       allowBorrowing: e.allow_borrowing,
       allowPrinting: e.allow_printing,
@@ -190,16 +194,21 @@ export function LibraryOperationsPanel({
             />
           </label>
           <label className="text-xs font-semibold text-[var(--sl-text-secondary)]">
-            Remaining library seats
+            Seats this event uses
             <input
               className="sl-input mt-1"
               type="number"
               required
               min="0"
-              max="5000"
-              value={form.capacity}
-              onChange={e => patchForm({ capacity: e.target.value })}
+              max={librarySeats ?? 5000}
+              value={form.eventSeats}
+              onChange={e => patchForm({ eventSeats: e.target.value })}
             />
+            {remainingSeats !== null && form.eventSeats !== '' ? (
+              <span role="status" className="mt-1 block font-normal text-[var(--sl-text)]">
+                {`${remainingSeats} of ${librarySeats} library seats remain for regular visitors while it runs.`}
+              </span>
+            ) : null}
           </label>
           <label className="text-xs font-semibold text-[var(--sl-text-secondary)]">
             Starts at (Manila)
@@ -234,7 +243,7 @@ export function LibraryOperationsPanel({
             ))}
           </div>
           <p className="text-xs text-[var(--sl-text-muted)] sm:col-span-2">
-            Enter the seats remaining for regular visitors during this event. When events overlap, the lowest capacity and all active service restrictions apply.
+            The remaining seats are worked out from the library capacity and apply only while the event runs. When events overlap, the lowest remaining seats and all active service restrictions apply.
           </p>
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={busy}>
