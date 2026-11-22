@@ -9,6 +9,7 @@ import { getCurrentClaims, type AuthRole } from './auth-storage'
 import { catalogAuthLink, catalogLoginDestination } from '../catalog/catalog-login-continuation'
 import { useAuthPopupBusy } from './PublicAuthLayout'
 import { DeviceSwitchPrompt } from './DeviceSwitchPrompt'
+import { OtpCodeInput } from './OtpCodeInput'
 
 const SCHOOL_ID = /^[A-Z0-9][A-Z0-9._-]{2,49}$/
 type LoginLocationState = { deniedPath?: string; registrationSuccess?: boolean; registrationSchoolId?: string; sessionExpired?: boolean; rememberedExpired?: boolean; passwordChanged?: string }
@@ -145,7 +146,7 @@ export function LoginPage({ popup = false }: { popup?: boolean }) {
           {message ? <AuthMessage error={messageError}>{message}</AuthMessage> : null}
           {switchToken ? <DeviceSwitchPrompt busy={busy} onConfirm={() => { void switchDevice() }} onCancel={() => { setSwitchToken(''); setMessage('') }} /> : challenge ? <form className="mt-7 space-y-4" onSubmit={verifyCode}>
             <p className="text-sm">Enter the six-digit code sent to <strong>{challenge.emailHint}</strong>. It expires in 10 minutes.</p>
-            <label className="block text-sm font-bold">Login code<input ref={codeInput} className="mt-2 h-13 w-full rounded-xl border p-3 text-lg" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={code} onChange={event => setCode(event.target.value.replace(/\D/g, ''))} autoFocus={!popup} /></label>
+            <OtpCodeInput label="Login code" value={code} onChange={setCode} disabled={busy} autoFocus={!popup} firstInputRef={codeInput} />
             <button disabled={busy || code.length !== 6} className="min-h-11 w-full rounded-xl bg-[#0b5ea2] p-3 font-bold text-white disabled:opacity-50">{busy ? 'Verifying…' : 'Verify and sign in'}</button>
             <div className="flex flex-wrap gap-3"><button type="button" disabled={busy || now < resendAt} className="min-h-11 underline disabled:opacity-50" onClick={async () => { setBusy(true); setMessage(''); try { await resendLoginCode(challenge.challengeId); setResendAt(Date.now() + 60_000); setMessageError(false); setMessage('A new code was sent. Use the newest code.') } catch (error) { setMessageError(true); setMessage(error instanceof Error ? error.message : 'Unable to resend.') } finally { setBusy(false) } }}>{now < resendAt ? `Resend in ${Math.ceil((resendAt - now) / 1000)}s` : 'Resend code'}</button><button type="button" disabled={busy} className="min-h-11 underline" onClick={() => { setChallenge(null); setCode(''); setMessage('') }}>Back to login</button></div>
           </form> : <form className="mt-7 space-y-5" onSubmit={submit} autoComplete="off" noValidate>

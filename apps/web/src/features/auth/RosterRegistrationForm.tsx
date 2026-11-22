@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { AuthMessage } from './AuthMessage'
+import { OtpCodeInput } from './OtpCodeInput'
 import { rosterRegistrationRequest } from './auth-api'
 
 type Props = {
@@ -90,10 +91,7 @@ export function RosterRegistrationForm({ fieldClass, busy, onBusy, onComplete, r
       )}
     </> : !grant ? <>
       <p role="status" className="text-sm">A 6-digit verification code was sent to your school email. Check your inbox and spam folder.</p>
-      <label className="block space-y-2 text-sm font-bold">Email verification code
-        <input required autoFocus inputMode="numeric" maxLength={6} autoComplete="one-time-code" className={fieldClass}
-          value={code} disabled={busy} onChange={event => setCode(event.target.value.replace(/\D/g, ''))} />
-      </label>
+      <OtpCodeInput label="Email verification code" value={code} onChange={setCode} disabled={busy} autoFocus />
       {code.length > 0 && code.length < 6 && (
         <p className="text-xs text-slate-600 dark:text-slate-300">Enter all 6 digits from the email.</p>
       )}
