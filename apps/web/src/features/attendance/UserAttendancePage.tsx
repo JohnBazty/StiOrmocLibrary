@@ -6,6 +6,7 @@ import { Button, PageHeader, SectionCard, StatCard } from '../../components/ui'
 import { formatManilaTime12, formatPhDate } from '../notifications/LibrarySchedulePage'
 import { attendanceApi, type AttendancePass } from './attendance-api'
 import { RefreshButton } from '../../components/RefreshButton'
+import { useLibraryOpenStatus } from '../notifications/useLibraryOpenStatus'
 
 export function UserAttendancePage() {
   const [pass,setPass]=useState<AttendancePass|null>(null)
@@ -13,6 +14,7 @@ export function UserAttendancePage() {
   const [loading,setLoading]=useState(true)
   const [downloading,setDownloading]=useState(false)
   const [error,setError]=useState('')
+  const libraryStatus=useLibraryOpenStatus()
   const load=useCallback(async()=>{setLoading(true);setError('');try{const[data,blob]=await Promise.all([attendanceApi.myPass(),attendanceApi.passImage()]);setPass(data);setQrUrl(old=>{if(old)URL.revokeObjectURL(old);return URL.createObjectURL(blob)})}catch(e){setError(e instanceof Error?e.message:'Unable to load your attendance pass.')}finally{setLoading(false)}},[])
   useAttendanceRefresh(load)
   useEffect(()=>{void load()},[load])
@@ -21,6 +23,7 @@ export function UserAttendancePage() {
   return <>
     <PageHeader eyebrow="My account" title="My permanent library QR" description="Use this same QR for library entry and desk services. It stays the same when you sign out and sign in again. Save it on your phone for offline display." action={<RefreshButton onRefresh={() => load()} variant="secondary" disabled={loading} />}/>
     <p className="mb-5 text-sm opacity-70">Every student roster upload replaces QR codes, including identical files. Refresh and save your new QR; old codes stop working. Keep this account open when your QR is scanned. Your entry or exit confirmation appears automatically on any portal page.</p>
+    {libraryStatus.closed?<div role="status" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">The library is currently closed ({libraryStatus.reason}). Attendance check-in is disabled until the library reopens.</div>:null}
     {error?<div className="mb-4 rounded-xl bg-[#FFF200] p-3 text-sm font-bold text-[#0b5ea2]">{error}</div>:null}
     {loading&&!pass?<SectionCard className="p-10 text-center font-semibold">Preparing your permanent attendance pass…</SectionCard>:pass?<div className="grid gap-5 lg:grid-cols-[370px_1fr]">
       <SectionCard className="overflow-hidden"><div className="bg-[#0b5ea2] p-5 text-white"><div className="flex items-center gap-3"><div className="rounded-xl bg-white/10 p-2"><QrCode size={21}/></div><div><p className="font-display font-bold">STI Library Pass</p><p className="text-xs text-white/65">One permanent QR for library services</p></div></div></div><div className="p-6 text-center"><p className="mb-4 text-sm">Show this QR when staff need to identify you. After an entrance scan, choose your visit purpose and confirm entry on this account. Scan again when leaving, then confirm exit.</p>{qrUrl?<img src={qrUrl} alt="Permanent STI Library attendance QR code" className="mx-auto aspect-square w-56 rounded-xl border-8 border-white shadow-lg ring-1 ring-[#0b5ea2]/15"/>:<div className="mx-auto aspect-square w-56 animate-pulse rounded-xl bg-[#0b5ea2]/5"/>}<p className="mt-5 font-display text-lg font-bold">{pass.profile.name}</p><p className="mt-1 text-xs text-[#0b5ea2]/65">{pass.profile.schoolId}{pass.profile.program?` · ${pass.profile.program}`:''}{pass.profile.section?` · ${pass.profile.section}`:''}</p><Button className="mt-5 w-full" onClick={download} disabled={downloading}><Download size={16}/>{downloading?'Preparing image…':'Download QR code'}</Button><p className="mt-3 text-xs leading-5 text-[#0b5ea2]/65">Keep this image private. If it is copied or lost, ask the library to replace it.</p></div></SectionCard>

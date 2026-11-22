@@ -11,21 +11,21 @@ export const printField='mt-1.5 min-h-11 w-full rounded-xl border border-slate-3
 const quantity=(value:string,max:number)=>Number.isInteger(Number(value))&&Number(value)>0&&Number(value)<=max
 type QuoteState={file:File|null;kind:string;paper:string;copies:string;mode:string;originals:string;quote:PrintQuote;requestKey:string}
 
-export function PrintRequestForm({service,pricing,onSubmitted,refreshKey=0}:{refreshKey?:number;service:ServiceStatus|null;pricing:PricingRule[];onSubmitted:()=>Promise<void>}) {
+export function PrintRequestForm({service,pricing,onSubmitted,refreshKey=0,libraryClosed=false,libraryClosedReason=''}:{refreshKey?:number;service:ServiceStatus|null;pricing:PricingRule[];onSubmitted:()=>Promise<void>;libraryClosed?:boolean;libraryClosedReason?:string}) {
   const [kind,setKind]=useState<'Print'|'Photocopy'>('Print'),[file,setFile]=useState<File|null>(null)
   const [copies,setCopies]=useState('1'),[originals,setOriginals]=useState('1'),[mode,setMode]=useState<OutputMode>('Monochrome')
   const [paper,setPaper]=useState('A4'),[notes,setNotes]=useState(''),[paymentMethod,setPaymentMethod]=useState<'Cash'|'Online'>('Online'),[result,setResult]=useState<QuoteState|null>(null)
   const [busy,setBusy]=useState(false),[quoting,setQuoting]=useState(false),[error,setError]=useState(''),[success,setSuccess]=useState(''),[attempt,setAttempt]=useState(0),[preview,setPreview]=useState<string|null>(null)
   const input=useRef<HTMLInputElement>(null),analysis=useRef<{file:File;paper:string;id:string}|null>(null)
   const choices=pricing.filter(row=>row.print_type==='Monochrome'&&pricing.some(other=>other.paper_size===row.paper_size&&other.print_type==='Colored'))
-  const selected=choices.find(row=>row.paper_size===paper),accepting=Boolean(Number(service?.accepting_requests)),maxMb=service?.max_document_mb??4
+  const selected=choices.find(row=>row.paper_size===paper),accepting=Boolean(Number(service?.accepting_requests))&&!libraryClosed,maxMb=service?.max_document_mb??4
   const quote=selected&&quantity(copies,100)&&quantity(originals,500)&&result&&result.file===file&&result.kind===kind&&result.paper===paper&&result.copies===copies&&result.mode===mode&&result.originals===originals?result.quote:null
   const brand=Number(selected?.price_brand_stock_id??0)
   const mono=Number(selected?.price_per_page),color=Number(pricing.find(row=>row.paper_size===paper&&row.print_type==='Colored')?.price_per_page)
   useEffect(()=>{
     let active=true
     setError('');setQuoting(false)
-    if(!selected||kind==='Photocopy'&&!quantity(originals,500)||kind==='Print'&&!file)return
+    if(libraryClosed||!selected||kind==='Photocopy'&&!quantity(originals,500)||kind==='Print'&&!file)return
     if(file&&kind==='Print'&&file.size>maxMb*1024*1024){setError(`This file is ${(file.size/(1024*1024)).toFixed(1)} MB. Upload a PDF or DOCX up to ${maxMb} MB.`);return}
     const timer=setTimeout(()=>{
       setQuoting(true)
@@ -54,10 +54,11 @@ export function PrintRequestForm({service,pricing,onSubmitted,refreshKey=0}:{ref
   }
   return <SectionCard className="h-fit p-4 sm:p-5">
     <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><h2 className="font-bold">New request</h2><span className="rounded-full border px-2 py-1 text-xs">{service?(accepting?'Accepting requests':'Closed for new requests'):'Checking availability…'}</span></div>
-    {!accepting&&service&&<div role="status" className="mb-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-950"><p>{service.unavailable_reason||'New requests are temporarily paused.'}</p>{service.next_opening&&<p className="mt-1">Next opening: {new Date(service.next_opening).toLocaleString('en-PH',{timeZone:'Asia/Manila'})}</p>}<p className="mt-1">Existing requests and payments remain available.</p></div>}
+    {libraryClosed&&<div role="status" className="mb-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-950"><p>The library is currently closed{libraryClosedReason?` (${libraryClosedReason})`:''}. Sending new print or photocopy requests is disabled until the library reopens.</p></div>}
+    {!libraryClosed&&!accepting&&service&&<div role="status" className="mb-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-950"><p>{service.unavailable_reason||'New requests are temporarily paused.'}</p>{service.next_opening&&<p className="mt-1">Next opening: {new Date(service.next_opening).toLocaleString('en-PH',{timeZone:'Asia/Manila'})}</p>}<p className="mt-1">Existing requests and payments remain available.</p></div>}
     {success&&<p role="status" data-tone="success" className="mb-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">{success}</p>}
     <form onSubmit={submit} className="space-y-4">
-      <fieldset disabled={busy} className="space-y-4 disabled:opacity-70">
+      <fieldset disabled={busy||libraryClosed} className="space-y-4 disabled:opacity-70">
         <legend className="sr-only">Request details</legend>
         <div className="grid grid-cols-2 gap-2" aria-label="Service"><Button type="button" variant={kind==='Print'?'primary':'secondary'} aria-pressed={kind==='Print'} onClick={()=>setKind('Print')}>Print</Button><Button type="button" variant={kind==='Photocopy'?'primary':'secondary'} aria-pressed={kind==='Photocopy'} onClick={()=>setKind('Photocopy')}>Photocopy</Button></div>
         {kind==='Print'?<><label className="block text-sm font-semibold">Document<input ref={input} type="file" aria-label="Print document" accept=".pdf,.docx" onChange={event=>{setFile(event.target.files?.[0]??null);analysis.current=null;setResult(null)}} className="mt-2 block w-full rounded-xl border border-dashed border-slate-300 p-3 text-sm"/><span className="mt-1 block text-xs font-normal opacity-75">PDF or DOCX, maximum {maxMb} MB</span></label><SelectedFilePreview file={file} display="icon" onRemove={()=>{setFile(null);analysis.current=null;setResult(null);if(input.current)input.current.value=''}} disabled={busy}/></>:<><p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-700">Bring the physical originals to the library. Staff verifies the pages before you confirm the final price.</p><label className="block text-sm font-semibold">Original pages<input className={printField} type="number" min={1} max={500} value={originals} onChange={e=>setOriginals(e.target.value)}/></label><fieldset className="space-y-2 rounded-xl border border-slate-200 p-3"><legend className="px-1 text-sm font-semibold">How will you pay?</legend><label className="flex items-center gap-2 text-sm"><input type="radio" name="photocopy-payment-method" value="Cash" checked={paymentMethod==='Cash'} onChange={()=>setPaymentMethod('Cash')}/>Pay cash at library</label><label className="flex items-center gap-2 text-sm"><input type="radio" name="photocopy-payment-method" value="Online" checked={paymentMethod==='Online'} onChange={()=>setPaymentMethod('Online')}/>Pay online</label></fieldset></>}

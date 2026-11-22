@@ -11,6 +11,7 @@ import { fetchBookOverview } from './book-catalog-api'
 import { TitleAlreadyActiveDialog } from './TitleAlreadyActiveDialog'
 import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 import { RefreshButton } from '../../components/RefreshButton'
+import { useLibraryOpenStatus } from '../notifications/useLibraryOpenStatus'
 
 export function BookCart() {
   const requestKey = useRef('')
@@ -147,8 +148,9 @@ export function BookCart() {
     }
   }
 
+  const libraryStatus = useLibraryOpenStatus()
   const hasUnavailable = items.some(item => unavailableIds.includes(item.titleId))
-  const checkoutBlocked = !items.length || submitting || (outstanding !== null && outstanding > 0) || hasUnavailable
+  const checkoutBlocked = !items.length || submitting || libraryStatus.closed || (outstanding !== null && outstanding > 0) || hasUnavailable
 
   return (
     <>
@@ -158,6 +160,11 @@ export function BookCart() {
         title="Book cart"
         description="Review available books before sending them to the library desk. Bring the selected copies to staff to start your loan."
       />
+      {libraryStatus.closed ? (
+        <NoticeBanner tone="warning">
+          The library is currently closed ({libraryStatus.reason}). Checking out borrow requests is disabled until the library reopens.
+        </NoticeBanner>
+      ) : null}
       {heldTitles.length > 0 && <TitleAlreadyActiveDialog titles={heldTitles} onClose={() => setHeldTitles([])} />}
       {syncNotice ? <NoticeBanner tone="info">{syncNotice}</NoticeBanner> : null}
       {syncError ? (
