@@ -27,6 +27,8 @@ export function LoginPage({ popup = false }: { popup?: boolean }) {
   const [challenge, setChallenge] = useState<LoginChallenge | null>(null)
   const codeInput = useRef<HTMLInputElement>(null)
   const schoolIdInput = useRef<HTMLInputElement>(null)
+  const verifyingCode = useRef(false)
+  const lastAutoCode = useRef('')
   useLayoutEffect(() => { if (popup && !challenge) schoolIdInput.current?.focus({ preventScroll: true }) }, [popup, challenge])
   useEffect(() => { if (popup && challenge) codeInput.current?.focus({ preventScroll: true }) }, [popup, challenge])
   const [switchToken, setSwitchToken] = useState('')
@@ -90,15 +92,31 @@ export function LoginPage({ popup = false }: { popup?: boolean }) {
     setMessage(authError.message)
   }
 
-  async function verifyCode(event: FormEvent) {
-    event.preventDefault()
-    if (busy || !challenge) return
+  async function submitVerifyCode(nextCode: string) {
+    if (busy || verifyingCode.current || !challenge) return
+    verifyingCode.current = true
     setBusy(true)
     setMessage('')
-    try { finish(await verifyLoginCode(challenge.challengeId, code)) }
+    try { finish(await verifyLoginCode(challenge.challengeId, nextCode)) }
     catch (error) { handleSignInError(error, 'The code could not be verified.') }
-    finally { setBusy(false) }
+    finally { verifyingCode.current = false; setBusy(false) }
   }
+
+  function verifyCode(event: FormEvent) {
+    event.preventDefault()
+    void submitVerifyCode(code)
+  }
+
+  useEffect(() => {
+    if (code.length < 6) {
+      lastAutoCode.current = ''
+      return
+    }
+    if (!challenge || switchToken || busy || verifyingCode.current) return
+    if (lastAutoCode.current === code) return
+    lastAutoCode.current = code
+    void submitVerifyCode(code)
+  }, [challenge, switchToken, busy, code])
 
   async function switchDevice() {
     setBusy(true)
@@ -121,7 +139,7 @@ export function LoginPage({ popup = false }: { popup?: boolean }) {
     try {
       finish(await login(normalizedSchoolId, password, 'user'))
     } catch (error) {
-      if (error instanceof LoginCodeRequired) { setChallenge(error.challenge); setPassword(''); setCode(''); setResendAt(Date.now() + 60_000); return }
+      if (error instanceof LoginCodeRequired) { lastAutoCode.current = ''; setChallenge(error.challenge); setPassword(''); setCode(''); setResendAt(Date.now() + 60_000); return }
       handleSignInError(error, 'Unable to sign in right now.')
     } finally { setBusy(false) }
   }
@@ -148,7 +166,7 @@ export function LoginPage({ popup = false }: { popup?: boolean }) {
             <p className="text-sm">Enter the six-digit code sent to <strong>{challenge.emailHint}</strong>. It expires in 10 minutes.</p>
             <OtpCodeInput label="Login code" value={code} onChange={setCode} disabled={busy} autoFocus={!popup} firstInputRef={codeInput} />
             <button disabled={busy || code.length !== 6} className="min-h-11 w-full rounded-xl bg-[#0b5ea2] p-3 font-bold text-white disabled:opacity-50">{busy ? 'Verifying…' : 'Verify and sign in'}</button>
-            <div className="flex flex-wrap gap-3"><button type="button" disabled={busy || now < resendAt} className="min-h-11 underline disabled:opacity-50" onClick={async () => { setBusy(true); setMessage(''); try { await resendLoginCode(challenge.challengeId); setResendAt(Date.now() + 60_000); setMessageError(false); setMessage('A new code was sent. Use the newest code.') } catch (error) { setMessageError(true); setMessage(error instanceof Error ? error.message : 'Unable to resend.') } finally { setBusy(false) } }}>{now < resendAt ? `Resend in ${Math.ceil((resendAt - now) / 1000)}s` : 'Resend code'}</button><button type="button" disabled={busy} className="min-h-11 underline" onClick={() => { setChallenge(null); setCode(''); setMessage('') }}>Back to login</button></div>
+            <div className="flex flex-wrap gap-3"><button type="button" disabled={busy || now < resendAt} className="min-h-11 underline disabled:opacity-50" onClick={async () => { setBusy(true); setMessage(''); try { await resendLoginCode(challenge.challengeId); lastAutoCode.current = ''; setCode(''); setResendAt(Date.now() + 60_000); setMessageError(false); setMessage('A new code was sent. Use the newest code.') } catch (error) { setMessageError(true); setMessage(error instanceof Error ? error.message : 'Unable to resend.') } finally { setBusy(false) } }}>{now < resendAt ? `Resend in ${Math.ceil((resendAt - now) / 1000)}s` : 'Resend code'}</button><button type="button" disabled={busy} className="min-h-11 underline" onClick={() => { lastAutoCode.current = ''; setChallenge(null); setCode(''); setMessage('') }}>Back to login</button></div>
           </form> : <form className="mt-7 space-y-5" onSubmit={submit} autoComplete="off" noValidate>
             <label className="block"><span className="text-sm font-bold text-[#0b5ea2]">Student ID / Faculty ID</span><span className="relative mt-2 block"><IdCard className="absolute left-4 top-1/2 -translate-y-1/2 text-[#0b5ea2]/50" size={18} /><input ref={schoolIdInput} aria-invalid={Boolean(errors.school_id)} aria-describedby={errors.school_id ? 'login-school_id-error' : undefined} autoComplete="off" autoFocus={!popup} value={schoolId} onChange={(event) => setSchoolId(event.target.value)} placeholder="Enter your Student or Faculty ID" className="h-13 w-full rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] pl-12 pr-4 text-sm uppercase text-[#0b5ea2] outline-none transition placeholder:normal-case placeholder:text-[#0b5ea2]/40 focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/10" /></span>{errors.school_id ? <span id="login-school_id-error" className="field-error mt-2 block text-xs font-bold">{errors.school_id}</span> : null}</label>
             <label className="block"><span className="text-sm font-bold text-[#0b5ea2]">Password</span><span className="relative mt-2 block"><LockKeyhole className="absolute left-4 top-1/2 -translate-y-1/2 text-[#0b5ea2]/50" size={18} /><input type={showPassword ? 'text' : 'password'} aria-invalid={Boolean(errors.password)} aria-describedby={errors.password ? 'login-password-error' : undefined} autoComplete="off" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter your password" className="h-13 w-full rounded-xl border border-[#0b5ea2]/20 bg-[#FFFFFF] pl-12 pr-12 text-sm text-[#0b5ea2] outline-none transition placeholder:text-[#0b5ea2]/40 focus:border-[#0b5ea2] focus:ring-4 focus:ring-[#0b5ea2]/10" /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword((value) => !value)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-[#0b5ea2]/60 hover:bg-[#0b5ea2]/5">{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></span>{errors.password ? <span id="login-password-error" className="field-error mt-2 block text-xs font-bold">{errors.password}</span> : null}</label>

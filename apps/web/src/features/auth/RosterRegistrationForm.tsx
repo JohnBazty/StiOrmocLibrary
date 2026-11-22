@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { AuthMessage } from './AuthMessage'
 import { OtpCodeInput } from './OtpCodeInput'
 import { rosterRegistrationRequest } from './auth-api'
@@ -21,6 +21,8 @@ export function RosterRegistrationForm({ fieldClass, busy, onBusy, onComplete, r
   const [retryAt, setRetryAt] = useState(0)
   const [canResend, setCanResend] = useState(false)
   const [error, setError] = useState('')
+  const inFlight = useRef(false)
+  const lastAutoCode = useRef('')
   const normalizedId = schoolId.trim().toUpperCase()
   const validId = /^[A-Z0-9][A-Z0-9._-]{2,49}$/.test(normalizedId)
 
@@ -32,31 +34,45 @@ export function RosterRegistrationForm({ fieldClass, busy, onBusy, onComplete, r
 
   async function requestCode() {
     const result = await rosterRegistrationRequest<{ challengeId: string }>('/begin', { school_id: normalizedId }, undefined, role)
+    lastAutoCode.current = ''
     setChallengeId(result.challengeId)
     setCode('')
     setCanResend(false)
     setRetryAt(Date.now() + 60_000)
   }
 
+  async function verifyEmailCode(nextCode: string) {
+    const result = await rosterRegistrationRequest<{ grant: string }>('/verify', { challenge_id: challengeId, code: nextCode }, undefined, role)
+    setGrant(result.grant)
+    setCode('')
+  }
+
   async function run(action: () => Promise<void>) {
-    if (busy) return
+    if (busy || inFlight.current) return
+    inFlight.current = true
     onBusy(true)
     setError('')
     try { await action() }
     catch (err) { setError(err instanceof Error ? err.message : 'Try again in a moment.') }
-    finally { onBusy(false) }
+    finally { inFlight.current = false; onBusy(false) }
   }
+
+  useEffect(() => {
+    if (code.length < 6) {
+      lastAutoCode.current = ''
+      return
+    }
+    if (!challengeId || grant || busy || inFlight.current) return
+    if (lastAutoCode.current === code) return
+    lastAutoCode.current = code
+    void run(() => verifyEmailCode(code))
+  }, [challengeId, grant, busy, code])
 
   function submit(event: FormEvent) {
     event.preventDefault()
     void run(async () => {
       if (!challengeId) return requestCode()
-      if (!grant) {
-        const result = await rosterRegistrationRequest<{ grant: string }>('/verify', { challenge_id: challengeId, code }, undefined, role)
-        setGrant(result.grant)
-        setCode('')
-        return
-      }
+      if (!grant) return verifyEmailCode(code)
       if (password !== confirmation) {
         setError('The passwords do not match.')
         return
@@ -69,6 +85,7 @@ export function RosterRegistrationForm({ fieldClass, busy, onBusy, onComplete, r
   }
 
   function restart() {
+    lastAutoCode.current = ''
     setChallengeId('')
     setGrant('')
     setCode('')
