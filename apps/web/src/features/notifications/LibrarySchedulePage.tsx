@@ -1,4 +1,4 @@
-import { Clock, ShieldAlert } from 'lucide-react'
+import { Clock } from 'lucide-react'
 import { useState } from 'react'
 import { Button, PageHeader, SectionCard } from '../../components/ui'
 import { UnsavedGuard } from '../../components/UnsavedChanges'
@@ -190,18 +190,6 @@ export function LibrarySchedulePage({ manage = false, embedded = false }: { mana
           description="Weekly hours, closure dates, and closure time windows in Manila time (PHT)."
         />
       )}
-
-      <div className="flex items-start gap-3 rounded-[8px] border border-[var(--sl-info-border)] bg-[var(--sl-info-soft)] px-4 py-3 text-xs sm:text-sm text-[var(--sl-text)]">
-        <ShieldAlert size={18} className="mt-0.5 shrink-0 text-[#0b5ea2] dark:text-sky-300" />
-        <div>
-          <p className="font-semibold text-[var(--sl-text-header)]">
-            Manila time (12-hour AM/PM) &amp; View-Only Enforcement
-          </p>
-          <p className="mt-0.5 text-xs text-[var(--sl-text-secondary)]">
-            Hours use Asia/Manila time and Philippine date format for library access, due-date calculations, and overdue fines. During closed hours or scheduled closures, <strong>Student and Faculty accounts remain view-only</strong> (borrowing, reservations, check-ins, and printing are disabled).
-          </p>
-        </div>
-      </div>
 
       <div className="flex flex-wrap gap-2.5">
         <RefreshButton label="Refresh schedule" onRefresh={() => query.refresh()} variant="secondary" disabled={busy} />
