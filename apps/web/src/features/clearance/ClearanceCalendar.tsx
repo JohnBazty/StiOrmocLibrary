@@ -10,7 +10,7 @@ export function ClearanceCalendar({ schedule }: { schedule: ClearanceSchedule | 
   const windows = schedule.windows ?? []
   return <section aria-label="Your clearance schedule" className="mt-4 rounded-2xl border p-4 sm:p-5">
     <div className="flex items-center gap-2"><CalendarDays size={18} /><h2 className="font-bold">Your clearance schedule</h2></div>
-    <p className="mt-1 text-sm opacity-70">{schedule.group ?? 'All groups'} · Philippine time (Asia/Manila)</p>
+    <p className="mt-1 text-sm opacity-70">{schedule.group ?? 'All groups'} · Philippine time</p>
     {windows.length ? <ul className="mt-3 divide-y">{windows.map(window => {
       const status = Date.now() < Date.parse(window.startsAt) ? 'Upcoming' : Date.now() >= Date.parse(window.endsAt) ? 'Closed' : 'Open'
       return <li key={window.id} className="flex flex-wrap items-center justify-between gap-2 py-3"><div className="text-sm tabular-nums"><p><strong>Opens:</strong> {date(window.startsAt)}</p><p className="mt-1"><strong>Closes:</strong> {date(window.endsAt)}</p></div><StatusBadge status={status} /></li>

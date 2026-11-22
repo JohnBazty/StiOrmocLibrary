@@ -41,7 +41,7 @@ export function PracticeBankTransfers({ collections, rows, onSaved, onWithdraw, 
   const visible = rows.filter(row => filter === 'All' || row.direction === filter)
   function exportRecords() {
     const cell = (value: unknown) => '"' + String(value ?? '').replace(/^[=+@-]/, "'").replaceAll('"', '""') + '"'
-    const records = [['Reference', 'Type', 'Status', 'Amount PHP', 'Fee PHP', 'Total PHP', 'Purpose', 'Date (Asia/Manila)', 'Mode'],
+    const records = [['Reference', 'Type', 'Status', 'Amount PHP', 'Fee PHP', 'Total PHP', 'Purpose', 'Date', 'Mode'],
       ...rows.map(row => [row.reference, row.direction === 'TopUp' ? 'Bank addition' : 'Withdrawal', stateLabel(row.state),
         (row.amountCentavos / 100).toFixed(2), (row.feeCentavos / 100).toFixed(2), (row.totalCentavos / 100).toFixed(2), row.reason, dateLabel(row.createdAt), 'Practice'])]
     const url = URL.createObjectURL(new Blob(['\ufeff' + records.map(row => row.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' }))

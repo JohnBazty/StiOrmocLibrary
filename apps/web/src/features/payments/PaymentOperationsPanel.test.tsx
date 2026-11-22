@@ -20,7 +20,7 @@ it('settlement uses explicit Philippine time and shows net before saving evidenc
   render(<SettlementReview payment={{paymentId:'fixture',totalCentavos:4140} as Payment} onClose={()=>{}}/>)
   fireEvent.change(await screen.findByLabelText('Provider settlement reference'),{target:{value:'TEST-BATCH-001'}})
   fireEvent.change(screen.getByLabelText('Provider processing cost (PHP)'),{target:{value:'1.40'}})
-  fireEvent.change(screen.getByLabelText('Settlement date and time (Asia/Manila)'),{target:{value:'2026-11-11T16:00'}})
+  fireEvent.change(screen.getByLabelText('Settlement date and time'),{target:{value:'2026-11-11T16:00'}})
   expect(screen.getByText('₱40.00')).toBeTruthy()
   fireEvent.click(screen.getByRole('button',{name:'Confirm settlement evidence'}))
   await waitFor(()=>expect(api.recordSettlement).toHaveBeenCalledWith('fixture',{reference:'TEST-BATCH-001',processingCost:'1.40',settledAt:'2026-11-11T16:00:00+08:00'}))

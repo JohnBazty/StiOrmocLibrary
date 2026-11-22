@@ -77,7 +77,7 @@ export function FundsActivity({
   function exportCsv() {
     const cell = (value: unknown) => '"' + String(value ?? '').replace(/^[=+@-]/, "'").replaceAll('"', '""') + '"'
     const csv = [
-      ['Reference', 'Activity', 'Status', 'Amount PHP', 'Fee PHP', 'Date (Asia/Manila)', 'Source'],
+      ['Reference', 'Activity', 'Status', 'Amount PHP', 'Fee PHP', 'Date', 'Source'],
       ...rows.map(row => [
         row.reference,
         title(row),

@@ -110,7 +110,7 @@ export function ClearanceScheduleEditor() {
   }
   return <section aria-label="Clearance schedules" className="mb-5 overflow-hidden rounded-2xl border">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4 sm:p-5">
-      <div className="flex items-center gap-3"><CalendarDays size={22} className="shrink-0 text-[#0b5ea2]" /><div><h2 className="text-balance text-lg font-bold">Clearance schedules</h2><p className="text-sm opacity-70">Set periods for a group or all students. Asia/Manila time.</p></div></div>
+      <div className="flex items-center gap-3"><CalendarDays size={22} className="shrink-0 text-[#0b5ea2]" /><div><h2 className="text-balance text-lg font-bold">Clearance schedules</h2><p className="text-sm opacity-70">Set periods for a group or all students.</p></div></div>
       <div className="flex flex-wrap gap-2"><RefreshButton label="Refresh schedules" onRefresh={() => reload()} variant="secondary" disabled={!termId || busy || refreshing} /><Button disabled={!data || busy || opened || Boolean(cancelTarget)} onClick={() => open(null)}><Plus size={16} />Add schedule</Button></div>
     </div>
     <div className="p-4 sm:p-5">

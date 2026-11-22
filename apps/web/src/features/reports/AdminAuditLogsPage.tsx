@@ -283,7 +283,7 @@ export function AdminAuditLogsPage() {
   const pageItems = filteredItems.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   function exportAuditCsv() {
-    const headers = ['Timestamp (Asia/Manila)', 'Category', 'Action / Event', 'Actor / Staff', 'Target / Record', 'Details & Reason', 'Status']
+    const headers = ['Timestamp', 'Category', 'Action / Event', 'Actor / Staff', 'Target / Record', 'Details & Reason', 'Status']
     const rows = [headers.map(escapeCsv).join(',')]
     for (const item of filteredItems) {
       rows.push(
@@ -454,7 +454,7 @@ export function AdminAuditLogsPage() {
                 Chronological activity log
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                All timestamps are shown in Manila campus time (Asia/Manila). Audit records are immutable.
+                All timestamps are shown in Philippine time. Audit records are immutable.
               </p>
             </div>
           </div>

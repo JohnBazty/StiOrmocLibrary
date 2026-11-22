@@ -82,7 +82,7 @@ export function BorrowingHistory() {
   const summary = data?.summary
   return <>
     <PageHeader eyebrow="My library" title="Borrowing history" action={<RefreshButton onRefresh={() => load()} variant="secondary" />} />
-    <p className="-mt-3 mb-5 text-xs opacity-70">Dates and times use Philippine time (Asia/Manila).</p>
+    <p className="-mt-3 mb-5 text-xs opacity-70">Dates and times use Philippine time.</p>
     {error ? <div role="alert" className="mb-5 flex items-center gap-3 rounded-xl bg-[#FFF200] px-4 py-3 font-semibold text-[#0b5ea2]"><AlertTriangle size={18} />{error}</div> : null}
     {notice ? <div role="status" className="mb-5 flex items-center justify-between rounded-xl bg-[#0b5ea2] px-4 py-3 font-semibold text-[#FFFFFF]"><span>{notice}</span><button aria-label="Dismiss" onClick={() => setNotice('')}><X size={17} /></button></div> : null}
     <div className="mb-5 grid gap-3 sm:grid-cols-3">
