@@ -1,4 +1,5 @@
 import type { Pool, PoolConnection } from '../../config/db.js'
+import { bestEffort } from './best-effort.ts'
 
 export type StaffTransactionAlert = {
   key: string
@@ -101,9 +102,13 @@ export async function notifyStaffRoles(executor: Executor, alert: StaffTransacti
  * Safe helper so staff notifications are delivered immediately on real databases
  * and full PGlite schemas without aborting transactions in minimal test fixtures
  * that omit full `accounts` or `users` columns.
+ *
+ * A failed statement aborts the whole Postgres transaction, and a later COMMIT then
+ * silently rolls everything back. `bestEffort` confines a notification failure to
+ * the notification itself so the caller's business write still commits.
  */
 export async function notifyStaffRolesSafe(executor: Executor, alert: StaffTransactionAlert): Promise<void> {
-  try {
+  await bestEffort(executor, 'staff_notify', async () => {
     const [check] = await executor.execute(
       `SELECT COUNT(*) AS ok
          FROM information_schema.columns
@@ -111,9 +116,6 @@ export async function notifyStaffRolesSafe(executor: Executor, alert: StaffTrans
            OR (table_name = 'users' AND column_name IN ('user_id', 'full_name', 'school_id', 'account_status'))`,
     )
     const count = Number((check as Array<{ ok?: number | string }> | undefined)?.[0]?.ok ?? 0)
-    if (count < 7) return
-    await notifyStaffRoles(executor, alert)
-  } catch {
-    // Minimal test stubs safely skip staff fan-out.
-  }
+    if (count >= 7) await notifyStaffRoles(executor, alert)
+  })
 }

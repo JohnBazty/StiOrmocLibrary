@@ -26,7 +26,7 @@ it('moves selected copies only after confirmation and credits their existing res
 
 it('blocks a move into a full destination and keeps the copies unchanged', async () => {
   render(<MoveCopiesDialog kind="Research/Thesis" copies={[{ id: 7, accession: 'RES-7', shelfLocation: 'Shelf A', shelfColumn: 1, shelfRow: 1 }]} onClose={vi.fn()} onMoved={vi.fn()}/>)
-  await screen.findByRole('option',{name:'Shelf B'})
+  await screen.findByRole('option',{name:'Shelf B (0 spaces free)'})
   fireEvent.change(screen.getByLabelText('Shelf location *'),{target:{value:'Shelf B'}})
   expect(screen.getByText(/Only 0 spaces remain/)).toBeTruthy()
   expect((screen.getByRole('button',{name:'Move 1 copy'}) as HTMLButtonElement).disabled).toBe(true)
