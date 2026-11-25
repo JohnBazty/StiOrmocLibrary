@@ -114,3 +114,18 @@ Pages read as dated facts (`YYYY-MM-DD`), short summaries and links, not copies 
 - **Files git does not hold** (`apps/api/.env`, `.vercel/`, runtime uploads): they exist only in Ethan's checkout. If one is missing, ask Ethan; never recreate `.env` with guessed values.
 
 When Claude Code gains a new hook, agent, skill, MCP server or memory rule for this repo, add its manual equivalent here.
+
+<!-- handoff:learnings:begin -->
+## Session Learnings (auto-updated by handoff)
+
+### Implicit Rules
+- Stack: Express + TypeScript API on Supabase Postgres (pg, parameterized only); React + Vite + Tailwind web; tests node --test (api) and Vitest (web).
+- Migrations: database/supabase/NNN_name.sql, applied via apps/api npm run db:supabase -- <file>; never edit applied files; next unused number tracked in .cursor/agent-protocol.md.
+- Branches: feat/<slug> from main; never commit to main directly; no push, merge, deploy or live migration without Ethan's go-ahead.
+- No destructive file commands (git clean, reset --hard, rm -r, worktree); commit with git commit -F file.
+- Commit trailer: Co-Authored-By line required.
+- Money: PHP, fines server-authoritative; Asia/Manila timezone for campus dates.
+- Env: apps/api/.env holds DATABASE_URL (live Supabase, read-only checks use BEGIN READ ONLY).
+- Local dev: run npm run dev:api:stable and npm run dev:web (root dev script broken, tools/dev-local.mjs missing).
+
+<!-- handoff:learnings:end -->

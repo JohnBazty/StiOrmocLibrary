@@ -11,13 +11,13 @@ const incident = {
   events: [{ type: 'Resolved', reason: 'Synthetic resolution', at: '2026-01-01T03:00:00Z' }, { type: 'Correction', reason: 'Synthetic correction', at: '2026-01-02T03:00:00Z' }],
 }
 const categories = [
-  { categoryId: 1, name: 'Noise', description: null, warningsBeforeFine: 2, fineAmount: 50, isActive: true, sortOrder: 1, used: true },
-  { categoryId: 2, name: 'Eating or food', description: null, warningsBeforeFine: 2, fineAmount: 50, isActive: true, sortOrder: 2, used: false },
-  { categoryId: 3, name: 'Old rule', description: null, warningsBeforeFine: 2, fineAmount: 50, isActive: false, sortOrder: 3, used: true },
+  { categoryId: 1, name: 'Noise', description: null, warningsBeforeFine: 2, fineAmount: 50, allowedLevels: ['Grade 11', 'Grade 12', '1st Year', '2nd Year', '3rd Year', '4th Year'], isActive: true, sortOrder: 1, used: true },
+  { categoryId: 2, name: 'Eating or food', description: null, warningsBeforeFine: 2, fineAmount: 50, allowedLevels: ['Grade 11', 'Grade 12', '1st Year', '2nd Year', '3rd Year', '4th Year'], isActive: true, sortOrder: 2, used: false },
+  { categoryId: 3, name: 'Old rule', description: null, warningsBeforeFine: 2, fineAmount: 50, allowedLevels: ['Grade 11', 'Grade 12', '1st Year', '2nd Year', '3rd Year', '4th Year'], isActive: false, sortOrder: 3, used: true },
 ]
 const standing = (over: Record<string, unknown> = {}) => ({
-  name: 'Synthetic Student', role: 'Student', schoolId: 'SYNTHETIC-001', category: 'Noise', warningsUsed: 0, warningsBeforeFine: 2, fineAmount: 50, amount: null,
-  nextStep: 'First warning', fromPaperLog: false, categoryActive: true, paperLogAllowed: true, paperLogReason: null, earlierWarnings: null, history: [], reviewToken: 'token-1', ...over,
+  name: 'Synthetic Student', role: 'Student', studentLevel: '1st Year', schoolId: 'SYNTHETIC-001', category: 'Noise', warningsUsed: 0, warningsBeforeFine: 2, fineAmount: 50, amount: null,
+  nextStep: 'First warning', fromPaperLog: false, categoryActive: true, allowedLevels: ['Grade 11', 'Grade 12', '1st Year', '2nd Year', '3rd Year', '4th Year'], levelAllowed: true, levelReason: null, paperLogAllowed: true, paperLogReason: null, earlierWarnings: null, history: [], reviewToken: 'token-1', ...over,
 })
 
 type Call = { url: string; options: RequestInit }
@@ -27,7 +27,7 @@ function server(routes: Record<string, (call: Call) => unknown> = {}) {
   vi.stubGlobal('fetch', vi.fn(async (url: string, options: RequestInit = {}) => {
     calls.push({ url, options })
     const key = Object.keys(routes).find(route => url.includes(route))
-    const data = key ? routes[key]({ url, options }) : url.includes('/violation-categories') ? categories : url.includes('/api/v1/fines/') && url.includes('/standing') ? [] : url.includes('/standing') ? standing() : url.includes('incidentId') ? { items: [incident], total: 1 } : { items: [], total: 0 }
+    const data = key ? routes[key]({ url, options }) : url.includes('/violation-categories') ? categories : url.includes('/api/v1/fines/') && url.includes('/standing') ? null : url.includes('/standing') ? standing() : url.includes('incidentId') ? { items: [incident], total: 1 } : { items: [], total: 0 }
     if (data instanceof Error) return { ok: false, json: async () => ({ success: false, message: data.message, code: (data as Error & { code?: string }).code }) }
     return { ok: true, json: async () => ({ success: true, data }) }
   }))
@@ -61,7 +61,7 @@ it('shows the steps and the step this record will be once the person and categor
   expect(options).toEqual(['Noise', 'Eating or food'])
   expect((screen.getByRole('button', { name: 'Record violation' }) as HTMLButtonElement).disabled).toBe(true)
   await fillAndWait()
-  expect(await screen.findByText('Synthetic Student · Student')).toBeTruthy()
+  expect(await screen.findByText('Synthetic Student · Student · 1st Year')).toBeTruthy()
   expect(screen.getByText('This will be the 2nd warning. No charge; borrowing and clearance are not affected.')).toBeTruthy()
   expect(screen.queryByRole('group', { name: 'Amount to pay' })).toBeNull()
   expect(screen.getByRole('button', { name: 'Record 2nd warning' })).toBeTruthy()
@@ -180,7 +180,7 @@ it('shows a person their own warnings left per category without management actio
   let listReads = 0
   const fetch = vi.fn(async (url: string) => {
     if (!url.includes('/standing') && ++listReads === 1) throw new Error('Please retry')
-    return { ok: true, json: async () => ({ success: true, data: url.includes('/standing') ? [{ category: 'Noise', warningsUsed: 1, warningsBeforeFine: 2, warningsLeft: 1, fineAmount: 50 }] : { items: [], total: 0 } }) }
+    return { ok: true, json: async () => ({ success: true, data: url.includes('/standing') ? { role: 'Student', studentLevel: '1st Year', warningsUsed: 1, warningsBeforeFine: 2, warningsLeft: 1, categories: [{ category: 'Noise', fineAmount: 50, allowedLevels: ['1st Year'] }] } : { items: [], total: 0 } }) }
   })
   vi.stubGlobal('fetch', fetch)
   render(<ViolationsRecords />)
@@ -188,7 +188,7 @@ it('shows a person their own warnings left per category without management actio
   expect(screen.queryByRole('button', { name: 'Record violation' })).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
   await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
-  expect(await screen.findByText('1 of 2 warnings left')).toBeTruthy()
+  expect(await screen.findByText('1 of 2 warnings left across all violations.')).toBeTruthy()
   expect(fetch.mock.calls.some(call => String(call[0]).includes('/api/v1/fines/violations'))).toBe(true)
 })
 
@@ -232,7 +232,7 @@ it('never lets an old answer for another person or category enable saving', asyn
   expect(screen.queryByText(/First Person/)).toBeNull()
   expect((screen.getByRole('button', { name: 'Record violation' }) as HTMLButtonElement).disabled).toBe(true)
   pending[1](standing({ name: 'Second Person', schoolId: 'SECOND-ID' }))
-  expect(await screen.findByText('Second Person · Student')).toBeTruthy()
+  expect(await screen.findByText('Second Person · Student · 1st Year')).toBeTruthy()
 })
 
 it('follows the categories when they load after the form opened', () => {

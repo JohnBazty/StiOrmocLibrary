@@ -44,12 +44,13 @@ it('separates Student and Faculty tabs for waitlist and renewal rules and preser
 
   render(<LibraryCirculationSetupPanel />)
   await screen.findByLabelText(/Student waitlist & reservation limit/i)
+  expect(screen.getByLabelText(/Extra days per renewal \(1–60\)/i)).toBeTruthy()
 
   const facultyTabs = screen.getAllByRole('tab', { name: 'Faculty' })
   fireEvent.click(facultyTabs[facultyTabs.length - 1])
 
   fireEvent.change(screen.getByLabelText(/Faculty max renewals/i), { target: { value: '4' } })
-  fireEvent.change(screen.getByLabelText(/Faculty renewal extension days/i), { target: { value: '5' } })
+  fireEvent.change(screen.getByLabelText(/Faculty extra days per renewal/i), { target: { value: '5' } })
   fireEvent.change(screen.getByLabelText(/Reason for waitlist \/ renewal policy change/i), { target: { value: 'Separate faculty renewal rules for semester' } })
 
   fireEvent.click(screen.getByRole('button', { name: /Review & save waitlist\/renewal rules/i }))

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { db, type Pool, type PoolConnection, type RowDataPacket, type ResultSetHeader } from '../../config/db.js'
 import { HttpError } from '../../core/http-error.ts'
-import { conductAction, facultyConductAction } from './conduct-policy.ts'
+import { conductAction, facultyConductAction, MAX_WARNINGS_BEFORE_FINE, normalizeStudentLevel, resolveWarningsBeforeFine, STUDENT_LEVELS, type LevelWarningsMap, type StudentLevel } from './conduct-policy.ts'
 import { refreshClearance, type FineActor } from './fines.service.ts'
 
 function text(value: unknown, label: string, min: number, max: number) {
@@ -28,28 +28,64 @@ const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(valu
 type Executor = Pool | PoolConnection
 type Source = 'Recorded' | 'Paper log'
 
+function parseAllowedLevels(raw: unknown): StudentLevel[] {
+  if (Array.isArray(raw)) {
+    const valid = STUDENT_LEVELS.filter(level => raw.includes(level))
+    return valid.length ? valid : [...STUDENT_LEVELS]
+  }
+  return [...STUDENT_LEVELS]
+}
+
+function parseLevelWarnings(raw: unknown): LevelWarningsMap {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const result: LevelWarningsMap = {}
+  for (const level of STUDENT_LEVELS) {
+    const value = (raw as Record<string, unknown>)[level]
+    if (typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= MAX_WARNINGS_BEFORE_FINE) result[level] = value
+  }
+  return result
+}
+
 export function createConductService(database: Pool = db) {
+  async function readViolationSettings(ex: Executor, lock = false) {
+    const [rows] = await ex.execute<RowDataPacket[]>(`SELECT warnings_before_fine,level_warnings FROM violation_settings WHERE settings_id=1 ${lock ? 'FOR SHARE' : ''}`, [])
+    if (!rows[0]) throw new HttpError(503, 'VIOLATION_SETTINGS_MISSING', 'The violation settings are not set up yet. Ask the administrator to apply the latest database update.')
+    return {
+      warningsBeforeFine: Number(rows[0].warnings_before_fine),
+      levelWarnings: parseLevelWarnings(rows[0].level_warnings),
+    }
+  }
+
   /** One place decides the person's standing, so standing, preview and save always agree. */
   async function standingFor(ex: Executor, schoolId: string, categoryName: string, fromPaperLog: boolean, lock=false, incidentAt?: string) {
-    const [users]=await ex.execute<RowDataPacket[]>(`SELECT user_id,full_name,school_id,user_role FROM users WHERE school_id=? AND user_role IN ('Student','Faculty') AND account_status='Active' ${lock?'FOR UPDATE':''}`,[schoolId])
+    const [users]=await ex.execute<RowDataPacket[]>(`SELECT u.user_id,u.full_name,u.school_id,u.user_role,u.educational_level FROM users u WHERE u.school_id=? AND u.user_role IN ('Student','Faculty') AND u.account_status='Active' ${lock?'FOR UPDATE':''}`,[schoolId])
     const user=users[0]
     if (!user) throw new HttpError(404,'CONDUCT_PERSON','No active student or faculty account matches that school ID.')
-    const [categories]=await ex.execute<RowDataPacket[]>(`SELECT name,warnings_before_fine,fine_amount,is_active FROM violation_categories WHERE name=? ${lock?'FOR SHARE':''}`,[categoryName])
+    const isFaculty=user.user_role==='Faculty'
+    let studentLevel: StudentLevel | null = null
+    if (!isFaculty) {
+      const [profiles]=await ex.execute<RowDataPacket[]>('SELECT sp.year_grade_level FROM accounts a JOIN student_profiles sp ON sp.account_id=a.account_id WHERE a.user_id=? LIMIT 1',[user.user_id])
+      studentLevel=normalizeStudentLevel(profiles[0]?.year_grade_level ?? user.educational_level)
+    }
+    const settings=await readViolationSettings(ex,lock)
+    const [categories]=await ex.execute<RowDataPacket[]>(`SELECT name,fine_amount,allowed_levels,is_active FROM violation_categories WHERE name=? ${lock?'FOR SHARE':''}`,[categoryName])
     const category=categories[0]
     if (!category) throw new HttpError(422,'CONDUCT_CATEGORY','Choose a listed violation category.')
-    const isFaculty=user.user_role==='Faculty'
-    const [reviews]=await ex.execute<RowDataPacket[]>('SELECT prior_warnings,reviewed_at FROM conduct_students WHERE user_id=? AND category=?',[user.user_id,categoryName])
-    const [history]=await ex.execute<RowDataPacket[]>("SELECT incident_id,incident_at,action,source FROM conduct_incidents WHERE user_id=? AND category=? AND voided_at IS NULL ORDER BY incident_at,incident_id",[user.user_id,categoryName])
-    // Saved lifetime reviews from before this change keep counting so nobody's history is reset.
-    const earlier=Number(reviews[0]?.prior_warnings??0)
+    const allowedLevels=parseAllowedLevels(category.allowed_levels)
+    const levelAllowed=isFaculty || !studentLevel || allowedLevels.includes(studentLevel)
+    const levelReason=levelAllowed?null:`${categoryName} applies to ${allowedLevels.join(', ')} only. This student is ${studentLevel}.`
+    // Shared offense count across ALL categories: every non-voided violation counts toward the person's total.
+    const [reviews]=await ex.execute<RowDataPacket[]>('SELECT COALESCE(SUM(prior_warnings),0) AS total,MAX(reviewed_at) AS reviewed_at FROM conduct_students WHERE user_id=?',[user.user_id])
+    const [history]=await ex.execute<RowDataPacket[]>("SELECT incident_id,category,incident_at,action,source FROM conduct_incidents WHERE user_id=? AND voided_at IS NULL ORDER BY incident_at,incident_id",[user.user_id])
+    const earlier=Number(reviews[0]?.total??0)
     const warningsUsed=history.length+earlier
-    // Faculty are never fined (revisions 2026-11-20): they get the same warnings, ending at a final warning.
-    const warningsBeforeFine=Number(category.warnings_before_fine)
+    // Faculty are never fined (revisions 2026-11-20): they get the default warnings, ending at a final warning.
+    const warningsBeforeFine=resolveWarningsBeforeFine(settings.warningsBeforeFine,settings.levelWarnings,studentLevel)
     const action=isFaculty?facultyConductAction(warningsUsed,warningsBeforeFine):conductAction(warningsUsed,warningsBeforeFine)
     // A paper log only back-fills warnings from before the system, so it can never touch the fine step or follow system records.
-    const [recorded]=await ex.execute<RowDataPacket[]>("SELECT COUNT(*) AS count FROM conduct_incidents WHERE user_id=? AND category=? AND voided_at IS NULL AND source='Recorded'",[user.user_id,categoryName])
-    const [latestPaper]=await ex.execute<RowDataPacket[]>("SELECT MAX(incident_at) AS latest FROM conduct_incidents WHERE user_id=? AND category=? AND voided_at IS NULL AND source='Paper log'",[user.user_id,categoryName])
-    const block=warningsBeforeFine===0?{status:422,code:'CONDUCT_PAPER_LOG_NO_WARNINGS',message:'This category has no warnings, so there is nothing to copy from the paper log.'}
+    const [recorded]=await ex.execute<RowDataPacket[]>("SELECT COUNT(*) AS count FROM conduct_incidents WHERE user_id=? AND voided_at IS NULL AND source='Recorded'",[user.user_id])
+    const [latestPaper]=await ex.execute<RowDataPacket[]>("SELECT MAX(incident_at) AS latest FROM conduct_incidents WHERE user_id=? AND voided_at IS NULL AND source='Paper log'",[user.user_id])
+    const block=warningsBeforeFine===0?{status:422,code:'CONDUCT_PAPER_LOG_NO_WARNINGS',message:'This rule has no warnings, so there is nothing to copy from the paper log.'}
       :Number(recorded[0].count)>0?{status:422,code:'CONDUCT_PAPER_LOG_AFTER_RECORDS',message:'Paper-log entries must come before the first record made in the system.'}
       :action==='Fine'?{status:409,code:'CONDUCT_PAPER_LOG_FINE_STEP',message:'This person is already at the fine step. Paper-log entries only add earlier warnings.'}
       :null
@@ -59,8 +95,8 @@ export function createConductService(database: Pool = db) {
     }
     const fineAmount=Number(category.fine_amount)
     const amount=action==='Fine'?fineAmount:null
-    const snapshot={userId:Number(user.user_id),role:String(user.user_role),name:String(user.full_name),schoolId:String(user.school_id),category:categoryName,warningsUsed,warningsBeforeFine,fineAmount,action,amount,fromPaperLog,categoryActive:Boolean(category.is_active)}
-    return {...snapshot,paperLogAllowed:!block,paperLogReason:block?block.message:null,nextStep:action,earlierWarnings:earlier>0?{count:earlier,reviewedAt:reviews[0].reviewed_at}:null,history:history.map(h=>({incidentId:Number(h.incident_id),date:h.incident_at,step:String(h.action),source:String(h.source) as Source})),reviewToken:hash(snapshot)}
+    const snapshot={userId:Number(user.user_id),role:String(user.user_role),studentLevel,name:String(user.full_name),schoolId:String(user.school_id),category:categoryName,warningsUsed,warningsBeforeFine,fineAmount,action,amount,fromPaperLog,categoryActive:Boolean(category.is_active),allowedLevels,levelAllowed}
+    return {...snapshot,levelReason,paperLogAllowed:!block,paperLogReason:block?block.message:null,nextStep:action,earlierWarnings:earlier>0?{count:earlier,reviewedAt:reviews[0].reviewed_at}:null,history:history.map(h=>({incidentId:Number(h.incident_id),category:String(h.category),date:h.incident_at,step:String(h.action),source:String(h.source) as Source})),reviewToken:hash(snapshot)}
   }
   const prepare=(ex: Executor, input: ReturnType<typeof conductInput>, lock=false)=>standingFor(ex,input.schoolId,input.category,input.fromPaperLog,lock,input.incidentAt)
 
@@ -70,19 +106,42 @@ export function createConductService(database: Pool = db) {
       manager(actor);account(actor)
       return standingFor(database,text(query.schoolId,'the school ID',3,50),text(query.category,'a violation category',2,80),query.paperLog==='1'||query.paperLog==='true')
     },
-    /** A person's own warnings left in each category, for the Student and Faculty fines page. */
+    /** A person's shared warnings left across all violation categories, for the Student and Faculty fines page. */
     async ownStanding(actor: FineActor) {
       const actorId=account(actor)
-      const [users]=await database.execute<RowDataPacket[]>('SELECT u.user_id,u.user_role FROM accounts a JOIN users u ON u.user_id=a.user_id WHERE a.account_id=?',[actorId])
-      if(!users[0])return []
+      const [users]=await database.execute<RowDataPacket[]>('SELECT u.user_id,u.user_role,u.educational_level,sp.year_grade_level FROM accounts a JOIN users u ON u.user_id=a.user_id LEFT JOIN student_profiles sp ON sp.account_id=a.account_id WHERE a.account_id=?',[actorId])
+      if(!users[0])return null
       const isFaculty=users[0].user_role==='Faculty'
-      const [rows]=await database.execute<RowDataPacket[]>(`SELECT c.name,c.warnings_before_fine,c.fine_amount,c.is_active,
-        (SELECT COUNT(*) FROM conduct_incidents i WHERE i.user_id=? AND i.category=c.name AND i.voided_at IS NULL)+COALESCE((SELECT s.prior_warnings FROM conduct_students s WHERE s.user_id=? AND s.category=c.name),0) AS used
-        FROM violation_categories c ORDER BY c.sort_order,c.name`,[users[0].user_id,users[0].user_id])
-      return rows.filter(r=>r.is_active||Number(r.used)>0).map(r=>{
-        const warningsBeforeFine=Number(r.warnings_before_fine);const warningsUsed=Number(r.used)
-        return {category:String(r.name),warningsUsed,warningsBeforeFine,warningsLeft:Math.max(0,warningsBeforeFine-warningsUsed),fineAmount:isFaculty?0:Number(r.fine_amount)}
-      })
+      const studentLevel=isFaculty?null:normalizeStudentLevel(users[0].year_grade_level ?? users[0].educational_level)
+      const settings=await readViolationSettings(database)
+      const warningsBeforeFine=resolveWarningsBeforeFine(settings.warningsBeforeFine,settings.levelWarnings,studentLevel)
+      const [usedRows]=await database.execute<RowDataPacket[]>(`SELECT
+        (SELECT COUNT(*) FROM conduct_incidents i WHERE i.user_id=? AND i.voided_at IS NULL)
+        + COALESCE((SELECT SUM(s.prior_warnings) FROM conduct_students s WHERE s.user_id=?),0) AS used`,[users[0].user_id,users[0].user_id])
+      const warningsUsed=Number(usedRows[0]?.used??0)
+      const [rows]=await database.execute<RowDataPacket[]>(`SELECT c.name,c.fine_amount,c.allowed_levels,c.is_active,
+        EXISTS(SELECT 1 FROM conduct_incidents i WHERE i.user_id=? AND i.category=c.name AND i.voided_at IS NULL) AS has_history
+        FROM violation_categories c ORDER BY c.sort_order,c.name`,[users[0].user_id])
+      const categories=rows
+        .filter(r=>{
+          if(r.has_history)return true
+          if(!r.is_active)return false
+          const allowed=parseAllowedLevels(r.allowed_levels)
+          return isFaculty||!studentLevel||allowed.includes(studentLevel)
+        })
+        .map(r=>({
+          category:String(r.name),
+          fineAmount:isFaculty?0:Number(r.fine_amount),
+          allowedLevels:parseAllowedLevels(r.allowed_levels),
+        }))
+      return {
+        role:String(users[0].user_role),
+        studentLevel,
+        warningsUsed,
+        warningsBeforeFine,
+        warningsLeft:Math.max(0,warningsBeforeFine-warningsUsed),
+        categories,
+      }
     },
     async record(actor: FineActor, body: unknown) {
       manager(actor);const actorId=account(actor);const input=conductInput(body);const b=body as Record<string,unknown>
@@ -97,7 +156,8 @@ export function createConductService(database: Pool = db) {
         if(saved[0]) {if(saved[0].payload_hash!==payloadHash) throw new HttpError(409,'CONDUCT_RETRY_CHANGED','This reference was used for different incident details. Review again.');await c.commit();return saved[0]}
         const preview=await prepare(c,input,true)
         if(!preview.categoryActive) throw new HttpError(422,'CONDUCT_CATEGORY_RETIRED','This violation category is retired. Choose an active category.')
-        // The token covers the person, history, threshold and fine amount, so a Library setup change while reviewing is caught here.
+        if(!preview.levelAllowed) throw new HttpError(422,'CONDUCT_CATEGORY_LEVEL',preview.levelReason ?? 'This violation category does not apply to this student’s year or grade level.')
+        // The token covers the person, level, shared history, threshold and fine amount, so a Library setup change while reviewing is caught here.
         if(preview.reviewToken!==b.reviewToken) throw new HttpError(409,'CONDUCT_STALE','The warning history, fine amount or violation rules changed. Review the current result and save again.')
         let fineId:number|null=null
         if(preview.action==='Fine') {
@@ -157,7 +217,8 @@ export function createConductService(database: Pool = db) {
         const [records]=await c.execute<RowDataPacket[]>('SELECT fine_id,voided_at FROM conduct_incidents WHERE incident_id=? FOR UPDATE',[incidentId])
         if(b.type==='Voided'){
           if(records[0].fine_id)throw new HttpError(409,'CONDUCT_FINE_VOID','Use the normal fine adjustment first. A linked financial record cannot be erased here. Record a correction instead.')
-          const [later]=await c.execute<RowDataPacket[]>('SELECT incident_id FROM conduct_incidents WHERE user_id=? AND category=(SELECT category FROM conduct_incidents WHERE incident_id=?) AND incident_id>? AND voided_at IS NULL LIMIT 1',[rows[0].user_id,incidentId,incidentId])
+          // Shared progression: any later incident for this person (in any category) depends on this warning.
+          const [later]=await c.execute<RowDataPacket[]>('SELECT incident_id FROM conduct_incidents WHERE user_id=? AND incident_id>? AND voided_at IS NULL LIMIT 1',[rows[0].user_id,incidentId])
           if(later[0])throw new HttpError(409,'CONDUCT_LATER_REVIEW','Later incidents depend on this warning. Record a correction and review those cases with the librarian before changing progression.')
           if(!records[0].voided_at)await c.execute('UPDATE conduct_incidents SET voided_at=NOW() WHERE incident_id=?',[incidentId])
         }

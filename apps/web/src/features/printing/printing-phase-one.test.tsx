@@ -43,22 +43,23 @@ it('takes photocopy originals without an upload and explains staff price confirm
  expect(await screen.findByText(/Staff will verify the pages/)).toBeTruthy()
  expect(screen.getByRole('button',{name:'Submit for page review'})).toBeTruthy()
 })
-it('schedule settings require review before saving and leave accepted bills unchanged',async()=>{
- const settings={version:1,imageFeeMono:0,imageFeeColor:0,scheduleEnabled:false,weekly:[],exceptions:[],availability:service}
- api.setup.mockResolvedValue(settings);api.saveSetup.mockResolvedValue({...settings,version:2,imageFeeMono:1.5})
+it('image-page settings require review before saving, omit schedule controls, and leave accepted bills unchanged',async()=>{
+ const settings={version:1,imageFeeMono:0,imageFeeColor:0,scheduleEnabled:true,weekly:[{day:1,opens:'07:00',closes:'17:00'}],exceptions:[],availability:service}
+ api.setup.mockResolvedValue(settings);api.saveSetup.mockResolvedValue({...settings,version:2,imageFeeMono:1.5,scheduleEnabled:false,weekly:[],exceptions:[]})
  render(<PrintingServiceSetup/>)
  await screen.findByRole('heading',{name:'Photocopy and online printing'})
- expect(screen.getByText(/Both services use the same schedule and image-page additions/)).toBeTruthy()
- expect(screen.getByRole('checkbox',{name:'Use one schedule for photocopy and online printing'})).toBeTruthy()
+ expect(screen.queryByRole('checkbox',{name:'Use one schedule for photocopy and online printing'})).toBeNull()
+ expect(screen.queryByText('Weekly opening times')).toBeNull()
+ expect(screen.queryByText('Date exceptions')).toBeNull()
  fireEvent.change(screen.getByLabelText('Monochrome image page (₱)'),{target:{value:'1.50'}})
  fireEvent.click(screen.getByRole('button',{name:'Review changes'}))
  expect(api.saveSetup).not.toHaveBeenCalled()
- expect(screen.getByText(/New photocopy and online printing requests will use/)).toBeTruthy()
  expect(screen.getByText(/Existing bills stay unchanged/)).toBeTruthy()
  fireEvent.click(screen.getByRole('button',{name:'Confirm and save'}))
- await screen.findByText(/Photocopy and online printing schedule and image-page additions saved/)
+ await screen.findByText(/Photocopy and online printing image-page additions saved/)
  expect(api.saveSetup.mock.calls[0][0].version).toBe(1)
  expect(api.saveSetup.mock.calls[0][0].imageFeeMono).toBe(1.5)
+ expect(api.saveSetup.mock.calls[0][0].scheduleEnabled).toBe(false)
 })
 it('staff must verify original pages and a review note before sending the final price',async()=>{
  const row={request_id:4,row_version:2,page_count:3,service_kind:'Photocopy',full_name:'QA Borrower'} as PrintRequest

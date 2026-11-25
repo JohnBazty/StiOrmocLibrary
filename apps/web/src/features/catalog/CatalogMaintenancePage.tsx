@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 import { confirmLeave } from '../../components/UnsavedChanges'
-import { Button, NoticeBanner, PageHeader, SectionCard } from '../../components/ui'
+import { Button, NoticeBanner, SectionCard } from '../../components/ui'
 import { CategoryManagementPage } from '../categories/CategoryManagementPage'
 import { AdminFinePoliciesPage } from '../fines/AdminFinePoliciesPage'
 import { UrgentAlertRules } from '../fines/UrgentAlertRules'
@@ -241,26 +241,44 @@ export function CatalogMaintenancePage() {
   }
 
   const isAcademicTab = (['programs', 'courses'] as string[]).includes(tab)
+  const activeSection = primarySetupSections.find(
+    (s) => s.key === tab || (s.key === 'programs' && isAcademicTab),
+  )
 
   return (
     <div className="space-y-5 text-slate-900 dark:text-slate-100">
-      <PageHeader
-        eyebrow="Library administration"
-        title="Library setup"
-        description="Configure shelves, reservation expiry, waitlist & renewal limits, fine rules, violation rules, academic groups, printing rates, and operating hours."
-        action={(
+      <header className="flex flex-col gap-4 rounded-[12px] border border-[var(--sl-border)] border-t-[3px] border-t-[#0b5ea2] bg-gradient-to-r from-[#f0f7ff] via-[var(--sl-bg-elevated)] to-[#fffdf0] p-5 shadow-[var(--sl-shadow-xs)] dark:from-[#16253b] dark:via-[#1a2232] dark:to-[#24251c] lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center rounded-full bg-[#0b5ea2]/14 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[#0b5ea2] dark:bg-[#0b5ea2]/25 dark:text-[#93c5fd]">
+              Library administration
+            </span>
+            {activeSection ? (
+              <span className="inline-flex items-center rounded-full bg-[#0f766e]/12 px-2.5 py-0.5 text-[11px] font-semibold text-[#0f766e] dark:bg-[#0f766e]/25 dark:text-[#5eead4]">
+                {activeSection.label}
+              </span>
+            ) : null}
+          </div>
+          <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-[var(--sl-text-header)] sm:text-[1.75rem]">
+            Library setup
+          </h1>
+          <p className="mt-1 text-sm text-[var(--sl-text-secondary)]">
+            Configure shelves, reservation expiry, waitlist &amp; renewal limits, fine rules, violation rules, academic groups, printing rates, and operating hours.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 lg:shrink-0">
           <Link
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[#0b5ea2]/25 bg-white px-4 text-sm font-bold text-[#0b5ea2] shadow-2xs transition hover:bg-[#0b5ea2]/5 dark:border-sky-400/30 dark:bg-slate-900 dark:text-sky-300"
+            className="inline-flex min-h-[40px] items-center gap-2 rounded-[8px] border border-[#0b5ea2]/30 bg-[var(--sl-bg-elevated)] px-4 text-sm font-bold text-[#0b5ea2] shadow-[var(--sl-shadow-xs)] transition hover:bg-[#0b5ea2]/8 dark:border-sky-400/30 dark:text-sky-300"
             to="/librarian/catalog"
           >
             <BookOpen size={16} /> Open catalog
           </Link>
-        )}
-      />
+        </div>
+      </header>
 
       <SectionCard className="p-4">
         <nav aria-label="Library setup sections" className="space-y-3">
-          <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {primarySetupSections.map(({ key, label, icon: Icon, hint }) => {
               const isActive = tab === key || (key === 'programs' && isAcademicTab)
               return (
@@ -268,17 +286,34 @@ export function CatalogMaintenancePage() {
                   key={key}
                   type="button"
                   onClick={() => openTab(key)}
-                  className={`flex flex-col items-start rounded-xl border p-3 text-left transition ${
+                  className={`group flex flex-col items-start rounded-[10px] border p-3.5 text-left transition-all ${
                     isActive
-                      ? 'border-[#0b5ea2] bg-[#0b5ea2] text-white shadow-sm'
-                      : 'border-slate-200/80 bg-slate-50/70 text-slate-800 hover:border-[#0b5ea2]/40 hover:bg-white dark:border-slate-700/60 dark:bg-slate-800/40 dark:text-slate-100'
+                      ? 'border-[#0b5ea2] bg-gradient-to-br from-[#132a3f] via-[#0b5ea2] to-[#0f766e] text-white shadow-[var(--sl-shadow-s)]'
+                      : 'border-[var(--sl-border)] bg-[var(--sl-bg-subtle)]/55 text-[var(--sl-text-header)] hover:-translate-y-0.5 hover:border-[#0b5ea2]/45 hover:bg-[var(--sl-bg-elevated)] hover:shadow-[var(--sl-shadow-xs)]'
                   }`}
                 >
-                  <span className="flex items-center gap-2 text-sm font-bold">
-                    <Icon size={16} className={isActive ? 'text-[#FFF200]' : 'text-[#0b5ea2] dark:text-sky-300'} />
-                    {label}
+                  <span className="flex w-full items-center justify-between gap-2 text-sm font-bold">
+                    <span className="flex items-center gap-2">
+                      <span
+                        className={`inline-flex rounded-[7px] p-1.5 ${
+                          isActive
+                            ? 'bg-white/15 text-[#FFF200]'
+                            : 'bg-[#0b5ea2]/10 text-[#0b5ea2] group-hover:bg-[#0b5ea2]/15 dark:bg-sky-400/15 dark:text-sky-300'
+                        }`}
+                      >
+                        <Icon size={15} />
+                      </span>
+                      {label}
+                    </span>
+                    {isActive ? (
+                      <span className="size-2 shrink-0 rounded-full bg-[#FFF200]" aria-hidden="true" />
+                    ) : null}
                   </span>
-                  <span className={`mt-1 text-[11px] leading-snug ${isActive ? 'text-white/85' : 'text-slate-500 dark:text-slate-400'}`}>
+                  <span
+                    className={`mt-1.5 text-[11px] leading-snug ${
+                      isActive ? 'text-white/85' : 'text-[var(--sl-text-muted)]'
+                    }`}
+                  >
                     {hint}
                   </span>
                 </button>

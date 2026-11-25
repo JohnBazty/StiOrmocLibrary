@@ -70,3 +70,18 @@ it('copies one day’s hours to Monday–Saturday and leaves Sunday alone', asyn
   expect(saved.weekly.filter(day => day.dayOfWeek <= 6).every(day => day.isOpen && day.opensAt === '08:30' && day.closesAt === '18:00')).toBe(true)
   expect(saved.weekly.find(day => day.dayOfWeek === 7)).toEqual(schedule.weekly[6])
 })
+
+it('supports selecting a 3-day closure and displays it grouped as a 3-day closure with reason', async () => {
+  await edit()
+  fireEvent.change(screen.getByLabelText('Closure date'), { target: { value: '2026-12-01' } })
+  fireEvent.change(screen.getByLabelText('End date (optional, for multi-day)'), { target: { value: '2026-12-03' } })
+  fireEvent.change(screen.getByLabelText('Closure reason'), { target: { value: 'Annual inventory' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Add 3-day closure' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Review schedule changes' }))
+  expect(screen.getByText('Dec 1, 2026 – Dec 3, 2026 (3 days)')).toBeTruthy()
+  expect(screen.getByText('Library closed for 3 days: Annual inventory')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm schedule changes' }))
+  await waitFor(() => expect(api.saveLibrarySchedule).toHaveBeenCalled())
+  const saved = api.saveLibrarySchedule.mock.calls[0][0] as typeof schedule
+  expect(saved.upcomingClosures.filter((c) => c.reason === 'Annual inventory').map((c) => c.date)).toEqual(['2026-12-01', '2026-12-02', '2026-12-03'])
+})

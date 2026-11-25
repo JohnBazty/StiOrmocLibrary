@@ -1,4 +1,4 @@
-import { CalendarDays, CheckCircle2, Clock } from 'lucide-react'
+import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock } from 'lucide-react'
 import { useState } from 'react'
 import { Button, SectionCard } from '../../components/ui'
 import { UnsavedGuard } from '../../components/UnsavedChanges'
@@ -8,10 +8,172 @@ import type { ManagedLibrarySchedule } from './types'
 import { RefreshButton } from '../../components/RefreshButton'
 
 const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+const calendarDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const field =
   'mt-1 min-h-[38px] w-full rounded-[6px] border border-[var(--sl-border-strong)] bg-[var(--sl-bg-elevated)] px-3 py-1.5 text-sm text-[var(--sl-text)] outline-none focus:border-[#0b5ea2] focus:ring-3 focus:ring-[#0b5ea2]/15'
 
 const today = () => new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10)
+
+function toIsoDate(year: number, monthIndex: number, day: number): string {
+  return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+function addDaysIso(iso: string, delta: number): string {
+  const parsed = new Date(`${iso}T12:00:00+08:00`)
+  parsed.setUTCDate(parsed.getUTCDate() + delta)
+  return parsed.toISOString().slice(0, 10)
+}
+
+function expandDateRange(start: string, end: string): string[] {
+  if (!start) return []
+  if (!end || end === start) return [start]
+  const [from, to] = start <= end ? [start, end] : [end, start]
+  const dates: string[] = []
+  let cursor = from
+  // Guard against overly large accidental ranges (max 90 days per add).
+  for (let i = 0; i < 90 && cursor <= to; i++) {
+    dates.push(cursor)
+    cursor = addDaysIso(cursor, 1)
+  }
+  return dates
+}
+
+type ClosureItem = ManagedLibrarySchedule['upcomingClosures'][number]
+type ClosureGroup = {
+  startDate: string
+  endDate: string
+  dates: string[]
+  reason: string
+  startsAt?: string | null
+  endsAt?: string | null
+}
+
+/** Groups consecutive closure dates that share the same reason and hours into one readable multi-day entry. */
+export function groupConsecutiveClosures(closures: ClosureItem[]): ClosureGroup[] {
+  const sorted = [...closures].sort((a, b) => a.date.localeCompare(b.date))
+  const groups: ClosureGroup[] = []
+  for (const item of sorted) {
+    const prev = groups[groups.length - 1]
+    const samePolicy =
+      prev &&
+      prev.reason.trim() === item.reason.trim() &&
+      (prev.startsAt ?? '') === (item.startsAt ?? '') &&
+      (prev.endsAt ?? '') === (item.endsAt ?? '') &&
+      addDaysIso(prev.endDate, 1) === item.date
+    if (samePolicy) {
+      prev.endDate = item.date
+      prev.dates.push(item.date)
+    } else {
+      groups.push({
+        startDate: item.date,
+        endDate: item.date,
+        dates: [item.date],
+        reason: item.reason,
+        startsAt: item.startsAt,
+        endsAt: item.endsAt,
+      })
+    }
+  }
+  return groups
+}
+
+function formatClosureRange(startDate: string, endDate: string, count: number): string {
+  if (count <= 1 || startDate === endDate) return formatPhDate(startDate)
+  return `${formatPhDate(startDate, 'medium')} – ${formatPhDate(endDate, 'medium')} (${count} days)`
+}
+
+function ClosureMultiCalendar({
+  selectedDates,
+  existingDates,
+  minDate,
+  onToggleDate,
+}: {
+  selectedDates: string[]
+  existingDates: Set<string>
+  minDate: string
+  onToggleDate: (iso: string) => void
+}) {
+  const initial = new Date(`${minDate}T12:00:00+08:00`)
+  const [viewYear, setViewYear] = useState(initial.getUTCFullYear())
+  const [viewMonth, setViewMonth] = useState(initial.getUTCMonth())
+
+  const firstOfMonth = new Date(Date.UTC(viewYear, viewMonth, 1, 4, 0, 0))
+  const startWeekday = firstOfMonth.getUTCDay()
+  const daysInMonth = new Date(Date.UTC(viewYear, viewMonth + 1, 0, 4, 0, 0)).getUTCDate()
+  const monthLabel = new Intl.DateTimeFormat('en-PH', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(firstOfMonth)
+  const selectedSet = new Set(selectedDates)
+
+  function shiftMonth(delta: number) {
+    const next = new Date(Date.UTC(viewYear, viewMonth + delta, 1, 4, 0, 0))
+    setViewYear(next.getUTCFullYear())
+    setViewMonth(next.getUTCMonth())
+  }
+
+  return (
+    <div className="rounded-[8px] border border-[var(--sl-border)] bg-[var(--sl-bg-elevated)] p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          aria-label="Previous month"
+          onClick={() => shiftMonth(-1)}
+          className="inline-flex size-8 items-center justify-center rounded-[6px] border border-[var(--sl-border)] text-[var(--sl-text-secondary)] hover:bg-[var(--sl-bg-subtle)]"
+        >
+          <ChevronLeft size={16} aria-hidden="true" />
+        </button>
+        <p className="text-sm font-semibold text-[var(--sl-text-header)]">{monthLabel}</p>
+        <button
+          type="button"
+          aria-label="Next month"
+          onClick={() => shiftMonth(1)}
+          className="inline-flex size-8 items-center justify-center rounded-[6px] border border-[var(--sl-border)] text-[var(--sl-text-secondary)] hover:bg-[var(--sl-bg-subtle)]"
+        >
+          <ChevronRight size={16} aria-hidden="true" />
+        </button>
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold text-[var(--sl-text-muted)]">
+        {calendarDays.map((day) => (
+          <div key={day} className="py-1">{day}</div>
+        ))}
+      </div>
+      <div className="mt-1 grid grid-cols-7 gap-1" role="grid" aria-label={`Select closure days in ${monthLabel}`}>
+        {Array.from({ length: startWeekday }).map((_, index) => (
+          <div key={`pad-${index}`} />
+        ))}
+        {Array.from({ length: daysInMonth }, (_, index) => {
+          const dayNum = index + 1
+          const iso = toIsoDate(viewYear, viewMonth, dayNum)
+          const isPast = iso < minDate
+          const isExisting = existingDates.has(iso)
+          const isSelected = selectedSet.has(iso)
+          return (
+            <button
+              key={iso}
+              type="button"
+              disabled={isPast || isExisting}
+              aria-pressed={isSelected}
+              aria-label={`${formatPhDate(iso, 'medium')}${isExisting ? ' (already closed)' : isSelected ? ' (selected)' : ''}`}
+              onClick={() => onToggleDate(iso)}
+              className={`min-h-8 rounded-[6px] text-xs font-medium tabular-nums transition-colors ${
+                isSelected
+                  ? 'bg-[#0b5ea2] font-bold text-white shadow-xs'
+                  : isExisting
+                    ? 'cursor-not-allowed bg-[#fee2e2] text-[#b42318] line-through opacity-80 dark:bg-[#991b1b]/35 dark:text-[#fca5a5]'
+                    : isPast
+                      ? 'cursor-not-allowed text-[var(--sl-text-muted)] opacity-40'
+                      : 'text-[var(--sl-text)] hover:bg-[#0b5ea2]/12'
+              }`}
+            >
+              {dayNum}
+            </button>
+          )
+        })}
+      </div>
+      <p className="mt-2 text-[11px] text-[var(--sl-text-muted)]">
+        Click any dates to select or unselect multiple closure days (e.g. pick 3 days for a 3-day closure).
+      </p>
+    </div>
+  )
+}
 
 function currentManilaDayOfWeek(): number {
   const short = new Intl.DateTimeFormat('en-US', {
@@ -130,24 +292,26 @@ function ScheduleDetails({ data }: { data: ManagedLibrarySchedule }) {
 
         {hasClosures ? (
           <ul className="mt-3.5 space-y-2.5">
-            {data.upcomingClosures.map((closure) => (
+            {groupConsecutiveClosures(data.upcomingClosures).map((group) => (
               <li
-                key={closure.date}
+                key={group.startDate}
                 className="rounded-[10px] border border-[#dc2626]/20 bg-[#fef2f2]/60 p-3.5 dark:border-[#dc2626]/30 dark:bg-[#991b1b]/15"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <strong className="text-sm font-semibold text-[var(--sl-text-header)]">
-                    {formatPhDate(closure.date)}
+                    {formatClosureRange(group.startDate, group.endDate, group.dates.length)}
                   </strong>
                   <span className="inline-flex items-center gap-1 rounded-full bg-[#fee2e2] px-2.5 py-0.5 text-xs font-semibold tabular-nums text-[#b42318] dark:bg-[#991b1b]/40 dark:text-[#fca5a5]">
                     <Clock size={11} />
-                    {closure.startsAt && closure.endsAt
-                      ? `${formatManilaTime12(closure.startsAt)} – ${formatManilaTime12(closure.endsAt)}`
+                    {group.startsAt && group.endsAt
+                      ? `${formatManilaTime12(group.startsAt)} – ${formatManilaTime12(group.endsAt)}`
                       : 'All day'}
                   </span>
                 </div>
                 <p className="mt-1.5 break-words text-sm text-[var(--sl-text-secondary)]">
-                  {closure.reason}
+                  {group.dates.length > 1
+                    ? `Library closed for ${group.dates.length} days: ${group.reason}`
+                    : group.reason}
                 </p>
               </li>
             ))}
@@ -174,33 +338,64 @@ export function LibrarySchedulePage({ manage = false, embedded = false }: { mana
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [closureDate, setClosureDate] = useState('')
+  const [closureEndDate, setClosureEndDate] = useState('')
+  const [selectedDates, setSelectedDates] = useState<string[]>([])
   const [closureAllDay, setClosureAllDay] = useState(true)
   const [closureStart, setClosureStart] = useState('08:00')
   const [closureEnd, setClosureEnd] = useState('17:00')
   const [closureReason, setClosureReason] = useState('')
 
+  function toggleCalendarDate(iso: string) {
+    setSelectedDates((prev) =>
+      prev.includes(iso) ? prev.filter((item) => item !== iso) : [...prev, iso].sort(),
+    )
+    setError('')
+  }
+
+  function effectiveNewClosureDates(): string[] {
+    if (selectedDates.length > 0) return [...selectedDates].sort()
+    if (!closureDate) return []
+    return expandDateRange(closureDate, closureEndDate || closureDate)
+  }
+
   function addClosure() {
     if (!draft) return
-    if (!closureDate || closureDate < today() || !closureReason.trim()) {
-      setError('Choose a date today or later and enter a closure reason.')
+    const datesToAdd = effectiveNewClosureDates()
+    if (!datesToAdd.length || datesToAdd.some((d) => d < today()) || !closureReason.trim()) {
+      setError('Select one or more dates today or later and enter a closure reason.')
+      return
+    }
+    if (closureDate && closureEndDate && closureEndDate < closureDate) {
+      setError('Closure end date must be on or after the start date.')
       return
     }
     if (!closureAllDay && (!closureStart || !closureEnd || closureEnd <= closureStart)) {
       setError('Closure end time must be after the closure start time.')
       return
     }
-    if (draft.upcomingClosures.some((closure) => closure.date === closureDate)) {
-      setError('That date already has a closure. Edit its reason or hours below.')
+    const existing = new Set(draft.upcomingClosures.map((closure) => closure.date))
+    const duplicates = datesToAdd.filter((d) => existing.has(d))
+    if (duplicates.length > 0) {
+      setError(
+        duplicates.length === 1
+          ? `${formatPhDate(duplicates[0], 'medium')} already has a closure. Edit its reason or hours below.`
+          : `Some selected dates already have a closure (${duplicates.map((d) => formatPhDate(d, 'medium')).join(', ')}).`,
+      )
       return
     }
-    const nextEntry = closureAllDay
-      ? { date: closureDate, reason: closureReason.trim() }
-      : { date: closureDate, reason: closureReason.trim(), startsAt: closureStart, endsAt: closureEnd }
+    const reasonText = closureReason.trim()
+    const newEntries = datesToAdd.map((date) =>
+      closureAllDay
+        ? { date, reason: reasonText }
+        : { date, reason: reasonText, startsAt: closureStart, endsAt: closureEnd },
+    )
     setDraft({
       ...draft,
-      upcomingClosures: [...draft.upcomingClosures, nextEntry].sort((a, b) => a.date.localeCompare(b.date)),
+      upcomingClosures: [...draft.upcomingClosures, ...newEntries].sort((a, b) => a.date.localeCompare(b.date)),
     })
     setClosureDate('')
+    setClosureEndDate('')
+    setSelectedDates([])
     setClosureAllDay(true)
     setClosureStart('08:00')
     setClosureEnd('17:00')
@@ -210,7 +405,7 @@ export function LibrarySchedulePage({ manage = false, embedded = false }: { mana
 
   function reviewChanges() {
     if (!draft) return
-    if (closureDate || closureReason.trim()) {
+    if (closureDate || closureEndDate || selectedDates.length > 0 || closureReason.trim()) {
       setError('Add the closure to the list or clear its fields before reviewing.')
       return
     }
@@ -575,7 +770,7 @@ export function LibrarySchedulePage({ manage = false, embedded = false }: { mana
                   {/* Add new closure form */}
                   <div className="space-y-3 rounded-[8px] border border-dashed border-[var(--sl-border-strong)] p-3.5">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs font-semibold text-[var(--sl-text-header)]">Add a new closure</p>
+                      <p className="text-xs font-semibold text-[var(--sl-text-header)]">Add a new closure (single day or multiple days)</p>
                       <label className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--sl-text-secondary)]">
                         <input
                           type="checkbox"
@@ -585,56 +780,94 @@ export function LibrarySchedulePage({ manage = false, embedded = false }: { mana
                         All-day closure
                       </label>
                     </div>
-                    <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                      <label className="text-xs font-semibold text-[var(--sl-text-secondary)]">
-                        Closure date
-                        <input
-                          type="date"
-                          min={today()}
-                          className={field}
-                          value={closureDate}
-                          onChange={(event) => setClosureDate(event.target.value)}
-                        />
-                      </label>
-                      {!closureAllDay ? (
-                        <>
-                          <label className="text-xs font-semibold text-[var(--sl-text-secondary)]">
-                            Closure starts
-                            <input
-                              type="time"
-                              className={field}
-                              value={closureStart}
-                              onChange={(event) => setClosureStart(event.target.value)}
-                            />
-                          </label>
-                          <label className="text-xs font-semibold text-[var(--sl-text-secondary)]">
-                            Closure ends
-                            <input
-                              type="time"
-                              className={field}
-                              value={closureEnd}
-                              onChange={(event) => setClosureEnd(event.target.value)}
-                            />
-                          </label>
-                        </>
-                      ) : null}
-                      <label
-                        className={`text-xs font-semibold text-[var(--sl-text-secondary)] ${
-                          closureAllDay ? 'sm:col-span-2' : 'sm:col-span-2 lg:col-span-3'
-                        }`}
-                      >
-                        Closure reason
-                        <input
-                          className={field}
-                          maxLength={170}
-                          placeholder="e.g., Campus holiday, library maintenance, inventory"
-                          value={closureReason}
-                          onChange={(event) => setClosureReason(event.target.value)}
-                        />
-                      </label>
-                      <Button variant="secondary" onClick={addClosure}>
-                        Add closure
-                      </Button>
+                    <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
+                      <ClosureMultiCalendar
+                        selectedDates={selectedDates}
+                        existingDates={new Set(draft.upcomingClosures.map((c) => c.date))}
+                        minDate={today()}
+                        onToggleDate={toggleCalendarDate}
+                      />
+                      <div className="space-y-3">
+                        {selectedDates.length > 0 ? (
+                          <div className="rounded-[8px] border border-[#0b5ea2]/25 bg-[#f0f7ff] p-2.5 text-xs text-[var(--sl-text-header)] dark:bg-[#0b5ea2]/15">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <strong>{selectedDates.length} {selectedDates.length === 1 ? 'day' : 'days'} selected:</strong>
+                              <button
+                                type="button"
+                                className="font-semibold text-[#0b5ea2] underline dark:text-[#93c5fd]"
+                                onClick={() => setSelectedDates([])}
+                              >
+                                Clear selection
+                              </button>
+                            </div>
+                            <p className="mt-1 text-[var(--sl-text-secondary)]">
+                              {selectedDates.map((d) => formatPhDate(d, 'medium')).join(', ')}
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <label className="text-xs font-semibold text-[var(--sl-text-secondary)]">
+                              Closure date
+                              <input
+                                type="date"
+                                min={today()}
+                                className={field}
+                                value={closureDate}
+                                onChange={(event) => setClosureDate(event.target.value)}
+                              />
+                            </label>
+                            <label className="text-xs font-semibold text-[var(--sl-text-secondary)]">
+                              End date (optional, for multi-day)
+                              <input
+                                type="date"
+                                min={closureDate || today()}
+                                className={field}
+                                value={closureEndDate}
+                                onChange={(event) => setClosureEndDate(event.target.value)}
+                              />
+                            </label>
+                          </div>
+                        )}
+                        {!closureAllDay ? (
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <label className="text-xs font-semibold text-[var(--sl-text-secondary)]">
+                              Closure starts
+                              <input
+                                type="time"
+                                className={field}
+                                value={closureStart}
+                                onChange={(event) => setClosureStart(event.target.value)}
+                              />
+                            </label>
+                            <label className="text-xs font-semibold text-[var(--sl-text-secondary)]">
+                              Closure ends
+                              <input
+                                type="time"
+                                className={field}
+                                value={closureEnd}
+                                onChange={(event) => setClosureEnd(event.target.value)}
+                              />
+                            </label>
+                          </div>
+                        ) : null}
+                        <label className="block text-xs font-semibold text-[var(--sl-text-secondary)]">
+                          Closure reason
+                          <input
+                            className={field}
+                            maxLength={170}
+                            placeholder="e.g., Campus holiday, library maintenance, inventory"
+                            value={closureReason}
+                            onChange={(event) => setClosureReason(event.target.value)}
+                          />
+                        </label>
+                        <div>
+                          <Button variant="secondary" onClick={addClosure}>
+                            {effectiveNewClosureDates().length > 1
+                              ? `Add ${effectiveNewClosureDates().length}-day closure`
+                              : 'Add closure'}
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </fieldset>
@@ -648,6 +881,8 @@ export function LibrarySchedulePage({ manage = false, embedded = false }: { mana
                       setDraft(null)
                       setReview(false)
                       setClosureDate('')
+                      setClosureEndDate('')
+                      setSelectedDates([])
                       setClosureAllDay(true)
                       setClosureStart('08:00')
                       setClosureEnd('17:00')

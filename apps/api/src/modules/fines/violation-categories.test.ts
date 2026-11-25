@@ -29,16 +29,26 @@ function fieldError(fn: () => unknown, field: string) {
 
 test('validation accepts a complete category and normalises text and money', () => {
   assert.deepEqual(validateViolationCategory({ ...valid, name: '  Damaging   furniture ' }), {
-    name: 'Damaging furniture', description: 'Writing on or breaking library furniture.', warningsBeforeFine: 1, fineAmount: 75.5,
+    name: 'Damaging furniture',
+    description: 'Writing on or breaking library furniture.',
+    warningsBeforeFine: 1,
+    fineAmount: 75.5,
+    allowedLevels: ['Grade 11', 'Grade 12', '1st Year', '2nd Year', '3rd Year', '4th Year'],
   })
   assert.equal(validateViolationCategory({ ...valid, description: '' }).description, null)
+  assert.deepEqual(validateViolationCategory({ name: 'Late id', fineAmount: '25', allowedLevels: ['1st Year', 'Grade 11'] }), {
+    name: 'Late id',
+    description: null,
+    fineAmount: 25,
+    allowedLevels: ['Grade 11', '1st Year'],
+  })
 })
 
 test('validation rejects bad names, warning counts, amounts and flags', () => {
   fieldError(() => validateViolationCategory({ ...valid, name: 'x' }), 'name')
   fieldError(() => validateViolationCategory({ ...valid, name: 'x'.repeat(81) }), 'name')
   fieldError(() => validateViolationCategory({ ...valid, description: 'x'.repeat(301) }), 'description')
-  for (const warningsBeforeFine of [-1, 4, 1.5, 'two', null]) fieldError(() => validateViolationCategory({ ...valid, warningsBeforeFine }), 'warningsBeforeFine')
+  for (const warningsBeforeFine of [-1, 100, 1.5, 'two', null]) fieldError(() => validateViolationCategory({ ...valid, warningsBeforeFine }), 'warningsBeforeFine')
   for (const fineAmount of [0, -5, '1.234', 'abc', 1_000_000, null, '']) fieldError(() => validateViolationCategory({ ...valid, fineAmount }), 'fineAmount')
   fieldError(() => validateViolationCategory({ ...valid, isActive: 'yes' }, true), 'isActive')
   for (const name of ['Noise::Loud', '__earlier', '__EARLIER']) fieldError(() => validateViolationCategory({ ...valid, name }), 'name')
@@ -187,6 +197,11 @@ test('the highest allowed fine is a setting: custom limit in validation, stale a
     assert.equal((await service.getSettings()).maxFine, 10_000)
     const notes = (await pg.query<{ message_title: string }>("SELECT message_title FROM admin_notifications WHERE message_title='Highest violation fine changed'")).rows
     assert.equal(notes.length, 1)
+    const rules = await service.saveSettings(1, { warningsBeforeFine: 5, levelWarnings: { '1st Year': 10, 'Grade 11': 2 }, updatedAt: raised.updatedAt })
+    assert.equal(rules.warningsBeforeFine, 5)
+    assert.deepEqual(rules.levelWarnings, { '1st Year': 10, 'Grade 11': 2 })
+    await assert.rejects(service.saveSettings(1, { warningsBeforeFine: 100, updatedAt: rules.updatedAt }), { status: 422 })
+    await assert.rejects(service.saveSettings(1, { levelWarnings: { '5th Year': 1 }, updatedAt: rules.updatedAt }), { status: 422 })
   } finally { await resetConductTestDb(pg) }
 })
 

@@ -1,38 +1,46 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ViolationRulesPanel } from './ViolationRulesPanel'
-import { describeCategory, ViolationCategoryError, violationCategoriesApi, type ViolationCategory } from './violation-categories-api'
+import { describeAllowedLevels, describeSharedWarningRule, STUDENT_LEVELS, ViolationCategoryError, violationCategoriesApi, type ViolationCategory } from './violation-categories-api'
 
 vi.mock('./violation-categories-api', async original => ({
   ...(await original<typeof import('./violation-categories-api')>()),
   violationCategoriesApi: { list: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), getSettings: vi.fn(), saveSettings: vi.fn() },
 }))
 afterEach(() => { cleanup(); vi.clearAllMocks() })
-beforeEach(() => { vi.mocked(violationCategoriesApi.getSettings).mockResolvedValue({ maxFine: 9999.99, updatedAt: 's1' }) })
-
-const noise: ViolationCategory = { categoryId: 1, name: 'Noise', description: 'Loud talking', warningsBeforeFine: 2, fineAmount: 50, isActive: true, sortOrder: 1, used: true, updatedAt: 'v-noise' }
-const food: ViolationCategory = { categoryId: 2, name: 'Eating or food', description: null, warningsBeforeFine: 1, fineAmount: 75.5, isActive: false, sortOrder: 2, used: false, updatedAt: 'v-food' }
-const api = vi.mocked(violationCategoriesApi)
-
-it('describes each rule in plain words', () => {
-  expect(describeCategory(noise)).toBe('2 warnings, then PHP 50.00 on the 3rd offense.')
-  expect(describeCategory({ warningsBeforeFine: 1, fineAmount: 20 })).toBe('1 warning, then PHP 20.00 on the 2nd offense.')
-  expect(describeCategory({ warningsBeforeFine: 0, fineAmount: 20 })).toBe('No warnings. PHP 20.00 on the 1st offense.')
+beforeEach(() => {
+  vi.mocked(violationCategoriesApi.getSettings).mockResolvedValue({ maxFine: 9999.99, warningsBeforeFine: 2, levelWarnings: {}, updatedAt: 's1' })
 })
 
-it('shows one table of categories with status text and a single primary action', async () => {
+const allLevels = [...STUDENT_LEVELS]
+const noise: ViolationCategory = { categoryId: 1, name: 'Noise', description: 'Loud talking', warningsBeforeFine: 2, fineAmount: 50, allowedLevels: allLevels, isActive: true, sortOrder: 1, used: true, updatedAt: 'v-noise' }
+const food: ViolationCategory = { categoryId: 2, name: 'Eating or food', description: null, warningsBeforeFine: 2, fineAmount: 75.5, allowedLevels: ['Grade 11', '1st Year'], isActive: false, sortOrder: 2, used: false, updatedAt: 'v-food' }
+const api = vi.mocked(violationCategoriesApi)
+
+it('describes shared warning rules and allowed levels in plain words', () => {
+  expect(describeSharedWarningRule({ warningsBeforeFine: 2, levelWarnings: {} })).toBe('2 warnings across all violations — fine starts on the 3rd offense. Applies to all year & grade levels.')
+  expect(describeSharedWarningRule({ warningsBeforeFine: 1, levelWarnings: { '1st Year': 2, 'Grade 11': 0 } })).toBe('1 warning across all violations — fine starts on the 2nd offense. Custom limits: Grade 11: 0 · 1st Year: 2.')
+  expect(describeSharedWarningRule({ warningsBeforeFine: 0, levelWarnings: {} })).toBe('0 warnings across all violations — fine starts on the 1st offense. Applies to all year & grade levels.')
+  expect(describeAllowedLevels(allLevels)).toBe('All levels')
+  expect(describeAllowedLevels(['Grade 11', '1st Year'])).toBe('Grade 11, 1st Year')
+})
+
+it('shows shared warning rule bar and one table of categories with Applies to and Fine amount', async () => {
   api.list.mockResolvedValue([noise, food])
   render(<ViolationRulesPanel />)
   const table = await screen.findByRole('table', { name: /Violation categories/ })
+  expect(screen.getByText('Shared warnings before fine')).toBeTruthy()
+  expect(screen.getByText(/2 warnings across all violations/)).toBeTruthy()
   expect(within(table).getByText('Noise')).toBeTruthy()
-  expect(within(table).getByText('2 warnings, then PHP 50.00 on the 3rd offense.')).toBeTruthy()
+  expect(within(table).getByText('All levels')).toBeTruthy()
+  expect(within(table).getByText('Grade 11, 1st Year')).toBeTruthy()
   expect(within(table).getByText('Retired')).toBeTruthy()
   expect(screen.getAllByRole('button', { name: 'Add category' })).toHaveLength(1)
 })
 
-it('blocks a bad new category with inline messages, then saves a valid one', async () => {
+it('blocks a bad new category with inline messages, then saves a valid one with chosen levels', async () => {
   api.list.mockResolvedValue([noise])
-  api.create.mockResolvedValue({ ...noise, categoryId: 3, name: 'Phone use', used: false })
+  api.create.mockResolvedValue({ ...noise, categoryId: 3, name: 'Phone use', allowedLevels: ['1st Year', 'Grade 11'], used: false })
   render(<ViolationRulesPanel />)
   await screen.findByText('Noise')
   fireEvent.click(screen.getByRole('button', { name: 'Add category' }))
@@ -43,12 +51,44 @@ it('blocks a bad new category with inline messages, then saves a valid one', asy
   expect(api.create).not.toHaveBeenCalled()
 
   fireEvent.change(within(dialog).getByLabelText('Category name'), { target: { value: 'Phone use' } })
-  fireEvent.change(within(dialog).getByLabelText('Warnings before the fine'), { target: { value: '1' } })
   fireEvent.change(within(dialog).getByLabelText('Fine amount (PHP)'), { target: { value: '25' } })
+  fireEvent.click(within(dialog).getByLabelText('All year & grade levels'))
+  for (const level of ['Grade 12', '2nd Year', '3rd Year', '4th Year']) {
+    fireEvent.click(within(dialog).getByLabelText(level))
+  }
   fireEvent.click(within(dialog).getByRole('button', { name: 'Save category' }))
-  await waitFor(() => expect(api.create).toHaveBeenCalledWith({ name: 'Phone use', description: '', warningsBeforeFine: 1, fineAmount: '25' }))
+  await waitFor(() => expect(api.create).toHaveBeenCalledWith({
+    name: 'Phone use',
+    description: '',
+    fineAmount: '25',
+    allowedLevels: ['Grade 11', '1st Year'],
+  }))
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   expect(api.list).toHaveBeenCalledTimes(2)
+})
+
+it('lets the librarian customize shared warning limits by year and grade level with numeric inputs above 3', async () => {
+  api.list.mockResolvedValue([noise])
+  api.saveSettings.mockResolvedValue({ maxFine: 9999.99, warningsBeforeFine: 5, levelWarnings: { '1st Year': 10, 'Grade 11': 4 }, updatedAt: 's2' })
+  render(<ViolationRulesPanel />)
+  await screen.findByText('Noise')
+  fireEvent.click(screen.getByRole('button', { name: 'Change warning rules' }))
+  const dialog = screen.getByRole('dialog', { name: 'Shared warning rules' })
+  fireEvent.change(within(dialog).getByLabelText('Default warnings before fine'), { target: { value: '5' } })
+  fireEvent.click(within(dialog).getByLabelText('Customize by year / grade level'))
+  fireEvent.change(within(dialog).getByLabelText('Grade 11'), { target: { value: '4' } })
+  fireEvent.change(within(dialog).getByLabelText('1st Year'), { target: { value: '10' } })
+  fireEvent.change(within(dialog).getByLabelText('Grade 12'), { target: { value: '5' } })
+  fireEvent.change(within(dialog).getByLabelText('2nd Year'), { target: { value: '5' } })
+  fireEvent.change(within(dialog).getByLabelText('3rd Year'), { target: { value: '5' } })
+  fireEvent.change(within(dialog).getByLabelText('4th Year'), { target: { value: '5' } })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Save warning rules' }))
+  await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith({
+    warningsBeforeFine: 5,
+    levelWarnings: { 'Grade 11': 4, '1st Year': 10 },
+    updatedAt: 's1',
+  }))
+  expect(await screen.findByText(/Custom limits: Grade 11: 4 · 1st Year: 10/)).toBeTruthy()
 })
 
 it('shows a server error beside the field it belongs to', async () => {
@@ -109,12 +149,12 @@ it('limits the fine to four digits, before saving', async () => {
   expect(api.create).not.toHaveBeenCalled()
   fireEvent.change(within(dialog).getByLabelText('Fine amount (PHP)'), { target: { value: '9999.99' } })
   fireEvent.click(within(dialog).getByRole('button', { name: 'Save category' }))
-  await waitFor(() => expect(api.create).toHaveBeenCalledWith({ name: 'Phone use', description: '', warningsBeforeFine: 2, fineAmount: '9999.99' }))
+  await waitFor(() => expect(api.create).toHaveBeenCalledWith({ name: 'Phone use', description: '', fineAmount: '9999.99', allowedLevels: allLevels }))
 })
 
 it('lets the library change the highest fine, and the category form follows the new limit', async () => {
   api.list.mockResolvedValue([noise])
-  api.saveSettings.mockResolvedValue({ maxFine: 10000, updatedAt: 's2' })
+  api.saveSettings.mockResolvedValue({ maxFine: 10000, warningsBeforeFine: 2, levelWarnings: {}, updatedAt: 's2' })
   api.create.mockResolvedValue({ ...noise, categoryId: 3, name: 'Theft', used: false })
   render(<ViolationRulesPanel />)
   await screen.findByText('Noise')
@@ -139,7 +179,7 @@ it('lets the library change the highest fine, and the category form follows the 
   fireEvent.change(within(add).getByLabelText('Category name'), { target: { value: 'Theft' } })
   fireEvent.change(within(add).getByLabelText('Fine amount (PHP)'), { target: { value: '10000' } })
   fireEvent.click(within(add).getByRole('button', { name: 'Save category' }))
-  await waitFor(() => expect(api.create).toHaveBeenCalledWith({ name: 'Theft', description: '', warningsBeforeFine: 2, fineAmount: '10000' }))
+  await waitFor(() => expect(api.create).toHaveBeenCalledWith({ name: 'Theft', description: '', fineAmount: '10000', allowedLevels: allLevels }))
 })
 
 it('shows the server reason when the limit cannot go that low', async () => {

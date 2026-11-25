@@ -92,7 +92,6 @@ export function createPaperSizesService(database:Pool=db) {
         const [rows]=await q.execute<RowDataPacket[]>('SELECT * FROM bond_paper_stocks WHERE paper_stock_id=? FOR UPDATE',[id]),before=rows[0]
         if(!before)throw new HttpError(404,'PAPER_STOCK_NOT_FOUND','The paper size was not found.')
         if(before.deleted_at){await q.commit();return {deleted:true}}
-        if(Number(before.unopened_reams)!==0||Number(before.remaining_reams)!==0)throw new HttpError(409,'PAPER_HAS_STOCK','Use or correct the remaining stock before deleting this paper size.')
         if(Number(before.configuration_version)!==Number(version))throw conflict()
         await q.execute('UPDATE bond_paper_stocks SET deleted_at=NOW(),is_active=FALSE,configuration_version=configuration_version+1,updated_at=NOW() WHERE paper_stock_id=?',[id])
         await q.execute('UPDATE print_pricing_rules SET is_active=0,updated_at=NOW() WHERE paper_size=?',[before.paper_size_dimension])

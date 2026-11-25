@@ -109,7 +109,8 @@ test('Postgres paper setup, prices, restock replay protection and audit preserve
     const brands=(await pg.query<{brand:string;unopened_reams:number;average_expense_cost:string}>('SELECT brand,unopened_reams,average_expense_cost FROM paper_brand_stocks WHERE paper_stock_id=$1 ORDER BY brand',[legal])).rows
     assert.deepEqual(brands.map(b=>[b.brand,b.unopened_reams,Number(b.average_expense_cost)]),[['Brand One',2,100],['Brand Two',3,200]])
     assert.equal(Number((await service.list(actor)).find(s=>Number(s.paper_stock_id)===legal)!.unopened_reams),5)
-    await assert.rejects(service.remove(actor,legal,2),{code:'PAPER_HAS_STOCK'})
+    // Stale version is still refused on delete; stock count no longer blocks deletion since Print supplies is disregarded.
+    await assert.rejects(service.remove(actor,legal,999),{code:'PAPER_SIZE_CHANGED'})
     await assert.rejects(service.addStock(actor,legal,{...purchase,client_request_id:randomUUID()}),{code:'PAPER_SIZE_CHANGED'})
     assert.equal(Number((await service.list(actor)).find(s=>Number(s.paper_stock_id)===legal)!.unopened_reams),5,'stale configuration rolls back the stock addition')
     await service.saveDefinition(actor,legal,{configuration_version:2,width:'216',height:'356'})

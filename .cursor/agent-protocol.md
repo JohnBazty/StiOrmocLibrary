@@ -104,9 +104,9 @@ Always know and document:
 | Item | Value |
 | --- | --- |
 | Migrations directory | `database/supabase/` (Postgres only; MySQL was retired 2026-11-10) |
-| Latest applied migration | `086_printing_bucket_and_payment_method.sql` (2026-11-20; Phases 1–3 migrations `078`–`086` applied cleanly to live Supabase) |
-| Latest file pending review | None (`078`–`086` applied; pre-PR security/DB reviews pending) |
-| **Next available number** | **`087`** (`078`–`086` applied 2026-11-20) |
+| Latest applied migration | `087_shared_violation_warning_rules.sql` (2026-11-25, applied cleanly to live Supabase) |
+| Latest file pending review | `088_violation_warnings_any_number.sql` (2026-11-25, on `feat/shared-violation-warning-rules`, pending live apply) |
+| **Next available number** | **`089`** (`088` written 2026-11-25, pending apply) |
 
 Applied enrollment 031 supersedes the removed 028 draft. Keep applied filenames and source bytes, including line endings. The 003 source still needs checksum reconciliation. Apply reviewed individual files with `npm run db:supabase -w @sti-library/api -- filename.sql` when `DATABASE_URL` is set.
 

@@ -89,7 +89,7 @@ it('separates Student and Faculty tabs in the policy editor and publishes facult
   const form = within(dialog)
   fireEvent.click(form.getByRole('tab', { name: 'Faculty' }))
   fireEvent.change(form.getByLabelText(/Faculty max renewals/i), { target: { value: '5' } })
-  fireEvent.change(form.getByLabelText(/Faculty renewal extension days/i), { target: { value: '7' } })
+  fireEvent.change(form.getByLabelText(/Faculty extra days per renewal/i), { target: { value: '7' } })
   fireEvent.change(form.getByLabelText('Change reason'), { target: { value: 'Set separate faculty renewal rules for next term' } })
   fireEvent.click(form.getByRole('button', { name: 'Review and continue' }))
   expect(form.getByText('Faculty max renewals: Unlimited → 5')).toBeTruthy()

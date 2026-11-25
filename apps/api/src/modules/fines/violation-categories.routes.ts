@@ -21,7 +21,7 @@ export function createViolationCategoriesRouter(service: Service = violationCate
     res.set('Cache-Control', 'no-store').json({ success: true, data: await service.getSettings() })
   }))
   router.put('/settings', handle(async (req, res) => {
-    res.json({ success: true, message: 'Highest fine saved.', data: await service.saveSettings(actorAccountId(res), req.body) })
+    res.json({ success: true, message: 'Violation settings saved.', data: await service.saveSettings(actorAccountId(res), req.body) })
   }))
   router.post('/', handle(async (req, res) => {
     res.status(201).json({ success: true, message: 'Violation category saved.', data: await service.create(actorAccountId(res), req.body) })

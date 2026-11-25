@@ -1,11 +1,16 @@
 import { getCsrfToken } from '../auth/auth-storage'
 
+export const STUDENT_LEVELS = ['Grade 11', 'Grade 12', '1st Year', '2nd Year', '3rd Year', '4th Year'] as const
+export type StudentLevel = (typeof STUDENT_LEVELS)[number]
+export type LevelWarningsMap = Partial<Record<StudentLevel, number>>
+
 export type ViolationCategory = {
   categoryId: number
   name: string
   description: string | null
   warningsBeforeFine: number
   fineAmount: number
+  allowedLevels: StudentLevel[]
   isActive: boolean
   sortOrder: number
   /** True once any violation record uses the name; the name is then locked. */
@@ -13,7 +18,26 @@ export type ViolationCategory = {
   /** Version the server saw last; sent back with an edit so a change by someone else is caught. */
   updatedAt: string
 }
-export type ViolationCategoryInput = { name: string; description: string; warningsBeforeFine: number; fineAmount: string }
+export type ViolationCategoryInput = {
+  name: string
+  description: string
+  fineAmount: string
+  allowedLevels: StudentLevel[]
+}
+
+export type ViolationSettings = {
+  maxFine: number
+  warningsBeforeFine: number
+  levelWarnings: LevelWarningsMap
+  updatedAt: string
+}
+
+export type ViolationSettingsUpdate = {
+  maxFine?: string
+  warningsBeforeFine?: number
+  levelWarnings?: LevelWarningsMap
+  updatedAt: string
+}
 
 export class ViolationCategoryError extends Error {
   constructor(message: string, readonly fieldErrors: Record<string, string> = {}) { super(message) }
@@ -36,23 +60,39 @@ export const violationCategoriesApi = {
   update: (id: number, input: Partial<ViolationCategoryInput> & { isActive?: boolean; updatedAt: string }) =>
     request<ViolationCategory>(`/api/v1/admin/violation-categories/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
   getSettings: () => request<ViolationSettings>('/api/v1/admin/violation-categories/settings'),
-  /** The highest fine any category may have. The server refuses a limit below an existing fine. */
-  saveSettings: (input: { maxFine: string; updatedAt: string }) =>
+  /** Updates highest fine and/or shared warning rules across all categories. */
+  saveSettings: (input: ViolationSettingsUpdate) =>
     request<ViolationSettings>('/api/v1/admin/violation-categories/settings', { method: 'PUT', body: JSON.stringify(input) }),
   /** Only a category with no violation records can be deleted; the server refuses the rest. */
   remove: (id: number) => request<{ deleted: true }>(`/api/v1/admin/violation-categories/${id}`, { method: 'DELETE' }),
 }
 
-export type ViolationSettings = { maxFine: number; updatedAt: string }
-
 /** 9999.99 -> "9,999.99" */
 export const formatFine = (amount: number) => amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-/** "2 warnings, then PHP 50.00 on the 3rd offense." */
-export function describeCategory(category: Pick<ViolationCategory, 'warningsBeforeFine' | 'fineAmount'>) {
-  const amount = `PHP ${category.fineAmount.toFixed(2)}`
-  if (category.warningsBeforeFine === 0) return `No warnings. ${amount} on the 1st offense.`
-  const warnings = `${category.warningsBeforeFine} warning${category.warningsBeforeFine === 1 ? '' : 's'}`
-  const ordinal = ['1st', '2nd', '3rd', '4th'][category.warningsBeforeFine]
-  return `${warnings}, then ${amount} on the ${ordinal} offense.`
+/** "All year & grade levels" or "1st Year, Grade 11". */
+export function describeAllowedLevels(levels: StudentLevel[] | undefined) {
+  if (!levels || levels.length === 0 || levels.length === STUDENT_LEVELS.length) return 'All levels'
+  return levels.join(', ')
+}
+
+function ordinal(n: number) {
+  const mod100 = n % 100
+  if (mod100 >= 11 && mod100 <= 13) return `${n}th`
+  const suffix = ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'
+  return `${n}${suffix}`
+}
+
+/** Plain-language summary of the shared warning rule. */
+export function describeSharedWarningRule(settings: Partial<Pick<ViolationSettings, 'warningsBeforeFine' | 'levelWarnings'>> | null | undefined) {
+  const warningsBeforeFine = typeof settings?.warningsBeforeFine === 'number' ? settings.warningsBeforeFine : 2
+  const levelWarnings = settings?.levelWarnings ?? {}
+  const customEntries = STUDENT_LEVELS
+    .filter(level => typeof levelWarnings[level] === 'number' && levelWarnings[level] !== warningsBeforeFine)
+    .map(level => `${level}: ${levelWarnings[level]}`)
+  const base = warningsBeforeFine === 0
+    ? '0 warnings across all violations — fine starts on the 1st offense.'
+    : `${warningsBeforeFine} warning${warningsBeforeFine === 1 ? '' : 's'} across all violations — fine starts on the ${ordinal(warningsBeforeFine + 1)} offense.`
+  if (!customEntries.length) return `${base} Applies to all year & grade levels.`
+  return `${base} Custom limits: ${customEntries.join(' · ')}.`
 }

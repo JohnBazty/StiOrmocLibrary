@@ -60,7 +60,8 @@ test('real Postgres: two warnings then a server-priced fine, retries, notificati
     assert.equal((await service.record(librarian, { ...retry, reviewToken: preview.reviewToken, requestKey: key })).incident_id, again.incident_id)
     await assert.rejects(service.record(librarian, { ...retry, details: 'Changed synthetic payload', reviewToken: preview.reviewToken, requestKey: key }), { code: 'CONDUCT_RETRY_CHANGED' })
 
-    assert.equal((await service.preview(librarian, { ...input, category: 'Eating or food' })).action, 'First warning')
+    // Shared offense counting: a different category continues the same total count (already past 2 warnings -> Fine).
+    assert.equal((await service.preview(librarian, { ...input, category: 'Eating or food' })).action, 'Fine')
     assert.equal((await service.list({ accountId: 3, role: 'Student' }, {}, true)).items.length, 0)
     assert.equal((await service.list({ accountId: 2, role: 'Student' }, {}, true)).items.length, 4)
     await service.event(librarian, 1, { type: 'Correction', reason: 'Synthetic correction preserves facts' })
@@ -74,27 +75,69 @@ test('real Postgres: two warnings then a server-priced fine, retries, notificati
   } finally { await resetConductTestDb(pg) }
 })
 
+test('shared offense counting across different categories and per-level warning limits', async () => {
+  const { pg, service } = await setup()
+  try {
+    // 1st violation in Noise -> 1st warning
+    const first = await save(service, { ...input, category: 'Noise' })
+    assert.equal(first.preview.action, 'First warning')
+    assert.equal(first.preview.studentLevel, '1st Year')
+    // 2nd violation in a DIFFERENT category (Eating or food) -> 2nd warning (counted as #2, not #1)
+    const second = await save(service, { ...input, category: 'Eating or food' })
+    assert.equal(second.preview.action, 'Second warning')
+    assert.equal(second.preview.warningsUsed, 1)
+    assert.deepEqual(second.preview.history.map(h => h.category), ['Noise'])
+    // 3rd violation in another DIFFERENT category (Other conduct) -> Fine
+    const third = await save(service, { ...input, category: 'Other conduct' })
+    assert.equal(third.preview.action, 'Fine')
+    assert.equal(third.preview.amount, 50)
+    // Voiding the 1st warning is blocked because a later violation in another category depends on it.
+    await assert.rejects(service.event(librarian, first.saved.incident_id, { type: 'Voided', reason: 'Attempt to void shared warning' }), { code: 'CONDUCT_LATER_REVIEW' })
+
+    // Per-level warning rule: Grade 11 gets 1 warning, 1st Year gets 3 warnings.
+    await pg.exec(`UPDATE violation_settings SET warnings_before_fine=2,level_warnings='{"Grade 11":1,"1st Year":3}'::jsonb`)
+    const g11First = await save(service, { ...input, schoolId: 'OTHER-TEST', category: 'Noise' })
+    assert.equal(g11First.preview.studentLevel, 'Grade 11')
+    assert.equal(g11First.preview.warningsBeforeFine, 1)
+    assert.equal(g11First.preview.action, 'First warning')
+    const g11Second = await save(service, { ...input, schoolId: 'OTHER-TEST', category: 'Eating or food' })
+    assert.equal(g11Second.preview.action, 'Fine')
+
+    // Category restricted to specific levels rejects a student outside those levels.
+    await pg.exec("UPDATE violation_categories SET allowed_levels=ARRAY['4th Year'] WHERE name='Other conduct'")
+    const blocked = await service.standing(librarian, { schoolId: 'OTHER-TEST', category: 'Other conduct' })
+    assert.equal(blocked.levelAllowed, false)
+    assert.match(String(blocked.levelReason), /4th Year/)
+    const blockedPreview = await service.preview(librarian, { ...input, schoolId: 'OTHER-TEST', category: 'Other conduct' })
+    await assert.rejects(service.record(librarian, { ...input, schoolId: 'OTHER-TEST', category: 'Other conduct', reviewToken: blockedPreview.reviewToken, requestKey: randomUUID() }), { code: 'CONDUCT_CATEGORY_LEVEL' })
+  } finally { await resetConductTestDb(pg) }
+})
+
 test('a Library setup change while the librarian is reviewing makes the saved review stale', async () => {
   const { pg, service } = await setup()
   try {
-    for (const change of ['UPDATE violation_categories SET fine_amount=75 WHERE name=\'Noise\'', 'UPDATE violation_categories SET warnings_before_fine=1 WHERE name=\'Noise\'']) {
+    for (const change of [
+      "UPDATE violation_categories SET fine_amount=75 WHERE name='Noise'",
+      'UPDATE violation_settings SET warnings_before_fine=1',
+      `UPDATE violation_settings SET level_warnings='{"1st Year":0}'::jsonb`,
+    ]) {
       const preview = await service.preview(librarian, input)
       await pg.exec(change)
       await assert.rejects(service.record(librarian, { ...input, reviewToken: preview.reviewToken, requestKey: randomUUID() }), { code: 'CONDUCT_STALE' })
-      await pg.exec("UPDATE violation_categories SET fine_amount=50,warnings_before_fine=2 WHERE name='Noise'")
+      await pg.exec("UPDATE violation_categories SET fine_amount=50 WHERE name='Noise'; UPDATE violation_settings SET warnings_before_fine=2,level_warnings='{}'::jsonb")
     }
     assert.equal((await pg.query('SELECT * FROM conduct_incidents')).rows.length, 0)
   } finally { await resetConductTestDb(pg) }
 })
 
-test('a category that fines at once, the threshold comes from setup, and retired or unknown categories are refused', async () => {
+test('a rule that fines at once, the threshold comes from setup, and retired or unknown categories are refused', async () => {
   const { pg, service } = await setup()
   try {
-    await pg.exec("UPDATE violation_categories SET warnings_before_fine=0,fine_amount=120.5 WHERE name='Other conduct'")
+    await pg.exec("UPDATE violation_settings SET warnings_before_fine=0; UPDATE violation_categories SET fine_amount=120.5 WHERE name='Other conduct'")
     const preview = await service.preview(librarian, { ...input, category: 'Other conduct' })
     assert.equal(preview.action, 'Fine')
     assert.equal(preview.amount, 120.5)
-    await pg.exec("UPDATE violation_categories SET warnings_before_fine=3 WHERE name='Noise'")
+    await pg.exec('UPDATE violation_settings SET warnings_before_fine=3')
     const actions: string[] = []
     for (let i = 0; i < 4; i++) actions.push((await save(service, input)).preview.action)
     assert.deepEqual(actions, ['First warning', 'Second warning', 'Final warning', 'Fine'])
@@ -153,9 +196,10 @@ test('paper-log rules: students only, warnings must exist, dated before today, i
     // Faculty get warnings (never fines), so their earlier paper-log warnings can be copied too.
     const faculty = await service.standing(librarian, { schoolId: 'FAC-TEST', category: 'Noise' })
     assert.equal(faculty.paperLogAllowed, true)
-    await pg.exec("UPDATE violation_categories SET warnings_before_fine=0 WHERE name='Other conduct'")
+    await pg.exec('UPDATE violation_settings SET warnings_before_fine=0')
     await assert.rejects(service.preview(librarian, { ...paper, category: 'Other conduct' }), { code: 'CONDUCT_PAPER_LOG_NO_WARNINGS' })
     assert.equal((await service.standing(librarian, { schoolId: 'STU-TEST', category: 'Other conduct' })).paperLogAllowed, false)
+    await pg.exec('UPDATE violation_settings SET warnings_before_fine=2')
     // A paper-log entry is recorded on the day it was issued, today included (never in the future).
     const today = new Date(Date.now() - 60_000).toISOString()
     assert.equal((await service.preview(librarian, { ...paper, incidentAt: today })).fromPaperLog, true)
@@ -174,8 +218,8 @@ test('a paper-log entry is refused once the person has a record made in the syst
     assert.equal(standing.paperLogAllowed, false)
     assert.match(String(standing.paperLogReason), /before the first record made in the system/)
     await assert.rejects(service.preview(librarian, paper), { status: 422, code: 'CONDUCT_PAPER_LOG_AFTER_RECORDS', message: 'Paper-log entries must come before the first record made in the system.' })
-    // Another category is unaffected.
-    assert.equal((await service.preview(librarian, { ...paper, category: 'Eating or food' })).action, 'First warning')
+    // Because progression is shared across categories, another category is also blocked after a system record.
+    await assert.rejects(service.preview(librarian, { ...paper, category: 'Eating or food' }), { status: 422, code: 'CONDUCT_PAPER_LOG_AFTER_RECORDS' })
     await service.event(librarian, recorded.saved.incident_id, { type: 'Voided', reason: 'Synthetic mistaken record voided' })
     assert.equal((await service.preview(librarian, paper)).action, 'First warning')
   } finally { await resetConductTestDb(pg) }
@@ -208,14 +252,19 @@ test('faculty are never fined for a violation: their warnings stop at a final wa
     assert.equal(fines, 0)
   } finally { await resetConductTestDb(pg) }
 })
-test('a student sees warnings left per category, retired categories only when they hold history', async () => {
+test('a student sees shared warnings left across all categories, plus applicable categories', async () => {
   const { pg, service } = await setup()
   try {
     await save(service, input)
     await pg.exec("UPDATE violation_categories SET is_active=FALSE WHERE name='Other conduct'")
     const own = await service.ownStanding({ accountId: 2, role: 'Student' })
-    assert.deepEqual(own.map(c => [c.category, c.warningsUsed, c.warningsLeft]), [['Noise', 1, 1], ['Eating or food', 0, 2]])
-    assert.deepEqual(await service.ownStanding({ accountId: 99, role: 'Student' }), [])
+    assert.ok(own)
+    assert.equal(own.studentLevel, '1st Year')
+    assert.equal(own.warningsUsed, 1)
+    assert.equal(own.warningsBeforeFine, 2)
+    assert.equal(own.warningsLeft, 1)
+    assert.deepEqual(own.categories.map(c => c.category), ['Noise', 'Eating or food'])
+    assert.equal(await service.ownStanding({ accountId: 99, role: 'Student' }), null)
   } finally { await resetConductTestDb(pg) }
 })
 

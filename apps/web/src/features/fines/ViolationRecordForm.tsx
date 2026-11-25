@@ -65,7 +65,8 @@ export function ViolationRecordForm({ categories, onSaved, onCancel }: {
   const idError = lookup.state === 'error' ? lookup.message : ''
   const currentKey = `${schoolId.trim()}|${category}|${paperLog}`
   const standing = lookup.state === 'ready' && lookup.key === currentKey ? lookup.standing : null
-  const canSave = Boolean(standing) && !detailsError && !dateError && !busy
+  const levelBlocked = Boolean(standing && standing.levelAllowed === false)
+  const canSave = Boolean(standing) && !levelBlocked && !detailsError && !dateError && !busy
 
   async function save(event: FormEvent) {
     event.preventDefault()
@@ -117,15 +118,23 @@ export function ViolationRecordForm({ categories, onSaved, onCancel }: {
           {lookup.state === 'loading' ? <p role="status" className="text-sm text-[var(--sl-text-secondary)]">Checking this person’s record…</p> : null}
           {standing ? (
             <div className="space-y-3 rounded-[8px] border border-[var(--sl-border)] bg-[var(--sl-bg-subtle)] p-4">
-              <p className="font-semibold text-[var(--sl-text-header)]">{standing.name} · {standing.role}</p>
-              <ViolationProgress standing={standing} />
-              {standing.nextStep === 'Fine' && !standing.fromPaperLog && standing.amount ? (
-                <div role="group" aria-label="Amount to pay" className="rounded-[8px] border border-[var(--sl-border-strong)] bg-[var(--sl-bg-elevated)] p-3">
-                  <p className="text-xs font-semibold text-[var(--sl-text-secondary)]">Amount to pay</p>
-                  <p className="text-xl font-bold tabular-nums text-[var(--sl-text-header)]">{peso(standing.amount)}</p>
-                  <p className="text-xs text-[var(--sl-text-muted)]">Set in Library setup → Violation rules. To change one fine, use Adjust on Fines &amp; charges.</p>
-                </div>
-              ) : null}
+              <p className="font-semibold text-[var(--sl-text-header)]">
+                {standing.name} · {standing.role}{standing.studentLevel ? ` · ${standing.studentLevel}` : ''}
+              </p>
+              {standing.levelAllowed === false ? (
+                <NoticeBanner tone="warning">{standing.levelReason ?? 'This violation category does not apply to this student’s year or grade level.'}</NoticeBanner>
+              ) : (
+                <>
+                  <ViolationProgress standing={standing} />
+                  {standing.nextStep === 'Fine' && !standing.fromPaperLog && standing.amount ? (
+                    <div role="group" aria-label="Amount to pay" className="rounded-[8px] border border-[var(--sl-border-strong)] bg-[var(--sl-bg-elevated)] p-3">
+                      <p className="text-xs font-semibold text-[var(--sl-text-secondary)]">Amount to pay</p>
+                      <p className="text-xl font-bold tabular-nums text-[var(--sl-text-header)]">{peso(standing.amount)}</p>
+                      <p className="text-xs text-[var(--sl-text-muted)]">Set in Library setup → Violation rules. To change one fine, use Adjust on Fines &amp; charges.</p>
+                    </div>
+                  ) : null}
+                </>
+              )}
             </div>
           ) : null}
         </div>

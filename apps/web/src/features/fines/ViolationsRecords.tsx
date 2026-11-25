@@ -11,23 +11,28 @@ import { RefreshButton } from '../../components/RefreshButton'
 const date = (value: string) => new Date(value).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })
 const PAGE_SIZE = 25
 
-export function WarningsLeft({ items }: { items: OwnStanding[] }) {
-  if (!items.length) return null
+export function WarningsLeft({ standing }: { standing: OwnStanding | null }) {
+  if (!standing) return null
+  const isFaculty = standing.role === 'Faculty'
   return (
-    <div className="mb-4 rounded-[8px] border border-[var(--sl-border)] bg-[var(--sl-bg-subtle)] p-4">
-      <h3 className="text-sm font-semibold text-[var(--sl-text-header)]">Warnings left</h3>
-      <ul className="mt-2 grid gap-2 sm:grid-cols-3">
-        {items.map(item => (
-          <li key={item.category} className="rounded-[6px] border border-[var(--sl-border)] bg-[var(--sl-bg-elevated)] p-3 text-sm">
-            <p className="font-semibold text-[var(--sl-text-header)]">{item.category}</p>
-            <p className="tabular-nums">
-              {item.warningsBeforeFine === 0 ? 'No warnings: a fine applies at once' : item.warningsLeft > 0
-                ? `${item.warningsLeft} of ${item.warningsBeforeFine} warnings left`
-                : `No warnings left. The next offense is a fine of PHP ${item.fineAmount.toFixed(2)}`}
-            </p>
-          </li>
-        ))}
-      </ul>
+    <div className="mb-4 rounded-[8px] border border-[var(--sl-border)] bg-[var(--sl-bg-subtle)] p-4 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="font-semibold text-[var(--sl-text-header)]">
+          Shared warnings left{standing.studentLevel ? ` (${standing.studentLevel})` : ''}
+        </h3>
+        <span className="text-xs text-[var(--sl-text-secondary)]">Counted across all violation categories</span>
+      </div>
+      <p className="mt-1.5 tabular-nums text-[var(--sl-text-header)]">
+        {standing.warningsBeforeFine === 0
+          ? isFaculty
+            ? 'No preliminary warnings. Violations are recorded directly as a final warning.'
+            : 'No warnings for your year or grade level. Any violation carries that category’s fine.'
+          : standing.warningsLeft > 0
+            ? `${standing.warningsLeft} of ${standing.warningsBeforeFine} warning${standing.warningsBeforeFine === 1 ? '' : 's'} left across all violations.`
+            : isFaculty
+              ? 'All warnings used. Further violations are recorded as a final warning (no fine for faculty).'
+              : 'No warnings left. Your next violation in any category carries that category’s fine.'}
+      </p>
     </div>
   )
 }
@@ -55,7 +60,7 @@ export function ViolationsRecords({ admin = false, onSaved, incidentId = null, o
   const [refresh, setRefresh] = useState(0)
   const [formOpen, setFormOpen] = useState(startRecording)
   const [categories, setCategories] = useState<ViolationCategory[]>([])
-  const [own, setOwn] = useState<OwnStanding[]>([])
+  const [own, setOwn] = useState<OwnStanding | null>(null)
   const [opened, setOpened] = useState<Incident | null>(null)
   const [missing, setMissing] = useState(false)
   const [localId, setLocalId] = useState<number | null>(null)
@@ -66,7 +71,7 @@ export function ViolationsRecords({ admin = false, onSaved, incidentId = null, o
     let active = true
     const load = admin ? violationRequest<ViolationCategory[]>('/api/v1/admin/violation-categories') : Promise.resolve(null)
     void load.then(list => { if (active && list) setCategories(list) }).catch(cause => { if (active) setError(`The violation categories could not be loaded. ${cause instanceof Error ? cause.message : ''}`.trim()) })
-    if (!admin) void violationsApi.ownStanding().then(list => { if (active) setOwn(list) }).catch(() => undefined)
+    if (!admin) void violationsApi.ownStanding().then(data => { if (active) setOwn(data) }).catch(() => undefined)
     return () => { active = false }
   }, [admin, refresh])
 
@@ -109,7 +114,7 @@ export function ViolationsRecords({ admin = false, onSaved, incidentId = null, o
     }
   }
 
-  const filterNames = admin ? categories.map(item => item.name) : own.map(item => item.category)
+  const filterNames = admin ? categories.map(item => item.name) : (own?.categories.map(item => item.category) ?? [])
   const closeDrawer = () => select(null)
   const input = 'sl-input'
 
@@ -140,7 +145,7 @@ export function ViolationsRecords({ admin = false, onSaved, incidentId = null, o
           </NoticeBanner>
         ) : null}
         {notice ? <NoticeBanner tone="success">{notice}</NoticeBanner> : null}
-        {!admin ? <WarningsLeft items={own} /> : null}
+        {!admin ? <WarningsLeft standing={own} /> : null}
 
         {formOpen && admin ? (
           <ViolationRecordForm

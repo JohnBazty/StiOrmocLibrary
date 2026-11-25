@@ -88,10 +88,10 @@ test('a Librarian saves pickup window 3 and reads it back with their name and th
   await pg.close()
 })
 
-test('pickup window 8 is rejected with a field message and nothing is saved', async () => {
+test('pickup window 0 is rejected with a field message and nothing is saved', async () => {
   const { pg, pool } = await createDatabase()
   const app = routeApp(createReservationSettingsService(pool, () => T0), LIBRARIAN, 'Librarian')
-  const response = await request(app).put('/settings').send({ pickupWindowDays: 8 })
+  const response = await request(app).put('/settings').send({ pickupWindowDays: 0 })
   assert.equal(response.status, 422)
   assert.equal(response.body.code, 'RESERVATION_SETTINGS_INVALID')
   assert.ok(response.body.details.errors.pickupWindowDays)
@@ -109,8 +109,8 @@ test('Staff cannot save the pickup window and nothing is saved', async () => {
   await pg.close()
 })
 
-const PICKUP_MESSAGE = 'Enter a whole number of days from 1 to 7.'
-const WAITING_MESSAGE = 'Leave blank to turn off, or enter a whole number of days from 7 to 90.'
+const PICKUP_MESSAGE = 'Enter a whole number of days starting from 1.'
+const WAITING_MESSAGE = 'Leave blank to turn off, or enter a whole number of days starting from 1.'
 function rejects(body: unknown, field: string | null, message: string) {
   assert.throws(() => parseReservationSettingsUpdate(body), (error: unknown) => {
     assert.ok(error instanceof HttpError)
@@ -122,18 +122,18 @@ function rejects(body: unknown, field: string | null, message: string) {
   }, `expected ${JSON.stringify(body)} to be rejected`)
 }
 
-test('the pickup window accepts whole days 1 to 7 only', () => {
-  for (const [value, expected] of [[1, 1], [7, 7], ['3', 3], [' 7 ', 7]] as const) {
+test('the pickup window accepts whole days starting from 1 with no upper day cap', () => {
+  for (const [value, expected] of [[1, 1], [7, 7], [14, 14], [120, 120], ['3', 3], [' 30 ', 30]] as const) {
     assert.deepEqual(parseReservationSettingsUpdate({ pickupWindowDays: value }), { pickupWindowDays: expected })
   }
-  for (const value of [0, 8, 2.5, '2.5', 'abc', '', null, true, [3]]) rejects({ pickupWindowDays: value }, 'pickupWindowDays', PICKUP_MESSAGE)
+  for (const value of [0, -1, 2.5, '2.5', 'abc', '', null, true, [3]]) rejects({ pickupWindowDays: value }, 'pickupWindowDays', PICKUP_MESSAGE)
 })
 
-test('the waiting-list limit accepts blank (off) or whole days 7 to 90 only', () => {
-  for (const [value, expected] of [[7, 7], [90, 90], ['14', 14], ['', null], [null, null]] as const) {
+test('the waiting-list limit accepts blank (off) or whole days starting from 1 with no upper day cap', () => {
+  for (const [value, expected] of [[1, 1], [3, 3], [7, 7], [90, 90], [365, 365], ['14', 14], ['', null], [null, null]] as const) {
     assert.deepEqual(parseReservationSettingsUpdate({ waitingExpiryDays: value }), { waitingExpiryDays: expected })
   }
-  for (const value of [6, 91, 2.5, 'abc', true]) rejects({ waitingExpiryDays: value }, 'waitingExpiryDays', WAITING_MESSAGE)
+  for (const value of [0, -5, 2.5, 'abc', true]) rejects({ waitingExpiryDays: value }, 'waitingExpiryDays', WAITING_MESSAGE)
 })
 
 test('a body with neither setting is rejected', () => {
@@ -143,7 +143,7 @@ test('a body with neither setting is rejected', () => {
 test('one invalid value saves nothing, not even the valid one', async () => {
   const { pg, pool } = await createDatabase()
   const app = routeApp(createReservationSettingsService(pool, () => T0), LIBRARIAN, 'Librarian')
-  const response = await request(app).put('/settings').send({ pickupWindowDays: 3, waitingExpiryDays: 91 })
+  const response = await request(app).put('/settings').send({ pickupWindowDays: 3, waitingExpiryDays: 0 })
   assert.equal(response.status, 422)
   assert.ok(response.body.details.errors.waitingExpiryDays)
   const row = await pg.query('SELECT pickup_window_days, waiting_expiry_days, pickup_window_changed_by FROM reservation_settings')
@@ -274,9 +274,11 @@ test('a save takes the circulation lock before writing, so it cannot race the ex
   await pg.close()
 })
 
-test('the faculty waiting-list limit is its own setting: 7 to 180 days, or empty so faculty requests never expire', async () => {
+test('the faculty waiting-list limit is its own setting: starting from 1 day with no upper cap, or empty so faculty requests never expire', async () => {
   const { parseReservationSettingsUpdate } = await import('./reservation-settings.service.ts')
+  assert.deepEqual(parseReservationSettingsUpdate({ facultyWaitingExpiryDays: 1 }), { facultyWaitingExpiryDays: 1 })
   assert.deepEqual(parseReservationSettingsUpdate({ facultyWaitingExpiryDays: 30 }), { facultyWaitingExpiryDays: 30 })
+  assert.deepEqual(parseReservationSettingsUpdate({ facultyWaitingExpiryDays: 365 }), { facultyWaitingExpiryDays: 365 })
   assert.deepEqual(parseReservationSettingsUpdate({ facultyWaitingExpiryDays: '' }), { facultyWaitingExpiryDays: null })
-  assert.throws(() => parseReservationSettingsUpdate({ facultyWaitingExpiryDays: 3 }))
+  assert.throws(() => parseReservationSettingsUpdate({ facultyWaitingExpiryDays: 0 }))
 })

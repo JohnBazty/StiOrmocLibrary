@@ -25,8 +25,9 @@ export type ReservationSettingsUpdate = { pickupWindowDays?: number; waitingExpi
 
 export const DEFAULT_RESERVATION_SETTINGS: ReservationSettings = Object.freeze({ pickupWindowDays: 1, waitingExpiryDays: null, waitingExpirySavedAt: null, facultyWaitingExpiryDays: null, facultyWaitingExpirySavedAt: null })
 const DEFAULT_VIEW: ReservationSettingsView = Object.freeze({ pickupWindowDays: 1, pickupWindowChangedBy: null, pickupWindowChangedAt: null, waitingExpiryDays: null, waitingExpiryChangedBy: null, waitingExpiryChangedAt: null, facultyWaitingExpiryDays: null })
-const PICKUP_MESSAGE = 'Enter a whole number of days from 1 to 7.'
-const WAITING_MESSAGE = 'Leave blank to turn off, or enter a whole number of days from 7 to 90.'
+const PICKUP_MESSAGE = 'Enter a whole number of days starting from 1.'
+const WAITING_MESSAGE = 'Leave blank to turn off, or enter a whole number of days starting from 1.'
+const MAX_SMALLINT_DAYS = 32767
 
 export const dayCount = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`
 
@@ -83,22 +84,22 @@ export function parseReservationSettingsUpdate(body: unknown): ReservationSettin
   if (!hasPickup && !hasWaiting && !hasFacultyWaiting) throw new HttpError(422, 'RESERVATION_SETTINGS_INVALID', 'Choose a setting to save.')
   const update: ReservationSettingsUpdate = {}
   if (hasPickup) {
-    const days = wholeDays(input.pickupWindowDays, 1, 7)
+    const days = wholeDays(input.pickupWindowDays, 1, MAX_SMALLINT_DAYS)
     if (days == null) throw invalid('pickupWindowDays', PICKUP_MESSAGE)
     update.pickupWindowDays = days
   }
   if (hasWaiting) {
     const value = input.waitingExpiryDays
     const off = value === null || (typeof value === 'string' && value.trim() === '')
-    const days = off ? null : wholeDays(value, 7, 90)
+    const days = off ? null : wholeDays(value, 1, MAX_SMALLINT_DAYS)
     if (!off && days == null) throw invalid('waitingExpiryDays', WAITING_MESSAGE)
     update.waitingExpiryDays = days
   }
   if (hasFacultyWaiting) {
     const value = input.facultyWaitingExpiryDays
     const off = value === null || (typeof value === 'string' && value.trim() === '')
-    const days = off ? null : wholeDays(value, 7, 180)
-    if (!off && days == null) throw invalid('facultyWaitingExpiryDays', 'Enter 7 to 180 days, or leave it empty so faculty requests do not expire.')
+    const days = off ? null : wholeDays(value, 1, MAX_SMALLINT_DAYS)
+    if (!off && days == null) throw invalid('facultyWaitingExpiryDays', 'Leave blank to turn off, or enter a whole number of days starting from 1.')
     update.facultyWaitingExpiryDays = days
   }
   return update
@@ -137,6 +138,16 @@ export function createReservationSettingsService(database: Pool = db, clock = ()
       // Same circulation lock as book-request.service.ts lock(): the expiry job reads these settings under it, so a save waits for a running job.
       await q.execute('SELECT settings_id FROM library_profile_settings WHERE settings_id=1 FOR UPDATE')
       if (!await tablePresent(q)) throw new HttpError(503, 'RESERVATION_SETTINGS_UNAVAILABLE', 'Reservation settings need the latest database update. Ask the system administrator to apply it.')
+      const needsConstraintRelax =
+        (update.pickupWindowDays !== undefined && update.pickupWindowDays > 7) ||
+        (typeof update.waitingExpiryDays === 'number' && (update.waitingExpiryDays < 7 || update.waitingExpiryDays > 90)) ||
+        (typeof update.facultyWaitingExpiryDays === 'number' && (update.facultyWaitingExpiryDays < 7 || update.facultyWaitingExpiryDays > 180))
+      if (needsConstraintRelax) {
+        await q.execute(`ALTER TABLE public.reservation_settings
+          DROP CONSTRAINT IF EXISTS reservation_settings_pickup_window_days_check,
+          DROP CONSTRAINT IF EXISTS reservation_settings_waiting_expiry_days_check,
+          DROP CONSTRAINT IF EXISTS reservation_settings_faculty_waiting_expiry_days_check`).catch(() => {})
+      }
       const now = clock()
       if (update.pickupWindowDays !== undefined) {
         await q.execute(`INSERT INTO reservation_settings (settings_id, pickup_window_days, pickup_window_changed_by, pickup_window_changed_at) VALUES (1, ?, ?, ?)
