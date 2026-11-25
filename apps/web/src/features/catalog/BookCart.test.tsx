@@ -88,7 +88,7 @@ describe('BookCart', () => {
     render(<><AddFixture/><BookCart/></>)
     fireEvent.click(screen.getByRole('button',{name:'Add fixture'}))
     fireEvent.click(screen.getByRole('button',{name:'Check Out'}))
-    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Send borrow request' }))
     await screen.findByText('You have 1 active loan and 1 book request. That fills the limit of 2. Return a borrowed book or cancel a request, then try again. Your cart has been kept.')
     expect(screen.getByText('Clean Code')).toBeTruthy()
   })
@@ -97,7 +97,7 @@ describe('BookCart', () => {
     render(<><AddFixture/><BookCart/></>)
     fireEvent.click(screen.getByRole('button',{name:'Add fixture'}))
     fireEvent.click(screen.getByRole('button',{name:'Check Out'}))
-    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Send borrow request' }))
     await screen.findByText(/Return a book or cancel an existing request, then try again. Your cart has been kept./)
     expect(screen.getByText('Clean Code')).toBeTruthy()
     expect(screen.queryByRole('dialog')).toBeNull()
@@ -118,9 +118,10 @@ describe('BookCart', () => {
     render(<><AddFixture /><BookCart /></>)
     fireEvent.click(screen.getByRole('button', { name: 'Add fixture' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Check Out' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Send borrow request' }))
     await waitFor(() => expect(api.submitBorrowRequest).toHaveBeenCalledWith([4],expect.any(String)))
     expect(await screen.findByText('Bring the selected books to the library desk.')).toBeTruthy()
+    expect(screen.getByText(/Checkout submitted for 1 book\./)).toBeTruthy()
     expect(screen.getByText('Your cart is empty')).toBeTruthy()
   })
 
@@ -129,11 +130,11 @@ describe('BookCart', () => {
     render(<><AddFixture /><BookCart /></>)
     fireEvent.click(screen.getByRole('button',{name:'Add fixture'}))
     fireEvent.click(screen.getByRole('button',{name:'Check Out'}))
-    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Send borrow request' }))
     await screen.findByText('Connection interrupted')
     expect(screen.getByText('Clean Code')).toBeTruthy()
     fireEvent.click(screen.getByRole('button',{name:'Check Out'}))
-    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Send borrow request' }))
     await screen.findByText('Wait for pickup.')
     expect(api.submitBorrowRequest.mock.calls[0][1]).toBe(api.submitBorrowRequest.mock.calls[1][1])
   })
@@ -145,10 +146,10 @@ describe('BookCart', () => {
     fireEvent.click(screen.getByRole('button',{name:'Add fixture'}))
     const submit=screen.getByRole('button',{name:'Check Out'})
     fireEvent.click(submit)
-    const confirm=await screen.findByRole('button',{name:'Yes, save'})
+    const confirm=await screen.findByRole('button',{name:'Send borrow request'})
     fireEvent.click(confirm)
     expect(api.submitBorrowRequest).toHaveBeenCalledTimes(1)
-    expect(screen.queryByRole('button',{name:'Yes, save'})).toBeNull()
+    expect(screen.queryByRole('button',{name:'Send borrow request'})).toBeNull()
     expect(screen.getByRole('button',{name:'Remove Clean Code'})).toHaveProperty('disabled',true)
     finish({requestGroupId:'group-double',status:'queued',instructions:'Only one queue submission.',items:[]})
     await screen.findByText('Only one queue submission.')
@@ -198,8 +199,66 @@ describe('BookCart', () => {
     render(<><AddFixture /><BookCart /></>)
     fireEvent.click(screen.getByRole('button', { name: 'Add fixture' }))
     fireEvent.click(screen.getByRole('button', { name: 'Check Out' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Yes, save' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Send borrow request' }))
     expect((await screen.findByRole('alert')).textContent).toContain('Settle the outstanding library balance of ₱50.00 before borrowing.')
+  })
+
+  it('supports checking out books one by one while keeping remaining books in the cart', async () => {
+    function AddTwoFixtures() {
+      const { addItem } = useBookCart()
+      return (
+        <button
+          onClick={() => {
+            addItem({ titleId: 4, title: 'Clean Code', author: 'Robert C. Martin', isbn: '9780132350884', shelfLocation: 'Shelf A-1', callNumber: 'QA76', previewBarcode: 'BC-1', coverImagePath: null })
+            addItem({ titleId: 5, title: 'Algorithms in C++', author: 'Robert Sedgewick', isbn: '0201510596', shelfLocation: 'AISLE 3', callNumber: 'QA76', previewBarcode: 'BC-2', coverImagePath: null })
+          }}
+        >
+          Add two
+        </button>
+      )
+    }
+    api.fetchCartState.mockResolvedValue({ activeTitleIds: [], outstandingBalance: 0 })
+    api.submitBorrowRequest.mockResolvedValue({ requestGroupId: 'group-one', status: 'pending_claim', instructions: 'Bring Clean Code to the desk.', items: [] })
+    render(<><AddTwoFixtures /><BookCart /></>)
+    fireEvent.click(screen.getByRole('button', { name: 'Add two' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Check out Clean Code' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Send borrow request' }))
+    await waitFor(() => expect(api.submitBorrowRequest).toHaveBeenCalledWith([4], expect.any(String)))
+    expect(screen.queryByRole('heading', { name: 'Clean Code' })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Algorithms in C++' })).toBeTruthy()
+  })
+
+  it('supports Select all toggle and checking out only checked books', async () => {
+    function AddTwoFixtures() {
+      const { addItem } = useBookCart()
+      return (
+        <button
+          onClick={() => {
+            addItem({ titleId: 4, title: 'Clean Code', author: 'Robert C. Martin', isbn: '9780132350884', shelfLocation: 'Shelf A-1', callNumber: 'QA76', previewBarcode: 'BC-1', coverImagePath: null })
+            addItem({ titleId: 5, title: 'Algorithms in C++', author: 'Robert Sedgewick', isbn: '0201510596', shelfLocation: 'AISLE 3', callNumber: 'QA76', previewBarcode: 'BC-2', coverImagePath: null })
+          }}
+        >
+          Add two
+        </button>
+      )
+    }
+    api.fetchCartState.mockResolvedValue({ activeTitleIds: [], outstandingBalance: 0 })
+    api.submitBorrowRequest.mockResolvedValue({ requestGroupId: 'group-sel', status: 'pending_claim', instructions: 'Bring selected book.', items: [] })
+    render(<><AddTwoFixtures /><BookCart /></>)
+    fireEvent.click(screen.getByRole('button', { name: 'Add two' }))
+    const selectAll = (await screen.findByLabelText('Select all')) as HTMLInputElement
+    expect(selectAll.checked).toBe(true)
+    // Uncheck Select all -> disables Check Out
+    fireEvent.click(selectAll)
+    expect((screen.getByRole('button', { name: 'Check Out' }) as HTMLButtonElement).disabled).toBe(true)
+    // Check only Algorithms in C++
+    fireEvent.click(screen.getByLabelText('Select Algorithms in C++ for checkout'))
+    expect((screen.getByRole('button', { name: 'Check Out' }) as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Check Out' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Send borrow request' }))
+    await waitFor(() => expect(api.submitBorrowRequest).toHaveBeenCalledWith([5], expect.any(String)))
+    expect(screen.getByRole('heading', { name: 'Clean Code' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Algorithms in C++' })).toBeNull()
   })
 })
 

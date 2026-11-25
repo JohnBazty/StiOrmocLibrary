@@ -71,7 +71,7 @@ export function PaymentResultPage() {
         <PaymentSummary payment={payment}/>
         <dl className="payment-result-details"><div><dt>Service</dt><dd>{payment.kind === 'Printing' ? 'Printing' : payment.kind === 'LostBook' ? 'Replacement charge' : payment.kind==='Other'?'Library service':'Library fine'}</dd></div><div><dt>Payment method</dt><dd>{payment.channelCode === 'GCASH' ? 'GCash' : payment.channelCode === 'QRPH' ? 'QRPh' : payment.channelCode}</dd></div><div><dt>Started</dt><dd>{payment.createdAt ? fineDate(payment.createdAt) : 'Date unavailable'}</dd></div><div><dt>Payment type</dt><dd>{'Online payment'}</dd></div><div className="payment-reference"><dt>Reference</dt><dd className="font-mono text-xs">{payment.paymentId}</dd></div></dl>
         <PaymentStatusPanel payment={payment} onChange={setPayment} showDetails={false}/>
-        {payment.kind==='Printing'&&['Active','Review','Succeeded'].includes(payment.state)&&<PaymentProofPanel paymentId={payment.paymentId}/>}
+        {payment.kind==='Printing'&&['Active','Review','Succeeded'].includes(payment.state)&&<PaymentProofPanel paymentId={payment.paymentId} defaultAmount={(payment.totalCentavos / 100).toFixed(2)}/>}
         <RefundTimeline rows={payment.refunds}/>
         <p className="payment-muted my-4 text-center text-xs leading-6">Returning from checkout does not confirm payment. Only a verified payment updates this status.</p>
       </> : null}

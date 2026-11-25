@@ -4,7 +4,8 @@ import { Button } from '../../components/ui'
 import { PaymentStateIcon, PaymentTrustNote } from './PaymentPresentation'
 import { notifyPaymentUpdate } from './payment-updates'
 import { openPaymentReviewResult, openWalletPayment, paymentResultPath } from './payment-navigation'
-import { downloadPaymentRecord, paymentMoney, paymentsApi, paymentStatus, type Payment, type PaymentKind, type PaymentOptions } from './payments-api'
+import { paymentMoney, paymentsApi, paymentStatus, type Payment, type PaymentKind, type PaymentOptions } from './payments-api'
+import { downloadPaymentReceiptImage } from './payment-receipt-image'
 
 const message = (error: unknown) => error instanceof Error ? error.message : 'Payment information could not load. Please try again.'
 
@@ -38,7 +39,7 @@ export function PaymentStatusPanel({ payment, onChange, onUpdated, showDetails =
       {!closed ? <Button className="payment-button" variant="secondary" disabled={busy} onClick={() => void action(() => paymentsApi.check(payment.paymentId))}><RefreshCw size={16} aria-hidden="true"/>{busy ? 'Checking…' : 'Check status'}</Button> : null}
       {!payment.cancellationPending && ['Active', 'Prepared'].includes(payment.state) ? <Button className="payment-button" disabled={busy} onClick={() => void action(async () => { const result = await paymentsApi.resume(payment.paymentId); openPaymentReviewResult(result); return result })}>Continue payment<ArrowRight size={16} aria-hidden="true"/></Button> : null}
       {!closed && !payment.refundReview ? <Button className="payment-button" variant="ghost" disabled={busy} onClick={() => void action(() => paymentsApi.cancel(payment.paymentId))}>Cancel online payment</Button> : null}
-      {payment.state === 'Succeeded' && (payment.receiptId || payment.localPreview&&payment.kind==='Printing') ? <Button className="payment-button" disabled={busy} onClick={() => void action(() => downloadPaymentRecord(payment))}>Download payment record</Button> : null}
+      {payment.state === 'Succeeded' && (payment.receiptId || payment.localPreview&&payment.kind==='Printing') ? <Button className="payment-button" disabled={busy} onClick={() => void action(() => downloadPaymentReceiptImage(payment))}>Download payment record</Button> : null}
       {showDetails ? <a className="payment-link" href={paymentResultPath(payment)}>View details<ArrowRight size={15} aria-hidden="true"/></a> : null}
     </div>
   </div>

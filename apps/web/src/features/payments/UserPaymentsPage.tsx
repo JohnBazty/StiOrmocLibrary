@@ -12,7 +12,8 @@ import { PaymentEmptyIcon } from './PaymentPresentation'
 import { paymentResultPath } from './payment-navigation'
 import { RefundRequestDialog, RefundRequestHistory } from './RefundRequestDialog'
 import { RefundTimeline } from './RefundReview'
-import { downloadPaymentRecord, paymentMoney, paymentsApi, paymentStatus, type Transaction, type Payment } from './payments-api'
+import { paymentMoney, paymentsApi, paymentStatus, type Transaction, type Payment } from './payments-api'
+import { downloadPaymentReceiptImage } from './payment-receipt-image'
 import { RefreshButton } from '../../components/RefreshButton'
 
 export function UserPaymentsPage() {
@@ -31,7 +32,7 @@ export function UserPaymentsPage() {
   async function download(row: Transaction) {
     if (downloading || (!row.receiptId&&!(row.payment?.localPreview&&row.kind==='Printing'&&row.payment.state==='Succeeded'))) return; setDownloading(row.id); setDownloadError(null)
     try {
-      if (row.payment) await downloadPaymentRecord(row.payment)
+      if (row.payment) await downloadPaymentReceiptImage(row.payment)
       else if (row.kind === 'Printing') await printingApi.downloadReceipt({ print_receipt_id: row.receiptId!, receipt_number: row.reference })
       else if(row.kind==='Other')await downloadServiceReceipt(row.receiptId!)
       else await finesApi.downloadReceipt(row.receiptId!, row.reference)

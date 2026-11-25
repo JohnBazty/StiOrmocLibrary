@@ -1,6 +1,6 @@
-import { Clock } from 'lucide-react'
+import { CalendarDays, CheckCircle2, Clock } from 'lucide-react'
 import { useState } from 'react'
-import { Button, PageHeader, SectionCard } from '../../components/ui'
+import { Button, SectionCard } from '../../components/ui'
 import { UnsavedGuard } from '../../components/UnsavedChanges'
 import { useLiveQuery } from '../../hooks/useLiveQuery'
 import { notificationApi } from './notification-api'
@@ -12,6 +12,14 @@ const field =
   'mt-1 min-h-[38px] w-full rounded-[6px] border border-[var(--sl-border-strong)] bg-[var(--sl-bg-elevated)] px-3 py-1.5 text-sm text-[var(--sl-text)] outline-none focus:border-[#0b5ea2] focus:ring-3 focus:ring-[#0b5ea2]/15'
 
 const today = () => new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10)
+
+function currentManilaDayOfWeek(): number {
+  const short = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Manila',
+    weekday: 'short',
+  }).format(new Date())
+  return ({ Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 } as Record<string, number>)[short] ?? 1
+}
 
 export function formatPhDate(value: string, style: 'long' | 'medium' = 'long') {
   if (!value) return value
@@ -31,56 +39,127 @@ export function formatManilaTime12(hhmm: string | null | undefined): string {
 }
 
 function ScheduleDetails({ data }: { data: ManagedLibrarySchedule }) {
+  const todayDow = currentManilaDayOfWeek()
+  const hasClosures = data.upcomingClosures.length > 0
+
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <SectionCard className="p-5">
-        <h2 className="text-base font-semibold text-[var(--sl-text-header)]">Weekly operating hours</h2>
-        <p className="mt-1 text-xs text-[var(--sl-text-muted)]">All times shown in 12-hour Manila time (PHT).</p>
+    <div className="grid gap-5 lg:grid-cols-2">
+      <SectionCard className="border-t-[3px] border-t-[#0f766e] p-5">
+        <div className="flex items-start justify-between gap-3 border-b border-[var(--sl-border)] pb-3.5">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#0f766e] dark:text-[#5eead4]">
+              Regular hours
+            </p>
+            <h2 className="mt-0.5 font-display text-lg font-semibold text-[var(--sl-text-header)]">
+              Weekly operating hours
+            </h2>
+            <p className="mt-0.5 text-xs text-[var(--sl-text-muted)]">
+              All times shown in 12-hour Manila time (PHT).
+            </p>
+          </div>
+          <Clock size={18} className="mt-0.5 shrink-0 text-[#0f766e] dark:text-[#5eead4]" />
+        </div>
+
         <ul className="mt-3 divide-y divide-[var(--sl-border)]">
-          {data.weekly.map((day) => (
-            <li key={day.dayOfWeek} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
-              <strong className="font-semibold text-[var(--sl-text-header)]">{weekdays[day.dayOfWeek - 1]}</strong>
-              <span
-                className={
-                  day.isOpen
-                    ? 'font-medium tabular-nums text-[var(--sl-text)]'
-                    : 'rounded-[4px] bg-[#fef2f2] px-2 py-0.5 text-xs font-semibold text-[#991b1b] dark:bg-red-950/40 dark:text-red-300'
-                }
+          {data.weekly.map((day) => {
+            const isToday = day.dayOfWeek === todayDow
+            return (
+              <li
+                key={day.dayOfWeek}
+                className={`flex flex-wrap items-center justify-between gap-2 rounded-[8px] px-3 py-2.5 text-sm transition-colors ${
+                  isToday ? 'bg-[#f0f7ff] dark:bg-[#0b5ea2]/18' : ''
+                }`}
               >
-                {day.isOpen
-                  ? `${formatManilaTime12(day.opensAt)} – ${formatManilaTime12(day.closesAt)}`
-                  : 'Closed'}
-              </span>
-            </li>
-          ))}
+                <div className="flex items-center gap-2">
+                  <strong className="font-semibold text-[var(--sl-text-header)]">
+                    {weekdays[day.dayOfWeek - 1]}
+                  </strong>
+                  {isToday ? (
+                    <span className="rounded-full bg-[#0b5ea2] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                      Today
+                    </span>
+                  ) : null}
+                </div>
+                {day.isOpen ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#dcfce7]/75 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-[#166534] dark:bg-[#166534]/30 dark:text-[#86efac]">
+                    <span className="size-1.5 rounded-full bg-[#16a34a]" aria-hidden="true" />
+                    {formatManilaTime12(day.opensAt)} – {formatManilaTime12(day.closesAt)}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#fee2e2] px-2.5 py-0.5 text-xs font-semibold text-[#b42318] dark:bg-[#991b1b]/35 dark:text-[#fca5a5]">
+                    <span className="size-1.5 rounded-full bg-[#dc2626]" aria-hidden="true" />
+                    Closed
+                  </span>
+                )}
+              </li>
+            )
+          })}
         </ul>
       </SectionCard>
-      <SectionCard className="p-5">
-        <h2 className="text-base font-semibold text-[var(--sl-text-header)]">Upcoming closures &amp; time windows</h2>
-        <p className="mt-1 text-xs text-[var(--sl-text-muted)]">
-          These dates and closure hours override the regular weekly hours.
-        </p>
-        {data.upcomingClosures.length ? (
-          <ul className="mt-3 divide-y divide-[var(--sl-border)]">
+
+      <SectionCard
+        className={`border-t-[3px] p-5 ${
+          hasClosures ? 'border-t-[#eab308]' : 'border-t-[#16a34a]'
+        }`}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-[var(--sl-border)] pb-3.5">
+          <div>
+            <p
+              className={`text-[11px] font-bold uppercase tracking-[0.12em] ${
+                hasClosures
+                  ? 'text-[#92400e] dark:text-[#fde047]'
+                  : 'text-[#166534] dark:text-[#86efac]'
+              }`}
+            >
+              Schedule exceptions
+            </p>
+            <h2 className="mt-0.5 font-display text-lg font-semibold text-[var(--sl-text-header)]">
+              Upcoming closures &amp; time windows
+            </h2>
+            <p className="mt-0.5 text-xs text-[var(--sl-text-muted)]">
+              These dates and closure hours override the regular weekly hours.
+            </p>
+          </div>
+          <CalendarDays
+            size={18}
+            className={`mt-0.5 shrink-0 ${
+              hasClosures ? 'text-[#eab308]' : 'text-[#16a34a]'
+            }`}
+          />
+        </div>
+
+        {hasClosures ? (
+          <ul className="mt-3.5 space-y-2.5">
             {data.upcomingClosures.map((closure) => (
-              <li key={closure.date} className="py-3">
+              <li
+                key={closure.date}
+                className="rounded-[10px] border border-[#dc2626]/20 bg-[#fef2f2]/60 p-3.5 dark:border-[#dc2626]/30 dark:bg-[#991b1b]/15"
+              >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <strong className="text-sm font-semibold text-[var(--sl-text-header)]">
                     {formatPhDate(closure.date)}
                   </strong>
-                  <span className="inline-flex items-center gap-1 rounded-[4px] bg-[#fef2f2] px-2 py-0.5 text-xs font-semibold tabular-nums text-[#991b1b] dark:bg-red-950/40 dark:text-red-300">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#fee2e2] px-2.5 py-0.5 text-xs font-semibold tabular-nums text-[#b42318] dark:bg-[#991b1b]/40 dark:text-[#fca5a5]">
                     <Clock size={11} />
                     {closure.startsAt && closure.endsAt
                       ? `${formatManilaTime12(closure.startsAt)} – ${formatManilaTime12(closure.endsAt)}`
                       : 'All day'}
                   </span>
                 </div>
-                <p className="mt-1 break-words text-sm text-[var(--sl-text-secondary)]">{closure.reason}</p>
+                <p className="mt-1.5 break-words text-sm text-[var(--sl-text-secondary)]">
+                  {closure.reason}
+                </p>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="mt-4 text-sm text-[var(--sl-text-secondary)]">No upcoming closures are scheduled.</p>
+          <div className="mt-4 flex items-start gap-3 rounded-[10px] border border-[#16a34a]/30 bg-[#dcfce7]/55 p-4 text-[#166534] dark:border-[#16a34a]/35 dark:bg-[#166534]/20 dark:text-[#86efac]">
+            <CheckCircle2 size={20} className="mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold">Regular weekly hours apply</p>
+              <p className="mt-0.5 text-xs opacity-90">No upcoming closures are scheduled.</p>
+            </div>
+          </div>
         )}
       </SectionCard>
     </div>
@@ -179,33 +258,70 @@ export function LibrarySchedulePage({ manage = false, embedded = false }: { mana
     }
   }
 
-  return (
-    <div className="space-y-4">
-      {embedded ? (
-        <h2 className="text-xl font-semibold text-[var(--sl-text-header)]">Library schedule maintenance</h2>
-      ) : (
-        <PageHeader
-          eyebrow="Library information"
-          title="Library schedule"
-          description="Weekly hours, closure dates, and closure time windows in Manila time (PHT)."
-        />
-      )}
+  const todayRow = query.data?.weekly.find((day) => day.dayOfWeek === currentManilaDayOfWeek())
+  const actions = (
+    <div className="flex flex-wrap items-center gap-2 lg:shrink-0">
+      <RefreshButton label="Refresh schedule" onRefresh={() => query.refresh()} variant="secondary" disabled={busy} />
+      {manage && !draft && query.data ? (
+        <Button
+          onClick={() => {
+            setDraft(structuredClone(query.data!))
+            setReview(false)
+            setError('')
+            setNotice('')
+          }}
+        >
+          Edit schedule
+        </Button>
+      ) : null}
+    </div>
+  )
 
-      <div className="flex flex-wrap gap-2.5">
-        <RefreshButton label="Refresh schedule" onRefresh={() => query.refresh()} variant="secondary" disabled={busy} />
-        {manage && !draft && query.data ? (
-          <Button
-            onClick={() => {
-              setDraft(structuredClone(query.data!))
-              setReview(false)
-              setError('')
-              setNotice('')
-            }}
-          >
-            Edit schedule
-          </Button>
-        ) : null}
-      </div>
+  return (
+    <div className="space-y-5">
+      {embedded ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-display text-xl font-semibold text-[var(--sl-text-header)]">
+            Library schedule maintenance
+          </h2>
+          {actions}
+        </div>
+      ) : (
+        <header className="flex flex-col gap-4 rounded-[12px] border border-[var(--sl-border)] border-t-[3px] border-t-[#0f766e] bg-gradient-to-r from-[#f0fdfa] via-[var(--sl-bg-elevated)] to-[#fffdf0] p-5 shadow-[var(--sl-shadow-xs)] dark:from-[#122a2a] dark:via-[#1a2232] dark:to-[#24251c] lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center rounded-full bg-[#0f766e]/14 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[#0f766e] dark:bg-[#0f766e]/25 dark:text-[#5eead4]">
+                Library information
+              </span>
+              {todayRow ? (
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                    todayRow.isOpen
+                      ? 'bg-[#dcfce7] text-[#166534] dark:bg-[#166534]/30 dark:text-[#86efac]'
+                      : 'bg-[#fee2e2] text-[#b42318] dark:bg-[#991b1b]/30 dark:text-[#fca5a5]'
+                  }`}
+                >
+                  <span
+                    className={`size-1.5 rounded-full ${
+                      todayRow.isOpen ? 'bg-[#16a34a]' : 'bg-[#dc2626]'
+                    }`}
+                  />
+                  {todayRow.isOpen
+                    ? `Open today · ${formatManilaTime12(todayRow.opensAt)} – ${formatManilaTime12(todayRow.closesAt)}`
+                    : 'Closed today'}
+                </span>
+              ) : null}
+            </div>
+            <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-[var(--sl-text-header)] sm:text-[1.75rem]">
+              Library schedule
+            </h1>
+            <p className="mt-1 text-sm text-[var(--sl-text-secondary)]">
+              Weekly hours, closure dates, and closure time windows in Manila time (PHT).
+            </p>
+          </div>
+          {actions}
+        </header>
+      )}
 
       {error || query.error ? (
         <p role="alert" className="auth-error rounded-[8px] p-3 text-sm">

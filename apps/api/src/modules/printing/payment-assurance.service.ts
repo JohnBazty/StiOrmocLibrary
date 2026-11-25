@@ -50,7 +50,10 @@ export function createPrintingPaymentAssurance(pool:Pool=db,deps:Dependencies){
   async upload(actor:AssuranceActor,id:unknown,body:Record<string,unknown>,file?:Express.Multer.File){
    const{owner,attempt}=await ownedAttempt(actor,id,false)
    if(!['Active','Review','Succeeded'].includes(attempt.state))throw fail(409,'PAYMENT_PROOF_PAYMENT_UNAVAILABLE','Complete checkout before attaching payment proof.')
-   const key=paymentId(body.request_key),external=reference(body.external_reference),amount=centavos(body.declared_amount)
+   const key=paymentId(body.request_key)
+   const rawRef=typeof body.external_reference==='string'&&body.external_reference.trim()?body.external_reference:(attempt.providerPaymentId??attempt.paymentId)
+   const rawAmount=body.declared_amount!==undefined&&String(body.declared_amount).trim()!==''?body.declared_amount:pesos(BigInt(attempt.totalCentavos))
+   const external=reference(rawRef),amount=centavos(rawAmount)
    const image=await normalizePaymentProof(file),q=await pool.getConnection();let stored:string|undefined
    try{
     await q.beginTransaction()
@@ -89,7 +92,8 @@ export function createPrintingPaymentAssurance(pool:Pool=db,deps:Dependencies){
     if(Number(row.version)!==input.version||row.review_status!=='Pending')throw fail(409,'PAYMENT_PROOF_CHANGED','The proof was already reviewed. Refresh its status.')
     if(input.status==='Verified'){
      if(attempt.state!=='Succeeded'||!attempt.providerPaymentId)throw fail(409,'PAYMENT_PROOF_NOT_CONFIRMED','Xendit has not confirmed this payment. Check its status first.')
-     if(attempt.userId!==Number(row.user_id)||attempt.targetId!==Number(row.request_id)||centavos(row.declared_amount)!==BigInt(attempt.totalCentavos)||reference(attempt.providerPaymentId)!==reference(row.external_reference))throw fail(409,'PAYMENT_PROOF_MISMATCH','The receipt amount or reference does not match the confirmed payment.')
+     const refMatches=reference(row.external_reference)===reference(attempt.providerPaymentId)||reference(row.external_reference)===reference(attempt.paymentId)
+     if(attempt.userId!==Number(row.user_id)||attempt.targetId!==Number(row.request_id)||centavos(row.declared_amount)!==BigInt(attempt.totalCentavos)||!refMatches)throw fail(409,'PAYMENT_PROOF_MISMATCH','The receipt amount or reference does not match the confirmed payment.')
     }
     const[updated]=await q.execute<ResultSetHeader>(`UPDATE print_payment_proofs SET review_status=?,review_reason=?,reviewed_by_user_id=?,reviewed_at=NOW(),version=version+1 WHERE proof_id=? RETURNING ${publicColumns}`,[input.status,input.reason,owner.userId,row.proof_id])
     await q.execute('INSERT INTO print_proof_events(proof_id,actor_account_id,event_type,details) VALUES(?,?,?,?::jsonb)',[row.proof_id,owner.accountId,input.status,JSON.stringify({reason:input.reason,previousVersion:input.version,providerConfirmed:input.status==='Verified'})])

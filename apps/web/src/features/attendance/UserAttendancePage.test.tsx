@@ -22,3 +22,8 @@ it('shows and downloads one permanent QR with no purpose-code generation',async(
  await waitFor(()=>expect(api.passImage).toHaveBeenCalledTimes(2))
  expect(api.passImage.mock.calls.every(args=>args.length===0)).toBe(true)
 })
+it('renders error alert semantically when attendance pass fails to load',async()=>{
+ api.myPass.mockRejectedValueOnce(new Error('Attendance service offline'))
+ render(<UserAttendancePage/>)
+ expect((await screen.findByRole('alert')).textContent).toContain('Attendance service offline')
+})

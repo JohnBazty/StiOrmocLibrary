@@ -154,6 +154,9 @@ export function ScheduleBorrowingForm({
             if (date && dates.includes(date) && !busy) {
               ask(`Schedule ${title} for ${pickupDateLabel(date)}. Availability is not guaranteed.`, () => {
                 void save()
+              }, {
+                title: 'Confirm scheduled pickup?',
+                confirmLabel: 'Save schedule',
               })
             }
           }}

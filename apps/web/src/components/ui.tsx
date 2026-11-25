@@ -245,13 +245,14 @@ const badgeToneStyles: Record<SemanticTone, { classes: string; icon: LucideIcon 
   },
 }
 
-export function resolveStatusTone(status: string): SemanticTone {
-  const normalized = status.trim().toLowerCase().replace(/[\s-]+/g, '_')
+export function resolveStatusTone(status: string | null | undefined): SemanticTone {
+  const normalized = (status ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_')
   return statusToneMap[normalized] ?? 'neutral'
 }
 
 export function StatusBadge({ status, tone }: { status: string; tone?: SemanticTone }) {
-  const resolved = tone ?? resolveStatusTone(status)
+  const label = (status ?? '').trim()
+  const resolved = tone ?? resolveStatusTone(label)
   const { classes, icon: Icon } = badgeToneStyles[resolved]
   return (
     <span
@@ -262,7 +263,7 @@ export function StatusBadge({ status, tone }: { status: string; tone?: SemanticT
       )}
     >
       <Icon size={13} aria-hidden="true" className="shrink-0" />
-      <span>{status.replaceAll('_', ' ')}</span>
+      <span>{label.replaceAll('_', ' ')}</span>
     </span>
   )
 }

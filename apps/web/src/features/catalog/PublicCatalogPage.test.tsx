@@ -101,3 +101,17 @@ it('explains borrowed stock and refreshes availability on focus without changing
  await waitFor(()=>expect(screen.queryByText('All copies are currently borrowed.')).toBeNull())
  expect((vi.mocked(enhancedCatalog.search).mock.calls.at(-1)![0] as URLSearchParams).get('q')).toBe('Example')
 })
+
+it('shows a single Browse by category strip, syncs active nav to hash, and clears search inline', async () => {
+ vi.mocked(enhancedCatalog.options).mockResolvedValue({categories:[{id:1,name:'Computer Science'}],programs:[],courses:[],types:[],locations:[]} as never)
+ vi.mocked(enhancedCatalog.search).mockResolvedValue({items:[book],pagination:{total:1,page:1,limit:24}} as never)
+ render(<MemoryRouter initialEntries={['/#catalog']}><ThemeProvider><PublicCatalogPage/></ThemeProvider></MemoryRouter>)
+ await screen.findByRole('heading',{name:'Example library book'})
+ expect(screen.queryByText(/Explore categories:/i)).toBeNull()
+ expect(screen.getAllByRole('link',{name:'Computer Science'})).toHaveLength(1)
+ expect(screen.getByRole('link',{name:'Browse'}).getAttribute('aria-current')).toBe('location')
+ const input=screen.getByRole('textbox',{name:'Search books, authors or ISBN'})
+ fireEvent.change(input,{target:{value:'clean'}})
+ fireEvent.click(screen.getByRole('button',{name:'Clear search'}))
+ expect((input as HTMLInputElement).value).toBe('')
+})

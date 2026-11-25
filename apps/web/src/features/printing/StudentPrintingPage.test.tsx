@@ -143,3 +143,11 @@ it('shows the loaded brand and both page prices before choosing a document',asyn
  expect(screen.getByText('₱5.00/page')).toBeTruthy()
  expect(api.quote).not.toHaveBeenCalled()
 })
+
+it('offers Send proof of payment directly on a paid or online print request',async()=>{
+ api.mine.mockResolvedValue([{request_id:9,file_name:'collection-full.pdf',number_of_copies:10,print_type:'Colored',paper_size:'A4',page_count:11,total_sheets:110,calculated_cost:550,payment_status:'Paid',job_status:'Pending',localPaymentId:'00000000-0000-4000-8000-000000000009',created_at:'2026-09-23T09:00:00+08:00'}])
+ renderPage()
+ const button=await screen.findByRole('button',{name:'Send proof of payment'})
+ fireEvent.click(button)
+ expect(await screen.findByRole('dialog',{name:'Proof of payment'})).toBeTruthy()
+})

@@ -92,7 +92,7 @@ it.each(['student', 'faculty', 'admin', 'librarian', 'staff'] as const)('asks be
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ success: true, data: { unreadCount: 0, request: null } })))
   render(<MemoryRouter initialEntries={[`/${role}/dashboard`]}><ThemeProvider><Routes><Route element={<PortalLayout role={role} />}><Route path={`/${role}/dashboard`} element={<h1>Workspace content</h1>} /><Route path="/login" element={<h1>Login page</h1>} /></Route></Routes></ThemeProvider></MemoryRouter>)
   fireEvent.click(screen.getAllByRole('button', { name: 'Sign out' })[0])
-  const dialog = screen.getByRole('alertdialog', { name: 'Are you sure you want to sign out?' })
+  const dialog = screen.getByRole('alertdialog', { name: 'Sign out of your library account?' })
   expect(authApi.logout).not.toHaveBeenCalled()
   fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
   expect(screen.queryByRole('alertdialog')).toBeNull()

@@ -1,23 +1,25 @@
-import { usePaymentUpdates } from '../payments/payment-updates'
-import { ViewLocationButton } from '../floor-plan/ViewLocationButton'
-import { BookOpen, CheckCircle2, Eye, MapPin, Trash2 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Button, EmptyState, LumoDialog, NoticeBanner, PageHeader, SectionCard, StatusBadge } from '../../components/ui'
-import { BookCartApiError, fetchCartState, submitBorrowRequest, type BorrowRequestReceipt } from './book-cart-api'
-import { readBookCart, useBookCart } from './book-cart-store'
-import { BookDetailDrawer } from './BookDetailDrawer'
-import { BookCoverThumbnail } from './BookCoverThumbnail'
-import { fetchBookOverview } from './book-catalog-api'
-import { TitleAlreadyActiveDialog } from './TitleAlreadyActiveDialog'
+import { BookOpen, CheckCircle2, Eye, MapPin, ShoppingBag, Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 import { RefreshButton } from '../../components/RefreshButton'
+import { Button, EmptyState, LumoDialog, NoticeBanner, SectionCard, StatusBadge } from '../../components/ui'
+import { ViewLocationButton } from '../floor-plan/ViewLocationButton'
 import { useLibraryOpenStatus } from '../notifications/useLibraryOpenStatus'
+import { usePaymentUpdates } from '../payments/payment-updates'
+import { BookCoverThumbnail } from './BookCoverThumbnail'
+import { BookDetailDrawer } from './BookDetailDrawer'
+import { BookCartApiError, fetchCartState, submitBorrowRequest, type BorrowRequestReceipt } from './book-cart-api'
+import { readBookCart, useBookCart } from './book-cart-store'
+import { fetchBookOverview } from './book-catalog-api'
+import { TitleAlreadyActiveDialog } from './TitleAlreadyActiveDialog'
 
 export function BookCart() {
   const requestKey = useRef('')
   const selectionKey = useRef('')
   const saving = useRef(false)
-  const { items, updateItem, removeItem, removeItems, clear } = useBookCart()
+  const { items, updateItem, removeItem, removeItems } = useBookCart()
+  const [selectedIds, setSelectedIds] = useState<number[]>(() => items.map((item) => item.titleId))
+  const knownIds = useRef<Set<number>>(new Set(items.map((item) => item.titleId)))
   const [syncNotice, setSyncNotice] = useState('')
   const { ask, dialog: confirmSave } = useConfirmSave()
   const [heldTitles, setHeldTitles] = useState<string[]>([])
@@ -28,10 +30,48 @@ export function BookCart() {
   const mounted = useRef(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [submitNotice, setSubmitNotice] = useState('')
   const [receipt, setReceipt] = useState<BorrowRequestReceipt | null>(null)
   const [detailTitleId, setDetailTitleId] = useState<number | null>(null)
   const hydratedTitleIds = useRef(new Set<number>())
+  const selectAllRef = useRef<HTMLInputElement | null>(null)
   const hasItems = items.length > 0
+
+  // Auto-select newly added cart items and prune removed ones
+  useEffect(() => {
+    const currentIdSet = new Set(items.map((item) => item.titleId))
+    const newlyAdded = items.filter((item) => !knownIds.current.has(item.titleId)).map((item) => item.titleId)
+    knownIds.current = currentIdSet
+    setSelectedIds((prev) => {
+      const kept = prev.filter((id) => currentIdSet.has(id))
+      return newlyAdded.length ? [...kept, ...newlyAdded] : kept
+    })
+  }, [items])
+
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
+  const selectedItems = useMemo(() => items.filter((item) => selectedSet.has(item.titleId)), [items, selectedSet])
+  const allSelected = items.length > 0 && selectedItems.length === items.length
+  const someSelected = selectedItems.length > 0 && selectedItems.length < items.length
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someSelected
+    }
+  }, [someSelected])
+
+  const toggleItem = (titleId: number) => {
+    setSelectedIds((prev) =>
+      prev.includes(titleId) ? prev.filter((id) => id !== titleId) : [...prev, titleId],
+    )
+  }
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelectedIds([])
+    } else {
+      setSelectedIds(items.map((item) => item.titleId))
+    }
+  }
 
   const refreshCart = useCallback(() => {
     if (!hasItems || saving.current) return Promise.resolve()
@@ -42,9 +82,9 @@ export function BookCart() {
         if (!mounted.current || saving.current) return
         setOutstanding(state.outstandingBalance ?? 0)
         setSyncError('')
-        const removed = readBookCart().filter(item => state.activeTitleIds.includes(item.titleId))
+        const removed = readBookCart().filter((item) => state.activeTitleIds.includes(item.titleId))
         if (removeItems(state.activeTitleIds) > 0) {
-          setHeldTitles(removed.map(item => item.title))
+          setHeldTitles(removed.map((item) => item.title))
           setSyncNotice('')
           setDetailTitleId(null)
         }
@@ -70,19 +110,21 @@ export function BookCart() {
   usePaymentUpdates(refreshCart, 15000)
 
   useEffect(() => {
-    const activeIds = new Set(items.map(item => item.titleId))
-    setUnavailableIds(prev => prev.filter(id => activeIds.has(id)))
+    const activeIds = new Set(items.map((item) => item.titleId))
+    setUnavailableIds((prev) => prev.filter((id) => activeIds.has(id)))
     for (const item of items) {
       if (hydratedTitleIds.current.has(item.titleId)) continue
       hydratedTitleIds.current.add(item.titleId)
       void Promise.resolve(fetchBookOverview(item.titleId))
-        .then(book => {
+        .then((book) => {
           if (!book) return
           if (mounted.current && typeof book.availableCopiesCount === 'number') {
-            setUnavailableIds(prev =>
+            setUnavailableIds((prev) =>
               book.availableCopiesCount <= 0
-                ? prev.includes(item.titleId) ? prev : [...prev, item.titleId]
-                : prev.filter(id => id !== item.titleId),
+                ? prev.includes(item.titleId)
+                  ? prev
+                  : [...prev, item.titleId]
+                : prev.filter((id) => id !== item.titleId),
             )
           }
           updateItem(item.titleId, {
@@ -101,34 +143,37 @@ export function BookCart() {
     }
   }, [items, updateItem])
 
-  async function submit() {
-    if (!items.length || saving.current) return
+  async function submit(targetIds: number[]) {
+    if (!targetIds.length || saving.current) return
     saving.current = true
-    const selection = items.map(item => item.titleId).sort((a, b) => a - b).join(',')
+    const selection = [...targetIds].sort((a, b) => a - b).join(',')
     if (selection !== selectionKey.current) {
       requestKey.current = ''
       selectionKey.current = selection
     }
     setSubmitting(true)
     setError('')
+    setSubmitNotice('')
     try {
       requestKey.current ||= crypto.randomUUID()
-      const result = await submitBorrowRequest(
-        items.map(item => item.titleId),
-        requestKey.current,
-      )
+      const submittedCount = targetIds.length
+      const result = await submitBorrowRequest(targetIds, requestKey.current)
       requestKey.current = ''
-      clear()
+      removeItems(targetIds)
+      setSelectedIds((prev) => prev.filter((id) => !targetIds.includes(id)))
+      setSubmitNotice(
+        `Checkout submitted for ${submittedCount} ${submittedCount === 1 ? 'book' : 'books'}. ${result.instructions}`,
+      )
       setReceipt(result)
     } catch (reason) {
       const blockers =
         reason instanceof BookCartApiError && reason.code === 'CIRCULATION_ELIGIBILITY_BLOCKED'
           ? (reason.details as { blockers?: unknown })?.blockers
           : null
-      if (Array.isArray(blockers) && blockers.every(value => typeof value === 'string')) {
+      if (Array.isArray(blockers) && blockers.every((value) => typeof value === 'string')) {
         const balanceBannerVisible = outstanding !== null && outstanding > 0
         const filtered = balanceBannerVisible
-          ? blockers.filter(value => !value.startsWith('Settle the outstanding library balance of '))
+          ? blockers.filter((value) => !value.startsWith('Settle the outstanding library balance of '))
           : blockers
         setError((filtered.length ? filtered : blockers).join(' '))
       } else if (reason instanceof BookCartApiError && reason.code === 'STUDENT_BORROW_LIMIT_REACHED') {
@@ -149,17 +194,47 @@ export function BookCart() {
   }
 
   const libraryStatus = useLibraryOpenStatus()
-  const hasUnavailable = items.some(item => unavailableIds.includes(item.titleId))
-  const checkoutBlocked = !items.length || submitting || libraryStatus.closed || (outstanding !== null && outstanding > 0) || hasUnavailable
+  const hasUnpaidBalance = outstanding !== null && outstanding > 0
+  const hasUnavailable = items.some((item) => unavailableIds.includes(item.titleId))
+  const selectedHasUnavailable = selectedItems.some((item) => unavailableIds.includes(item.titleId))
+  const checkoutBlocked =
+    !selectedItems.length || submitting || libraryStatus.closed || hasUnpaidBalance || selectedHasUnavailable
+
+  function requestCheckout(targetItems: typeof items) {
+    const count = targetItems.length
+    const targetIds = targetItems.map((item) => item.titleId)
+    const label = count === 1 ? `"${targetItems[0].title}"` : `${count} books`
+    ask(
+      `Send ${label} to the library desk. The loan starts when staff hand over the copy.`,
+      () => {
+        void submit(targetIds)
+      },
+      {
+        title: 'Send borrow request to the library desk?',
+        confirmLabel: 'Send borrow request',
+      },
+    )
+  }
 
   return (
-    <>
+    <div className="space-y-5">
       {confirmSave}
-      <PageHeader
-        eyebrow="My library"
-        title="Book cart"
-        description="Review available books before sending them to the library desk. Bring the selected copies to staff to start your loan."
-      />
+
+      <header className="flex flex-col gap-3 rounded-[12px] border border-[var(--sl-border)] border-t-[3px] border-t-[#0b5ea2] bg-gradient-to-r from-[#f0f7ff] via-[var(--sl-bg-elevated)] to-[#fffdf0] p-5 shadow-[var(--sl-shadow-xs)] dark:from-[#16253b] dark:via-[#1a2232] dark:to-[#24251c] sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#0b5ea2]/14 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[#0b5ea2] dark:bg-[#0b5ea2]/25 dark:text-[#93c5fd]">
+            <ShoppingBag size={12} />
+            My library
+          </span>
+          <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-[var(--sl-text-header)] sm:text-[1.75rem]">
+            Book cart
+          </h1>
+          <p className="mt-1 text-sm text-[var(--sl-text-secondary)]">
+            Check out books one by one, select specific titles, or select all to send to the library desk.
+          </p>
+        </div>
+      </header>
+
       {libraryStatus.closed ? (
         <NoticeBanner tone="warning">
           The library is currently closed ({libraryStatus.reason}). Checking out borrow requests is disabled until the library reopens.
@@ -170,14 +245,12 @@ export function BookCart() {
       {syncError ? (
         <NoticeBanner
           tone="error"
-          action={
-            <RefreshButton label="Refresh balance" onRefresh={() => refreshCart()} variant="ghost" size="sm" />
-          }
+          action={<RefreshButton label="Refresh balance" onRefresh={() => refreshCart()} variant="ghost" size="sm" />}
         >
           {syncError}
         </NoticeBanner>
       ) : null}
-      {outstanding !== null && outstanding > 0 && hasItems ? (
+      {hasUnpaidBalance && hasItems ? (
         <NoticeBanner
           tone="error"
           action={
@@ -191,33 +264,77 @@ export function BookCart() {
       ) : null}
       {hasUnavailable ? (
         <NoticeBanner tone="warning">
-          One or more books in your cart no longer have an available copy. Remove unavailable books before checking out.
+          One or more books in your cart no longer have an available copy. Uncheck or remove unavailable books before checking out.
         </NoticeBanner>
       ) : null}
       {error ? <NoticeBanner tone="error">{error}</NoticeBanner> : null}
+      {submitNotice ? (
+        <NoticeBanner
+          tone="success"
+          action={
+            <a className="inline-flex min-h-8 items-center text-xs font-semibold underline" href="../reservations">
+              View requests &amp; reservations
+            </a>
+          }
+        >
+          {submitNotice}
+        </NoticeBanner>
+      ) : null}
 
-      <SectionCard className="overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--sl-border)] px-5 py-3.5">
-          <h2 className="font-display text-base font-semibold text-[var(--sl-text-header)]">Review your selected books</h2>
+      <SectionCard className="overflow-hidden border-t-[3px] border-t-[#0f766e]">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--sl-border)] bg-[var(--sl-bg-subtle)]/35 px-5 py-3.5">
+          <div className="flex flex-wrap items-center gap-3">
+            {items.length ? (
+              <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-[var(--sl-text-header)]">
+                <input
+                  ref={selectAllRef}
+                  type="checkbox"
+                  checked={allSelected}
+                  disabled={submitting}
+                  onChange={toggleAll}
+                  className="size-4 rounded border-[var(--sl-border-strong)] accent-[#0b5ea2]"
+                />
+                Select all
+              </label>
+            ) : null}
+            <h2 className="font-display text-base font-semibold text-[var(--sl-text-header)]">
+              Review your selected books
+            </h2>
+          </div>
           {items.length ? (
-            <span className="text-xs font-medium text-[var(--sl-text-muted)] tabular-nums">
-              {items.length} {items.length === 1 ? 'book' : 'books'} selected
+            <span className="rounded-full bg-[#0b5ea2]/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-[#0b5ea2] dark:bg-[#0b5ea2]/25 dark:text-[#93c5fd]">
+              {selectedItems.length} of {items.length} {items.length === 1 ? 'book' : 'books'} selected
             </span>
           ) : null}
         </div>
+
         {items.length ? (
           <div className="divide-y divide-[var(--sl-border)]">
-            {items.map(item => {
+            {items.map((item) => {
               const isUnavailable = unavailableIds.includes(item.titleId)
+              const isChecked = selectedSet.has(item.titleId)
+              const singleBlocked = submitting || libraryStatus.closed || hasUnpaidBalance || isUnavailable
               return (
                 <article
                   key={item.titleId}
-                  className="grid gap-4 px-5 py-4 sm:grid-cols-[auto_1fr_auto] sm:items-center"
+                  className={`grid grid-cols-[auto_auto_1fr] items-start gap-3 px-4 py-4 transition-colors sm:grid-cols-[auto_auto_1fr_auto] sm:items-center sm:gap-4 sm:px-5 ${
+                    isChecked ? 'bg-[#f0f7ff]/45 dark:bg-[#0b5ea2]/10' : ''
+                  }`}
                 >
-                  <BookCoverThumbnail title={item.title} coverImagePath={item.coverImagePath} className="h-20 w-14" />
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    disabled={submitting}
+                    aria-label={`Select ${item.title} for checkout`}
+                    onChange={() => toggleItem(item.titleId)}
+                    className="mt-1 size-4 cursor-pointer rounded border-[var(--sl-border-strong)] accent-[#0b5ea2] sm:mt-0"
+                  />
+                  <BookCoverThumbnail title={item.title} coverImagePath={item.coverImagePath} className="h-20 w-14 shrink-0" />
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-display text-base font-semibold text-[var(--sl-text-header)]">{item.title}</h3>
+                      <h3 className="font-display text-base font-semibold text-[var(--sl-text-header)]">
+                        {item.title}
+                      </h3>
                       {isUnavailable ? <StatusBadge status="Unavailable" /> : null}
                     </div>
                     <p className="mt-0.5 text-sm text-[var(--sl-text-secondary)]">{item.author}</p>
@@ -234,10 +351,18 @@ export function BookCart() {
                       </p>
                     ) : null}
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="col-span-full flex flex-wrap items-center justify-end gap-2 border-t border-[var(--sl-border)]/60 pt-3 sm:col-span-1 sm:border-t-0 sm:pt-0">
                     <ViewLocationButton titleId={item.titleId} availableOnly />
                     <Button variant="secondary" size="sm" onClick={() => setDetailTitleId(item.titleId)}>
                       <Eye size={15} aria-hidden="true" /> View details
+                    </Button>
+                    <Button
+                      size="sm"
+                      aria-label={`Check out ${item.title}`}
+                      disabled={singleBlocked}
+                      onClick={() => requestCheckout([item])}
+                    >
+                      Check out
                     </Button>
                     <Button
                       variant="ghost"
@@ -268,18 +393,16 @@ export function BookCart() {
             }
           />
         )}
-        <div className="flex justify-end border-t border-[var(--sl-border)] bg-[var(--sl-bg-subtle)] px-5 py-3.5">
-          <Button
-            disabled={checkoutBlocked}
-            onClick={() =>
-              ask(
-                `Send ${items.length} ${items.length === 1 ? 'book' : 'books'} to the library desk. The loan starts when staff hand over the copy.`,
-                () => {
-                  void submit()
-                },
-              )
-            }
-          >
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--sl-border)] bg-[var(--sl-bg-subtle)] px-5 py-3.5">
+          <p className="text-xs font-medium text-[var(--sl-text-secondary)]">
+            {items.length
+              ? selectedItems.length
+                ? `Ready to send ${selectedItems.length} ${selectedItems.length === 1 ? 'book' : 'books'} to the library desk.`
+                : 'Select one or more books above, or use Check out on an individual book.'
+              : 'Add books from the catalog to check out.'}
+          </p>
+          <Button disabled={checkoutBlocked} onClick={() => requestCheckout(selectedItems)}>
             {submitting ? 'Submitting…' : 'Check Out'}
           </Button>
         </div>
@@ -290,7 +413,17 @@ export function BookCart() {
           eyebrow="Request submitted"
           title="Cart sent to library desk"
           onClose={() => setReceipt(null)}
-          footer={<Button onClick={() => setReceipt(null)}>Done</Button>}
+          footer={
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <a
+                href="../reservations"
+                className="inline-flex min-h-[38px] items-center justify-center rounded-[6px] border border-[var(--sl-border-strong)] bg-[var(--sl-bg-elevated)] px-3.5 text-sm font-semibold text-[var(--sl-text-header)] hover:bg-[var(--sl-bg-subtle)]"
+              >
+                View requests &amp; reservations
+              </a>
+              <Button onClick={() => setReceipt(null)}>Done</Button>
+            </div>
+          }
         >
           <NoticeBanner tone="success" className="mb-4">
             <span className="inline-flex items-center gap-2">
@@ -302,7 +435,7 @@ export function BookCart() {
             These available books are awaiting staff handover and are not in the reservation queue. Your loan starts only after staff confirm the physical handover.
           </p>
           <div className="mt-4 divide-y divide-[var(--sl-border)] rounded-[8px] border border-[var(--sl-border)]">
-            {receipt.items.map(item => (
+            {receipt.items.map((item) => (
               <div key={item.reservationId ?? item.titleId} className="flex items-center justify-between gap-2 px-3 py-2.5">
                 <span className="text-sm font-semibold text-[var(--sl-text-header)]">
                   {item.title}
@@ -318,10 +451,10 @@ export function BookCart() {
       {detailTitleId !== null ? (
         <BookDetailDrawer
           titleId={detailTitleId}
-          barcode={items.find(item => item.titleId === detailTitleId)?.previewBarcode ?? null}
+          barcode={items.find((item) => item.titleId === detailTitleId)?.previewBarcode ?? null}
           onClose={() => setDetailTitleId(null)}
         />
       ) : null}
-    </>
+    </div>
   )
 }

@@ -58,3 +58,12 @@ it('allows filling an assigned wallet number in one click without exposing forbi
  expect(screen.getByRole('heading',{name:'Enter PIN'})).toBeTruthy()
  expect(screen.queryByText(/demo|test|authentication/i)).toBeNull()
 })
+it('enforces 11-digit Philippine mobile numbers and caps extra digits',()=>{
+ render(<DemoWalletCheckout {...props}/>)
+ const input=screen.getByLabelText('Mobile number') as HTMLInputElement
+ fireEvent.change(input,{target:{value:'0917482'}})
+ fireEvent.click(screen.getByRole('button',{name:'Next'}))
+ expect(screen.getByRole('alert').textContent).toContain('11-digit Philippine mobile number')
+ fireEvent.change(input,{target:{value:'091748263159999'}})
+ expect(input.value).toBe('09174826315')
+})

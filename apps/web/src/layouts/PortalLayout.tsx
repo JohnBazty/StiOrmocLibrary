@@ -188,7 +188,7 @@ function Sidebar({
         <nav className="flex-1 overflow-y-auto px-3 py-5">
           {role === 'librarian' ? <AdminSidebarNavigation onNavigate={onClose}/> : nav.map((item) => {
             const Icon = item.icon
-            return <div key={item.to}>{item.section ? <h2 className="mb-2 mt-4 px-3 text-xs font-bold uppercase text-white/65">{item.section}</h2> : null}<NavLink onClick={onClose} to={item.to} className={({ isActive }) => cn('mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition lg:py-2.5', isActive ? 'bg-white text-[#0b5ea2] shadow-sm dark:bg-[#FFF200]' : 'text-white/70 hover:bg-white/10 hover:text-white')}><Icon size={17} className="shrink-0" /><span className="min-w-0 flex-1 truncate">{item.label}</span></NavLink></div>
+            return <div key={item.to}>{item.section ? <h2 className="mb-1.5 mt-4 px-3 text-[11px] font-bold uppercase tracking-[0.1em] text-white/60">{item.section}</h2> : null}<NavLink onClick={onClose} to={item.to} className={({ isActive }) => cn('mb-1 flex min-h-[40px] items-center gap-3 rounded-[6px] px-3 py-2 text-sm font-medium transition-colors', isActive ? 'bg-white text-[#0b5ea2] font-semibold shadow-sm dark:bg-[#FFF200] dark:text-[#0b5ea2]' : 'text-white/75 hover:bg-white/10 hover:text-white')}><Icon size={17} className="shrink-0" aria-hidden="true" /><span className="min-w-0 flex-1 truncate">{item.label}</span></NavLink></div>
           })}
         </nav>
         <div className="border-t border-white/10 p-3"><SidebarAccountCard key={`${claims?.source}:${claims?.userId}`} identity={claims} preview={preview.enabled} /></div>
@@ -380,9 +380,9 @@ export function PortalLayout({ role }: { role: Role }) {
           <div
             role="status"
             data-tone="warning"
-            className="mx-4 mt-4 flex flex-wrap items-start gap-3 rounded-[8px] border border-[#fecaca] bg-[#fef2f2] px-4 py-3 text-sm text-[#991b1b] sm:mx-6 lg:mx-8 dark:border-red-900/50 dark:bg-red-950/35 dark:text-red-200"
+            className="mx-4 mt-4 flex flex-wrap items-start gap-3 rounded-[8px] border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-sm text-[#92400e] sm:mx-6 lg:mx-8 dark:border-[rgba(251,191,36,0.35)] dark:bg-[rgba(180,83,9,0.26)] dark:text-[#fcd34d]"
           >
-            <Lock size={18} className="mt-0.5 shrink-0 text-[#b42318] dark:text-red-400" />
+            <Lock size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-[#b45309] dark:text-[#fcd34d]" />
             <div className="min-w-0 flex-1">
               <p className="font-semibold">
                 Library Closed — View-Only Mode ({viewOnlyReason})
@@ -393,9 +393,9 @@ export function PortalLayout({ role }: { role: Role }) {
             </div>
             <NavLink
               to={`/${role}/library-schedule`}
-              className="inline-flex min-h-[34px] items-center gap-1.5 rounded-[6px] border border-red-300 bg-white px-3 text-xs font-semibold text-[#991b1b] hover:bg-red-50 dark:border-red-800 dark:bg-red-950/60 dark:text-red-100"
+              className="inline-flex min-h-[34px] items-center gap-1.5 rounded-[6px] border border-[#f59e0b]/45 bg-white px-3 text-xs font-semibold text-[#92400e] hover:bg-[#fef3c7] dark:border-amber-400/35 dark:bg-amber-950/60 dark:text-[#fcd34d]"
             >
-              <AlertTriangle size={13} /> View library schedule
+              <AlertTriangle size={13} aria-hidden="true" /> View library schedule
             </NavLink>
           </div>
         ) : null}
@@ -421,7 +421,7 @@ export function PortalLayout({ role }: { role: Role }) {
           onResizingChange={setIsResizing}
         />
       ) : null}
-      {confirmSignOut ? <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-[2px]" onKeyDown={(event) => { if (event.key === 'Escape' && !signingOut) setConfirmSignOut(false) }}><div role="alertdialog" aria-modal="true" aria-labelledby="sign-out-title" aria-describedby="sign-out-text" className="w-full max-w-md overflow-hidden rounded-[10px] border border-[var(--sl-border)] bg-[var(--sl-bg-elevated)] text-[var(--sl-text)] shadow-[var(--sl-shadow-l)]"><div className="px-6 py-5"><h2 id="sign-out-title" className="font-display text-lg font-semibold text-[var(--sl-text-header)]">Are you sure you want to sign out?</h2><p id="sign-out-text" className="mt-2 text-sm text-[var(--sl-text-secondary)]">You will need to sign in again to use this portal.</p></div><div className="flex flex-wrap justify-end gap-2 border-t border-[var(--sl-border)] bg-[var(--sl-bg-subtle)] px-6 py-3"><button type="button" disabled={signingOut} onClick={() => setConfirmSignOut(false)} className="min-h-[38px] rounded-[6px] border border-[var(--sl-border-strong)] bg-[var(--sl-bg-elevated)] px-4 text-sm font-semibold text-[var(--sl-text-header)] hover:bg-[var(--sl-bg-hover)] disabled:opacity-50">Cancel</button><button type="button" disabled={signingOut} onClick={() => void signOut()} className="min-h-[38px] rounded-[6px] bg-[#0b5ea2] px-4 text-sm font-semibold text-white hover:bg-[#094e87] disabled:opacity-50">{signingOut ? 'Signing out…' : 'Sign out now'}</button></div></div></div> : null}
+      {confirmSignOut ? <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-[2px]" onKeyDown={(event) => { if (event.key === 'Escape' && !signingOut) setConfirmSignOut(false) }}><div role="alertdialog" aria-modal="true" aria-labelledby="sign-out-title" aria-describedby="sign-out-text" className="w-full max-w-md overflow-hidden rounded-[10px] border border-[var(--sl-border)] bg-[var(--sl-bg-elevated)] text-[var(--sl-text)] shadow-[var(--sl-shadow-l)]"><div className="px-6 py-5"><h2 id="sign-out-title" className="font-display text-lg font-semibold text-[var(--sl-text-header)]">Sign out of your library account?</h2><p id="sign-out-text" className="mt-2 text-sm text-[var(--sl-text-secondary)]">You will need to sign in again to use this portal.</p></div><div className="flex flex-wrap justify-end gap-2 border-t border-[var(--sl-border)] bg-[var(--sl-bg-subtle)] px-6 py-3"><button type="button" disabled={signingOut} onClick={() => setConfirmSignOut(false)} className="min-h-[38px] rounded-[6px] border border-[var(--sl-border-strong)] bg-[var(--sl-bg-elevated)] px-4 text-sm font-semibold text-[var(--sl-text-header)] hover:bg-[var(--sl-bg-hover)] disabled:opacity-50">Cancel</button><button type="button" disabled={signingOut} onClick={() => void signOut()} className="min-h-[38px] rounded-[6px] bg-[#0b5ea2] px-4 text-sm font-semibold text-white hover:bg-[#094e87] disabled:opacity-50">{signingOut ? 'Signing out…' : 'Sign out now'}</button></div></div></div> : null}
     </div>
   )
 }

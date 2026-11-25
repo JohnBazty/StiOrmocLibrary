@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { SelectedFilePreview } from '../../components/SelectedFilePreview'
-import { useSearchParams } from 'react-router-dom'
-import { ImageUp, MapPin } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, ImageUp, MapPin } from 'lucide-react'
 import { Button, PageHeader, SectionCard } from '../../components/ui'
 import { getCsrfToken, getCurrentIdentity } from '../auth/auth-storage'
 import { RefreshButton } from '../../components/RefreshButton'
@@ -21,7 +21,9 @@ async function api<T>(url: string, options: RequestInit = {}): Promise<T> {
 
 export function FloorPlanImagePage() {
   const [params] = useSearchParams()
-  const canUpload = getCurrentIdentity()?.role === 'Librarian'
+  const identity = getCurrentIdentity()
+  const canUpload = identity?.role === 'Librarian'
+  const catalogPath = identity?.role === 'Faculty' ? '/faculty/library' : identity?.role === 'Student' ? '/student/library' : null
   const [image, setImage] = useState<FloorImage>(null)
   const [location, setLocation] = useState<Location>(null)
   const [loading, setLoading] = useState(true)
@@ -76,10 +78,10 @@ export function FloorPlanImagePage() {
   }
 
   return <>
-    <PageHeader eyebrow="Library guide" title="Library floor plan" description="View the library image and use the shelf label to find a book." action={<RefreshButton onRefresh={() => load()} variant="secondary" disabled={loading || uploading} />} />
-    {message ? <p role={message.error ? 'alert' : 'status'} data-tone={message.error ? 'error' : 'success'} className="mb-4 rounded-xl px-4 py-3 text-sm font-semibold">{message.text}</p> : null}
-    {titleId ? <SectionCard className="mb-5 p-5"><div className="flex items-start gap-3"><MapPin className="shrink-0 text-[#0b5ea2]" /><div><h2 className="font-bold text-[#0b5ea2]">{location?.title ?? 'Book location'}</h2><p className="mt-1 text-lg font-black text-[#0b5ea2]">Shelf: {loading ? 'Loading…' : location?.shelfLabel || 'Location not recorded'}</p>{location?.accession ? <p className="text-sm text-[#0b5ea2]/70">Accession {location.accession}{location.callNumber ? ` · Call number ${location.callNumber}` : ''}</p> : null}</div></div></SectionCard> : null}
-    {canUpload ? <SectionCard className="mb-5 space-y-4 p-5"><h2 className="font-bold text-[#0b5ea2]">Publish a floor plan image</h2><p className="mt-1 text-sm text-[#0b5ea2]/70">Choose a PNG, JPEG, or WebP image up to 4 MB. Check the preview, then publish. The previous image remains in storage history.</p><label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#0b5ea2] px-4 py-2.5 text-sm font-bold text-white"><ImageUp size={18} />{uploading ? 'Uploading…' : 'Choose image'}<input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" disabled={uploading} onChange={event => selectFile(event.target.files?.[0] ?? null)} /></label><SelectedFilePreview file={file} onRemove={clearFile} disabled={uploading} />{file ? <Button disabled={uploading} onClick={() => void upload()}>{uploading ? 'Publishing…' : 'Publish image'}</Button> : null}</SectionCard> : null}
-    <SectionCard className="overflow-hidden p-5">{loading ? <p className="text-[#0b5ea2]">Loading floor plan…</p> : image?.imageUrl ? <><img src={image.imageUrl} alt="Current library floor plan" className="mx-auto max-h-[75vh] w-auto max-w-full rounded-xl border border-[#0b5ea2]/15 object-contain" width={800} height={600} /><p className="mt-4 text-center text-xs text-[#0b5ea2]/65">Uploaded {new Date(image.uploadedAt).toLocaleString()} by {image.uploadedBy}</p></> : <p className="py-12 text-center font-semibold text-[#0b5ea2]">{loadFailed ? 'Unable to load the floor plan. Use Refresh to try again.' : 'Floor plan image not available yet.'}</p>}</SectionCard>
+    <PageHeader eyebrow="Library guide" title="Library floor plan" description="View the library image and use the shelf label to find a book." action={<div className="flex flex-wrap items-center gap-2">{titleId && catalogPath ? <Link to={catalogPath} className="inline-flex min-h-[38px] items-center gap-1.5 rounded-[6px] border border-[var(--sl-border-strong)] bg-[var(--sl-bg-elevated)] px-3.5 text-sm font-semibold text-[var(--sl-text-header)] hover:bg-[var(--sl-bg-subtle)]"><ArrowLeft size={15} aria-hidden="true" /> Back to catalog</Link> : null}<RefreshButton onRefresh={() => load()} variant="secondary" disabled={loading || uploading} /></div>} />
+    {message ? <p role={message.error ? 'alert' : 'status'} data-tone={message.error ? 'error' : 'success'} className="mb-4 rounded-[8px] px-4 py-3 text-sm font-semibold">{message.text}</p> : null}
+    {titleId ? <SectionCard className="mb-5 border-l-4 border-l-[#0f766e] p-5"><div className="flex items-start gap-3"><MapPin className="mt-0.5 shrink-0 text-[#0f766e] dark:text-[#5eead4]" aria-hidden="true" /><div><h2 className="font-display font-semibold text-[var(--sl-text-header)]">{location?.title ?? 'Book location'}</h2><p className="mt-1 text-lg font-bold text-[var(--sl-text-header)]">Shelf: {loading ? 'Loading…' : location?.shelfLabel || 'Location not recorded'}</p>{location?.accession ? <p className="mt-0.5 text-sm text-[var(--sl-text-secondary)]">Accession {location.accession}{location.callNumber ? ` · Call number ${location.callNumber}` : ''}</p> : null}</div></div></SectionCard> : null}
+    {canUpload ? <SectionCard className="mb-5 space-y-4 p-5"><h2 className="font-display font-semibold text-[var(--sl-text-header)]">Publish a floor plan image</h2><p className="mt-1 text-sm text-[var(--sl-text-secondary)]">Choose a PNG, JPEG, or WebP image up to 4 MB. Check the preview, then publish. The previous image remains in storage history.</p><label className="inline-flex cursor-pointer items-center gap-2 rounded-[6px] bg-[#0b5ea2] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#094e87]"><ImageUp size={18} aria-hidden="true" />{uploading ? 'Uploading…' : 'Choose image'}<input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" disabled={uploading} onChange={event => selectFile(event.target.files?.[0] ?? null)} /></label><SelectedFilePreview file={file} onRemove={clearFile} disabled={uploading} />{file ? <Button disabled={uploading} onClick={() => void upload()}>{uploading ? 'Publishing…' : 'Publish image'}</Button> : null}</SectionCard> : null}
+    <SectionCard className="overflow-hidden p-5">{loading ? <p className="text-sm text-[var(--sl-text-secondary)]">Loading floor plan…</p> : image?.imageUrl ? <><img src={image.imageUrl} alt="Current library floor plan" className="mx-auto max-h-[75vh] w-auto max-w-full rounded-[8px] border border-[var(--sl-border)] object-contain" width={800} height={600} /><p className="mt-4 text-center text-xs text-[var(--sl-text-muted)]">Uploaded {new Date(image.uploadedAt).toLocaleString()} by {image.uploadedBy}</p></> : <p className="py-12 text-center text-sm font-medium text-[var(--sl-text-muted)]">{loadFailed ? 'Unable to load the floor plan. Use Refresh to try again.' : 'Floor plan image not available yet.'}</p>}</SectionCard>
   </>
 }

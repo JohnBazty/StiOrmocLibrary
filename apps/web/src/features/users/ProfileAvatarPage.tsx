@@ -54,7 +54,10 @@ export function ProfileAvatarPage() {
   function submit(event: FormEvent) {
     event.preventDefault()
     if (!file || busy) return
-    ask('Save this profile picture.', () => { void persistPicture() })
+    ask('Save this profile picture.', () => { void persistPicture() }, {
+      title: 'Save new profile picture?',
+      confirmLabel: 'Confirm & save picture',
+    })
   }
   async function persistPicture() {
     if (!file) return
@@ -76,13 +79,13 @@ export function ProfileAvatarPage() {
   }
   const name = profile ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || profile.full_name || 'Your account' : 'Your account'
   const initials = profile ? `${profile.first_name?.[0] ?? ''}${profile.last_name?.[0] ?? ''}`.toUpperCase() : ''
-  return <div className="my-profile-page">{confirmSave}<PageHeader eyebrow="My account" title={showAll ? 'My profile' : section === 'personal' ? 'Personal details' : section === 'school' ? 'School details' : 'Profile photo'} />
+  return <div className="my-profile-page">{confirmSave}<PageHeader eyebrow="My account" title={showAll ? 'My profile' : section === 'personal' ? 'Personal details' : section === 'school' ? 'School details' : 'Profile photo'} description="Review your registered school identity and update your profile picture." />
     <section className="profile-summary" aria-label="Account summary">
       <div className="profile-summary-icon"><UserRound size={26} /></div>
       <div className="min-w-0 flex-1"><p className="profile-summary-eyebrow">Your library identity</p><h2>{name}</h2><p className="profile-summary-description">Your personal and school details, as recorded by the library.</p></div>
       {profile ? <div className="profile-summary-tags"><span><ShieldCheck size={14} />{profile.role}</span><span><CheckCircle2 size={14} />{profile.account_status}</span></div> : null}
     </section>
-    {message ? <p role={messageError ? 'alert' : 'status'} className="profile-message">{message}</p> : null}
+    {message ? <p role={messageError ? 'alert' : 'status'} data-tone={messageError ? 'error' : 'success'} className="profile-message">{message}</p> : null}
     <div className="profile-layout" style={!showAll ? { gridTemplateColumns: 'minmax(0, 1fr)' } : undefined}>
       {showAll || section === 'photo' ? <section className="profile-panel profile-photo-panel" aria-labelledby="profile-photo-heading">
         <div className="profile-photo-banner"><Camera size={19} /><span>Make it yours</span></div>

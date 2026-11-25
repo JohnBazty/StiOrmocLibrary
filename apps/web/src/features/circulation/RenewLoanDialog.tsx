@@ -1,6 +1,7 @@
 import { formatLoanDate } from './loan-time'
-import { AlertTriangle, CalendarClock, RefreshCw, X } from 'lucide-react'
+import { AlertTriangle, CalendarClock, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { Button, LumoDialog, NoticeBanner } from '../../components/ui'
 import { circulationApi } from './circulation-api'
 import { useConfirmSave } from '../../components/ConfirmSaveDialog'
 import type { RenewalDecisionData, RenewalPreflightData } from './types'
@@ -66,42 +67,46 @@ export function RenewLoanDialog({
     : `${preflight?.renewalCount ?? 0} of ${preflight?.maxRenewals ?? 0} used`
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="renew-loan-title" className="fixed inset-0 z-[120] flex items-center justify-center bg-[#003399]/60 p-4">
-      <div className="w-full max-w-lg rounded-2xl bg-[#FFFFFF] shadow-2xl">
-        <header className="flex items-start justify-between border-b border-[#003399]/15 p-5">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-[#003399]">Loan renewal</p>
-            <h2 id="renew-loan-title" className="mt-1 text-xl font-black text-[#003399]">Request renewal</h2>
-            <p className="mt-1 text-sm text-[#003399]/70">{title}</p>
-          </div>
-          <button type="button" disabled={busy} aria-label="Close renewal" onClick={onCancel} className="rounded-xl p-2 text-[#003399] disabled:opacity-40"><X size={19} /></button>
-        </header>
-        <div className="space-y-4 p-5">
-          {loading ? <div className="flex items-center gap-2 font-semibold text-[#003399]"><RefreshCw className="animate-spin" size={17} /> Checking renewal eligibility…</div> : null}
+    <>
+      <LumoDialog
+        eyebrow="Loan renewal"
+        title="Request renewal"
+        description={title}
+        busy={busy}
+        onClose={onCancel}
+        footer={
+          <>
+            <Button variant="secondary" disabled={busy} onClick={onCancel}>Cancel</Button>
+            {error && !preflight ? <Button variant="secondary" disabled={loading} onClick={() => void loadPreflight()}>Retry</Button> : null}
+            <Button
+              disabled={loading || busy || !preflight?.canRequestRenewal}
+              onClick={() => ask(`Renew ${title}.`, () => { void confirmRenewal() }, { title: 'Confirm loan renewal?', confirmLabel: 'Renew loan' })}
+            >
+              {busy ? 'Renewing…' : 'Confirm renewal'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          {loading ? <div className="flex items-center gap-2 text-sm font-medium text-[var(--sl-text-secondary)]"><RefreshCw className="animate-spin" size={16} /> Checking renewal eligibility…</div> : null}
           {preflight ? (
             <>
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-[#003399]/15 p-3 text-[#003399]"><p className="text-xs font-bold uppercase">Current due</p><p className="mt-1 text-sm font-semibold">{formatDate(preflight.currentDueAt)}</p></div>
-                <div className="rounded-xl bg-[#FFF200] p-3 text-[#003399]"><p className="text-xs font-bold uppercase">Proposed due</p><p className="mt-1 text-sm font-semibold">{formatDate(preflight.proposedDueAt)}</p></div>
+                <div className="rounded-[8px] border border-[var(--sl-border)] p-3"><p className="text-[11px] font-semibold uppercase text-[var(--sl-text-muted)]">Current due</p><p className="mt-1 text-sm font-semibold tabular-nums text-[var(--sl-text-header)]">{formatDate(preflight.currentDueAt)}</p></div>
+                <div className="rounded-[8px] border border-[var(--sl-info-border)] bg-[var(--sl-info-soft)] p-3"><p className="text-[11px] font-semibold uppercase text-[#0b5ea2] dark:text-[#93c5fd]">Proposed due</p><p className="mt-1 text-sm font-semibold tabular-nums text-[var(--sl-text-header)]">{formatDate(preflight.proposedDueAt)}</p></div>
               </div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-[#003399]"><CalendarClock size={17} /> Renewals: {usage}</div>
+              <div className="flex items-center gap-2 text-sm font-medium text-[var(--sl-text-secondary)]"><CalendarClock size={16} className="text-[#0b5ea2] dark:text-[#93c5fd]" /> Renewals: <strong className="text-[var(--sl-text-header)]">{usage}</strong></div>
               {preflight.blockers.length ? (
-                <div className="space-y-2 rounded-xl border border-[#003399]/20 p-4 text-[#003399]">
-                  <p className="flex items-center gap-2 font-bold"><AlertTriangle size={17} /> Renewal blocked</p>
-                  <ul className="space-y-1 text-sm">{preflight.blockers.map((item) => <li key={item.code}>{item.message}</li>)}</ul>
-                </div>
+                <NoticeBanner tone="warning" title="Renewal blocked" className="mb-0">
+                  <ul className="mt-1 list-disc space-y-1 pl-4 text-xs">{preflight.blockers.map((item) => <li key={item.code}>{item.message}</li>)}</ul>
+                </NoticeBanner>
               ) : null}
             </>
           ) : null}
-          {error ? <div role="alert" className="rounded-xl bg-[#FFF200] p-3 text-sm font-semibold text-[#003399]">{error}</div> : null}
+          {error ? <NoticeBanner tone="error" className="mb-0">{error}</NoticeBanner> : null}
         </div>
-        <footer className="flex justify-end gap-2 border-t border-[#003399]/15 p-4">
-          <button type="button" disabled={busy} onClick={onCancel} className="h-10 rounded-xl border border-[#003399]/20 bg-[#FFFFFF] px-4 text-sm font-bold text-[#003399] disabled:opacity-40">Cancel</button>
-          {error && !preflight ? <button type="button" disabled={loading} onClick={() => void loadPreflight()} className="h-10 rounded-xl bg-[#FFF200] px-4 text-sm font-bold text-[#003399] disabled:opacity-40">Retry</button> : null}
-          <button type="button" disabled={loading || busy || !preflight?.canRequestRenewal} onClick={() => ask(`Renew ${title}.`, () => { void confirmRenewal() })} className="h-10 rounded-xl bg-[#003399] px-4 text-sm font-bold text-[#FFFFFF] disabled:opacity-40">{busy ? 'Renewing…' : 'Confirm renewal'}</button>
-        </footer>
-      </div>
+      </LumoDialog>
       {confirmSave}
-    </div>
+    </>
   )
 }

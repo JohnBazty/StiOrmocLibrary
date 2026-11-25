@@ -27,9 +27,10 @@ export function computeLibraryClosedNow(
   schedule: Pick<LibrarySchedule, 'weekly' | 'upcomingClosures'> | null | undefined,
   now = new Date(),
 ): { closed: boolean; reason: string } {
-  if (!schedule) return { closed: false, reason: '' }
+  if (!schedule || !Array.isArray(schedule.weekly)) return { closed: false, reason: '' }
   const { date, time, dayOfWeek } = manilaParts(now)
-  const closure = schedule.upcomingClosures.find(item => item.date === date)
+  const upcomingClosures = Array.isArray(schedule.upcomingClosures) ? schedule.upcomingClosures : []
+  const closure = upcomingClosures.find(item => item.date === date)
   if (closure) {
     if (closure.startsAt && closure.endsAt) {
       if (time >= closure.startsAt && time < closure.endsAt) {
